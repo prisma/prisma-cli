@@ -528,6 +528,11 @@ describe("stdin cleanup", () => {
         diagnostics: [],
       }),
       managementApi: { baseUrl: "https://test.invalid" },
+      host: {
+        runtime: { name: "node", version: "v22.12.0" },
+        platform: "linux",
+        arch: "x64",
+      },
     };
 
     const exitCode = await cli.run(["probe"], runtime);

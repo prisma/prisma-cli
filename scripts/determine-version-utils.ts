@@ -45,7 +45,7 @@ export function computeNextMinor(current: string): string {
  *
  * - `8.0.0-rc.N` -> `8.0.0-rc.N+1` — the RC line advances its counter.
  * - pre-8 stable (`0.17.0`) -> `8.0.0-rc.1` — the one-time transition
- *   onto the v8 RC line; there are no further pre-8 minors.
+ *   onto the Prisma 8 RC line; there are no further pre-8 minors.
  * - stable `>= 8` -> next minor.
  */
 export function computeNextReleaseVersion(current: string): string {
@@ -85,7 +85,7 @@ export function assertCanonicalBase(base: string): void {
 
 /**
  * The dist-tag a release-bump push publishes under. RC-line versions go
- * to `next`: `latest` keeps serving the pre-v8 CLI until the operator
+ * to `next`: `latest` keeps serving the pre-8 CLI until the operator
  * deliberately moves it (rollout plan step 5), by dispatching the
  * publish workflow with `dist-tag: latest` or by widening this rule
  * when the RC line is ready. Stable versions go to `latest`.

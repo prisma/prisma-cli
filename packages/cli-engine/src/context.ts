@@ -3,6 +3,7 @@ import type { EngineEvent } from "./events";
 import type { ManagementApiClient } from "./management-api";
 import type { Outcome, Presentations, PresentedResult } from "./presentation";
 import type { CliStructuredError, Result } from "./protocol";
+import type { Host } from "./runtime";
 import type { ChildResult, SpawnOptions } from "./spawn";
 
 /** The handler context — the whole world arrives as one argument. */
@@ -114,6 +115,14 @@ export interface CommandContext<
    * via ctx.env, never process.env.
    */
   readonly env: Readonly<Record<string, string | undefined>>;
+
+  /**
+   * What this process runs on, from Runtime.host. Handlers read the
+   * runtime version, platform and architecture here — never from
+   * `process` — so a bug-report payload and the occasional real
+   * platform difference do not each reinvent the lookup.
+   */
+  readonly host: Host;
 
   /**
    * Whether this run is in CI: detected from the environment the host

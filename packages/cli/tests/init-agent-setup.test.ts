@@ -1,162 +1,171 @@
+/**
+ * The agent-skill offer init makes once per project. The skills CLI runs
+ * as a child process, so execa is faked and the argv is asserted instead.
+ */
 import path from "node:path";
+import { createTestCli } from "@prisma/cli-engine/testing";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { afterEach, describe, expect, it, vi } from "vitest";
-
+import { LocalStateStore } from "../src/adapters/local-state";
+import { initCommand } from "../src/commands/init/init";
+import { DEFAULT_PRISMA_AGENT_TARGETS } from "../src/lib/agent/constants";
+import { createTempCwd } from "./helpers";
 import { writeSkillsLockWithSkill } from "./helpers/skills-lock";
 
-afterEach(() => {
-  vi.resetModules();
+const execa = vi.hoisted(() => vi.fn(async () => ({ exitCode: 0 })));
+vi.mock("execa", () => ({ execa }));
+
+const ISO_TIMESTAMP = /^\d{4}-\d{2}-\d{2}T[\d:.]+Z$/;
+
+let cwd: string;
+let stateDir: string;
+
+beforeEach(async () => {
+  execa.mockClear();
+  execa.mockImplementation(async () => ({ exitCode: 0 }));
+  cwd = await createTempCwd();
+  stateDir = path.join(cwd, ".state");
 });
 
-const SKILL_PROMPT_MESSAGE =
-  "Install the Prisma Compute skill for this project?";
-
-async function setupInitAgentPromptTest(options: {
-  skillAnswer?: boolean;
-  runAgentInstall?: ReturnType<typeof vi.fn>;
-  skillsInstalled?: boolean;
-  isTTY?: boolean;
-  quiet?: boolean;
-}) {
-  const runAgentInstall =
-    options.runAgentInstall ??
-    vi.fn().mockResolvedValue({
-      command: "agent.install",
-      result: {
-        operation: "install",
-        skills: { status: "installed", command: [] },
-      },
-      warnings: [],
-      nextSteps: [],
-    });
-  // Interactive init asks to adjust settings and to link before the skill
-  // prompt; both are declined so only the skill answer varies per test.
-  const confirmPrompt = vi.fn(async ({ message }: { message: string }) => {
-    if (message === SKILL_PROMPT_MESSAGE) {
-      return options.skillAnswer ?? true;
-    }
-    return false;
-  });
-
-  vi.doMock("../src/controllers/agent", () => ({
-    runAgentInstall,
-  }));
-  vi.doMock("../src/shell/prompt", async () => {
-    const actual = await vi.importActual<typeof import("../src/shell/prompt")>(
-      "../src/shell/prompt",
-    );
-    return {
-      ...actual,
-      confirmPrompt,
-    };
-  });
-
-  const { createTempCwd, createTestCommandContext } = await import("./helpers");
-  const { runInit } = await import("../src/controllers/init");
-  const cwd = await createTempCwd();
-  if (options.skillsInstalled) {
-    await writeSkillsLockWithSkill(cwd);
-  }
-  const { context } = await createTestCommandContext({
+function run(
+  argv: readonly string[],
+  opts?: {
+    readonly answers?: ReadonlyArray<string | boolean>;
+    readonly isTty?: { stdin?: boolean };
+    readonly env?: Readonly<Record<string, string | undefined>>;
+  },
+) {
+  return createTestCli({
+    commands: { init: initCommand },
+    now: () => new Date(0),
+  }).run(argv, {
     cwd,
-    stateDir: path.join(cwd, ".state"),
-    isTTY: options.isTTY ?? true,
-    flags: options.quiet ? { quiet: true } : undefined,
-    env: {
-      ...process.env,
-    },
+    env: { PRISMA_CLI_STATE_DIR: stateDir, CI: undefined, ...opts?.env },
+    ...(opts?.answers === undefined ? {} : { answers: opts.answers }),
+    ...(opts?.isTty === undefined ? {} : { isTty: opts.isTty }),
   });
-
-  return { context, cwd, confirmPrompt, runAgentInstall, runInit };
 }
 
-function skillPromptCalls(confirmPrompt: ReturnType<typeof vi.fn>) {
-  return confirmPrompt.mock.calls.filter(
-    ([options]) => options.message === SKILL_PROMPT_MESSAGE,
-  );
+function dismissedAt(): Promise<string | null> {
+  return new LocalStateStore(
+    stateDir,
+    new AbortController().signal,
+  ).readAgentSetupPromptDismissedAt();
 }
 
-describe("init agent setup prompt", () => {
-  it("interactive init offers the Prisma Compute skill install and installs on accept", async () => {
-    const { context, cwd, confirmPrompt, runAgentInstall, runInit } =
-      await setupInitAgentPromptTest({ skillAnswer: true });
+const BASE_ARGV = [
+  "init",
+  "--framework",
+  "hono",
+  "--name",
+  "api",
+  "--no-install",
+  "--no-link",
+];
 
-    const result = await runInit(context, { framework: "hono" });
-
-    expect(result.command).toBe("init");
-    expect(skillPromptCalls(confirmPrompt)).toHaveLength(1);
-    expect(runAgentInstall).toHaveBeenCalledTimes(1);
-    expect(runAgentInstall.mock.calls[0][0]).toBe(context);
-    expect(runAgentInstall.mock.calls[0][1]).toEqual({
-      skill: ["prisma-compute"],
+describe("init agent-skill offer", () => {
+  it("installs the skill when the offer is accepted", async () => {
+    // adjust settings: no, then the skill offer: yes.
+    const result = await run(BASE_ARGV, {
+      isTty: { stdin: true },
+      answers: [false, true],
     });
-    expect(runAgentInstall.mock.calls[0][2]).toBe("install");
-    expect(runAgentInstall.mock.calls[0][3]).toEqual({ cwd });
-    expect(result.warnings).toEqual([]);
-  });
 
-  it("declining the skill prompt records dismissal and init still succeeds", async () => {
-    const { context, confirmPrompt, runAgentInstall, runInit } =
-      await setupInitAgentPromptTest({ skillAnswer: false });
-
-    const result = await runInit(context, { framework: "hono" });
-
-    expect(result.command).toBe("init");
-    expect(skillPromptCalls(confirmPrompt)).toHaveLength(1);
-    expect(runAgentInstall).not.toHaveBeenCalled();
-    await expect(
-      context.stateStore.readAgentSetupPromptDismissedAt(),
-    ).resolves.toEqual(expect.any(String));
-  });
-
-  it("does not offer the skill install when prisma-compute is already installed", async () => {
-    const { context, confirmPrompt, runAgentInstall, runInit } =
-      await setupInitAgentPromptTest({ skillsInstalled: true });
-
-    const result = await runInit(context, { framework: "hono" });
-
-    expect(result.command).toBe("init");
-    expect(skillPromptCalls(confirmPrompt)).toHaveLength(0);
-    expect(runAgentInstall).not.toHaveBeenCalled();
-  });
-
-  it("downgrades a failed skill install to a warning with the retry command", async () => {
-    const { context, runAgentInstall, runInit } =
-      await setupInitAgentPromptTest({
-        skillAnswer: true,
-        runAgentInstall: vi
-          .fn()
-          .mockRejectedValue(new Error("skills installer exploded")),
-      });
-
-    const result = await runInit(context, { framework: "hono" });
-
-    expect(result.command).toBe("init");
-    expect(runAgentInstall).toHaveBeenCalledTimes(1);
-    expect(result.warnings).toEqual([
-      expect.stringContaining("The Prisma Compute skill was not installed."),
+    expect(result.exitCode).toBe(0);
+    expect(execa).toHaveBeenCalledTimes(1);
+    const [executable, args] = execa.mock.calls[0] as unknown as [
+      string,
+      string[],
+    ];
+    expect([executable, ...args]).toEqual([
+      "npx",
+      "-y",
+      "skills@latest",
+      "add",
+      "prisma/skills",
+      "--skill",
+      "prisma-compute",
+      ...DEFAULT_PRISMA_AGENT_TARGETS.flatMap((agent) => ["--agent", agent]),
+      "--yes",
     ]);
+    expect(await dismissedAt()).toBeNull();
   });
 
-  it("does not offer the skill install in quiet runs", async () => {
-    const { context, confirmPrompt, runAgentInstall, runInit } =
-      await setupInitAgentPromptTest({ quiet: true });
+  it("remembers a declined offer so nothing asks again", async () => {
+    const result = await run(BASE_ARGV, {
+      isTty: { stdin: true },
+      answers: [false, false],
+    });
 
-    const result = await runInit(context, { framework: "hono" });
-
-    expect(result.command).toBe("init");
-    expect(skillPromptCalls(confirmPrompt)).toHaveLength(0);
-    expect(runAgentInstall).not.toHaveBeenCalled();
+    expect(result.exitCode).toBe(0);
+    expect(execa).not.toHaveBeenCalled();
+    expect(await dismissedAt()).toMatch(ISO_TIMESTAMP);
   });
 
-  it("does not offer the skill install in non-interactive runs", async () => {
-    const { context, confirmPrompt, runAgentInstall, runInit } =
-      await setupInitAgentPromptTest({ isTTY: false });
+  it("does not offer when the skill is already installed", async () => {
+    await writeSkillsLockWithSkill(cwd);
 
-    const result = await runInit(context, { framework: "hono" });
+    const result = await run(BASE_ARGV, {
+      isTty: { stdin: true },
+      answers: [false],
+    });
 
-    expect(result.command).toBe("init");
-    expect(confirmPrompt).not.toHaveBeenCalled();
-    expect(runAgentInstall).not.toHaveBeenCalled();
+    expect(result.exitCode).toBe(0);
+    expect(execa).not.toHaveBeenCalled();
+    expect(await dismissedAt()).toBeNull();
+  });
+
+  it("downgrades a failed skill install to a warn diagnostic", async () => {
+    execa.mockImplementation(async () => {
+      throw new Error("Command failed with exit code 1");
+    });
+
+    const result = await run([...BASE_ARGV, "--json"], {
+      isTty: { stdin: true },
+      answers: [false, true],
+    });
+
+    expect(result.exitCode).toBe(0);
+    const frame = result.json.at(-1) as unknown as {
+      envelope: { diagnostics: ReadonlyArray<Record<string, unknown>> };
+    };
+    expect(frame.envelope.diagnostics).toContainEqual(
+      expect.objectContaining({
+        code: "INIT.AGENT_SETUP_FAILED",
+        severity: "warn",
+      }),
+    );
+  });
+
+  it("takes the offer's default of no under --yes, and remembers it", async () => {
+    const result = await run([...BASE_ARGV, "--yes"]);
+
+    expect(result.exitCode).toBe(0);
+    expect(execa).not.toHaveBeenCalled();
+    expect(await dismissedAt()).toMatch(ISO_TIMESTAMP);
+  });
+
+  it("never offers or records anything in CI", async () => {
+    const result = await run(BASE_ARGV, { env: { CI: "true" } });
+
+    expect(result.exitCode).toBe(0);
+    expect(execa).not.toHaveBeenCalled();
+    expect(await dismissedAt()).toBeNull();
+  });
+
+  it("asks nothing once a previous run recorded a dismissal", async () => {
+    await new LocalStateStore(
+      stateDir,
+      new AbortController().signal,
+    ).setAgentSetupPromptDismissedAt("2026-01-01T00:00:00.000Z");
+
+    const result = await run(BASE_ARGV, {
+      isTty: { stdin: true },
+      answers: [false],
+    });
+
+    expect(result.exitCode).toBe(0);
+    expect(execa).not.toHaveBeenCalled();
+    expect(await dismissedAt()).toBe("2026-01-01T00:00:00.000Z");
   });
 });

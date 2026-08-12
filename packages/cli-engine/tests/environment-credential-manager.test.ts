@@ -185,6 +185,11 @@ describe("wired as a Runtime's manager", () => {
         };
       },
       managementApi: { baseUrl: "https://test.invalid" },
+      host: {
+        runtime: { name: "node", version: "v22.12.0" },
+        platform: "linux",
+        arch: "x64",
+      },
     };
   }
 

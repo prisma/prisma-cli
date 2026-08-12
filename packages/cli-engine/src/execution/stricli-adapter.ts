@@ -61,6 +61,13 @@ function stricliFlagParameter(spec: FlagRuntimeSpec): Record<string, unknown> {
   switch (spec.type) {
     case "boolean":
       return { kind: "boolean", brief: spec.brief, default: false };
+    case "optionalBoolean":
+      return {
+        kind: "boolean",
+        brief: spec.brief,
+        optional: true,
+        withNegated: true,
+      };
     case "enum":
       return {
         kind: "enum",

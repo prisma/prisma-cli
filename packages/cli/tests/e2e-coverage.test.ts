@@ -11,7 +11,7 @@ import path from "node:path";
 
 import { describe, expect, it } from "vitest";
 
-const CLI_SOURCE = path.resolve(import.meta.dirname, "../src/v8/cli.ts");
+const CLI_SOURCE = path.resolve(import.meta.dirname, "../src/cli.ts");
 const E2E_DIR = path.resolve(import.meta.dirname, "../e2e");
 
 /**
@@ -24,11 +24,11 @@ const E2E_DIR = path.resolve(import.meta.dirname, "../e2e");
  * exists to cover: they work against local files and the user's own
  * database. Their real end-to-end suite lives in prisma/prisma (R7,
  * argv-in/bytes-out against the engine harness); what this repo owes is
- * composition, which `tests/v8-orm-mount.test.ts` proves per family
+ * composition, which `tests/orm-mount.test.ts` proves per family
  * (R8).
  */
 const ORM_FAMILY_REASON =
-  "ORM command: no management API involved. Real e2e lives in prisma/prisma (R7); the shell proves composition in v8-orm-mount.test.ts (R8).";
+  "ORM command: no management API involved. Real e2e lives in prisma/prisma (R7); the shell proves composition in orm-mount.test.ts (R8).";
 
 const EXCLUSIONS: Readonly<Record<string, string>> = {
   "contract emit": ORM_FAMILY_REASON,
@@ -38,6 +38,9 @@ const EXCLUSIONS: Readonly<Record<string, string>> = {
   "db sign": ORM_FAMILY_REASON,
   "db update": ORM_FAMILY_REASON,
   "db verify": ORM_FAMILY_REASON,
+  format: ORM_FAMILY_REASON,
+  lsp: ORM_FAMILY_REASON,
+  migrate: ORM_FAMILY_REASON,
   "migration check": ORM_FAMILY_REASON,
   "migration graph": ORM_FAMILY_REASON,
   "migration list": ORM_FAMILY_REASON,
@@ -46,9 +49,12 @@ const EXCLUSIONS: Readonly<Record<string, string>> = {
   "migration plan": ORM_FAMILY_REASON,
   "migration show": ORM_FAMILY_REASON,
   "migration status": ORM_FAMILY_REASON,
+  "orm init": ORM_FAMILY_REASON,
   "ref delete": ORM_FAMILY_REASON,
   "ref list": ORM_FAMILY_REASON,
   "ref set": ORM_FAMILY_REASON,
+  feedback:
+    "Posts a real message to the feedback service the CLI team reads. A per-CI-run post is spam, not a test.",
   "auth login":
     "Interactive browser OAuth. There is no non-interactive path to a real sign-in, so CI cannot drive it.",
   "auth workspace use":
@@ -132,9 +138,12 @@ async function mountedCommands(): Promise<string[]> {
     );
   }
   const block = source.slice(start + marker.length, end);
-  return [...block.matchAll(/^\s*"([^"]+)":/gm)].map(
-    (match) => match[1] as string,
-  );
+  // Quoted keys are multi-word paths; bare identifier keys are the
+  // single-word mounts (init, feedback), which the quoted-only scan
+  // used to miss entirely.
+  return [
+    ...block.matchAll(/^\s{2}(?:"([^"]+)"|([A-Za-z][A-Za-z0-9]*)):/gm),
+  ].map((match) => (match[1] ?? match[2]) as string);
 }
 
 async function readSuites(): Promise<Array<{ entry: string; source: string }>> {

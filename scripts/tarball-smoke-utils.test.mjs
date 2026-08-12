@@ -116,9 +116,9 @@ describe("declaredBins", () => {
     assert.deepEqual(
       declaredBins({
         name: "@prisma/cli",
-        bin: { "prisma-cli": "./dist/v8/cli.js" },
+        bin: { "prisma-cli": "./dist/cli.js" },
       }),
-      [{ name: "prisma-cli", path: "./dist/v8/cli.js" }],
+      [{ name: "prisma-cli", path: "./dist/cli.js" }],
     );
   });
 

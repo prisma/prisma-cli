@@ -95,6 +95,23 @@ composer can use it.
   each of the four commands — rewritten to use it. Recorded in
   `assets/s2/parity-divergences-s3.md`.
 
+## Ratified-as-shipped at the S2 sign-off (2026-08-12) — the gaps stay real
+
+- **Streaming service logs is unavailable in any form.** `app logs` died
+  with the commander shell and `service logs` waits on an engine
+  streaming transport. The one capability loss of S2d; the S2c record
+  has the design notes.
+- **`build logs` cannot exit 1 on a failed build** until the engine
+  grows a way for a stream to settle with a documented non-zero code.
+- **The crash-recovery feedback action does not port** (the legacy
+  crash envelope pre-filled a `feedback` command; the engine's crash
+  path has no hook for it).
+- **A service token whose workspace only the server knows is refused**;
+  accepting it needs an engine change to resolve the workspace online
+  during the needs check.
+- **Q6: the telemetry docs URL is the interim prisma.io CLI page**;
+  the real page is still owed and ships as a one-line change.
+
 ## Owned by whoever lands the next engine change
 
 - **S3's SPI amendment vs credential-manager rev 6.** #136 recorded

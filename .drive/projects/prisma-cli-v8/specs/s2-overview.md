@@ -71,6 +71,11 @@ is the single source for "what exists today".
 
 ## Open questions for the operator (S2 ledger)
 
+**All remaining questions RATIFIED at their stated defaults by the
+operator's S2 sign-off, 2026-08-12** (Q6's final URL is still owed as
+follow-up work; the interim URL ships). The entries stay below as the
+record of what each default was.
+
 Contracts build to the stated default where one is given; the ruling
 can overrule before the affected dispatch runs.
 

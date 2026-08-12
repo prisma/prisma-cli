@@ -1,10 +1,7 @@
 // biome-ignore-all lint/performance/useTopLevelRegex: Existing executable detection regex is kept inline for readability.
 import { createRequire } from "node:module";
-import process from "node:process";
 
 import { CLI_NAME } from "../cli-name";
-import { CliError } from "../errors";
-import type { VersionInvocation, VersionResult } from "../types/version";
 
 interface PackageMetadata {
   name?: string;
@@ -13,26 +10,33 @@ interface PackageMetadata {
 
 const requireFromHere = createRequire(import.meta.url);
 
+/** The bundled entry sits one directory below the package root
+ *  (`dist/cli.js`); this source file sits two below (`src/lib/`). Both
+ *  are tried, nearest first, so the same code serves either. */
+const PACKAGE_JSON_CANDIDATES = ["../package.json", "../../package.json"];
+
 function readPackageMetadata(): PackageMetadata {
-  try {
-    return requireFromHere("../../package.json") as PackageMetadata;
-  } catch {
-    return {};
+  for (const candidate of PACKAGE_JSON_CANDIDATES) {
+    try {
+      const metadata = requireFromHere(candidate) as PackageMetadata;
+      if (metadata.version) return metadata;
+    } catch {
+      // Try the next candidate.
+    }
   }
+  return {};
 }
 
 export function getCliVersion(): string {
   const pkg = readPackageMetadata();
 
   if (!pkg.version) {
-    throw new CliError({
-      code: "VERSION_UNAVAILABLE",
-      domain: "cli",
-      summary: "CLI version metadata is missing from the installed package",
-      why: "The bundled package.json could not be read or did not contain a version field.",
-      fix: "Reinstall the CLI from the npm registry, or check your install path is intact.",
-      exitCode: 1,
-    });
+    // The bin builds the CLI before it can present anything, and
+    // prints a construction failure as one plain stderr line, so this
+    // carries its whole explanation in the message.
+    throw new Error(
+      "CLI version metadata is missing from the installed package: the bundled package.json could not be read or did not contain a version field. Reinstall the CLI from the npm registry, or check your install path is intact.",
+    );
   }
 
   return pkg.version;
@@ -43,69 +47,4 @@ export function getCliVersion(): string {
 // "@prisma/cli", but the binary on PATH is CLI_NAME.
 export function getCliName(): string {
   return CLI_NAME;
-}
-
-export function detectInvocation(
-  env: NodeJS.ProcessEnv,
-  argv: readonly string[],
-): VersionInvocation {
-  if (env.npm_config_user_agent?.startsWith("bun")) {
-    return "bunx";
-  }
-
-  const normalizedExecPath = env.npm_execpath
-    ?.replace(/\\/g, "/")
-    .toLowerCase();
-  const normalizedUserAgent = env.npm_config_user_agent?.toLowerCase();
-
-  if (
-    env.npm_lifecycle_event === "npx" ||
-    normalizedExecPath?.includes("/_npx/") ||
-    normalizedUserAgent?.includes("npx")
-  ) {
-    return "npx";
-  }
-
-  const entry = (argv[1] ?? "").replace(/\\/g, "/").toLowerCase();
-
-  if (entry.endsWith(".ts") || entry.includes("/tsx/")) {
-    return "dev";
-  }
-
-  if (entry.includes("/_npx/")) {
-    return "npx";
-  }
-
-  if (entry.includes("/.bun/")) {
-    return "bunx";
-  }
-
-  if (
-    entry.includes("/node_modules/.bin/") ||
-    /\/prisma-cli(\.cmd|\.exe)?$/.test(entry)
-  ) {
-    return "global";
-  }
-
-  return "unknown";
-}
-
-export function buildVersionResult(
-  env: NodeJS.ProcessEnv,
-  argv: readonly string[],
-): VersionResult {
-  return {
-    cli: {
-      name: getCliName(),
-      version: getCliVersion(),
-    },
-    node: {
-      version: process.version,
-    },
-    os: {
-      platform: process.platform,
-      arch: process.arch,
-    },
-    invocation: detectInvocation(env, argv),
-  };
 }

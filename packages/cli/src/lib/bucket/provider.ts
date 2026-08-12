@@ -1,7 +1,7 @@
 // biome-ignore-all lint/performance/noAwaitInLoops: Bucket pagination requests must run sequentially.
 import type { ManagementApiClient } from "@prisma/management-api-sdk";
 
-import { CliError } from "../../shell/errors";
+import { CliError } from "../../errors";
 import type { BucketKeySummary, BucketSummary } from "../../types/bucket";
 
 export interface BucketCreateInput {

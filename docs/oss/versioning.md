@@ -2,13 +2,13 @@
 
 This page covers the **version contract** the unified Prisma CLI offers to its users, and the **mechanism** that delivers it. The first half is the policy you can rely on; the second half is the procedure maintainers follow to honour it. The model (scripts, workflow, and this document) is ported from [prisma/prisma](https://github.com/prisma/prisma) by operator ruling (2026-08-10): this repo adopts that versioning machinery *and* its version number — the unified CLI takes over the `8.0.0-rc.N` line.
 
-## The v8 RC line
+## The Prisma 8 RC line
 
-Prisma 8 ships as a release-candidate line ahead of `8.0.0` final: releases are versioned `8.0.0-rc.1`, `8.0.0-rc.2`, … with the counter advancing on every release publish. "The v8 RC" is the product name; the version number underneath iterates freely, and there is no promise that the final RC is literally numbered `rc.1`. Versions are immutable on npm — a botched publish burns a counter value, which is fine; skip it and never reuse a number.
+Prisma 8 ships as a release-candidate line ahead of `8.0.0` final: releases are versioned `8.0.0-rc.1`, `8.0.0-rc.2`, … with the counter advancing on every release publish. "The Prisma 8 RC" is the product name; the version number underneath iterates freely, and there is no promise that the final RC is literally numbered `rc.1`. Versions are immutable on npm — a botched publish burns a counter value, which is fine; skip it and never reuse a number.
 
 RC respins may include breaking changes until `8.0.0` final ships. There are no patch releases on the RC line — a fix ships as the next `rc.N`.
 
-For the packages this repository's publish workflow ships (`@prisma/cli`, `@prisma/cli-engine`), **each release publishes under its line's canonical dist-tag**: RC-line versions under `next`, stable versions under `latest` (operator ruling 2026-08-12; supersedes the earlier "`latest` tracks the newest release, RC or stable"). A dist-tag moves only through a deliberately merged version-bump PR (or a manual `workflow_dispatch`); creating and merging the bump PR is the operator's explicit act. `latest` stays on the pre-v8 CLI until the operator moves it deliberately. Existing installs are unaffected — lockfiles pin resolved versions, and nobody lands on the RC line without asking for `@next`.
+For the packages this repository's publish workflow ships (`@prisma/cli`, `@prisma/cli-engine`), **each release publishes under its line's canonical dist-tag**: RC-line versions under `next`, stable versions under `latest` (operator ruling 2026-08-12; supersedes the earlier "`latest` tracks the newest release, RC or stable"). A dist-tag moves only through a deliberately merged version-bump PR (or a manual `workflow_dispatch`); creating and merging the bump PR is the operator's explicit act. `latest` stays on the pre-8 CLI until the operator moves it deliberately. Existing installs are unaffected — lockfiles pin resolved versions, and nobody lands on the RC line without asking for `@next`.
 
 The transition onto the RC line is a one-time bump from the pre-8 base to `8.0.0-rc.1`; `pnpm bump-version` encodes it (a pre-8 stable base advances to `8.0.0-rc.1`, an RC base advances its counter).
 
@@ -24,8 +24,8 @@ The lockstep set is: the workspace root, `packages/cli`, `packages/cli-engine`, 
 
 The npm registry exposes the CLI packages under these dist-tags:
 
-- **`latest`** — what a bare `npm install` gets. It stays on the pre-v8 CLI while the v8 RC line matures; moving it to 8.x is a deliberate operator act (dispatching the publish workflow with `dist-tag: latest`, or widening `releaseDistTag` when the RC line is ready), not a side effect of any routine release (operator ruling 2026-08-12). Once the line is stable, stable release bumps publish here.
-- **`next`** — the v8 RC line (`8.0.0-rc.N`). A merged release PR on the RC line publishes here automatically.
+- **`latest`** — what a bare `npm install` gets. It stays on the pre-8 CLI while the Prisma 8 RC line matures; moving it to 8.x is a deliberate operator act (dispatching the publish workflow with `dist-tag: latest`, or widening `releaseDistTag` when the RC line is ready), not a side effect of any routine release (operator ruling 2026-08-12). Once the line is stable, stable release bumps publish here.
+- **`next`** — the Prisma 8 RC line (`8.0.0-rc.N`). A merged release PR on the RC line publishes here automatically.
 - **`beta`** — reserved for hand-cut previews ahead of significant changes, published by dispatching the workflow with that dist-tag. Routine releases do not use this tag.
 
 There is no `dev` channel. A push to `main` that does not change the version publishes nothing, because the version at that commit is already on the registry and there is nothing else this repository could honestly call the build. To hand someone an unreleased build, use the per-PR preview below.

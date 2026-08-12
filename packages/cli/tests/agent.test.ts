@@ -1,140 +1,97 @@
-import { access, mkdir, writeFile } from "node:fs/promises";
+import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
+import { createTestCli } from "@prisma/cli-engine/testing";
+import { execa } from "execa";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { makeTempCwd, mountsFor } from "./service-testkit";
 
-import { createTempCwd, executeCli } from "./helpers";
-import { writeSkillsLockWithSkill } from "./helpers/skills-lock";
+vi.mock("execa", () => ({ execa: vi.fn() }));
 
-function expectSkillsCommandPrefix(
-  command: string[],
-  binaryName: string,
-  args: string[],
-): void {
-  expect(command[0]).toBe(binaryName);
-  expect(command.slice(1, args.length + 1)).toEqual(args);
-}
+const AGENT_COMMANDS = mountsFor(["agent"]);
 
-function mockSkillsExeca(
-  stdout: unknown,
-  options: { failed?: boolean; stderr?: string } = {},
-) {
-  const execa = vi.fn(async () => {
-    if (options.failed) {
-      throw new Error(options.stderr ?? "skills list failed");
-    }
-
-    return {
-      stdout: typeof stdout === "string" ? stdout : JSON.stringify(stdout),
-      stderr: options.stderr ?? "",
-    };
+/** The whole group is local: no session is ever seeded, so every run
+ *  here also proves the unauthenticated axis of R-S2b-9. */
+function makeCli(platform?: string) {
+  return createTestCli({
+    commands: AGENT_COMMANDS,
+    groups: { agent: { brief: "Install Prisma context for AI coding agents" } },
+    now: () => new Date(0),
+    ...(platform === undefined
+      ? {}
+      : {
+          host: {
+            runtime: { name: "node", version: "v22.12.0" },
+            platform,
+            arch: "x64",
+          },
+        }),
   });
-
-  vi.doMock("execa", () => ({ execa }));
-  return execa;
 }
 
-afterEach(() => {
-  vi.doUnmock("execa");
-  vi.resetModules();
-  vi.restoreAllMocks();
+async function makeCwd(): Promise<{
+  cwd: string;
+  env: Record<string, string>;
+}> {
+  const cwd = await makeTempCwd("agent-");
+  return { cwd, env: { PRISMA_CLI_STATE_DIR: path.join(cwd, ".state") } };
+}
+
+function skillsListStdout(skills: unknown): { stdout: string; stderr: string } {
+  return { stdout: JSON.stringify(skills), stderr: "" };
+}
+
+function errorFrame(json: readonly unknown[]) {
+  const frame = json[json.length - 1] as
+    | { kind: string; envelope: { ok: boolean } }
+    | undefined;
+  if (frame?.kind !== "result" || frame.envelope.ok) {
+    throw new Error("expected an errored envelope");
+  }
+  return frame.envelope as unknown as {
+    ok: false;
+    commandId: string;
+    error: {
+      code: string;
+      summary: string;
+      why?: string;
+      nextActions: Array<{ kind: string; label: string; command?: string }>;
+    };
+  };
+}
+
+function completedFrame(json: readonly unknown[]) {
+  const frame = json[json.length - 1] as
+    | { kind: string; envelope: { ok: boolean } }
+    | undefined;
+  if (frame?.kind !== "result" || !frame.envelope.ok) {
+    throw new Error("expected a completed envelope");
+  }
+  return frame.envelope as unknown as {
+    ok: true;
+    commandId: string;
+    result: unknown;
+    diagnostics: Array<{ code: string; severity: string; summary: string }>;
+    nextActions: Array<{ kind: string; label: string; command?: string }>;
+  };
+}
+
+beforeEach(() => {
+  vi.mocked(execa).mockReset();
 });
 
-describe("agent commands", () => {
-  it("shows help for agent commands", async () => {
-    const cwd = await createTempCwd();
-    const stateDir = path.join(cwd, ".state");
-
-    const rootHelp = await executeCli({
-      argv: ["--help"],
-      cwd,
-      stateDir,
-    });
-    const agentHelp = await executeCli({
-      argv: ["agent", "--help"],
-      cwd,
-      stateDir,
-    });
-    const installHelp = await executeCli({
-      argv: ["agent", "install", "--help"],
-      cwd,
-      stateDir,
-    });
-    const updateHelp = await executeCli({
-      argv: ["agent", "update", "--help"],
-      cwd,
-      stateDir,
-    });
-    const statusHelp = await executeCli({
-      argv: ["agent", "status", "--help"],
-      cwd,
-      stateDir,
-    });
-
-    expect(rootHelp.exitCode).toBe(0);
-    expect(rootHelp.stderr).toContain("agent");
-
-    expect(agentHelp.exitCode).toBe(0);
-    expect(agentHelp.stderr).toContain(
-      "Install Prisma context for AI coding agents",
-    );
-    expect(agentHelp.stderr).toContain(
-      "$ npx -y @prisma/cli@latest agent install",
-    );
-    expect(agentHelp.stderr).toContain(
-      "$ npx -y @prisma/cli@latest agent update",
-    );
-    expect(agentHelp.stderr).toContain(
-      "$ npx -y @prisma/cli@latest agent status",
-    );
-
-    expect(installHelp.exitCode).toBe(0);
-    expect(installHelp.stderr).toContain("--agent <agent>");
-    expect(installHelp.stderr).toContain("--all-agents");
-    expect(installHelp.stderr).toContain("--skill <skill>");
-    expect(installHelp.stderr).not.toContain("--skip-skills");
-    expect(installHelp.stderr).not.toContain("--skip-project-files");
-
-    expect(updateHelp.exitCode).toBe(0);
-    expect(updateHelp.stderr).toContain(
-      "Refresh Prisma skills for AI coding agents",
-    );
-    expect(updateHelp.stderr).toContain("--all-agents");
-
-    expect(statusHelp.exitCode).toBe(0);
-    expect(statusHelp.stderr).toContain("--global");
+describe("prisma-cli agent install", () => {
+  it("declares no credential needs and runs without a session", async () => {
+    for (const command of Object.values(AGENT_COMMANDS)) {
+      expect(command.needs.credentials).toBe(false);
+    }
   });
 
-  it("uses the detected package manager in agent help examples", async () => {
-    const cwd = await createTempCwd();
-    const stateDir = path.join(cwd, ".state");
-    await writeFile(
-      path.join(cwd, "package.json"),
-      JSON.stringify({ packageManager: "pnpm@11.0.0" }, null, 2),
-      "utf8",
-    );
+  it("builds the installer command without spawning it in dry-run mode", async () => {
+    const { cwd, env } = await makeCwd();
 
-    const result = await executeCli({
-      argv: ["agent", "--help"],
-      cwd,
-      stateDir,
-    });
-
-    expect(result.exitCode).toBe(0);
-    expect(result.stderr).toContain(
-      "$ pnpm dlx @prisma/cli@latest agent install",
-    );
-    expect(result.stderr).toContain(
-      "$ pnpm dlx @prisma/cli@latest agent update",
-    );
-  });
-
-  it("builds the skills CLI install command without writing files in dry-run mode", async () => {
-    const cwd = await createTempCwd();
-    const stateDir = path.join(cwd, ".state");
-
-    const result = await executeCli({
-      argv: [
+    const result = await makeCli().run(
+      [
         "agent",
         "install",
         "--dry-run",
@@ -146,124 +103,47 @@ describe("agent commands", () => {
         "prisma-compute",
         "--global",
         "--copy",
-        "--json",
       ],
-      cwd,
-      stateDir,
-    });
+      { cwd, env },
+    );
 
     expect(result.exitCode).toBe(0);
-    expect(result.stderr).toBe("");
-    const payload = JSON.parse(result.stdout);
-
-    expect(payload).toMatchObject({
-      ok: true,
-      command: "agent.install",
-      result: {
-        operation: "install",
-        skills: {
-          status: "would-install",
-        },
+    expect(execa).not.toHaveBeenCalled();
+    expect(result.presented?.data).toEqual({
+      operation: "install",
+      skills: {
+        status: "would-install",
+        command: [
+          "npx",
+          "-y",
+          "skills@latest",
+          "add",
+          "prisma/skills",
+          "--skill",
+          "prisma-compute",
+          "--agent",
+          "codex",
+          "--agent",
+          "cursor",
+          "--global",
+          "--copy",
+          "--yes",
+        ],
       },
-      nextSteps: [],
     });
-    expect(payload.result.skills.command).toEqual([
-      "npx",
-      "-y",
-      "skills@latest",
-      "add",
-      "prisma/skills",
-      "--skill",
-      "prisma-compute",
-      "--agent",
-      "codex",
-      "--agent",
-      "cursor",
-      "--global",
-      "--copy",
-      "--yes",
-    ]);
+    expect(result.presented?.presentation.next).toEqual([]);
   });
 
-  it("renders agent install dry-run as a planned install", async () => {
-    const cwd = await createTempCwd();
-    const stateDir = path.join(cwd, ".state");
+  it("spawns the installer with the run's cwd, env and signal, and reports it installed", async () => {
+    vi.mocked(execa).mockResolvedValue({
+      stdout: "",
+      stderr: "",
+    } as never);
+    const { cwd, env } = await makeCwd();
 
-    const result = await executeCli({
-      argv: ["agent", "install", "--dry-run"],
-      cwd,
-      stateDir,
-    });
+    const result = await makeCli().run(["agent", "install"], { cwd, env });
 
     expect(result.exitCode).toBe(0);
-    expect(result.stderr).toContain(
-      "agent install → Would install Prisma skills.",
-    );
-    expect(result.stderr).toContain("skills:  would install");
-    expect(result.stderr).toContain("--skill '*'");
-  });
-
-  it("uses the detected package manager for the skills installer", async () => {
-    const cases = [
-      {
-        lockfile: "bun.lock",
-        binary: "bunx",
-        args: ["skills@latest", "add"],
-      },
-      {
-        lockfile: "pnpm-lock.yaml",
-        binary: "pnpm",
-        args: ["dlx", "skills@latest", "add"],
-      },
-      {
-        lockfile: "yarn.lock",
-        binary: "yarn",
-        args: ["dlx", "skills@latest", "add"],
-      },
-      {
-        lockfile: "package-lock.json",
-        binary: "npx",
-        args: ["-y", "skills@latest", "add"],
-      },
-    ];
-
-    await Promise.all(
-      cases.map(async (testCase) => {
-        const cwd = await createTempCwd();
-        const stateDir = path.join(cwd, ".state");
-        await writeFile(path.join(cwd, testCase.lockfile), "", "utf8");
-
-        const result = await executeCli({
-          argv: ["agent", "install", "--dry-run", "--json"],
-          cwd,
-          stateDir,
-        });
-
-        expect(result.exitCode).toBe(0);
-        const payload = JSON.parse(result.stdout);
-        expectSkillsCommandPrefix(
-          payload.result.skills.command,
-          testCase.binary,
-          testCase.args,
-        );
-      }),
-    );
-  });
-
-  it("runs the skills installer through Execa without streaming output", async () => {
-    vi.resetModules();
-    const execa = mockSkillsExeca("");
-    const { createTestCommandContext } = await import("./helpers");
-    const { runAgentInstall } = await import("../src/controllers/agent");
-    const cwd = await createTempCwd();
-    const stateDir = path.join(cwd, ".state");
-    const { context } = await createTestCommandContext({ cwd, stateDir });
-
-    const result = await runAgentInstall(context, {
-      agent: ["codex"],
-      skill: ["prisma-compute"],
-    });
-
     const expectedCommand = [
       "npx",
       "-y",
@@ -271,296 +151,236 @@ describe("agent commands", () => {
       "add",
       "prisma/skills",
       "--skill",
-      "prisma-compute",
+      "*",
       "--agent",
       "codex",
-      ...(process.platform === "win32" ? ["--copy"] : []),
+      "--agent",
+      "claude-code",
+      // The harness host is fixed to linux, so --copy never joins here;
+      // the Windows rule has its own test below.
       "--yes",
     ];
     expect(execa).toHaveBeenCalledWith(
       "npx",
       expectedCommand.slice(1),
-      expect.objectContaining({
-        cwd,
-        env: context.runtime.env,
-        cancelSignal: context.runtime.signal,
-        stdin: "ignore",
-      }),
+      expect.objectContaining({ cwd, env, stdin: "ignore" }),
     );
-    const [, , execaOptions] = execa.mock.calls[0] as unknown as [
+    const [, , options] = vi.mocked(execa).mock.calls[0] as unknown as [
       string,
       string[],
-      Record<string, unknown>,
+      { cancelSignal: AbortSignal },
     ];
-    expect(execaOptions).not.toHaveProperty("stdout");
-    expect(execaOptions).not.toHaveProperty("stderr");
-    expect(result.result.skills).toEqual({
-      status: "installed",
-      command: expectedCommand,
+    expect(options.cancelSignal).toBeInstanceOf(AbortSignal);
+    // The installer's own output must not reach the CLI's streams: every
+    // byte a command writes goes through the engine's event protocol.
+    expect(options).not.toHaveProperty("stdout");
+    expect(options).not.toHaveProperty("stderr");
+    expect(result.presented?.data).toEqual({
+      operation: "install",
+      skills: { status: "installed", command: expectedCommand },
     });
+    expect(result.presented?.presentation.next).toEqual([
+      {
+        kind: "run-command",
+        label: "Verify the installed Prisma skills",
+        command: "npx -y @prisma/cli@latest agent status",
+      },
+    ]);
   });
 
-  it("prefers package.json packageManager for the skills installer", async () => {
-    const cwd = await createTempCwd();
-    const stateDir = path.join(cwd, ".state");
-    await writeFile(path.join(cwd, "package-lock.json"), "", "utf8");
+  it("points a global install at the global status check", async () => {
+    vi.mocked(execa).mockResolvedValue({ stdout: "", stderr: "" } as never);
+    const { cwd, env } = await makeCwd();
+
+    const result = await makeCli().run(["agent", "install", "--global"], {
+      cwd,
+      env,
+    });
+
+    expect(result.exitCode).toBe(0);
+    expect(result.presented?.presentation.next).toEqual([
+      {
+        kind: "run-command",
+        label: "Verify the installed Prisma skills",
+        command: "npx -y @prisma/cli@latest agent status --global",
+      },
+    ]);
+  });
+
+  it("asks the skills CLI for every agent with --all-agents", async () => {
+    const { cwd, env } = await makeCwd();
+
+    const result = await makeCli().run(
+      ["agent", "install", "--dry-run", "--all-agents"],
+      { cwd, env },
+    );
+
+    expect(result.exitCode).toBe(0);
+    const command = (
+      result.presented?.data as { skills: { command: string[] } }
+    ).skills.command;
+    expect(command).toContain("--agent");
+    expect(command).toContain("*");
+    expect(command).not.toContain("codex");
+  });
+
+  it("forces --copy on Windows and leaves it off on other platforms", async () => {
+    const { cwd, env } = await makeCwd();
+    const installerCommandOn = async (platform: string) => {
+      const result = await makeCli(platform).run(
+        ["agent", "install", "--dry-run"],
+        { cwd, env },
+      );
+      return (result.presented?.data as { skills: { command: string[] } })
+        .skills.command;
+    };
+
+    // Each platform's expectation is written out rather than rebuilt from
+    // the host's platform, so inverting the rule fails this test instead of
+    // being mirrored by it.
+    expect(await installerCommandOn("win32")).toContain("--copy");
+    expect(await installerCommandOn("linux")).not.toContain("--copy");
+  });
+
+  it("uses the detected package manager for the installer", async () => {
+    const { cwd, env } = await makeCwd();
     await writeFile(
       path.join(cwd, "package.json"),
-      JSON.stringify({ packageManager: "pnpm@10.0.0" }, null, 2),
+      JSON.stringify({ packageManager: "pnpm@11.0.0" }),
       "utf8",
     );
 
-    const result = await executeCli({
-      argv: ["agent", "install", "--dry-run", "--json"],
+    const result = await makeCli().run(["agent", "install", "--dry-run"], {
       cwd,
-      stateDir,
+      env,
     });
 
     expect(result.exitCode).toBe(0);
-    const payload = JSON.parse(result.stdout);
-    expectSkillsCommandPrefix(payload.result.skills.command, "pnpm", [
-      "dlx",
-      "skills@latest",
-      "add",
-    ]);
-  });
-
-  it("detects the package manager from a parent workspace", async () => {
-    const cwd = await createTempCwd();
-    const appPath = path.join(cwd, "apps", "web");
-    const stateDir = path.join(cwd, ".state");
-    await mkdir(appPath, { recursive: true });
-    await writeFile(path.join(cwd, "pnpm-lock.yaml"), "", "utf8");
-
-    const result = await executeCli({
-      argv: ["agent", "install", "--dry-run", "--json"],
-      cwd: appPath,
-      stateDir,
-    });
-
-    expect(result.exitCode).toBe(0);
-    const payload = JSON.parse(result.stdout);
-    expectSkillsCommandPrefix(payload.result.skills.command, "pnpm", [
-      "dlx",
-      "skills@latest",
-      "add",
-    ]);
-  });
-
-  it("checks required Prisma skills from the skills lock", async () => {
-    const cwd = await createTempCwd();
-    await writeSkillsLockWithSkill(cwd, "prisma-client-api");
-
-    const { readPrismaAgentSetupStatus } = await import(
-      "../src/lib/agent/setup-status"
-    );
-    const signal = new AbortController().signal;
-
-    await expect(
-      readPrismaAgentSetupStatus({ cwd, signal }),
-    ).resolves.toMatchObject({ skillsInstalled: true });
-    await expect(
-      readPrismaAgentSetupStatus({
-        cwd,
-        signal,
-        requiredSkill: "prisma-compute",
-      }),
-    ).resolves.toMatchObject({ skillsInstalled: false });
-
-    await writeSkillsLockWithSkill(cwd, "prisma-compute");
-
-    await expect(
-      readPrismaAgentSetupStatus({
-        cwd,
-        signal,
-        requiredSkill: "prisma-compute",
-      }),
-    ).resolves.toMatchObject({ skillsInstalled: true });
-  });
-
-  it("treats malformed skills lock files as not installed", async () => {
-    const cwd = await createTempCwd();
-    await writeFile(path.join(cwd, "skills-lock.json"), "{", "utf8");
-
-    const { readPrismaAgentSetupStatus } = await import(
-      "../src/lib/agent/setup-status"
-    );
-
-    await expect(
-      readPrismaAgentSetupStatus({
-        cwd,
-        signal: new AbortController().signal,
-      }),
-    ).resolves.toMatchObject({ skillsInstalled: false });
-  });
-
-  it("keeps Windows command suffixes out of displayed agent commands", async () => {
-    const platform = vi
-      .spyOn(process, "platform", "get")
-      .mockReturnValue("win32");
-    try {
-      const cwd = await createTempCwd();
-      await writeFile(
-        path.join(cwd, "package.json"),
-        JSON.stringify({ packageManager: "pnpm@11.0.0" }, null, 2),
-        "utf8",
-      );
-
-      const { resolvePrismaCliPackageCommandSync } = await import(
-        "../src/lib/agent/cli-command"
-      );
-      const { resolveSkillsPackageRunner } = await import(
-        "../src/lib/agent/package-manager"
-      );
-
-      expect(
-        resolvePrismaCliPackageCommandSync(cwd, ["agent", "install"]),
-      ).toBe("pnpm dlx @prisma/cli@latest agent install");
-      const help = await executeCli({
-        argv: ["agent", "--help"],
-        cwd,
-        stateDir: path.join(cwd, ".state"),
-      });
-      expect(help.exitCode).toBe(0);
-      expect(help.stderr).toContain(
-        "$ pnpm dlx @prisma/cli@latest agent install",
-      );
-      expect(help.stderr).not.toContain("pnpm.cmd");
-
-      const install = await executeCli({
-        argv: ["agent", "install", "--dry-run", "--json"],
-        cwd,
-        stateDir: path.join(cwd, ".state"),
-      });
-      expect(install.exitCode).toBe(0);
-      await expect(access(path.join(cwd, "AGENTS.md"))).rejects.toThrow();
-      await expect(access(path.join(cwd, "CLAUDE.md"))).rejects.toThrow();
-      expect(JSON.parse(install.stdout).result.skills.command).toEqual([
-        "pnpm",
-        "dlx",
-        "skills@latest",
-        "add",
-        "prisma/skills",
-        "--skill",
-        "*",
-        "--agent",
-        "codex",
-        "--agent",
-        "claude-code",
-        "--copy",
-        "--yes",
-      ]);
-
-      await expect(
-        resolveSkillsPackageRunner({
-          cwd,
-          signal: new AbortController().signal,
-        }),
-      ).resolves.toEqual(["pnpm", "dlx"]);
-    } finally {
-      platform.mockRestore();
-    }
-  });
-
-  it("leaves Windows command execution details to Execa", async () => {
-    const platform = vi
-      .spyOn(process, "platform", "get")
-      .mockReturnValue("win32");
-    try {
-      const cwd = await createTempCwd();
-      await writeFile(path.join(cwd, "bun.lock"), "", "utf8");
-
-      const { resolvePrismaCliPackageCommandSync } = await import(
-        "../src/lib/agent/cli-command"
-      );
-      const { resolveSkillsPackageRunner } = await import(
-        "../src/lib/agent/package-manager"
-      );
-
-      expect(
-        resolvePrismaCliPackageCommandSync(cwd, ["agent", "install"]),
-      ).toBe("bunx @prisma/cli@latest agent install");
-      await expect(
-        resolveSkillsPackageRunner({
-          cwd,
-          signal: new AbortController().signal,
-        }),
-      ).resolves.toEqual(["bunx"]);
-    } finally {
-      platform.mockRestore();
-    }
-  });
-
-  it("supports all agent targets in dry-run mode", async () => {
-    const cwd = await createTempCwd();
-    const stateDir = path.join(cwd, ".state");
-
-    const result = await executeCli({
-      argv: ["agent", "update", "--dry-run", "--all-agents", "--json"],
-      cwd,
-      stateDir,
-    });
-
-    expect(result.exitCode).toBe(0);
-    const payload = JSON.parse(result.stdout);
-
-    expect(payload.command).toBe("agent.update");
-    expect(payload.result.operation).toBe("update");
-    expect(payload.result.skills.command).toContain("--agent");
-    expect(payload.result.skills.command).toContain("*");
-  });
-
-  it("points global installs at the global status check", async () => {
-    vi.resetModules();
-    mockSkillsExeca("");
-    const { createTestCommandContext } = await import("./helpers");
-    const { runAgentInstall } = await import("../src/controllers/agent");
-    const cwd = await createTempCwd();
-    const stateDir = path.join(cwd, ".state");
-    const { context } = await createTestCommandContext({ cwd, stateDir });
-
-    const result = await runAgentInstall(context, { global: true });
-
-    expect(result.nextSteps).toEqual([
-      "Run npx -y @prisma/cli@latest agent status --global to verify the installed Prisma skills.",
-    ]);
-  });
-
-  it("reports installed Prisma skills from the skills CLI", async () => {
-    vi.resetModules();
-    const execa = mockSkillsExeca([
-      {
-        name: "prisma-compute",
-        path: "/repo/.agents/skills/prisma-compute",
-        scope: "project",
-        agents: ["Codex", "Cursor"],
-      },
-      {
-        name: "unrelated",
-        path: "/repo/.agents/skills/unrelated",
-        scope: "project",
-        agents: ["Codex"],
-      },
-    ]);
-    const { createTestCommandContext } = await import("./helpers");
-    const { runAgentStatus } = await import("../src/controllers/agent");
-    const cwd = await createTempCwd();
-    const stateDir = path.join(cwd, ".state");
-    await writeFile(
-      path.join(cwd, "package.json"),
-      JSON.stringify({ packageManager: "pnpm@11.0.0" }, null, 2),
-      "utf8",
-    );
-    const { context } = await createTestCommandContext({ cwd, stateDir });
-
-    const result = await runAgentStatus(context);
-
-    expect(execa).toHaveBeenCalledWith(
+    const command = (
+      result.presented?.data as { skills: { command: string[] } }
+    ).skills.command;
+    expect(command.slice(0, 4)).toEqual([
       "pnpm",
-      ["dlx", "skills@latest", "list", "--json"],
+      "dlx",
+      "skills@latest",
+      "add",
+    ]);
+  });
+
+  it("settles a failed installer as AGENT.SKILLS_INSTALL_FAILED with the installer command as a next action", async () => {
+    vi.mocked(execa).mockRejectedValue(
+      Object.assign(new Error("skills exploded"), { exitCode: 7 }),
+    );
+    const { cwd, env } = await makeCwd();
+
+    const result = await makeCli().run(["agent", "install", "--json"], {
+      cwd,
+      env,
+    });
+
+    expect(result.exitCode).toBe(2);
+    const envelope = errorFrame(result.json);
+    expect(envelope.commandId).toBe("agent.install");
+    expect(envelope.error.code).toBe("AGENT.SKILLS_INSTALL_FAILED");
+    expect(envelope.error.summary).toBe("Prisma skills install failed");
+    expect(envelope.error.why).toBe("The skills installer exited with code 7.");
+    expect(envelope.error.nextActions).toEqual([
+      {
+        kind: "run-command",
+        label: "Retry the installer directly",
+        // The harness host is fixed to linux, whatever machine runs this.
+        command:
+          "npx -y skills@latest add prisma/skills --skill '*' --agent codex --agent claude-code --yes",
+      },
+    ]);
+  });
+
+  it("emits the completed json envelope with commandId agent.install", async () => {
+    const { cwd, env } = await makeCwd();
+
+    const result = await makeCli().run(
+      ["agent", "install", "--dry-run", "--json"],
+      { cwd, env },
+    );
+
+    expect(result.exitCode).toBe(0);
+    const envelope = completedFrame(result.json);
+    expect(envelope.commandId).toBe("agent.install");
+    expect(envelope.result).toMatchObject({
+      operation: "install",
+      skills: { status: "would-install" },
+    });
+  });
+});
+
+describe("prisma-cli agent update", () => {
+  it("runs the same operation under the update name", async () => {
+    vi.mocked(execa).mockResolvedValue({ stdout: "", stderr: "" } as never);
+    const { cwd, env } = await makeCwd();
+
+    const result = await makeCli().run(["agent", "update", "--json"], {
+      cwd,
+      env,
+    });
+
+    expect(result.exitCode).toBe(0);
+    const envelope = completedFrame(result.json);
+    expect(envelope.commandId).toBe("agent.update");
+    expect(envelope.result).toMatchObject({
+      operation: "update",
+      skills: { status: "installed" },
+    });
+    expect(execa).toHaveBeenCalledTimes(1);
+  });
+
+  it("settles a failed installer as AGENT.SKILLS_INSTALL_FAILED", async () => {
+    vi.mocked(execa).mockRejectedValue(new Error("skills exploded"));
+    const { cwd, env } = await makeCwd();
+
+    const result = await makeCli().run(["agent", "update", "--json"], {
+      cwd,
+      env,
+    });
+
+    expect(result.exitCode).toBe(2);
+    const envelope = errorFrame(result.json);
+    expect(envelope.commandId).toBe("agent.update");
+    expect(envelope.error.code).toBe("AGENT.SKILLS_INSTALL_FAILED");
+    expect(envelope.error.why).toBe(
+      "The skills installer exited with code unknown.",
+    );
+  });
+});
+
+describe("prisma-cli agent status", () => {
+  it("reports the Prisma skills the skills CLI lists and drops the rest", async () => {
+    vi.mocked(execa).mockResolvedValue(
+      skillsListStdout([
+        {
+          name: "prisma-compute",
+          path: "/repo/.agents/skills/prisma-compute",
+          scope: "project",
+          agents: ["Codex", "Cursor"],
+        },
+        {
+          name: "unrelated",
+          path: "/repo/.agents/skills/unrelated",
+          scope: "project",
+          agents: ["Codex"],
+        },
+      ]) as never,
+    );
+    const { cwd, env } = await makeCwd();
+
+    const result = await makeCli().run(["agent", "status"], { cwd, env });
+
+    expect(result.exitCode).toBe(0);
+    expect(execa).toHaveBeenCalledWith(
+      "npx",
+      ["-y", "skills@latest", "list", "--json"],
       expect.objectContaining({ cwd }),
     );
-    expect(result.result).toMatchObject({
+    expect(result.presented?.data).toEqual({
       skills: [
         {
           name: "prisma-compute",
@@ -569,7 +389,7 @@ describe("agent commands", () => {
           agents: ["Codex", "Cursor"],
         },
       ],
-      skillsListCommand: ["pnpm", "dlx", "skills@latest", "list", "--json"],
+      skillsListCommand: ["npx", "-y", "skills@latest", "list", "--json"],
       statusScope: "project",
       skillsLockPath: "skills-lock.json",
       skillsLockInstalled: false,
@@ -577,125 +397,59 @@ describe("agent commands", () => {
       statusSource: "skills-cli",
       promptDismissedAt: null,
     });
-    expect(result.warnings).toEqual([]);
-    expect(result.nextSteps).toEqual([]);
+    expect(result.presented?.diagnostics).toEqual([]);
+    expect(result.presented?.presentation.next).toEqual([]);
   });
 
-  it("reports globally installed Prisma skills from the skills CLI", async () => {
-    vi.resetModules();
-    const execa = mockSkillsExeca([
-      {
-        name: "prisma-compute",
-        path: "/Users/aman/.agents/skills/prisma-compute",
-        scope: "global",
-        agents: ["Codex"],
-      },
-    ]);
-    const { createTestCommandContext } = await import("./helpers");
-    const { runAgentStatus } = await import("../src/controllers/agent");
-    const cwd = await createTempCwd();
-    const stateDir = path.join(cwd, ".state");
-    const { context } = await createTestCommandContext({ cwd, stateDir });
+  it("checks globally installed skills with --global", async () => {
+    vi.mocked(execa).mockResolvedValue(
+      skillsListStdout([
+        {
+          name: "prisma",
+          path: "/home/dev/.agents/skills/prisma",
+          scope: "global",
+          agents: ["Codex"],
+        },
+      ]) as never,
+    );
+    const { cwd, env } = await makeCwd();
 
-    const result = await runAgentStatus(context, { global: true });
+    const result = await makeCli().run(["agent", "status", "--global"], {
+      cwd,
+      env,
+    });
 
+    expect(result.exitCode).toBe(0);
     expect(execa).toHaveBeenCalledWith(
       "npx",
       ["-y", "skills@latest", "list", "-g", "--json"],
       expect.objectContaining({ cwd }),
     );
-    expect(result.result).toMatchObject({
-      skills: [
-        {
-          name: "prisma-compute",
-          path: "/Users/aman/.agents/skills/prisma-compute",
-          scope: "global",
-          agents: ["Codex"],
-        },
-      ],
-      skillsListCommand: ["npx", "-y", "skills@latest", "list", "-g", "--json"],
+    expect(result.presented?.data).toMatchObject({
       statusScope: "global",
-      skillsInstalled: true,
       statusSource: "skills-cli",
+      skillsInstalled: true,
     });
-    expect(result.nextSteps).toEqual([]);
   });
 
-  it("checks Prisma skills from the compute config root when run in a subdirectory", async () => {
-    vi.resetModules();
-    const execa = mockSkillsExeca([
-      {
-        name: "prisma-compute",
-        path: "/repo/.agents/skills/prisma-compute",
-        scope: "project",
-        agents: ["Codex"],
-      },
-    ]);
-    const { createTestCommandContext } = await import("./helpers");
-    const { runAgentStatus } = await import("../src/controllers/agent");
-    const cwd = await createTempCwd();
-    const appDir = path.join(cwd, "apps", "web");
-    const stateDir = path.join(cwd, ".state");
-    await mkdir(appDir, { recursive: true });
-    await mkdir(path.join(cwd, ".git"), { recursive: true });
-    await writeFile(
-      path.join(cwd, "prisma.compute.ts"),
-      'export default { apps: { web: { root: "apps/web" } } };\n',
-      "utf8",
-    );
-    await writeFile(
-      path.join(cwd, "package.json"),
-      JSON.stringify({ packageManager: "pnpm@11.0.0" }, null, 2),
-      "utf8",
-    );
+  it("falls back to the skills lock with a warn diagnostic when the skills CLI fails", async () => {
+    vi.mocked(execa).mockRejectedValue(new Error("skills exploded"));
+    const { cwd, env } = await makeCwd();
     await writeFile(
       path.join(cwd, "skills-lock.json"),
       JSON.stringify({ sources: ["prisma/skills"] }),
       "utf8",
     );
-    const { context } = await createTestCommandContext({
-      cwd: appDir,
-      stateDir,
+
+    const result = await makeCli().run(["agent", "status", "--json"], {
+      cwd,
+      env,
     });
 
-    const result = await runAgentStatus(context);
-
-    expect(execa).toHaveBeenCalledWith(
-      "pnpm",
-      ["dlx", "skills@latest", "list", "--json"],
-      expect.objectContaining({ cwd }),
-    );
-    expect(result.result.skillsLockInstalled).toBe(true);
-    expect(result.result.skillsInstalled).toBe(true);
-    expect(result.result.statusScope).toBe("project");
-    expect(result.result.skills).toEqual([
-      {
-        name: "prisma-compute",
-        path: "/repo/.agents/skills/prisma-compute",
-        scope: "project",
-        agents: ["Codex"],
-      },
-    ]);
-    expect(result.nextSteps).toEqual([]);
-  });
-
-  it("falls back to skills-lock status when skills CLI listing fails", async () => {
-    vi.resetModules();
-    mockSkillsExeca("", { failed: true, stderr: "skills exploded" });
-    const { createTestCommandContext } = await import("./helpers");
-    const { runAgentStatus } = await import("../src/controllers/agent");
-    const cwd = await createTempCwd();
-    const stateDir = path.join(cwd, ".state");
-    await writeFile(
-      path.join(cwd, "skills-lock.json"),
-      JSON.stringify({ sources: ["prisma/skills"] }),
-      "utf8",
-    );
-    const { context } = await createTestCommandContext({ cwd, stateDir });
-
-    const result = await runAgentStatus(context);
-
-    expect(result.result).toEqual({
+    expect(result.exitCode).toBe(0);
+    const envelope = completedFrame(result.json);
+    expect(envelope.commandId).toBe("agent.status");
+    expect(envelope.result).toEqual({
       skills: [],
       skillsListCommand: ["npx", "-y", "skills@latest", "list", "--json"],
       statusScope: "project",
@@ -705,42 +459,99 @@ describe("agent commands", () => {
       statusSource: "skills-lock",
       promptDismissedAt: null,
     });
-    expect(result.warnings[0]).toContain("skills exploded");
-    expect(result.nextSteps).toEqual([]);
+    expect(envelope.diagnostics).toHaveLength(1);
+    expect(envelope.diagnostics[0]).toMatchObject({
+      code: "AGENT.SKILLS_LIST_UNAVAILABLE",
+      severity: "warn",
+    });
+    expect(envelope.diagnostics[0]?.summary).toContain("skills exploded");
+    expect(envelope.diagnostics[0]?.summary).toContain(
+      "Falling back to skills-lock.json",
+    );
   });
 
-  it("does not fall back to project skills-lock status for global status failures", async () => {
-    vi.resetModules();
-    mockSkillsExeca("", {
-      failed: true,
-      stderr: "global skills exploded",
-    });
-    const { createTestCommandContext } = await import("./helpers");
-    const { runAgentStatus } = await import("../src/controllers/agent");
-    const cwd = await createTempCwd();
-    const stateDir = path.join(cwd, ".state");
+  it("does not fall back to the project lock for a failed global listing", async () => {
+    vi.mocked(execa).mockRejectedValue(new Error("global skills exploded"));
+    const { cwd, env } = await makeCwd();
     await writeFile(
       path.join(cwd, "skills-lock.json"),
       JSON.stringify({ sources: ["prisma/skills"] }),
       "utf8",
     );
-    const { context } = await createTestCommandContext({ cwd, stateDir });
 
-    const result = await runAgentStatus(context, { global: true });
-
-    expect(result.result).toEqual({
-      skills: [],
-      skillsListCommand: ["npx", "-y", "skills@latest", "list", "-g", "--json"],
-      statusScope: "global",
-      skillsLockPath: "skills-lock.json",
-      skillsLockInstalled: true,
-      skillsInstalled: false,
-      statusSource: "unavailable",
-      promptDismissedAt: null,
+    const result = await makeCli().run(["agent", "status", "--global"], {
+      cwd,
+      env,
     });
-    expect(result.warnings[0]).toContain("global skills exploded");
-    expect(result.nextSteps).toEqual([
-      "Run npx -y @prisma/cli@latest agent install --global to install or refresh Prisma skills.",
+
+    expect(result.exitCode).toBe(0);
+    expect(result.presented?.data).toMatchObject({
+      statusScope: "global",
+      statusSource: "unavailable",
+      skillsInstalled: false,
+    });
+    expect(result.presented?.presentation.next).toEqual([
+      {
+        kind: "run-command",
+        label: "Install or refresh Prisma skills",
+        command: "npx -y @prisma/cli@latest agent install --global",
+      },
     ]);
+  });
+
+  it("offers the install command when no skills are installed", async () => {
+    vi.mocked(execa).mockResolvedValue(skillsListStdout([]) as never);
+    const { cwd, env } = await makeCwd();
+
+    const result = await makeCli().run(["agent", "status"], { cwd, env });
+
+    expect(result.exitCode).toBe(0);
+    expect(result.presented?.data).toMatchObject({
+      skillsInstalled: false,
+      statusSource: "skills-cli",
+    });
+    expect(result.presented?.presentation.next).toEqual([
+      {
+        kind: "run-command",
+        label: "Install or refresh Prisma skills",
+        command: "npx -y @prisma/cli@latest agent install",
+      },
+    ]);
+  });
+
+  it("reads the skills lock from the compute config root when run in a subdirectory", async () => {
+    vi.mocked(execa).mockRejectedValue(new Error("skills exploded"));
+    const { cwd, env } = await makeCwd();
+    const serviceDir = path.join(cwd, "services", "web");
+    await mkdir(serviceDir, { recursive: true });
+    // The compute-config search stops at the source root, so the
+    // temp directory needs one for the walk-up to reach it.
+    await mkdir(path.join(cwd, ".git"), { recursive: true });
+    await writeFile(
+      path.join(cwd, "prisma.compute.json"),
+      JSON.stringify({ apps: { web: { root: "services/web" } } }),
+      "utf8",
+    );
+    await writeFile(
+      path.join(cwd, "skills-lock.json"),
+      JSON.stringify({ sources: ["prisma/skills"] }),
+      "utf8",
+    );
+
+    const result = await makeCli().run(["agent", "status"], {
+      cwd: serviceDir,
+      env,
+    });
+
+    expect(result.exitCode).toBe(0);
+    expect(execa).toHaveBeenCalledWith(
+      "npx",
+      ["-y", "skills@latest", "list", "--json"],
+      expect.objectContaining({ cwd }),
+    );
+    expect(result.presented?.data).toMatchObject({
+      skillsLockInstalled: true,
+      skillsInstalled: true,
+    });
   });
 });

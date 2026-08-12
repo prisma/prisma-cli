@@ -1,8 +1,8 @@
 // biome-ignore-all lint/performance/noAwaitInLoops: Database pagination requests must run sequentially.
 import type { ManagementApiClient, paths } from "@prisma/management-api-sdk";
 
-import { formatPrismaCliCommand } from "../../shell/cli-command";
-import { CliError } from "../../shell/errors";
+import { formatPrismaCliCommand } from "../../cli-command";
+import { CliError } from "../../errors";
 import type {
   DatabaseConnectionSummary,
   DatabaseSummary,

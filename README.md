@@ -154,7 +154,7 @@ lockstep) is the release source of truth. The workflow publishes
 
 Release channels:
 
-- `latest`: releases on the v8 RC line (`8.0.0-rc.N`). A merged
+- `latest`: releases on the Prisma 8 RC line (`8.0.0-rc.N`). A merged
   `chore(release)` PR that bumps the root version (via `pnpm bump-version`)
   publishes automatically; `workflow_dispatch` is the manual escape hatch and
   the dry-run path.

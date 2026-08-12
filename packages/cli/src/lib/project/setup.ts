@@ -1,16 +1,11 @@
-import path from "node:path";
-import { matchError, Result } from "better-result";
-import { CliError, usageError } from "../../shell/errors";
-import type { CommandContext } from "../../shell/runtime";
+import { matchError } from "better-result";
+import { CliError, usageError } from "../../errors";
 import type { AuthWorkspace } from "../../types/auth";
-import type { ProjectSetupResult, ProjectSummary } from "../../types/project";
-import { shortenHomePath } from "../fs/home-path";
+import type { ProjectSummary } from "../../types/project";
 import {
-  ensureLocalResolutionPinGitignore,
   LOCAL_RESOLUTION_PIN_RELATIVE_PATH,
   type LocalResolutionPinGitignoreUpdateError,
   type LocalResolutionPinWriteError,
-  writeLocalResolutionPin,
 } from "./local-pin";
 import {
   type ProjectCandidate,
@@ -24,17 +19,6 @@ export type ProjectDirectoryBindingError =
 
 export function isValidProjectSetupName(projectName: string): boolean {
   return projectName.trim().length > 0;
-}
-
-export function validateProjectSetupNameText(
-  value: string | undefined,
-  fallback: string,
-): string | undefined {
-  if ((value?.trim() || fallback).trim().length > 0) {
-    return undefined;
-  }
-
-  return "Enter a Project name.";
 }
 
 export function resolveProjectForSetup(
@@ -53,41 +37,6 @@ export function resolveProjectForSetup(
     return match;
   }
   throw projectNotFoundError(projectRef, workspace);
-}
-
-export async function bindProjectToDirectory(
-  context: CommandContext,
-  workspace: AuthWorkspace,
-  project: ProjectSummary,
-  action: ProjectSetupResult["action"],
-  directory: string = context.runtime.cwd,
-): Promise<Result<ProjectSetupResult, ProjectDirectoryBindingError>> {
-  return Result.gen(async function* () {
-    yield* Result.await(
-      writeLocalResolutionPin(
-        directory,
-        {
-          workspaceId: workspace.id,
-          projectId: project.id,
-        },
-        context.runtime.signal,
-      ),
-    );
-    yield* Result.await(
-      ensureLocalResolutionPinGitignore(directory, context.runtime.signal),
-    );
-
-    return Result.ok({
-      workspace,
-      project,
-      directory: formatSetupDirectory(directory, context),
-      localPin: {
-        path: LOCAL_RESOLUTION_PIN_RELATIVE_PATH,
-        written: true,
-      },
-      action,
-    } satisfies ProjectSetupResult);
-  });
 }
 
 export function projectDirectoryBindingErrorToCliError(
@@ -201,22 +150,6 @@ export function projectCreateFailedError(
     exitCode: 1,
     nextSteps: options.nextSteps,
   });
-}
-
-const PATH_SEPARATORS = /[\\/]/;
-
-function formatSetupDirectory(
-  directory: string,
-  context: CommandContext,
-): string {
-  // Binding can target an ancestor compute-config directory; a bare
-  // basename would misread as a subdirectory of the invocation directory.
-  if (path.resolve(directory) !== path.resolve(context.runtime.cwd)) {
-    return shortenHomePath(directory, context.runtime.env);
-  }
-
-  const basename = directory.split(PATH_SEPARATORS).filter(Boolean).pop();
-  return basename ? `./${basename}` : ".";
 }
 
 const HTTP_STATUS_IN_MESSAGE = /\(HTTP (\d{3})\)/;

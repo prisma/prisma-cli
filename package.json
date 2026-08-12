@@ -14,14 +14,12 @@
     "format": "biome format . --write",
     "lint": "biome check . --error-on-warnings",
     "lint:fix": "biome check . --write",
-    "smoke:cli-nextjs": "node scripts/smoke-cli-nextjs-artifact.mjs",
     "bump-version": "node scripts/bump-version.ts",
     "test": "turbo run test",
     "test:scripts": "node --test scripts/determine-version-utils.test.ts scripts/set-version-utils.test.ts scripts/resolve-package-version.test.mjs scripts/tarball-smoke-utils.test.mjs",
     "typecheck": "turbo run typecheck",
     "prisma-cli": "tsx packages/cli/src/bin.ts",
-    "prisma": "tsx packages/cli/src/bin.ts",
-    "prisma-v8": "tsx packages/cli/src/v8/bin.ts"
+    "prisma": "tsx packages/cli/src/bin.ts"
   },
   "devDependencies": {
     "@biomejs/biome": "2.4.16",

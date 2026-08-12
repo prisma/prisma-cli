@@ -2,7 +2,7 @@
 name: publish-npm-version
 description: >-
   Cuts the next release of the unified Prisma CLI: bumps the root
-  package.json version (on the v8 RC line: 8.0.0-rc.N → rc.N+1),
+  package.json version (on the Prisma 8 RC line: 8.0.0-rc.N → rc.N+1),
   propagates it to every lockstep workspace package, and opens a PR
   titled "chore(release): bump to <next-version>". When the maintainer
   merges the PR, the `Publish to npm` workflow ships @prisma/cli-engine
@@ -25,7 +25,7 @@ point of a reviewable release PR.
 
 Read [`docs/oss/versioning.md`](../../docs/oss/versioning.md) first. It
 covers the source-of-truth model (root `package.json` `version`), the
-lockstep guarantee (`@prisma/compute` excluded by ruling), the v8 RC
+lockstep guarantee (`@prisma/compute` excluded by ruling), the Prisma 8 RC
 line, the dist-tag convention, and the release procedure this skill is
 one step of. One note specific to this
 repo: the lockstep excludes `@prisma/compute` by operator ruling.

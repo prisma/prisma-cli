@@ -188,7 +188,7 @@ Recorded so they are not lost between slices.
   and the domain commands now explain a failure without offering a
   follow-up command. **Once Composer's deploy commands exist, add them
   back pointing there** (operator instruction, 2026-08-10). The removal
-  is recorded in `assets/s2/parity-divergences-s2c.md`.
+  is recorded in the S2c section of `assets/s2/parity-divergences.md` (the per-slice files were folded into it at S2d).
 - **`service logs` returns in S8**, once the engine can open an
   authenticated socket. Shelved, not rejected — unlike `service deploy`,
   which is not coming back in that shape.

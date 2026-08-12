@@ -263,6 +263,11 @@ describe("the engine owns the double-signal policy", () => {
         diagnostics: [],
       }),
       managementApi: { baseUrl: "https://test.invalid" },
+      host: {
+        runtime: { name: "node", version: "v22.12.0" },
+        platform: "linux",
+        arch: "x64",
+      },
     };
     return {
       runtime,
@@ -412,6 +417,11 @@ describe("optional dependencies", () => {
     const cli = createTestCli({
       commands: { command },
       managementApi: { baseUrl: "https://test.invalid" },
+      host: {
+        runtime: { name: "node", version: "v22.12.0" },
+        platform: "linux",
+        arch: "x64",
+      },
       packageManager: "pnpm",
       now: EPOCH,
     });
@@ -454,6 +464,11 @@ describe("optional dependencies", () => {
     const cli = createTestCli({
       commands: { command },
       managementApi: { baseUrl: "https://test.invalid" },
+      host: {
+        runtime: { name: "node", version: "v22.12.0" },
+        platform: "linux",
+        arch: "x64",
+      },
       packageManager: "npm",
       now: EPOCH,
     });

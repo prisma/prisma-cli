@@ -16,7 +16,7 @@ Requirements:
 Published `@prisma/cli` declares a lower floor (Node 22.18, matching
 `@prisma/composer`), and composer runs fine there. The repo develops and tests
 on 24 because the startup-isolation probe cannot run on Node 22; the reason is
-recorded in `packages/cli/tests/v8-composer-isolation.test.ts`.
+recorded in `packages/cli/tests/composer-isolation.test.ts`.
 
 Install dependencies:
 
@@ -67,7 +67,7 @@ The CLI must preserve the unified command model:
 
 Releases use `@prisma/cli` (exposing the `prisma-cli` binary) plus its
 dependency `@prisma/cli-engine`, versioned in lockstep from the root
-`package.json` on the v8 RC line (`8.0.0-rc.N`). The `latest` dist-tag moves
+`package.json` on the Prisma 8 RC line (`8.0.0-rc.N`). The `latest` dist-tag moves
 when a version-bump PR merges; see `docs/oss/versioning.md`.
 
 The `dev` dist-tag points at the latest successful `main` build, published as

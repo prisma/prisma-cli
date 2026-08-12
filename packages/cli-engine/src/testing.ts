@@ -14,7 +14,7 @@ import type {
 import type { PackageManagerId, PackageManagerRunner } from "./package-manager";
 import type { PresentedResult } from "./presentation";
 import type { RunSummary } from "./run-summary";
-import type { Runtime } from "./runtime";
+import type { Host, Runtime } from "./runtime";
 import type { ChildResult, SpawnChild, SpawnRequest } from "./spawn";
 import type { TelemetryPayload } from "./telemetry/payload";
 import type { TelemetryDeclaration } from "./telemetry/report";
@@ -236,6 +236,9 @@ export function createTestCli(spec: {
   /** Overrides detection, the same way a host's Runtime does; absent
    *  means the engine detects from the run's cwd. */
   readonly packageManager?: PackageManagerId;
+  /** What the run reports itself as running on; defaults to a fixed
+   *  host so a bug-report payload asserts the same on every machine. */
+  readonly host?: Host;
   /** The scripted stand-in for the shipped bin's spawner: assert the
    *  composed file/args/cwd, script exit codes and stderr, drive
    *  onOutput. Absent means this host has no runner, which is the
@@ -379,6 +382,11 @@ export function createTestCli(spec: {
         managementApi: { baseUrl: managementApiBaseUrl },
         packageManager: spec.packageManager,
         runPackageManager: spec.packageManagerRunner,
+        host: spec.host ?? {
+          runtime: { name: "node", version: "v22.12.0" },
+          platform: "linux",
+          arch: "x64",
+        },
       };
       const running = engine.execute(argv, runtime, {
         onEvent: (event) => {
