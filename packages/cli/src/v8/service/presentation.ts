@@ -1,6 +1,6 @@
 import type { Block, Presentations } from "@prisma/cli-engine";
 import type { NextAction } from "@prisma/cli-engine/protocol";
-import { runCommandAction } from "./errors";
+import { adviceAction, runCommandAction } from "./errors";
 import type {
   ServiceCreateResult,
   ServiceDeploymentDeleteResult,
@@ -133,7 +133,15 @@ export function listPresentations(result: ServiceListResult): Presentations {
               `service show --service ${first.name}`,
             ),
           ]
-        : [runCommandAction("Create a service", "service create <name>")];
+        : // Not a run-command: `command` is executed verbatim, and
+          // `service create <name>` would make a service literally
+          // called "<name>". Naming it is the user's choice, which is
+          // what a user-choice action is for.
+          [
+            adviceAction(
+              "Create a service with service create <name>, choosing the name.",
+            ),
+          ];
     },
   };
 }

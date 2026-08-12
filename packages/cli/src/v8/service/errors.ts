@@ -12,7 +12,7 @@ export function runCommandAction(label: string, command: string): NextAction {
   return { kind: "run-command", label, command: `${CLI_NAME} ${command}` };
 }
 
-function adviceAction(label: string): NextAction {
+export function adviceAction(label: string): NextAction {
   return { kind: "user-choice", label };
 }
 
@@ -124,7 +124,9 @@ export function serviceSelectionInvalidError(
         adviceAction(
           "Pass the name of an existing service, or rerun the command in a TTY to choose one.",
         ),
-        runCommandAction("List deployments", "service deployment list"),
+        // Not `service deployment list`: that command has to select a
+        // service before it can list anything, so it fails the same way.
+        runCommandAction("List services", "service list"),
       ],
     },
   );
@@ -230,7 +232,9 @@ export function releaseTargetRequiredError(
         adviceAction(
           `Deploy a service first, or rerun "${commandName}" with --service <name> once a service exists.`,
         ),
-        runCommandAction("List deployments", "service deployment list"),
+        // Not `service deployment list`: it selects a service first, so
+        // it cannot help a run that could not select one.
+        runCommandAction("List services", "service list"),
       ],
     },
   );

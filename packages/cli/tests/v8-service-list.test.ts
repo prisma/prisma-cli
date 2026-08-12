@@ -121,11 +121,13 @@ describe("prisma-v8 service list", () => {
       status: "info",
       text: "No services found.",
     });
+    // Advice, not a run-command: a consumer executes `command` verbatim,
+    // and `service create <name>` would name a service "<name>".
     expect(result.presented?.presentation.next).toEqual([
       {
-        kind: "run-command",
-        label: "Create a service",
-        command: "prisma-cli service create <name>",
+        kind: "user-choice",
+        label:
+          "Create a service with service create <name>, choosing the name.",
       },
     ]);
   });

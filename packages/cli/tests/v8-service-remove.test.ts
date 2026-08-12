@@ -413,10 +413,12 @@ describe("prisma-v8 service remove", () => {
         label:
           'Deploy a service first, or rerun "service remove" with --service <name> once a service exists.',
       },
+      // Not `service deployment list`: that command selects a service
+      // before it lists anything, so it fails the same way this did.
       {
         kind: "run-command",
-        label: "List deployments",
-        command: "prisma-cli service deployment list",
+        label: "List services",
+        command: "prisma-cli service list",
       },
     ]);
   });
