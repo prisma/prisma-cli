@@ -104,6 +104,14 @@ jobs:
         if: ${{ steps.version.outputs.publish == 'true' }}
         run: pnpm build
 
+      # The assembled command tree, checked before anything reaches the
+      # registry: every family command mounted, every mounted command
+      # owned by a family, every path spelled as expected. A publish
+      # that has lost a command fails here instead of shipping.
+      - name: Check grammar completeness
+        if: ${{ steps.version.outputs.publish == 'true' }}
+        run: pnpm check:grammar
+
       - name: Run script tests
         if: ${{ steps.version.outputs.publish == 'true' }}
         run: pnpm test:scripts

@@ -40,6 +40,7 @@
   "scripts": {
     "build": "tsdown",
     "prepack": "pnpm run build",
+    "check:grammar": "vitest run tests/v8-mount-coverage.test.ts",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:e2e": "vitest run --config vitest.e2e.config.ts"
