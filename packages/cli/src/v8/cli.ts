@@ -258,9 +258,31 @@ export const mountedCommands: Readonly<Record<string, AnyCommand>> = {
   "composer destroy": composerCommandFamily.commands.destroy,
   "composer dev": composerCommandFamily.commands.dev,
   "composer log": composerCommandFamily.commands.log,
-  // orm-toolchain keys its commands by the path they mount at, so the
-  // family's own map is the mount, with no renaming layer.
-  ...ormCommandFamily.commands,
+  // The ORM family. Written out per path: the shell owns the tree
+  // (R12), so this map — not the family's own keying — is the source of
+  // truth for where each command mounts.
+  "contract emit": ormCommandFamily.commands["contract emit"],
+  "contract infer": ormCommandFamily.commands["contract infer"],
+  "db init": ormCommandFamily.commands["db init"],
+  "db schema": ormCommandFamily.commands["db schema"],
+  "db sign": ormCommandFamily.commands["db sign"],
+  "db update": ormCommandFamily.commands["db update"],
+  "db verify": ormCommandFamily.commands["db verify"],
+  format: ormCommandFamily.commands.format,
+  init: ormCommandFamily.commands.init,
+  lsp: ormCommandFamily.commands.lsp,
+  migrate: ormCommandFamily.commands.migrate,
+  "migration check": ormCommandFamily.commands["migration check"],
+  "migration graph": ormCommandFamily.commands["migration graph"],
+  "migration list": ormCommandFamily.commands["migration list"],
+  "migration log": ormCommandFamily.commands["migration log"],
+  "migration new": ormCommandFamily.commands["migration new"],
+  "migration plan": ormCommandFamily.commands["migration plan"],
+  "migration show": ormCommandFamily.commands["migration show"],
+  "migration status": ormCommandFamily.commands["migration status"],
+  "ref delete": ormCommandFamily.commands["ref delete"],
+  "ref list": ormCommandFamily.commands["ref list"],
+  "ref set": ormCommandFamily.commands["ref set"],
   // Local utilities: no owning package, no config section, no API.
   "agent install": agentInstallCommand,
   "agent update": agentUpdateCommand,
