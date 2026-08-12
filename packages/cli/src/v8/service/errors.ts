@@ -205,16 +205,16 @@ export function deploymentNotFoundForServiceError(
 
 /** promote / rollback / remove need a service that already exists. */
 export function releaseTargetRequiredError(
-  command: "promote" | "rollback" | "remove",
+  commandName: string,
 ): CliStructuredError {
   return new CliStructuredError(
     "SERVICE.TARGET_REQUIRED",
-    `Service ${command} requires an existing service`,
+    `Command "${commandName}" requires an existing service`,
     {
       why: "The resolved project does not have a service that can be selected for this command.",
       nextActions: [
         adviceAction(
-          `Deploy a service first, or rerun ${command} with --service <name> once a service exists.`,
+          `Deploy a service first, or rerun "${commandName}" with --service <name> once a service exists.`,
         ),
         runCommandAction("List deployments", "service deployment list"),
       ],

@@ -395,11 +395,14 @@ describe("prisma-v8 service remove", () => {
       throw new Error("expected an errored envelope");
     }
     expect(frame.envelope.error.code).toBe("SERVICE.TARGET_REQUIRED");
+    expect(frame.envelope.error.summary).toBe(
+      'Command "service remove" requires an existing service',
+    );
     expect(frame.envelope.nextActions).toEqual([
       {
         kind: "user-choice",
         label:
-          "Deploy a service first, or rerun remove with --service <name> once a service exists.",
+          'Deploy a service first, or rerun "service remove" with --service <name> once a service exists.',
       },
       {
         kind: "run-command",

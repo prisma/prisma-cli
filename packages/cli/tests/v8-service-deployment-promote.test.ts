@@ -262,8 +262,13 @@ describe("prisma-v8 service deployment promote", () => {
     }
     expect(frame.envelope.error.code).toBe("SERVICE.TARGET_REQUIRED");
     expect(frame.envelope.error.summary).toBe(
-      "Service promote requires an existing service",
+      'Command "service deployment promote" requires an existing service',
     );
+    expect(frame.envelope.error.nextActions).toContainEqual({
+      kind: "user-choice",
+      label:
+        'Deploy a service first, or rerun "service deployment promote" with --service <name> once a service exists.',
+    });
   });
 
   it("fails early with the engine sign-in error when unauthenticated", async () => {

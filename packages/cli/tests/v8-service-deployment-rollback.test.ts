@@ -570,6 +570,9 @@ describe("prisma-v8 service deployment rollback", () => {
       throw new Error("expected an errored envelope");
     }
     expect(frame.envelope.error.code).toBe("SERVICE.TARGET_REQUIRED");
+    expect(frame.envelope.error.summary).toBe(
+      'Command "service deployment rollback" requires an existing service',
+    );
   });
 
   it("fails early with the engine sign-in error when unauthenticated", async () => {

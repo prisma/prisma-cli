@@ -33,6 +33,10 @@ export async function resolveServiceReleaseState(
     command: "promote" | "rollback" | "remove";
   },
 ): Promise<ServiceReleaseState> {
+  const commandName =
+    options.command === "remove"
+      ? "service remove"
+      : `service deployment ${options.command}`;
   const state = await resolveServiceReadState(ctx, {
     ...(options.serviceName !== undefined
       ? { serviceName: options.serviceName }
@@ -46,13 +50,10 @@ export async function resolveServiceReleaseState(
     ...(options.branchName !== undefined
       ? { branchName: options.branchName }
       : {}),
-    commandName:
-      options.command === "remove"
-        ? "service remove"
-        : `service deployment ${options.command}`,
+    commandName,
   });
   if (!state.selected) {
-    throw releaseTargetRequiredError(options.command);
+    throw releaseTargetRequiredError(commandName);
   }
   return {
     provider: state.provider,
