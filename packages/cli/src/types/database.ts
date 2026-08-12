@@ -82,13 +82,16 @@ export interface DatabaseConnectionRemoveResult {
 }
 
 export interface DatabaseUsagePeriod {
-  start: string;
-  end: string;
+  start: string | null;
+  end: string | null;
 }
 
+/** `used` is null when the API did not report the metric. Zero is a real
+ *  measurement and must stay distinguishable from silence, so neither a
+ *  count nor a unit may be filled in by the CLI. */
 export interface DatabaseUsageMetric {
-  used: number;
-  unit: string;
+  used: number | null;
+  unit: string | null;
 }
 
 export interface DatabaseUsageMetrics {
@@ -103,7 +106,7 @@ export interface DatabaseUsageResult {
   database: DatabaseSummary;
   period: DatabaseUsagePeriod;
   metrics: DatabaseUsageMetrics;
-  generatedAt: string;
+  generatedAt: string | null;
 }
 
 export interface DatabaseBackupSummary {

@@ -27,6 +27,8 @@ That file also holds `AWAITING_COVERAGE`: commands that were already mounted whe
 
 Run the suite with `pnpm --filter @prisma/cli test:e2e`. It needs `PRISMA_E2E_SERVICE_TOKEN` (and optionally `PRISMA_E2E_WORKSPACE_ID`) for a workspace you are willing to see resources created and deleted in; without them the suite skips. CI sets `PRISMA_E2E_REQUIRED=1`, which turns a missing credential into a failure rather than a silent skip.
 
+Unit tests may still mock, and should — error paths and edge cases belong there. Two rules keep those mocks honest. Give fixtures the id shapes the API really uses: `wksp_`-prefixed workspace ids in API responses, the bare form in credential claims and stored sessions, and the `proj_` / `db_` / `bkt_` prefixes on resources. And never write both sides of a comparison from one constant — if a test supplies the credential's workspace id and the API's, they must differ exactly as they differ in production. Where a fake API server is easier than mocking a client, `packages/cli/tests/helpers/fake-management-api.ts` starts one.
+
 Why this rule exists: `prisma-v8 project list` reported "No projects found." and exited 0 for a workspace holding 15 projects, and every project-scoped command was broken with it. The unit suite covered that command thoroughly and passed throughout, because its fixtures supplied both sides of every comparison — the credential's workspace id and the API's were the same hand-written string, while the real API returns a `wksp_` prefix that the credential does not carry. A test that writes both sides of a comparison can only confirm what its author already believed. Mocks are still the right tool for error paths and edge cases; they cannot tell you what the API actually returns.
 
 ## Pre-Commit Verification

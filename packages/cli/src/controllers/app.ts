@@ -186,13 +186,6 @@ const WAIT_TIMEOUT_UNIT_MULTIPLIER_MS: Record<string, number> = {
 const NEXTJS_MENTION = /next\.?js/i;
 const STANDALONE_OUTPUT_MENTION = /standalone output/i;
 
-function isRealMode(context: CommandContext): boolean {
-  return (
-    !context.runtime.fixturePath &&
-    !context.runtime.env.PRISMA_CLI_MOCK_FIXTURE_PATH
-  );
-}
-
 export async function runAppBuild(
   context: CommandContext,
   options?: {
@@ -407,8 +400,6 @@ export async function runAppDeploy(
   appName: string | undefined,
   options?: AppDeployOptions,
 ): Promise<CommandSuccess<AppDeployResult | AppDeployAllResult>> {
-  ensurePreviewAppMode(context);
-
   const loaded = await loadComputeConfig(
     context.runtime.cwd,
     context.runtime.signal,
@@ -995,8 +986,6 @@ export async function runAppListDeploys(
   projectRef?: string,
   configTarget?: string,
 ): Promise<CommandSuccess<AppListDeploysResult>> {
-  ensurePreviewAppMode(context);
-
   const compute = await resolveComputeManagementContext(
     context,
     configTarget,
@@ -1083,8 +1072,6 @@ export async function runAppShow(
   projectRef?: string,
   configTarget?: string,
 ): Promise<CommandSuccess<AppShowResult>> {
-  ensurePreviewAppMode(context);
-
   const compute = await resolveComputeManagementContext(
     context,
     configTarget,
@@ -1179,8 +1166,6 @@ export async function runAppShowDeploy(
   context: CommandContext,
   deploymentId: string,
 ): Promise<CommandSuccess<AppShowDeployResult>> {
-  ensurePreviewAppMode(context);
-
   const provider = await requirePreviewAppProvider(context);
   const deployment = await provider
     .showDeployment(deploymentId, { signal: context.runtime.signal })
@@ -1245,8 +1230,6 @@ export async function runAppOpen(
   projectRef?: string,
   configTarget?: string,
 ): Promise<CommandSuccess<AppOpenResult>> {
-  ensurePreviewAppMode(context);
-
   const compute = await resolveComputeManagementContext(
     context,
     configTarget,
@@ -1630,8 +1613,6 @@ export async function runAppLogs(
   projectRef?: string,
   configTarget?: string,
 ): Promise<void> {
-  ensurePreviewAppMode(context);
-
   const compute = await resolveComputeManagementContext(
     context,
     configTarget,
@@ -1886,8 +1867,6 @@ export async function runAppPromote(
   projectRef?: string,
   configTarget?: string,
 ): Promise<CommandSuccess<AppPromoteResult>> {
-  ensurePreviewAppMode(context);
-
   const compute = await resolveComputeManagementContext(
     context,
     configTarget,
@@ -1988,8 +1967,6 @@ export async function runAppRollback(
   projectRef?: string,
   configTarget?: string,
 ): Promise<CommandSuccess<AppRollbackResult>> {
-  ensurePreviewAppMode(context);
-
   const compute = await resolveComputeManagementContext(
     context,
     configTarget,
@@ -2107,8 +2084,6 @@ export async function runAppRemove(
   configTarget?: string,
   branchName?: string,
 ): Promise<CommandSuccess<AppRemoveResult>> {
-  ensurePreviewAppMode(context);
-
   const compute = await resolveComputeManagementContext(
     context,
     configTarget,
@@ -2193,8 +2168,6 @@ async function resolveAppDomainTarget(
   },
   commandName = "app domain",
 ): Promise<ResolvedAppDomainTarget> {
-  ensurePreviewAppMode(context);
-
   const compute = await resolveComputeManagementContext(
     context,
     options?.configTarget,
@@ -4764,20 +4737,6 @@ function normalizeDeployRegionInput(
     ...region,
     value: parseDeployRegion(region.value, region.annotation),
   };
-}
-
-function ensurePreviewAppMode(context: CommandContext) {
-  if (isRealMode(context)) {
-    return;
-  }
-
-  throw featureUnavailableError(
-    "App commands are not available in fixture mode",
-    "Preview app commands require live app deployment integration.",
-    "Rerun without fixture mode enabled to use preview app deployment workflows.",
-    ["prisma-cli auth login", "prisma-cli project show"],
-    "app",
-  );
 }
 
 function deployFailedError(

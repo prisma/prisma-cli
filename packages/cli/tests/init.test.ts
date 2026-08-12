@@ -1,5 +1,6 @@
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
+import { mintTestJwt } from "@prisma/cli-engine/testing";
 import {
   COMPUTE_CONFIG_JSON_SCHEMA_URL,
   loadComputeConfig,
@@ -8,16 +9,35 @@ import stripAnsi from "strip-ansi";
 import { describe, expect, it } from "vitest";
 
 import { createTempCwd, executeCli } from "./helpers";
+import {
+  FAKE_WORKSPACE_ID,
+  type FakeManagementApi,
+  startFakeManagementApi,
+} from "./helpers/fake-management-api";
 
-const fixturePath = path.resolve("fixtures/mock-api.json");
+/**
+ * Authenticates the way the product actually supports without a browser:
+ * a service token in the environment. The old helper drove `auth login
+ * --provider --user`, a selection flow that existed only in fixture
+ * mode and went with it.
+ */
+const SERVICE_TOKEN = mintTestJwt({
+  sub: "usr_456",
+  workspace_id: FAKE_WORKSPACE_ID,
+});
 
-async function login(cwd: string, stateDir: string) {
-  await executeCli({
-    argv: ["auth", "login", "--provider", "github", "--user", "usr_456"],
-    cwd,
-    stateDir,
-    fixturePath,
-  });
+async function login(_cwd: string, _stateDir: string) {
+  // Nothing to store: the credential travels in the environment that
+  // `initEnv` puts on every run below.
+}
+
+function initEnv(api: FakeManagementApi): NodeJS.ProcessEnv {
+  return {
+    ...process.env,
+    PRISMA_SERVICE_TOKEN: SERVICE_TOKEN,
+    PRISMA_WORKSPACE_ID: FAKE_WORKSPACE_ID,
+    PRISMA_MANAGEMENT_API_URL: api.baseUrl,
+  };
 }
 
 async function writePackageJson(
@@ -56,7 +76,6 @@ describe("init", () => {
       ],
       cwd,
       stateDir,
-      fixturePath,
     });
     const payload = JSON.parse(result.stdout);
 
@@ -102,7 +121,6 @@ describe("init", () => {
       argv: ["init", "--json"],
       cwd,
       stateDir,
-      fixturePath,
     });
     const payload = JSON.parse(result.stdout);
 
@@ -128,7 +146,6 @@ describe("init", () => {
       argv: ["init", "--json"],
       cwd,
       stateDir,
-      fixturePath,
     });
     const payload = JSON.parse(result.stdout);
 
@@ -153,7 +170,6 @@ describe("init", () => {
       argv: ["init", "--framework", "hono", "--json"],
       cwd,
       stateDir,
-      fixturePath,
     });
     const directPayload = JSON.parse(direct.stdout);
 
@@ -171,7 +187,6 @@ describe("init", () => {
       argv: ["init", "--framework", "hono", "--json"],
       cwd: nested,
       stateDir,
-      fixturePath,
     });
     const nestedPayload = JSON.parse(fromNested.stdout);
 
@@ -189,7 +204,7 @@ describe("init", () => {
       ["init", "--framework", "rails", "--json"],
     ]) {
       // biome-ignore lint/performance/noAwaitInLoops: all three runs share one cwd and state directory, and the assertion after the loop is that none of them wrote a config — overlapping runs could not tell you that.
-      const result = await executeCli({ argv, cwd, stateDir, fixturePath });
+      const result = await executeCli({ argv, cwd, stateDir });
       const payload = JSON.parse(result.stdout);
       expect(result.exitCode).toBe(2);
       expect(payload.error.code).toBe("USAGE_ERROR");
@@ -199,6 +214,7 @@ describe("init", () => {
   });
 
   it("links to an explicit --project and reports it", async () => {
+    const api = await startFakeManagementApi();
     const cwd = await createTempCwd();
     const stateDir = path.join(cwd, ".state");
     await writePackageJson(cwd, { name: "api" });
@@ -208,7 +224,7 @@ describe("init", () => {
       argv: ["init", "--framework", "hono", "--project", "proj_123", "--json"],
       cwd,
       stateDir,
-      fixturePath,
+      env: initEnv(api),
     });
     const payload = JSON.parse(result.stdout);
 
@@ -224,9 +240,11 @@ describe("init", () => {
     await expect(
       readFile(path.join(cwd, ".prisma/local.json"), "utf8"),
     ).resolves.toContain("proj_123");
+    await api.close();
   });
 
   it("downgrades a failed link to a warning and keeps the config", async () => {
+    const api = await startFakeManagementApi();
     const cwd = await createTempCwd();
     const stateDir = path.join(cwd, ".state");
     await writePackageJson(cwd, { name: "api" });
@@ -236,7 +254,7 @@ describe("init", () => {
       argv: ["init", "--framework", "hono", "--project", "nope", "--json"],
       cwd,
       stateDir,
-      fixturePath,
+      env: initEnv(api),
     });
     const payload = JSON.parse(result.stdout);
 
@@ -247,6 +265,7 @@ describe("init", () => {
       "npx -y @prisma/cli@latest project link",
     );
     await expect(readConfig(cwd)).resolves.toContain('framework: "hono"');
+    await api.close();
   });
 
   it("reports already-linked directories without prompting", async () => {
@@ -263,7 +282,6 @@ describe("init", () => {
       argv: ["init", "--framework", "hono", "--json"],
       cwd,
       stateDir,
-      fixturePath,
     });
     const payload = JSON.parse(result.stdout);
 
@@ -284,7 +302,6 @@ describe("init", () => {
       argv: ["init", "--framework", "hono", "--no-link"],
       cwd,
       stateDir,
-      fixturePath,
     });
     const stderr = stripAnsi(result.stderr);
 
@@ -304,7 +321,6 @@ describe("init", () => {
       argv: ["init", "--framework", "custom", "--no-link", "--json"],
       cwd,
       stateDir,
-      fixturePath,
     });
 
     expect(result.exitCode).toBe(0);
@@ -327,7 +343,6 @@ describe("init types install", () => {
       argv: ["init", "--framework", "hono", "--no-link", "--json"],
       cwd,
       stateDir,
-      fixturePath,
     });
     const payload = JSON.parse(result.stdout);
 
@@ -358,7 +373,6 @@ describe("init types install", () => {
       ],
       cwd,
       stateDir,
-      fixturePath,
     });
     const payload = JSON.parse(result.stdout);
 
@@ -376,7 +390,6 @@ describe("init types install", () => {
       argv: ["init", "--framework", "hono", "--install", "--no-link", "--json"],
       cwd,
       stateDir,
-      fixturePath,
       env: {
         PRISMA_CLI_INIT_INSTALL_COMMAND: JSON.stringify([
           "node",
@@ -401,7 +414,6 @@ describe("init types install", () => {
       argv: ["init", "--framework", "hono", "--install", "--no-link", "--json"],
       cwd,
       stateDir,
-      fixturePath,
       env: {
         PRISMA_CLI_INIT_INSTALL_COMMAND: JSON.stringify([
           "node",
@@ -441,7 +453,6 @@ describe("init config format", () => {
       ],
       cwd,
       stateDir,
-      fixturePath,
     });
     const payload = JSON.parse(result.stdout);
 
@@ -510,7 +521,6 @@ describe("init config format", () => {
       ],
       cwd,
       stateDir,
-      fixturePath,
     });
     const payload = JSON.parse(result.stdout);
 
@@ -540,7 +550,6 @@ describe("init config format", () => {
       ],
       cwd,
       stateDir,
-      fixturePath,
     });
     const payload = JSON.parse(result.stdout);
 
@@ -559,7 +568,6 @@ describe("init config format", () => {
       argv: ["init", "--framework", "hono", "--format", "yaml", "--json"],
       cwd,
       stateDir,
-      fixturePath,
     });
     const payload = JSON.parse(result.stdout);
 
@@ -583,7 +591,6 @@ describe("init config format", () => {
       ],
       cwd,
       stateDir,
-      fixturePath,
     });
     const payload = JSON.parse(result.stdout);
 
@@ -607,7 +614,6 @@ describe("init config format", () => {
       argv: ["init", "--framework", "hono", "--format", "json", "--json"],
       cwd,
       stateDir,
-      fixturePath,
     });
     const payload = JSON.parse(result.stdout);
 
@@ -637,7 +643,7 @@ describe("init config format", () => {
       ["init", "--framework", "hono", "--format", "json", "--json"],
     ]) {
       // biome-ignore lint/performance/noAwaitInLoops: both runs share one cwd holding the prisma.compute.json they must refuse to overwrite, so the second run has to see the file the first one left alone.
-      const result = await executeCli({ argv, cwd, stateDir, fixturePath });
+      const result = await executeCli({ argv, cwd, stateDir });
       const payload = JSON.parse(result.stdout);
       expect(result.exitCode).toBe(1);
       expect(payload.error.code).toBe("INIT_CONFIG_EXISTS");
@@ -672,7 +678,6 @@ describe("init config format", () => {
       argv: ["init", "--format", "ts", "--json"],
       cwd,
       stateDir,
-      fixturePath,
     });
     const payload = JSON.parse(result.stdout);
 
@@ -740,7 +745,6 @@ describe("init config format", () => {
       argv: ["init", "--format", "ts", "--json"],
       cwd,
       stateDir,
-      fixturePath,
     });
     const payload = JSON.parse(result.stdout);
 
@@ -796,7 +800,6 @@ describe("init config format", () => {
       argv: ["init", "--format", "ts", "--json"],
       cwd,
       stateDir,
-      fixturePath,
     });
     const payload = JSON.parse(result.stdout);
 
@@ -849,7 +852,6 @@ describe("init config format", () => {
       ],
       cwd,
       stateDir,
-      fixturePath,
     });
     const payload = JSON.parse(result.stdout);
 
@@ -876,7 +878,6 @@ describe("init config format", () => {
       argv: ["init", "--format", "ts", "--install", "--json"],
       cwd,
       stateDir,
-      fixturePath,
       env: {
         PRISMA_CLI_INIT_INSTALL_COMMAND: JSON.stringify([
           "node",
@@ -895,6 +896,7 @@ describe("init config format", () => {
   });
 
   it("honors link flags when converting, like fresh init", async () => {
+    const api = await startFakeManagementApi();
     const cwd = await createTempCwd();
     const stateDir = path.join(cwd, ".state");
     await writePackageJson(cwd, { name: "api" });
@@ -914,7 +916,7 @@ describe("init config format", () => {
       ],
       cwd,
       stateDir,
-      fixturePath,
+      env: initEnv(api),
     });
     const linkedPayload = JSON.parse(linked.stdout);
 
@@ -936,14 +938,15 @@ describe("init config format", () => {
       argv: ["init", "--format", "ts", "--no-link", "--no-install", "--json"],
       cwd: cwd2,
       stateDir,
-      fixturePath,
     });
     const skippedPayload = JSON.parse(skipped.stdout);
     expect(skipped.exitCode).toBe(0);
     expect(skippedPayload.result.link.status).toBe("skipped");
+    await api.close();
   });
 
   it("runs conversion side effects in the config directory, not the invocation directory", async () => {
+    const api = await startFakeManagementApi();
     const cwd = await createTempCwd();
     const stateDir = path.join(cwd, ".state");
     await mkdir(path.join(cwd, ".git"), { recursive: true });
@@ -969,8 +972,8 @@ describe("init config format", () => {
       ],
       cwd: nested,
       stateDir,
-      fixturePath,
       env: {
+        ...initEnv(api),
         // The fake installer records its working directory on disk.
         PRISMA_CLI_INIT_INSTALL_COMMAND: JSON.stringify([
           "node",
@@ -1011,6 +1014,7 @@ describe("init config format", () => {
     await expect(readJsonConfig(cwd)).rejects.toMatchObject({
       code: "ENOENT",
     });
+    await api.close();
   });
 
   it("prints the human conversion summary", async () => {
@@ -1025,7 +1029,6 @@ describe("init config format", () => {
       argv: ["init", "--format", "ts", "--no-install"],
       cwd,
       stateDir,
-      fixturePath,
     });
     const stderr = stripAnsi(result.stderr);
 
@@ -1053,7 +1056,6 @@ describe("init edge cases", () => {
       ],
       cwd,
       stateDir,
-      fixturePath,
     });
     const payload = JSON.parse(result.stdout);
 
@@ -1086,7 +1088,6 @@ describe("init edge cases", () => {
       ],
       cwd,
       stateDir,
-      fixturePath,
     });
     const payload = JSON.parse(result.stdout);
 

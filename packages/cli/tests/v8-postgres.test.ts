@@ -31,7 +31,7 @@ const PROJECTS = [
   {
     id: "proj_1",
     name: "Billing",
-    workspace: { id: "ws_1", name: "Acme Inc" },
+    workspace: { id: "wksp_ws_1", name: "Acme Inc" },
   },
 ];
 
@@ -40,6 +40,7 @@ interface RawDatabase {
   name: string;
   projectId?: string;
   branchGitName?: string | null;
+  branchId?: string | null;
   region?: string | null;
   status?: string | null;
   isDefault?: boolean | null;
@@ -220,6 +221,90 @@ describe("prisma-v8 postgres list", () => {
     expect(result.presented?.presentation.stdout).toEqual([
       "acme-preview\t\t\t\tdb_2",
       "acme-production\tmain\tus-east-1\tready\tdb_1",
+    ]);
+  });
+
+  it("does not call a branch-scoped database unscoped when only its name is absent", async () => {
+    // The shape the live API actually returns: a branch id, and none of
+    // the four spellings of the branch name the CLI looks for. Reading
+    // that as "unscoped" told the user the database belongs to no
+    // branch, which is a different claim from not knowing its name.
+    const result = await makeCli(
+      postgresClient({
+        databases: [
+          {
+            ...DB_ONE,
+            branchGitName: undefined,
+            branchId: "br_wj8iwh5foody6aqr82kp0mol",
+          },
+        ],
+      }),
+    ).run(["postgres", "list"], {
+      cwd: await pinnedCwd(),
+      isTty: { stdout: true },
+    });
+
+    expect(
+      blocks(result.presented).find((block) => block.kind === "table"),
+    ).toEqual({
+      kind: "table",
+      columns: ["Name", "Branch", "Region", "Status", "Id"],
+      rows: [
+        [
+          "acme-production",
+          "br_wj8iwh5foody6aqr82kp0mol",
+          "us-east-1",
+          "ready",
+          "db_1",
+        ],
+      ],
+    });
+  });
+
+  it("reports a database with no branch at all as unscoped", async () => {
+    const result = await makeCli(
+      postgresClient({
+        databases: [
+          { ...DB_ONE, branchGitName: undefined, branchId: undefined },
+        ],
+      }),
+    ).run(["postgres", "list"], {
+      cwd: await pinnedCwd(),
+      isTty: { stdout: true },
+    });
+
+    expect(
+      blocks(result.presented).find((block) => block.kind === "table"),
+    ).toEqual({
+      kind: "table",
+      columns: ["Name", "Branch", "Region", "Status", "Id"],
+      rows: [["acme-production", "unscoped", "us-east-1", "ready", "db_1"]],
+    });
+  });
+
+  it("reports an absent status as unknown even for the default database", async () => {
+    const result = await makeCli(
+      postgresClient({
+        databases: [{ ...DB_ONE, status: null, isDefault: true }],
+      }),
+    ).run(["postgres", "list"], {
+      cwd: await pinnedCwd(),
+      isTty: { stdout: true },
+    });
+
+    // Being the project's default says nothing about whether the
+    // database is running, so it must never fill the Status cell: a
+    // reader could not tell that substitution from a real status, and a
+    // stopped database read as healthy.
+    expect(
+      blocks(result.presented).find((block) => block.kind === "table"),
+    ).toEqual({
+      kind: "table",
+      columns: ["Name", "Branch", "Region", "Status", "Id"],
+      rows: [["acme-production", "main", "us-east-1", "unknown", "db_1"]],
+    });
+    expect(result.presented?.presentation.stdout).toEqual([
+      "acme-production\tmain\tus-east-1\t\tdb_1",
     ]);
   });
 
@@ -410,6 +495,61 @@ describe("prisma-v8 postgres show", () => {
     expect(result.exitCode).toBe(0);
     expect(result.presented?.data).toMatchObject({
       database: { id: "db_2", name: "acme-preview" },
+    });
+  });
+
+  it("reports an absent status as unknown even for the default database", async () => {
+    const result = await makeCli(
+      postgresClient({
+        databases: [{ ...DB_ONE, status: null, isDefault: true }],
+      }),
+    ).run(["postgres", "show", "db_1"], {
+      cwd: await pinnedCwd(),
+      isTty: { stdout: true },
+    });
+
+    expect(result.exitCode).toBe(0);
+    expect(
+      blocks(result.presented).find((block) => block.kind === "fields"),
+    ).toEqual({
+      kind: "fields",
+      rows: [
+        { label: "project", value: "Billing" },
+        { label: "database", value: "acme-production" },
+        { label: "id", value: "db_1" },
+        { label: "branch", value: "main" },
+        { label: "region", value: "us-east-1" },
+        { label: "status", value: "unknown" },
+        { label: "connections", value: "0" },
+      ],
+    });
+    expect(result.presented?.presentation.stdout).toContain("status: ");
+  });
+
+  it("fails when the follow-up read says the database is gone", async () => {
+    // The list call finds it and the read that follows returns 404,
+    // which is the API saying it no longer exists. The command used to
+    // continue with the row from the list, so `postgres remove` could
+    // name a database in its confirmation prompt that was already gone.
+    const result = await makeCli(
+      postgresClient({
+        routes: {
+          "GET /v1/databases/{databaseId}": () => ({
+            error: undefined,
+            response: new Response(null, { status: 404 }),
+          }),
+        },
+      }),
+    ).run(["postgres", "show", "db_1", "--json"], { cwd: await pinnedCwd() });
+
+    expect(result.exitCode).toBe(2);
+    expect(resultFrame(result.json).envelope).toMatchObject({
+      ok: false,
+      error: {
+        code: "POSTGRES.NOT_FOUND",
+        summary: "Database not found",
+        why: '"acme-production" (db_1) was listed for project "Billing", but reading it returned 404. It was most likely removed while this command was running.',
+      },
     });
   });
 
@@ -918,6 +1058,104 @@ describe("prisma-v8 postgres usage", () => {
         period: USAGE_BODY.period,
         metrics: USAGE_BODY.metrics,
         generatedAt: USAGE_BODY.generatedAt,
+      },
+    });
+  });
+
+  it("carries a metric the API did not report as absent, not as zero", async () => {
+    const result = await makeCli(
+      postgresClient({
+        routes: {
+          "GET /v1/databases/{databaseId}/usage": () => ({
+            data: { generatedAt: "2026-07-01T00:00:00.000Z" },
+          }),
+        },
+      }),
+    ).run(["postgres", "usage", "db_1"], {
+      cwd: await pinnedCwd(),
+      isTty: { stdout: true },
+    });
+
+    expect(result.exitCode).toBe(0);
+    // "You used nothing" and "we were not told" are different answers.
+    // The card says which one this is, stdout leaves the field empty,
+    // and the unit is not guessed at either.
+    expect(
+      blocks(result.presented).find((block) => block.kind === "fields"),
+    ).toEqual({
+      kind: "fields",
+      rows: [
+        { label: "project", value: "Billing" },
+        { label: "database", value: "acme-production" },
+        { label: "id", value: "db_1" },
+        { label: "period", value: "unknown to unknown" },
+        { label: "operations", value: "unknown" },
+        { label: "storage", value: "unknown" },
+        { label: "generated", value: "2026-07-01T00:00:00.000Z" },
+      ],
+    });
+    expect(result.presented?.presentation.stdout).toEqual([
+      "project: Billing",
+      "database: acme-production",
+      "id: db_1",
+      "period start: ",
+      "period end: ",
+      "operations: ",
+      "storage: ",
+      "generated: 2026-07-01T00:00:00.000Z",
+    ]);
+  });
+
+  it("reports a real zero as a measurement", async () => {
+    const result = await makeCli(
+      postgresClient({
+        routes: {
+          "GET /v1/databases/{databaseId}/usage": () => ({
+            data: {
+              ...USAGE_BODY,
+              metrics: {
+                operations: { used: 0, unit: "ops" },
+                storage: { used: 0, unit: "GiB" },
+              },
+            },
+          }),
+        },
+      }),
+    ).run(["postgres", "usage", "db_1"], {
+      cwd: await pinnedCwd(),
+      isTty: { stdout: true },
+    });
+
+    expect(
+      blocks(result.presented).find((block) => block.kind === "fields"),
+    ).toMatchObject({
+      rows: expect.arrayContaining([
+        { label: "operations", value: "0 ops" },
+        { label: "storage", value: "0 GiB" },
+      ]),
+    });
+    expect(result.presented?.presentation.stdout).toContain("operations: 0");
+  });
+
+  it("carries absent metrics as null in json mode", async () => {
+    const result = await makeCli(
+      postgresClient({
+        routes: {
+          "GET /v1/databases/{databaseId}/usage": () => ({ data: {} }),
+        },
+      }),
+    ).run(["postgres", "usage", "db_1", "--json"], { cwd: await pinnedCwd() });
+
+    expect(result.exitCode).toBe(0);
+    expect(resultFrame(result.json).envelope).toMatchObject({
+      ok: true,
+      result: {
+        period: { start: null, end: null },
+        metrics: {
+          operations: { used: null, unit: null },
+          storage: { used: null, unit: null },
+        },
+        generatedAt: null,
       },
     });
   });

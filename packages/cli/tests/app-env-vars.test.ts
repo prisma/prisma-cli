@@ -308,7 +308,6 @@ describe("app env vars", () => {
       stateDir,
       env: {
         ...process.env,
-        PRISMA_CLI_MOCK_FIXTURE_PATH: undefined,
       },
     });
 
@@ -377,7 +376,6 @@ describe("app env vars", () => {
       env: {
         ...process.env,
         PRISMA_CLI_TEST_REMEMBER_PROJECT_ID: "",
-        PRISMA_CLI_MOCK_FIXTURE_PATH: undefined,
       },
     });
 
@@ -445,7 +443,6 @@ describe("app env vars", () => {
       stateDir,
       env: {
         ...process.env,
-        PRISMA_CLI_MOCK_FIXTURE_PATH: undefined,
       },
     });
 
@@ -532,7 +529,6 @@ describe("app env vars", () => {
       stateDir,
       env: {
         ...process.env,
-        PRISMA_CLI_MOCK_FIXTURE_PATH: undefined,
       },
     });
 
@@ -655,7 +651,6 @@ describe("app env vars", () => {
       stateDir,
       env: {
         ...process.env,
-        PRISMA_CLI_MOCK_FIXTURE_PATH: undefined,
       },
     });
 
@@ -783,7 +778,6 @@ describe("app env vars", () => {
       stateDir,
       env: {
         ...process.env,
-        PRISMA_CLI_MOCK_FIXTURE_PATH: undefined,
       },
     });
 

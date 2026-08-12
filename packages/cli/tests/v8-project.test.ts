@@ -35,6 +35,16 @@ beforeEach(() => {
   vi.mocked(resolveRecipientWorkspaceSession).mockReset();
 });
 
+/**
+ * The two ids one workspace has. A credential's `workspace_id` claim
+ * carries the bare form; the management API answers with the same id
+ * behind a `wksp_` prefix. Fixtures that used one string for both could
+ * not see the mismatch that made `project list` report "No projects
+ * found." for a workspace full of projects.
+ */
+const WORKSPACE_ID = "ws_1";
+const API_WORKSPACE_ID = `wksp_${WORKSPACE_ID}`;
+
 const ACME_SESSION = {
   workspaceId: "ws_1",
   workspaceName: "Acme Inc",
@@ -54,13 +64,13 @@ const API_PROJECTS = [
     id: "proj_1",
     name: "Billing",
     defaultRegion: "us-east-1",
-    workspace: { id: "ws_1", name: "Acme Inc" },
+    workspace: { id: API_WORKSPACE_ID, name: "Acme Inc" },
   },
   {
     id: "proj_2",
     name: "Storefront",
     defaultRegion: null,
-    workspace: { id: "ws_1", name: "Acme Inc" },
+    workspace: { id: API_WORKSPACE_ID, name: "Acme Inc" },
   },
 ];
 
@@ -164,7 +174,7 @@ describe("prisma-v8 project list", () => {
 
     expect(result.exitCode).toBe(0);
     expect(result.presented?.data).toMatchObject({
-      workspace: { id: "ws_1", name: "Acme Inc" },
+      workspace: { id: WORKSPACE_ID, name: "Acme Inc" },
       localBinding: { status: "linked" },
       projects: [
         { id: "proj_1", name: "Billing", defaultRegion: "us-east-1" },
@@ -491,7 +501,7 @@ describe("prisma-v8 project show", () => {
       ok: true,
       commandId: "project.show",
       result: {
-        workspace: { id: "ws_1", name: "Acme Inc" },
+        workspace: { id: WORKSPACE_ID, name: "Acme Inc" },
         project: { id: "proj_2", name: "Storefront" },
         resolution: { projectSource: "local-pin", targetName: "Storefront" },
       },
@@ -665,7 +675,7 @@ describe("prisma-v8 project create", () => {
       ok: true,
       commandId: "project.create",
       result: {
-        workspace: { id: "ws_1", name: "Acme Inc" },
+        workspace: { id: WORKSPACE_ID, name: "Acme Inc" },
         project: { id: "proj_new", name: "my-app" },
         localPin: { path: ".prisma/local.json", written: true },
         action: "created",
@@ -2671,7 +2681,7 @@ describe("prisma-v8 project remove", () => {
       ok: true,
       commandId: "project.remove",
       result: {
-        workspace: { id: "ws_1", name: "Acme Inc" },
+        workspace: { id: WORKSPACE_ID, name: "Acme Inc" },
         project: { id: "proj_1", name: "Billing" },
         localPin: { cleared: false },
       },

@@ -64,7 +64,6 @@ async function setupInitAgentPromptTest(options: {
     flags: options.quiet ? { quiet: true } : undefined,
     env: {
       ...process.env,
-      PRISMA_CLI_MOCK_FIXTURE_PATH: undefined,
     },
   });
 
