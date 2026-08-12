@@ -397,37 +397,18 @@ export async function rememberSelectedService(
   });
 }
 
-export async function resolveCurrentLiveDeploymentId(
-  stateStore: LocalStateStore,
-  projectId: string,
-  service: Pick<AppRecord, "id" | "liveDeploymentId">,
+/** The live deployment is the one the service record names as its latest
+ *  deployment. Nothing else decides it — local CLI state never does. */
+export function resolveCurrentLiveDeploymentId(
+  service: Pick<AppRecord, "liveDeploymentId">,
   deployments: ServiceDeploymentSummary[],
-): Promise<string | null> {
+): string | null {
   if (
     service.liveDeploymentId &&
     deployments.some((deployment) => deployment.id === service.liveDeploymentId)
   ) {
     return service.liveDeploymentId;
   }
-
-  const providerLiveDeployment = deployments.find(
-    (deployment) => deployment.live === true,
-  );
-  if (providerLiveDeployment) {
-    return providerLiveDeployment.id;
-  }
-
-  const knownLiveDeploymentId = await stateStore.readKnownLiveDeployment(
-    projectId,
-    service.id,
-  );
-  if (
-    knownLiveDeploymentId &&
-    deployments.some((deployment) => deployment.id === knownLiveDeploymentId)
-  ) {
-    return knownLiveDeploymentId;
-  }
-
   return null;
 }
 

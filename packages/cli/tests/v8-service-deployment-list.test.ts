@@ -1,6 +1,14 @@
+import { mkdir, writeFile } from "node:fs/promises";
+import path from "node:path";
 import { describe, expect, it } from "vitest";
 
-import { makeServiceCli, page, readFlowRoutes } from "./v8-service-testkit";
+import {
+  makeServiceCli,
+  page,
+  readFlowRoutes,
+  SERVICE,
+  SERVICE_DETAIL,
+} from "./v8-service-testkit";
 
 describe("prisma-v8 service deployment list", () => {
   it("lists deployments newest first with the live hint applied", async () => {
@@ -38,6 +46,47 @@ describe("prisma-v8 service deployment list", () => {
           url: "https://dep1.prisma.app",
           live: false,
         },
+      ],
+    });
+  });
+
+  it("marks no deployment live when the service names none, whatever local state remembers", async () => {
+    const harness = await makeServiceCli({
+      routes: readFlowRoutes({
+        "GET /v1/apps": () => ({
+          data: page([{ ...SERVICE, latestDeploymentId: null }]),
+        }),
+        "GET /v1/apps/{appId}": () => ({
+          data: { data: { ...SERVICE_DETAIL, latestDeploymentId: null } },
+        }),
+      }),
+    });
+    await mkdir(harness.stateDir, { recursive: true });
+    await writeFile(
+      path.join(harness.stateDir, "state.json"),
+      JSON.stringify({
+        app: { knownLiveDeploymentByProject: { proj_1: { svc_1: "dep_1" } } },
+      }),
+    );
+
+    const result = await harness.cli.run(
+      [
+        "service",
+        "deployment",
+        "list",
+        "--project",
+        "acme-app",
+        "--service",
+        "hello-world",
+      ],
+      { cwd: harness.cwd, env: harness.env, isTty: { stdout: true } },
+    );
+
+    expect(result.exitCode).toBe(0);
+    expect(result.presented?.data).toMatchObject({
+      deployments: [
+        { id: "dep_2", live: null },
+        { id: "dep_1", live: null },
       ],
     });
   });

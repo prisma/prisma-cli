@@ -49,6 +49,36 @@ describe("prisma-v8 service show", () => {
     });
   });
 
+  it("presents no live url while the service has no live deployment", async () => {
+    const neverPromoted = {
+      id: "svc_1",
+      name: "hello-world",
+      projectId: "proj_1",
+      region: { id: "eu-central-1" },
+      latestDeploymentId: null,
+      appEndpointDomain: "hello.prisma.app",
+    };
+    const harness = await makeServiceCli({
+      routes: readFlowRoutes({
+        "GET /v1/apps": () => ({
+          data: page([{ ...SERVICE, latestDeploymentId: null }]),
+        }),
+        "GET /v1/apps/{appId}": () => ({ data: { data: neverPromoted } }),
+      }),
+    });
+
+    const result = await harness.cli.run(
+      ["service", "show", "--project", "acme-app", "--service", "hello-world"],
+      { cwd: harness.cwd, env: harness.env, isTty: { stdout: true } },
+    );
+
+    expect(result.exitCode).toBe(0);
+    expect(result.presented?.data).toMatchObject({
+      liveDeployment: null,
+      liveUrl: null,
+    });
+  });
+
   it("caches the selected service in the local state store", async () => {
     const harness = await makeServiceCli();
 

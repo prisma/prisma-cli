@@ -66,9 +66,7 @@ export const serviceDeploymentRollbackCommand = defineCommand({
           runCommandAction("List deployments", "service deployment list"),
         ]);
       });
-    const currentLiveDeploymentId = await resolveCurrentLiveDeploymentId(
-      state.stateStore,
-      state.projectId,
+    const currentLiveDeploymentId = resolveCurrentLiveDeploymentId(
       deploymentsResult.app,
       deploymentsResult.deployments,
     );

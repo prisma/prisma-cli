@@ -7,12 +7,7 @@ import {
 } from "./errors";
 import { deploymentShowPresentations } from "./presentation";
 import type { ServiceDeploymentShowResult } from "./results";
-import {
-  openServiceStateStore,
-  requireWorkspace,
-  serviceProvider,
-  toServiceSummary,
-} from "./target";
+import { serviceProvider, toServiceSummary } from "./target";
 
 export const serviceDeploymentShowCommand = defineCommand({
   help: {
@@ -43,36 +38,15 @@ export const serviceDeploymentShowCommand = defineCommand({
       throw deploymentNotFoundError(deploymentId);
     }
 
-    let knownLiveDeploymentId: string | null = null;
-    if (deployment.app) {
-      const stateStore = await openServiceStateStore(ctx);
-      const state = await stateStore.read();
-      const workspaceId =
-        state.auth?.workspaceId ??
-        (await requireWorkspace(ctx).then(
-          (workspace) => workspace.id,
-          () => null,
-        ));
-      const rememberedProject = workspaceId
-        ? await stateStore.readRememberedProject(workspaceId)
-        : null;
-      knownLiveDeploymentId = rememberedProject
-        ? await stateStore.readKnownLiveDeployment(
-            rememberedProject.id,
-            deployment.app.id,
-          )
-        : null;
-    }
-    const liveDeploymentId =
-      deployment.app?.liveDeploymentId || knownLiveDeploymentId;
-
     const result: ServiceDeploymentShowResult = {
       service: deployment.app ? toServiceSummary(deployment.app) : null,
       deployment: {
         ...deployment.deployment,
-        live: liveDeploymentId
-          ? deployment.deployment.id === liveDeploymentId
-          : deployment.deployment.live,
+        // Without the owning service record there is nothing that names
+        // the live deployment, so the flag stays unknown.
+        live: deployment.app
+          ? deployment.app.liveDeploymentId === deployment.deployment.id
+          : null,
       },
     };
     return ok(

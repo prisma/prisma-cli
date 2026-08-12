@@ -245,7 +245,7 @@ export function liveDeploymentUnknownError(): CliStructuredError {
     "SERVICE.LIVE_DEPLOYMENT_UNKNOWN",
     "Cannot determine which deployment is currently live",
     {
-      why: "Neither the service record, nor the platform's deployment listing, nor the local cache names a live deployment, so the deployment to roll back to cannot be chosen without guessing what production is serving.",
+      why: "The service record does not name a live deployment, so the deployment to roll back to cannot be chosen without guessing what production is serving.",
       nextActions: [
         runCommandAction(
           "Roll back to a named deployment",
