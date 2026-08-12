@@ -1594,3 +1594,11 @@ Three ported commands reached directly into `process` for host facts, because no
 `Runtime.host` now carries it, `ctx.host` hands it to commands, and the bin fills it once. The shape is `{ runtime: { name, version }, platform, arch }` — not node-shaped, so bun and deno describe themselves instead of being flattened into a field called `nodeVersion`, which is what R4's runtime-agnostic rule asks for.
 
 `init` is converted. **The two call sites in the services branch are not**, because converting them means touching that branch. `v8/feedback.ts` should send `ctx.host` rather than building its own payload, and its wire field `nodeVersion` should follow the same renaming. Both are recorded for the deletion pass, which already sweeps the whole tree.
+
+## The shell deletion itself (S2d, final pass)
+
+1. **Four legacy commands stop existing**, each previously ruled: `app build`, `app deploy`, `app run` (superseded by Composer) and `version` (`--version` answers). Their error codes, flags and side effects go with them.
+2. **`app logs` is shelved, not dropped.** The S2c record said the legacy command would keep shipping "until S2d deletes the commander shell"; that has now happened, so streaming service logs is unavailable in any form until the engine grows the transport `service logs` needs. This is the one real capability loss of the pass.
+3. **The feedback payload changes shape.** `{ cliVersion, nodeVersion, platform, arch }` becomes `{ cliVersion, runtime: { name, version }, platform, arch }`, read from `ctx.host` rather than `process`, so a bun or deno binary reports itself truthfully. The human summary line is unchanged; the wire payload and `--format json` result are not.
+4. **The bin is the engine shell.** `prisma-cli` resolves to `dist/v8/cli.js`; the `prisma-v8` working name and its root script are gone; `commander` and five other now-unimported dependencies leave the manifest. Proven from a packed tarball on plain Node.
+5. **The survivor list** — every legacy file the v8 tree still reaches, and where each went — is [`shell-deletion-survivors.md`](shell-deletion-survivors.md).
