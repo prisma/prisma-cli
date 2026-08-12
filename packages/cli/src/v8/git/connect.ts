@@ -1,4 +1,5 @@
 /** The `git connect` command. */
+
 import {
   type Block,
   defineCommand,
@@ -6,6 +7,7 @@ import {
   positional,
 } from "@prisma/cli-engine";
 import { CliStructuredError, notOk, ok } from "@prisma/cli-engine/protocol";
+import type { ManagementApiClient } from "@prisma/management-api-sdk";
 import type { GitHubRepositoryReference } from "../../adapters/git";
 import {
   parseGitHubRepositoryUrl,
@@ -24,7 +26,6 @@ import {
   repoAlreadyConnectedError,
   repoConnectionApiError,
   repositoryFullNamesMatch,
-  type SourceRepositoryApiClient,
   toRepositoryConnection,
   unsupportedRepositoryProviderError,
 } from "../../controllers/project";
@@ -51,7 +52,7 @@ const WAIT_MESSAGE =
  */
 async function resolveInstalledRepository(
   ctx: GitCommandContext,
-  api: SourceRepositoryApiClient,
+  api: ManagementApiClient,
   workspaceId: string,
   repository: GitHubRepositoryReference,
 ): Promise<InstalledRepositoryMatch> {

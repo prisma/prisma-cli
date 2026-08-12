@@ -1,7 +1,7 @@
 /** Workspace, project and the source-repository client for the
  *  `git *` commands. */
 import { type CommandContext, flag } from "@prisma/cli-engine";
-import type { SourceRepositoryApiClient } from "../../controllers/project";
+import type { ManagementApiClient } from "@prisma/management-api-sdk";
 import type { ResolvedProjectTarget } from "../../lib/project/resolution";
 import { resolvePinnedProject } from "../project/context";
 import { resolveActiveWorkspace } from "../resources-shared/workspace";
@@ -14,7 +14,7 @@ export const projectFlag = flag.string({
 });
 
 export interface GitContext {
-  readonly api: SourceRepositoryApiClient;
+  readonly api: ManagementApiClient;
   readonly target: ResolvedProjectTarget;
 }
 
@@ -35,5 +35,5 @@ export async function resolveGitContext(
   // ctx.api: the same methods, typed to the handful of paths they call.
   // Structurally compatible, but neither type is declared in terms of
   // the other, so the compiler needs the cast spelled out.
-  return { api: ctx.api as unknown as SourceRepositoryApiClient, target };
+  return { api: ctx.api, target };
 }

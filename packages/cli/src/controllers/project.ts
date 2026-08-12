@@ -980,7 +980,7 @@ export async function runGitConnect(
     "git connect",
   );
   const repository = await resolveRepositoryForConnect(context, gitUrl);
-  const api = client as unknown as SourceRepositoryApiClient;
+  const api = client;
   const existing = await readFirstSourceRepository(
     api,
     target.project.id,
@@ -1068,7 +1068,7 @@ export async function runGitDisconnect(
     options.project,
     "git disconnect",
   );
-  const api = client as unknown as SourceRepositoryApiClient;
+  const api = client;
   const existing = await readFirstSourceRepository(
     api,
     target.project.id,
@@ -1265,122 +1265,6 @@ export interface SourceRepositoryApiError {
   };
 }
 
-interface SourceRepositoryApiResult<T> {
-  data?: T;
-  error?: SourceRepositoryApiError;
-  response?: Response;
-}
-
-export interface SourceRepositoryApiClient {
-  POST(
-    path: "/v1/source-repositories",
-    options: {
-      body: {
-        projectId: string;
-        provider: "github";
-        providerRepositoryId: number;
-        installationId?: string;
-      };
-      signal?: AbortSignal;
-    },
-  ): Promise<SourceRepositoryApiResult<{ data: SourceRepositoryResponse }>>;
-  POST(
-    path: "/v1/scm-installations/install-intents",
-    options: {
-      body: {
-        provider: "github";
-        workspaceId: string;
-      };
-      signal?: AbortSignal;
-    },
-  ): Promise<
-    SourceRepositoryApiResult<{
-      data: {
-        type: "install-intent";
-        provider: "github";
-        workspaceId: string;
-        installUrl: string;
-      };
-    }>
-  >;
-  GET(
-    path: "/v1/source-repositories",
-    options: {
-      params: {
-        query: {
-          projectId: string;
-          cursor?: string;
-          limit?: number;
-        };
-      };
-      signal?: AbortSignal;
-    },
-  ): Promise<
-    SourceRepositoryApiResult<{
-      data: SourceRepositoryResponse[];
-      pagination: {
-        nextCursor: string | null;
-        hasMore: boolean;
-      };
-    }>
-  >;
-  GET(
-    path: "/v1/scm-installations",
-    options: {
-      params: {
-        query: {
-          workspaceId: string;
-          cursor?: string;
-          limit?: number;
-        };
-      };
-      signal?: AbortSignal;
-    },
-  ): Promise<
-    SourceRepositoryApiResult<{
-      data: ScmInstallationResponse[];
-      pagination: {
-        nextCursor: string | null;
-        hasMore: boolean;
-      };
-    }>
-  >;
-  GET(
-    path: "/v1/scm-installations/{installationId}/repositories",
-    options: {
-      params: {
-        path: {
-          installationId: string;
-        };
-        query: {
-          cursor?: string;
-          limit?: number;
-        };
-      };
-      signal?: AbortSignal;
-    },
-  ): Promise<
-    SourceRepositoryApiResult<{
-      data: ScmRepositoryResponse[];
-      pagination: {
-        nextCursor: string | null;
-        hasMore: boolean;
-      };
-    }>
-  >;
-  DELETE(
-    path: "/v1/source-repositories/{id}",
-    options: {
-      params: {
-        path: {
-          id: string;
-        };
-      };
-      signal?: AbortSignal;
-    },
-  ): Promise<SourceRepositoryApiResult<unknown>>;
-}
-
 async function resolveRepositoryForConnect(
   context: CommandContext,
   gitUrl: string | undefined,
@@ -1409,7 +1293,7 @@ async function resolveRepositoryForConnect(
 
 async function resolveInstalledRepository(
   context: CommandContext,
-  api: SourceRepositoryApiClient,
+  api: ManagementApiClient,
   workspaceId: string,
   repository: GitHubRepositoryReference,
 ): Promise<InstalledRepositoryMatch> {
@@ -1464,7 +1348,7 @@ async function resolveInstalledRepository(
 }
 
 export async function findRepositoryInInstallations(
-  api: SourceRepositoryApiClient,
+  api: ManagementApiClient,
   installations: ScmInstallationResponse[],
   repository: GitHubRepositoryReference,
   signal: AbortSignal,
@@ -1507,7 +1391,7 @@ export async function findRepositoryInInstallations(
 
 async function waitForInstalledRepository(
   context: CommandContext,
-  api: SourceRepositoryApiClient,
+  api: ManagementApiClient,
   workspaceId: string,
   repository: GitHubRepositoryReference,
 ): Promise<{
@@ -1610,7 +1494,7 @@ function sleep(ms: number, signal: AbortSignal): Promise<void> {
 }
 
 export async function listScmInstallations(
-  api: SourceRepositoryApiClient,
+  api: ManagementApiClient,
   workspaceId: string,
   signal: AbortSignal,
 ): Promise<ScmInstallationResponse[]> {
@@ -1652,7 +1536,7 @@ export async function listScmInstallations(
 }
 
 async function findRepositoryInInstallation(
-  api: SourceRepositoryApiClient,
+  api: ManagementApiClient,
   installationId: string,
   repository: GitHubRepositoryReference,
   signal: AbortSignal,
@@ -1732,7 +1616,7 @@ function readNextPaginationCursor(
 }
 
 async function findRepositoryInInstallationIfAvailable(
-  api: SourceRepositoryApiClient,
+  api: ManagementApiClient,
   installationId: string,
   repository: GitHubRepositoryReference,
   signal: AbortSignal,
@@ -1763,7 +1647,7 @@ function isUnavailableScmInstallationError(error: unknown): boolean {
 }
 
 export async function createGitHubInstallIntent(
-  api: SourceRepositoryApiClient,
+  api: ManagementApiClient,
   workspaceId: string,
   signal: AbortSignal,
 ): Promise<string> {
@@ -1810,7 +1694,7 @@ async function openInstallUrlIfInteractive(
 }
 
 export async function readFirstSourceRepository(
-  api: SourceRepositoryApiClient,
+  api: ManagementApiClient,
   projectId: string,
   signal: AbortSignal,
 ): Promise<SourceRepositoryResponse | null> {
