@@ -123,7 +123,14 @@ describeCommand("postgres usage", () => {
     expect(run.envelope.ok).toBe(true);
   });
 
-  it("reports each metric as measured or as absent, never as an invented zero", async () => {
+  // The check that a metric is never an invented zero cannot live here.
+  // It needs a response that reports no measurement, and against a live
+  // API we cannot ask for one. `tests/v8-postgres.test.ts` makes that
+  // response with a fake and asserts the answer is "unknown", not `0`.
+  // What this test can do is confirm the live API's answer parses into
+  // the shape the fix assumes: every field measured or null, never
+  // undefined and never a stand-in of another type.
+  it("answers with every metric and timestamp either measured or null", async () => {
     const run = await scratch.run(["postgres", "usage", requireDatabase()]);
     const usage = run.envelope.result as {
       readonly period: {
@@ -150,15 +157,6 @@ describeCommand("postgres usage", () => {
       expect(metric.unit === null || typeof metric.unit === "string").toBe(
         true,
       );
-      // The check that separates the fix from the defect. A database
-      // minutes old is exactly the case where the API may report
-      // nothing, and the CLI used to answer `0 ops` and `0 GiB` — a
-      // measurement, in units it picked, for something nobody measured.
-      // A unit can only be here because the API named it.
-      expect(
-        metric.used === null && metric.unit !== null,
-        `${metric.unit} is a unit with no measurement beside it, which the API cannot have sent`,
-      ).toBe(false);
     }
 
     for (const timestamp of [
