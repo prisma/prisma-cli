@@ -217,35 +217,43 @@ export function toBranchKind(name: string): BranchKind {
   return name === "production" || name === "main" ? "production" : "preview";
 }
 
-/** The same listing `controllers/project.ts#listRealWorkspaceProjects`
- *  performs, on ctx.api — duplicated here so the v8 tree does not drag
- *  the legacy controller import graph (child-process git adapters). */
+/**
+ * The same listing `controllers/project.ts#listRealWorkspaceProjects`
+ * performs, on ctx.api — duplicated here so the v8 tree does not drag
+ * the legacy controller import graph (child-process git adapters).
+ *
+ * No workspace filter, and no workspace parameter that could invite one
+ * back: the credential is issued for one workspace and the API answers
+ * within it. The filter this function used to carry compared the
+ * credential's bare workspace id against the API's `wksp_`-prefixed one
+ * and so discarded every project, every time — which made every service
+ * command report the pinned project as missing. #144 removed it from
+ * the legacy listing this mirrors; the copy here was written from the
+ * version that still had it.
+ */
 async function listWorkspaceProjects(
   ctx: ServiceContext,
-  workspace: AuthWorkspace,
 ): Promise<ProjectCandidate[]> {
   const { data } = await ctx.api.GET("/v1/projects", { signal: ctx.signal });
   return sortProjects(
-    (data?.data ?? [])
-      .filter((project) => project.workspace.id === workspace.id)
-      .map((project) => ({
-        id: project.id,
-        name: project.name,
-        ...("url" in project && typeof project.url === "string"
-          ? { url: project.url }
-          : {}),
-        ...("defaultRegion" in project
-          ? { defaultRegion: project.defaultRegion }
-          : {}),
-        slug:
-          "slug" in project && typeof project.slug === "string"
-            ? project.slug
-            : null,
-        workspace: {
-          id: project.workspace.id,
-          name: project.workspace.name,
-        },
-      })),
+    (data?.data ?? []).map((project) => ({
+      id: project.id,
+      name: project.name,
+      ...("url" in project && typeof project.url === "string"
+        ? { url: project.url }
+        : {}),
+      ...("defaultRegion" in project
+        ? { defaultRegion: project.defaultRegion }
+        : {}),
+      slug:
+        "slug" in project && typeof project.slug === "string"
+          ? project.slug
+          : null,
+      workspace: {
+        id: project.workspace.id,
+        name: project.workspace.name,
+      },
+    })),
   );
 }
 
@@ -270,7 +278,7 @@ export async function resolveServiceProjectContext(
     ...(options.projectDir !== undefined
       ? { projectDir: options.projectDir }
       : {}),
-    listProjects: () => listWorkspaceProjects(ctx, workspace),
+    listProjects: () => listWorkspaceProjects(ctx),
     commandName: options.commandName,
   });
   if (resolvedResult.isErr()) {
