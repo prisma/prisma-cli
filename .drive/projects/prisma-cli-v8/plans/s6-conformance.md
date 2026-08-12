@@ -2,7 +2,7 @@
 
 Contract: `specs/s6-conformance.md` revision 4. Read it first; this plan decides nothing the contract leaves open.
 
-**State: D1–D4 are DONE; D5 dispatched.** `packages/cli-conformance` holds the module graph, check 1 and check 2; the two checked packages call them on themselves. 35 tests, written before the code: 31 in the checker's own suite, 3 in the shell's, 1 in the engine's. Both checks pass against what this repo ships — composer's real validator survives the 21-case hostile corpus, and both published packages' built output imports only what they declare. `pnpm lint`, `pnpm typecheck` and `turbo run test --concurrency=1` are green; plain `pnpm test` fails on a pre-existing race recorded in `deferred.md`, which the base commit fails too. D3, D4 and D5 are unblocked — every question is closed.
+**State: all dispatches DONE.** prisma-cli PR #161 and prisma/prisma#29998, both ready for review. `packages/cli-conformance` holds the module graph, check 1 and check 2; the two checked packages call them on themselves. 35 tests, written before the code: 31 in the checker's own suite, 3 in the shell's, 1 in the engine's. Both checks pass against what this repo ships — composer's real validator survives the 21-case hostile corpus, and both published packages' built output imports only what they declare. `pnpm lint`, `pnpm typecheck` and `turbo run test --concurrency=1` are green; plain `pnpm test` fails on a pre-existing race recorded in `deferred.md`, which the base commit fails too. D3, D4 and D5 are unblocked — every question is closed.
 
 **All questions closed (operator, 2026-08-12; contract §5).** Nothing is blocked. The composer pin mismatch ships as one recorded exception; bins started are the ones the tarball declares; the sandbox is an in-repo gitignored path; no repo consumes the tool — prisma/prisma gets the checks as its own scripts, per the per-repo precedent both sibling repos already follow.
 
@@ -112,7 +112,7 @@ The sandbox lives at a gitignored in-repo path carrying the package name, and is
 
 **Acceptance:** `pnpm typecheck`, root `pnpm lint` and the touched suites green, each measured as pnpm's own exit code; `check:conformance` green locally.
 
-## D5 — prisma/prisma's publish path — DISPATCHED (separate PR from the bot)
+## D5 — prisma/prisma's publish path — DONE (prisma/prisma#29998)
 
 prisma/prisma has landed S5 and has real subjects for all three checks: the `orm` section validator (`packages/1-framework/3-tooling/cli/src/orm/config-section.ts`), the published `@prisma/orm-toolchain` built output, and the engine pin `0.0.9` in three manifests. Following that repo's own conventions (`scripts/*.mjs` + `node --test`, wired into `publish.yml` alongside `check:publish-deps`), add the checks there in a separate PR from the bot. Push access confirmed 2026-08-12.
 

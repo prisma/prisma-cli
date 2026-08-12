@@ -1,6 +1,6 @@
 # S6 — Conformance checker (slice contract, revision 4 — all questions closed)
 
-Status: D1–D4 SHIPPED on PR #161; D5 (prisma/prisma) dispatched as its own PR. All nine questions were closed by the operator on 2026-08-12 (see §5). Checks 1 and 2 built and green; check 3 and CI wiring in progress. Rev 4 also corrects rev 1–3's central factual error: they were grounded on a stale prisma/prisma checkout and claimed S5 had not started there. It has landed on origin/main — the engine at 0.0.9 in three manifests including published @prisma/orm-toolchain, the orm config section, the ported commands. Every claim below about prisma/prisma lacking subjects is struck.
+Status: COMPLETE pending merge. prisma-cli half on PR #161, prisma/prisma half on prisma/prisma#29998; both ready for review (operator go-ahead 2026-08-12). All nine questions were closed by the operator on 2026-08-12 (see §5). Checks 1 and 2 built and green; check 3 and CI wiring in progress. Rev 4 also corrects rev 1–3's central factual error: they were grounded on a stale prisma/prisma checkout and claimed S5 had not started there. It has landed on origin/main — the engine at 0.0.9 in three manifests including published @prisma/orm-toolchain, the orm config section, the ported commands. Every claim below about prisma/prisma lacking subjects is struck.
 Precedence: this contract > `specs/s2-overview.md` standing rulings > source. Unpinned facts are STOP-and-surface.
 
 Repo: prisma-cli. Branch: `claude/s6-conformance-checker-ebd3dd`, base `main`.
@@ -164,7 +164,7 @@ Written against the §5 rulings.
 - [x] Check 3a/3b/3c run against both published packages: declared dependencies match packed output; the tarball installs into the sandbox and every declared bin starts on plain Node at exit 0; pin agreement holds modulo §5's exception; exactly one engine copy resolves in the installed tree; the packed engine pin is an exact version; every mounted family package declares the engine.
 - [x] A test proves 3c reports the live shell-versus-composer mismatch when the exception list is empty, and that the exception does not suppress the same family arriving at a third version.
 - [x] prisma-cli's `publish.yml` runs the checker before both publish steps, under the same `publish == 'true'` condition its neighbours carry.
-- [ ] Both products' publish paths run the checks: prisma-cli's `publish.yml`, and prisma/prisma's `publish.yml` via checks added in that repo.
+- [x] Both products' publish paths run the checks: prisma-cli's `publish.yml` (PR #161) and prisma/prisma's `publish.yml` (prisma/prisma#29998, `scripts/check-conformance.mjs` after `check:publish-deps`). The project DoD line becomes true when both merge.
 - [x] `pnpm typecheck`, root `pnpm lint`, and the touched packages' suites green, each measured as pnpm's own exit code, with `wip/` stashed inside the worktree rather than in a temp directory.
 
 ## 7. Disposition record
