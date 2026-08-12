@@ -69,11 +69,17 @@ describeCommand("agent install", () => {
 describeCommand("agent update", () => {
   it("updates the skills already installed", async () => {
     const cli = await session();
-    const run = await cli.run(["agent", "update"], { cwd: workdir });
+    // Its own directory and its own install: depending on the block
+    // above would make this pass or fail on test order, and a focused
+    // run would find an empty directory.
+    const cwd = await cli.workdir();
+    await cli.run(["agent", "install"], { cwd });
+
+    const run = await cli.run(["agent", "update"], { cwd });
     const result = run.envelope.result as OperationResult;
 
     expect(result.operation).toBe("update");
     expect(result.skills.status).toBe("installed");
-    expect(existsSync(path.join(workdir, "skills-lock.json"))).toBe(true);
+    expect(existsSync(path.join(cwd, "skills-lock.json"))).toBe(true);
   });
 });

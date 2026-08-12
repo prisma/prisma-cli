@@ -61,7 +61,6 @@ import { formatCommandArgument } from "../shell/command-arguments";
 import {
   authRequiredError,
   CliError,
-  featureUnavailableError,
   usageError,
   workspaceRequiredError,
 } from "../shell/errors";
@@ -297,8 +296,6 @@ export async function runProjectLink(
     throw workspaceRequiredError();
   }
 
-  let provider: ReturnType<typeof createAppProvider> | null = null;
-  let projects: ProjectCandidate[];
   const client = await authenticatedManagementApiClient(
     context.runtime.env,
     context.runtime.signal,
@@ -306,8 +303,11 @@ export async function runProjectLink(
   if (!client) {
     throw authRequiredError();
   }
-  provider = createAppProvider(client);
-  projects = await listRealWorkspaceProjects(client, context.runtime.signal);
+  const provider = createAppProvider(client);
+  const projects = await listRealWorkspaceProjects(
+    client,
+    context.runtime.signal,
+  );
 
   let result: ProjectSetupResult;
   if (projectRef?.trim()) {
@@ -345,28 +345,18 @@ async function resolveInteractiveProjectLinkSetup(
   context: CommandContext,
   workspace: AuthWorkspace,
   projects: ProjectCandidate[],
-  provider: ReturnType<typeof createAppProvider> | null,
+  provider: ReturnType<typeof createAppProvider>,
 ): Promise<ProjectSetupResult> {
   const setup = await promptForProjectSetupChoice({
     context,
     projects,
-    createProject: (projectName) => {
-      if (!provider) {
-        throw featureUnavailableError(
-          "Project create is not available in fixture mode",
-          "Creating Projects requires live platform integration.",
-          "Rerun without fixture mode enabled to create a Project.",
-          ["prisma-cli auth login"],
-          "project",
-        );
-      }
-      return createProjectForLinkSetup(
+    createProject: (projectName) =>
+      createProjectForLinkSetup(
         provider,
         projectName,
         workspace,
         context.runtime.signal,
-      );
-    },
+      ),
     cancel: {
       why: "Project link needs a Project before it can continue.",
       fix: "Choose an existing Project or create a new one, then rerun project link.",
@@ -1843,31 +1833,6 @@ export async function readFirstSourceRepository(
   }
 
   return data.data[0] ?? null;
-}
-
-function _createPendingRepositoryConnection(
-  repository: GitHubRepositoryReference,
-): GitRepositoryConnection {
-  return {
-    id: null,
-    provider: "github",
-    repoId: null,
-    repository,
-    defaultBranch: null,
-    isPrivate: null,
-    status: "pending",
-    installation: {
-      id: null,
-      status: "pending",
-    },
-    automation: {
-      branches: false,
-      pullRequests: false,
-      comments: false,
-    },
-    connectedAt: new Date().toISOString(),
-    updatedAt: null,
-  };
 }
 
 export function toRepositoryConnection(

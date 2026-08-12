@@ -316,15 +316,3 @@ async function requireBucketProviderOnly(
 function resolveKeyRole(role: string | undefined): "read" | "read_write" {
   return role === "read" ? "read" : "read_write";
 }
-
-function _keyNotFoundError(keyId: string, bucketId: string): CliError {
-  return new CliError({
-    code: "BUCKET_KEY_NOT_FOUND",
-    domain: "bucket",
-    summary: "Bucket key not found",
-    why: `No key matched "${keyId}" for bucket "${bucketId}".`,
-    fix: "Pass a key id from prisma-cli bucket key list <bucketId>.",
-    exitCode: 1,
-    nextSteps: [`prisma-cli bucket key list ${bucketId}`],
-  });
-}

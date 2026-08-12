@@ -903,37 +903,3 @@ function databaseAmbiguousError(
     },
   });
 }
-
-function _backupNotFoundError(
-  backupId: string,
-  sourceDatabaseId: string,
-  formatCommand: PrismaCliPackageCommandFormatter,
-): CliError {
-  const listCommand = formatCommand([
-    "database",
-    "backup",
-    "list",
-    sourceDatabaseId,
-  ]);
-  return new CliError({
-    code: "DATABASE_BACKUP_NOT_FOUND",
-    domain: "database",
-    summary: "Database backup not found",
-    why: `No backup matched "${backupId}" for database "${sourceDatabaseId}".`,
-    fix: `Pass a backup id from ${listCommand}.`,
-    exitCode: 1,
-    nextSteps: [listCommand],
-  });
-}
-
-function _connectionNotFoundError(connectionId: string): CliError {
-  return new CliError({
-    code: "DATABASE_CONNECTION_NOT_FOUND",
-    domain: "database",
-    summary: "Database connection not found",
-    why: `No database connection matched "${connectionId}".`,
-    fix: "Pass a connection id from prisma-cli database connection list <database>.",
-    exitCode: 1,
-    nextSteps: ["prisma-cli database connection list <database>"],
-  });
-}
