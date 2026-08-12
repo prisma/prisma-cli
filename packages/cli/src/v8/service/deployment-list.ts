@@ -1,8 +1,8 @@
 import { defineCommand, flag, positional } from "@prisma/cli-engine";
 import { ok } from "@prisma/cli-engine/protocol";
 import { deployFailedError } from "./errors";
-import { listDeploysPresentations } from "./presentation";
-import type { ServiceListDeploysResult } from "./results";
+import { deploymentListPresentations } from "./presentation";
+import type { ServiceDeploymentListResult } from "./results";
 import {
   applyLiveDeploymentHint,
   rememberSelectedService,
@@ -12,12 +12,12 @@ import {
   toServiceSummary,
 } from "./target";
 
-export const serviceListDeploysCommand = defineCommand({
+export const serviceDeploymentListCommand = defineCommand({
   help: {
     summary: "List deployments for the service",
     examples: [
-      "service list-deploys",
-      "service list-deploys --service my-service",
+      "service deployment list",
+      "service deployment list --service my-service",
     ],
   },
   args: {
@@ -45,17 +45,17 @@ export const serviceListDeploysCommand = defineCommand({
       serviceName: args.flags.service,
       projectRef: args.flags.project,
       configTarget: args.positionals.service,
-      commandName: "service list-deploys",
+      commandName: "service deployment list",
     });
 
     if (!state.selected) {
-      const result: ServiceListDeploysResult = {
+      const result: ServiceDeploymentListResult = {
         projectId: state.projectId,
         service: null,
         deployments: [],
       };
       return ok(
-        ctx.present({ data: result }, listDeploysPresentations(result)),
+        ctx.present({ data: result }, deploymentListPresentations(result)),
       );
     }
 
@@ -68,9 +68,7 @@ export const serviceListDeploysCommand = defineCommand({
           [],
         );
       });
-    const currentLiveDeploymentId = await resolveCurrentLiveDeploymentId(
-      state.stateStore,
-      state.projectId,
+    const currentLiveDeploymentId = resolveCurrentLiveDeploymentId(
       deploymentsResult.app,
       deploymentsResult.deployments,
     );
@@ -87,11 +85,13 @@ export const serviceListDeploysCommand = defineCommand({
       deploymentsResult.app,
     );
 
-    const result: ServiceListDeploysResult = {
+    const result: ServiceDeploymentListResult = {
       projectId: state.projectId,
       service: toServiceSummary(deploymentsResult.app),
       deployments,
     };
-    return ok(ctx.present({ data: result }, listDeploysPresentations(result)));
+    return ok(
+      ctx.present({ data: result }, deploymentListPresentations(result)),
+    );
   },
 });

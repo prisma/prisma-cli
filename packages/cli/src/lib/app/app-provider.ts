@@ -190,6 +190,13 @@ export interface AppProvider {
     projectId: string,
     options?: { branchName?: string; signal?: AbortSignal },
   ): Promise<AppRecord[]>;
+  createApp(options: {
+    projectId: string;
+    branchName: string;
+    name: string;
+    region?: string;
+    signal?: AbortSignal;
+  }): Promise<{ service: AppRecord; existing: boolean }>;
   removeApp(
     appId: string,
     options?: { signal?: AbortSignal; progress?: unknown },
@@ -221,6 +228,25 @@ export interface AppProvider {
     signal?: AbortSignal;
     progress?: unknown;
   }): Promise<void>;
+  startDeployment(options: {
+    deploymentId: string;
+    signal?: AbortSignal;
+  }): Promise<void>;
+  stopDeployment(options: {
+    deploymentId: string;
+    signal?: AbortSignal;
+  }): Promise<void>;
+  deleteDeployment(options: {
+    deploymentId: string;
+    signal?: AbortSignal;
+  }): Promise<void>;
+  /** One deployment's own record. Unlike `showDeployment` this does not
+   *  hunt for the owning service, so it is the cheap re-read for a
+   *  caller that already knows which service it is acting on. */
+  readDeployment(options: {
+    deploymentId: string;
+    signal?: AbortSignal;
+  }): Promise<DeploymentRecord>;
   deployApp(options: {
     cwd: string;
     projectId: string;
@@ -300,6 +326,16 @@ export function createAppProvider(
         projectId,
         branchGitName: options?.branchName,
         signal: options?.signal,
+      });
+    },
+
+    async createApp(options) {
+      return createComputeService(client, {
+        projectId: options.projectId,
+        branchName: options.branchName,
+        displayName: options.name,
+        ...(options.region !== undefined ? { region: options.region } : {}),
+        ...(options.signal !== undefined ? { signal: options.signal } : {}),
       });
     },
 
@@ -482,6 +518,56 @@ export function createAppProvider(
       if (promoteResult.isErr()) {
         throw new Error(promoteResult.error.message);
       }
+    },
+
+    async startDeployment(options) {
+      const result = await sdk.startDeployment({
+        deploymentId: options.deploymentId,
+        signal: options.signal,
+      });
+      if (result.isErr()) {
+        throw new Error(result.error.message);
+      }
+    },
+
+    async stopDeployment(options) {
+      const result = await sdk.stopDeployment({
+        deploymentId: options.deploymentId,
+        signal: options.signal,
+      });
+      if (result.isErr()) {
+        throw new Error(result.error.message);
+      }
+    },
+
+    async deleteDeployment(options) {
+      const result = await sdk.deleteDeployment({
+        deploymentId: options.deploymentId,
+        signal: options.signal,
+      });
+      if (result.isErr()) {
+        throw new Error(result.error.message);
+      }
+    },
+
+    async readDeployment(options) {
+      const result = await sdk.showDeployment({
+        deploymentId: options.deploymentId,
+        signal: options.signal,
+      });
+      if (result.isErr()) {
+        throw new Error(result.error.message);
+      }
+
+      return {
+        id: result.value.id,
+        status: result.value.status,
+        createdAt: result.value.createdAt,
+        url: toAbsoluteUrl(result.value.previewDomain ?? null),
+        // Liveness is the service record's to state, and this reads the
+        // deployment alone.
+        live: null,
+      };
     },
 
     async deployApp(options) {
@@ -726,13 +812,23 @@ export function createAppProvider(
         options?.signal,
       );
 
+      // The promoted address is the live deployment's address only. A
+      // deployment that is not live is not served there, so it keeps its
+      // own preview domain.
+      const promotedUrl =
+        app !== null && app.liveDeploymentId === deploymentResult.value.id
+          ? app.liveUrl
+          : null;
+
       return {
         app,
         deployment: {
           id: deploymentResult.value.id,
           status: deploymentResult.value.status,
           createdAt: deploymentResult.value.createdAt,
-          url: toAbsoluteUrl(deploymentResult.value.previewDomain ?? null),
+          url:
+            promotedUrl ??
+            toAbsoluteUrl(deploymentResult.value.previewDomain ?? null),
           live: null,
         },
       };
@@ -930,14 +1026,77 @@ async function listComputeServices(
     cursor = result.data.pagination.nextCursor;
   }
 
-  return services.map((service) => ({
+  return services.map(toAppRecord);
+}
+
+function toAppRecord(service: RawAppRecord): AppRecord {
+  return {
     id: service.id,
     name: service.name,
     region: service.region.id ?? null,
     branchId: service.branchId,
     liveDeploymentId: service.latestDeploymentId ?? null,
     liveUrl: toAbsoluteUrl(service.appEndpointDomain ?? null),
-  }));
+  };
+}
+
+/**
+ * Creates a service on a branch, resolving (or creating) the branch
+ * first because the create body needs its id. A name already taken on
+ * the branch comes back as the existing service rather than an error:
+ * the API answers 409 and the caller asked for a service by that name,
+ * which already exists.
+ */
+async function createComputeService(
+  client: ManagementApiClient,
+  options: {
+    projectId: string;
+    branchName: string;
+    displayName: string;
+    region?: string;
+    signal?: AbortSignal;
+  },
+): Promise<{ service: AppRecord; existing: boolean }> {
+  const branch = await resolveOrCreateBranch(client, {
+    projectId: options.projectId,
+    gitName: options.branchName,
+    signal: options.signal,
+  });
+  const result = await client.POST("/v1/apps", {
+    body: {
+      projectId: options.projectId,
+      branchId: branch.id,
+      displayName: options.displayName,
+      ...(options.region ? { regionId: options.region } : {}),
+    } as never,
+    signal: options.signal,
+  });
+  if (result.error || !result.data) {
+    if (result.response.status === 409) {
+      const existingServices = await listComputeServices(client, {
+        projectId: options.projectId,
+        branchGitName: options.branchName,
+        signal: options.signal,
+      });
+      const matched = existingServices.find(
+        (service) => service.name === options.displayName,
+      );
+      if (matched) {
+        return { service: matched, existing: true };
+      }
+    }
+
+    throw apiCallError(
+      `Failed to create app "${options.displayName}"`,
+      result.response,
+      result.error,
+    );
+  }
+
+  return {
+    service: toAppRecord(result.data.data as RawAppRecord),
+    existing: false,
+  };
 }
 
 async function listComputeServiceDomains(
@@ -1029,49 +1188,17 @@ async function createBranchApp(
     signal?: AbortSignal;
   },
 ): Promise<{ appId: string; appName: string; region: string | undefined }> {
-  const branch = await resolveOrCreateBranch(client, {
+  const created = await createComputeService(client, {
     projectId: options.projectId,
-    gitName: options.branchName,
-    signal: options.signal,
+    branchName: options.branchName,
+    displayName: options.appName,
+    ...(options.region !== undefined ? { region: options.region } : {}),
+    ...(options.signal !== undefined ? { signal: options.signal } : {}),
   });
-  const result = await client.POST("/v1/apps", {
-    body: {
-      projectId: options.projectId,
-      branchId: branch.id,
-      displayName: options.appName,
-      ...(options.region ? { regionId: options.region } : {}),
-    } as never,
-    signal: options.signal,
-  });
-  if (result.error || !result.data) {
-    if (result.response.status === 409) {
-      const existingApps = await listComputeServices(client, {
-        projectId: options.projectId,
-        branchGitName: options.branchName,
-        signal: options.signal,
-      });
-      const matched = existingApps.find((app) => app.name === options.appName);
-      if (matched) {
-        return {
-          appId: matched.id,
-          appName: matched.name,
-          region: matched.region ?? options.region,
-        };
-      }
-    }
-
-    throw apiCallError(
-      `Failed to create app "${options.appName}"`,
-      result.response,
-      result.error,
-    );
-  }
-
-  const service = result.data.data as RawAppRecord;
   return {
-    appId: service.id,
-    appName: service.name,
-    region: service.region.id ?? options.region,
+    appId: created.service.id,
+    appName: created.service.name,
+    region: created.service.region ?? options.region,
   };
 }
 
