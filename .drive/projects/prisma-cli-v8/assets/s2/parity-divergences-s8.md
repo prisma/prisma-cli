@@ -83,12 +83,17 @@ for that reason. Nothing in the v8 `service` family reads or writes it.
 
 Two user-visible consequences:
 
-- **A service that names no live deployment reports `live: null` on
-  every row of `service deployment list`, where it previously reported
-  `false`.** The human table renders both the same (an empty cell), so
-  this is a **json-only change**. The distinction is deliberate: the
-  platform says nothing about which deployment is live, and `null` says
-  "unknown" where `false` claimed "not live".
+- **Where a local cache entry existed, `service deployment list`'s
+  rows change from `true`/`false` to `null`.** Only machines whose
+  cache held an entry for the service see this: the old resolver fell
+  through to the cache when the record named no live deployment (the
+  rows the provider maps are always `live: null`, so the middle
+  branch never fired), and a cache hit made one row `true` and the
+  rest `false`. Without a cache entry the rows were already `null`,
+  byte-identical to today. The human table renders all of it the same
+  (an empty cell), so this is a **json-only change**, and `null` is
+  deliberate: the platform says nothing about which deployment is
+  live, and `null` says "unknown" where `false` claimed "not live".
 - **A stale cache can no longer make a deployment look live.** On a
   machine that promoted before the change, the old code could report a
   deployment live after the platform had moved on. It cannot now.
