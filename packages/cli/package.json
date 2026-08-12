@@ -4,7 +4,7 @@
   "description": "Command-line interface for the Prisma Developer Platform.",
   "type": "module",
   "bin": {
-    "prisma-cli": "./dist/cli.js"
+    "prisma-cli": "./dist/v8/cli.js"
   },
   "exports": {
     "./package.json": "./package.json"
