@@ -1,4 +1,4 @@
-# S7 — Release pipeline + rc1 (slice contract, revision 2 — STOPs open)
+# S7 — Release pipeline + rc1 (slice contract, revision 3 — all STOPs closed)
 
 Status: revision 2 applies the operator's ruling (2026-08-12): **rc1
 publishes under the existing names** — `@prisma/cli` with its existing
@@ -224,7 +224,7 @@ operator ruling recorded in the test file.
 
 **STOP-6 — CLOSED by events (2026-08-12).** #162 merged first; this branch carries main's S8 merge, and the mount-path collision resolved as the predicted textual union. The original question, for the record:
 
-#162 adds platform-family commands, so
+PR #162 adds platform-family commands, so
 the completeness check is order-independent with S7 — but
 `EXPECTED_MOUNT_PATHS`, `cliGroups`, and `v8/cli.ts` imports collide
 textually in both orders. Preference? (a) S7 lands first, #162 rebases
@@ -275,8 +275,7 @@ plan.
 
 ## 5. Acceptance
 
-Written against STOP-1(a), the STOP-2/3/8 ruling as applied, STOP-4 as
-listed, STOP-5(a), STOP-7 confirmed. Rewritten if you rule otherwise.
+Written against the final rulings (2026-08-12): STOP-1 keep the existing publish model, STOP-2/3/8 as applied, STOP-4 as listed, STOP-5(b) — the smoke lives in this slice, so "conformance" below means the inline tarball smoke, not S6's checker — and STOP-7 deferred, so pin agreement is NOT an acceptance item; the interim pins stand until `8.0.0-rc.1` publishes. A later ruling (same day) sends RC-line releases to the `next` dist-tag; the one-action item reads accordingly.
 
 - [ ] `prisma migration list`, `prisma db verify --help`, `prisma init
       --help`, `prisma migrate --help` answer from the assembled tree;
@@ -291,8 +290,8 @@ listed, STOP-5(a), STOP-7 confirmed. Rewritten if you rule otherwise.
       packed tarball's bin prints the lockstep version on plain Node at
       exit 0.
 - [ ] All product pins exact and committed; no publish-time version
-      resolution; S6-3c green (modulo the dated interim exception) in
-      the publish path.
+      resolution. (Pin AGREEMENT is deferred with STOP-7; S6-3c arrives
+      with S6.)
 - [ ] A release run (dry-run dispatch proves it end to end without
       registry writes) produces: build → grammar check → conformance →
       pack (engine + cli tarballs) → out-of-workspace install smoke

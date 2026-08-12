@@ -1,4 +1,4 @@
-# S7 dispatch plan — Release pipeline + rc1 (revision 2)
+# S7 dispatch plan — Release pipeline + rc1 (revision 3)
 
 Contract: `../specs/s7-release.md` rev 1. One repo (prisma-cli), branch
 `claude/s7-release-pipeline-rc1-92c89d`, base `main`. Implementers on
@@ -10,16 +10,15 @@ staging, bot identity with dual sign-off, push to the bot remote only.
 Rulings applied (2026-08-12): the goal is all available commands in one
 binary; rc1 publishes under the current names (`@prisma/cli`, bin
 `prisma-cli`); the bare-`prisma` cutover and the exception-list
-reconciliation are follow-up work. STOP-2/3/4/8 closed. **D1 and D2 are
-dispatched on the contract's working defaults; D4/D5 wait on STOP-1,
-STOP-5 and STOP-7.**
+reconciliation are follow-up work. STOP-2/3/4/8 closed. **All STOPs closed
+2026-08-12; D1–D6 shipped on PR #164.**
 
 Ordering: D1 → D2 are independent of the release machinery and can run
 while STOP-5/7/8 settle; D3 → D4 → D5 are strictly ordered (the package
 must exist before the automation covers it, the automation before the
 pipeline verifies it); D6 closes. One PR for the slice.
 
-### D1 — Mount the ORM family (packages/cli)
+## D1 — Mount the ORM family (packages/cli)
 
 Tests first: extend `v8-mount-coverage.test.ts` (fails until the mount
 lands — the 21 expected paths, `ormCommandFamily` in
@@ -36,7 +35,7 @@ renaming layer; config-section and redirects ride the family object.
 Divergence file `assets/s2/parity-divergences-s7.md` opened (expected
 content: "none"; plus the deferred.md entry for the static-import cost).
 
-### D2 — The completeness check fails the build (repo root + CI)
+## D2 — The completeness check fails the build (repo root + CI)
 
 Tests first: a fixture-level test proving the check reports (a) a
 family command absent from the tree, (b) a mounted command owned by no
@@ -50,7 +49,7 @@ rule that additions require an operator ruling.
 Reshaped by: STOP-4 (if utilities move into the platform family, the
 exception set shrinks to the telemetry trio).
 
-### D3 — The shipped bin becomes the v8 tree (packages/cli)
+## D3 — The shipped bin becomes the v8 tree (packages/cli)
 
 Per the 2026-08-12 ruling: no `prisma` package. Tests first: a
 packaging test asserting the DECLARED bin (`package.json` `bin`
@@ -60,10 +59,11 @@ version at exit 0. Then: flip `bin.prisma-cli` from `./dist/cli.js`
 to `./dist/v8/cli.js`. The legacy entry keeps building and shipping
 in the tarball (S2d owns its deletion). Nothing else changes.
 
-### D4 — Committed versions + conformance wiring (manifests + CI)
+## D4 — Committed versions + conformance wiring (manifests + CI)
 
-Blocked by: STOP-5, STOP-7. Written against STOP-5(a) — S6 lands
-first:
+RESOLVED 2026-08-12: STOP-5(b) ruled — the inline smoke path below
+shipped; STOP-7 deferred until `8.0.0-rc.1` publishes. The STOP-5(a)
+branch is kept only as the record of the road not taken:
 `packages/cli` pins `@prisma/composer` and `@prisma/orm-toolchain`
 exact (already the style; versions per STOP-7); `pnpm conformance`
 added to `publish.yml` before publish steps; the S6-3c interim
@@ -75,7 +75,7 @@ move), and the 3c pin comparison is NOT built here — the pins' exactness
 is still asserted by the existing manifest style plus D5's install
 smoke resolving a single engine copy.
 
-### D5 — The pipeline (publish.yml + scripts)
+## D5 — The pipeline (publish.yml + scripts)
 
 Blocked by: STOP-1. Written against 1(a):
 Tests first where testable: the override-computation helper (workspace
@@ -95,7 +95,7 @@ writes and Release — this is the verification surface for the whole
 slice (never a real publish from this work; a real publish is the
 operator's action).
 
-### D6 — Docs, records, close-out prep
+## D6 — Docs, records, close-out prep
 
 `docs/oss/versioning.md` (the `prisma` package, the artifact stage, the
 guarded publish); `rollout-plan.md` step 4 pointed at the pipeline;

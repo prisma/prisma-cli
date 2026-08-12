@@ -8,7 +8,7 @@ unified CLI reaches npm, from first pre-release through owning the bare
 
 | npm name | Today | End state |
 | --- | --- | --- |
-| `@prisma/cli` | Platform CLI 3.x, published from this repo (OIDC) | Carries v8 RC releases under `latest` via merged bump PRs; deprecated at cutover |
+| `@prisma/cli` | Platform CLI 3.x, published from this repo (OIDC) | Carries v8 RC releases under `next` via merged bump PRs (`latest` stays pre-v8 until the deliberate flip; ruling 2026-08-12); deprecated at cutover |
 | `prisma-next` | Prisma 8 ORM CLI, published from prisma/prisma `main` | Handed off to this repo at S5; rc channel for ORM early adopters; deprecated at cutover |
 | `prisma7` | Does not exist yet | The v7-and-under release train's new home, published from prisma/prisma |
 | `prisma` | Prisma 7 CLI, published by prisma/prisma's release train | Owned by this repo via OIDC trusted publishing; the unified CLI |

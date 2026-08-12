@@ -158,13 +158,33 @@ jobs:
           pnpm --filter @prisma/cli-engine publish --tag "${{ steps.version.outputs.tag }}" --access public --no-git-checks --dry-run
           pnpm --filter @prisma/cli publish --tag "${{ steps.version.outputs.tag }}" --access public --no-git-checks --dry-run
 
+      # A rerun (or a re-publish dispatch) meets versions that are
+      # already on the registry. npm refuses to publish over them —
+      # correctly — but that refusal must not stop the run before the
+      # Release step gets to repair a missing Release or its assets. An
+      # already-published version is treated as done; every other
+      # publish failure still fails the run.
       - name: Publish packages
         if: ${{ steps.version.outputs.publish == 'true' && (github.event_name != 'workflow_dispatch' || github.event.inputs.dry-run != 'true') }}
         env:
           NPM_CONFIG_PROVENANCE: "true"
+          DIST_TAG: ${{ steps.version.outputs.tag }}
         run: |
-          pnpm --filter @prisma/cli-engine publish --tag "${{ steps.version.outputs.tag }}" --access public --no-git-checks
-          pnpm --filter @prisma/cli publish --tag "${{ steps.version.outputs.tag }}" --access public --no-git-checks
+          publish_one() {
+            local out
+            if out=$(pnpm --filter "$1" publish --tag "$DIST_TAG" --access public --no-git-checks 2>&1); then
+              printf '%s\n' "$out"
+            else
+              printf '%s\n' "$out"
+              if grep -qiE 'E409|EPUBLISHCONFLICT|cannot publish over|previously published' <<<"$out"; then
+                echo "$1: this version is already on the registry — continuing so the Release step can run."
+              else
+                return 1
+              fi
+            fi
+          }
+          publish_one @prisma/cli-engine
+          publish_one @prisma/cli
 
       # Emit a GitHub Release for releases only — runs whose dist-tag is
       # the canonical one for their version (`next` on the RC line,
