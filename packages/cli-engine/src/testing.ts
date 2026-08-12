@@ -132,7 +132,8 @@ export interface TestCli {
       readonly columns?: { stderr?: number };
       readonly env?: Readonly<Record<string, string | undefined>>;
       /** Overrides the CLI-level seed, so one harness can assert both
-       *  sides of the CI branch. */
+       *  sides of the CI branch. Absent leaves the engine to detect CI
+       *  from `env`, which is how a test asserts detection itself. */
       readonly isCI?: boolean;
     },
   ): Promise<{
@@ -266,7 +267,8 @@ export function createTestCli(spec: {
    *  thrower to exercise failure isolation, or `null` to model a host
    *  that wires no seam at all. */
   readonly telemetrySpawner?: ((payload: TelemetryPayload) => void) | null;
-  /** Seeds Runtime.isCI for every run; `run({ isCI })` overrides it. */
+  /** Forces the CI answer for every run; `run({ isCI })` overrides it.
+   *  Absent leaves the engine to detect CI from the run's `env`. */
   readonly isCI?: boolean;
 }): TestCli {
   const credentialManager = new InMemoryCredentialManager({
@@ -350,7 +352,7 @@ export function createTestCli(spec: {
           stdout: opts?.isTty?.stdout ?? false,
           stderr: opts?.isTty?.stderr ?? false,
         },
-        isCI: opts?.isCI ?? spec.isCI ?? false,
+        isCIOverride: opts?.isCI ?? spec.isCI,
         exit: (code: number): never => {
           throw new Error(
             `@prisma/cli-engine: runtime.exit(${code}) reached the test harness`,

@@ -71,7 +71,7 @@ function makeHost(overrides?: {
         stderrText += text;
       },
     },
-    isCI: overrides?.isCI ?? false,
+    isCIOverride: overrides?.isCI,
     spawnTelemetry:
       spawner === null
         ? undefined

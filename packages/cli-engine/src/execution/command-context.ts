@@ -1,3 +1,4 @@
+import { resolveIsCI } from "../ci";
 import type { AnyCommand } from "../commands";
 import type { CommandContext } from "../context";
 import type {
@@ -141,7 +142,7 @@ export function makeContext(
     signal: invocation.signal,
     cwd: invocation.runtime.cwd,
     env: invocation.runtime.env,
-    isCI: invocation.runtime.isCI,
+    isCI: resolveIsCI(invocation.runtime),
     requireDependency: async (specifier) => {
       if (dependencyResolvable(specifier, invocation.runtime.cwd)) {
         return okVoid();

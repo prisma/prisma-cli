@@ -25,8 +25,8 @@ export interface GatingInputs {
   readonly env: Readonly<Record<string, string | undefined>>;
   /** Result of `readUserConfig()` — file-missing tolerated as `{}`. */
   readonly config: UserConfig;
-  /** CI detection, supplied by the host through `Runtime.isCI`. The
-   *  engine never detects CI itself. CI hard-disables. */
+  /** The engine's CI answer, from `resolveIsCI`: detected from the
+   *  injected environment unless the host forced it. CI hard-disables. */
   readonly inCI: boolean;
 }
 

@@ -36,12 +36,17 @@ export interface Runtime {
     readonly stderr: boolean;
   };
   /**
-   * True when this process runs in CI, where telemetry never reports.
-   * The bin wires `ci-info`; the engine detects CI no more than it
-   * detects a TTY. Required, not optional: a host that forgot it would
-   * silently report from CI.
+   * Forces the answer to "is this CI", where telemetry never reports.
+   * Absent — the normal case — means the engine detects CI from `env`
+   * using ci-info's vendor table, which is why no host has to answer:
+   * unlike a TTY, CI-ness is derivable from the environment the host
+   * already injects, and every host computing the same boolean was the
+   * same detection table forked N ways. Set it only where detection
+   * cannot be right — an exotic platform, or a test that needs both
+   * sides of the branch. Absence means detected, never false, so a host
+   * that says nothing still stays silent in CI.
    */
-  readonly isCI: boolean;
+  readonly isCIOverride?: boolean;
   /**
    * Ends the process. The bin passes process.exit; the engine is the
    * only caller (second-signal force exit, 130/143).

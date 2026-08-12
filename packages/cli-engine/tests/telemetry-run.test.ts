@@ -435,6 +435,39 @@ describe("gating, through a run", () => {
     expect(notInCI.telemetry).toHaveLength(1);
   });
 
+  /** The safety property, through a whole run: nobody answered the CI
+   *  question, and the environment is a CI vendor that sets no CI
+   *  variable. Reporting has to stop anyway. */
+  it("stays silent in a CI nobody declared", async () => {
+    const teamCity = await run(makeCli(), DEPLOY_ARGV, {
+      env: { ...isolatedEnv(), TEAMCITY_VERSION: "2024.03.1" },
+    });
+    const azurePipelines = await run(makeCli(), DEPLOY_ARGV, {
+      env: { ...isolatedEnv(), TF_BUILD: "True" },
+    });
+
+    expect(teamCity.telemetry).toEqual([]);
+    expect(teamCity.stderr).not.toContain("anonymous CLI usage data");
+    expect(azurePipelines.telemetry).toEqual([]);
+  });
+
+  it("reports from a developer's shell, where nobody answered either", async () => {
+    const result = await run(makeCli(), DEPLOY_ARGV, {
+      env: { ...isolatedEnv(), TERM: "xterm-256color", EDITOR: "vim" },
+    });
+
+    expect(result.telemetry).toHaveLength(1);
+  });
+
+  it("lets a host force not-CI over an environment that looks like CI", async () => {
+    const result = await run(makeCli(), DEPLOY_ARGV, {
+      env: { ...isolatedEnv(), GITHUB_ACTIONS: "true", CI: "true" },
+      isCI: false,
+    });
+
+    expect(result.telemetry).toHaveLength(1);
+  });
+
   it("honours the endpoint override", async () => {
     const result = await run(makeCli(), DEPLOY_ARGV, {
       env: {

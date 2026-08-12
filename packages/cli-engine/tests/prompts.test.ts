@@ -123,6 +123,36 @@ describe("prompt defaults", () => {
     expect(result.presented?.data).toEqual({ answer: true });
     expect(result.stderr).toBe("✔ answer=true\n");
   });
+
+  /** Interactivity asks the engine's CI detection, so a vendor that
+   *  sets no CI variable is no longer offered a prompt nobody is there
+   *  to answer. TeamCity and Azure Pipelines are both such vendors. */
+  test.each([
+    ["TeamCity", { TEAMCITY_VERSION: "2024.03.1" }],
+    ["Azure Pipelines", { TF_BUILD: "True" }],
+  ])("%s suppresses interactivity though it sets no CI variable", async (_name, env) => {
+    const result = await cliWith(confirmDefaultTrue).run(["probe"], {
+      ...INTERACTIVE,
+      env,
+    });
+
+    expect(result.exitCode).toBe(0);
+    expect(result.presented?.data).toEqual({ answer: true });
+    expect(result.stderr).toBe("✔ answer=true\n");
+  });
+
+  /** CI=false is a denial, not a marker: it used to read as "CI is in
+   *  the environment" and cost a developer their prompt. */
+  test("CI=false leaves a TTY interactive", async () => {
+    const result = await cliWith(confirmDefaultTrue).run(["probe"], {
+      ...INTERACTIVE,
+      env: { CI: "false" },
+      answers: ["n"],
+    });
+
+    expect(result.exitCode).toBe(0);
+    expect(result.presented?.data).toEqual({ answer: false });
+  });
 });
 
 describe("prompts with no default halt", () => {
@@ -482,7 +512,6 @@ describe("stdin cleanup", () => {
       commands: { probe: promptCommand(confirmNoDefault) },
     });
     const runtime: Runtime = {
-      isCI: false,
       stdout: { write: () => {} },
       stderr: { write: () => {} },
       stdin: unendingStdin,

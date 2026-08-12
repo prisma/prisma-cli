@@ -86,7 +86,6 @@ async function runInteractive(
   let stdout = "";
   let stderr = "";
   const runtime: Runtime = {
-    isCI: false,
     stdout: {
       write: (text) => {
         stdout += text;

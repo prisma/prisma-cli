@@ -1,11 +1,14 @@
 /**
  * The shell's half of telemetry after the engine took the rest: the
- * runtime seam that forks the detached sender, the CI answer the engine
- * gates on, and the guard that keeps the suite from ever reaching a real
- * fork or the developer's real config file.
+ * runtime seam that forks the detached sender, and the guard that keeps
+ * the suite from ever reaching a real fork or the developer's real
+ * config file.
  *
  * The decision, the disclosure, the mint and the payload are the
- * engine's and are tested there (`packages/cli-engine/tests/telemetry-*`).
+ * engine's and are tested there (`packages/cli-engine/tests/telemetry-*`),
+ * as is the CI answer the decision gates on
+ * (`packages/cli-engine/tests/ci.test.ts`) — this shell no longer
+ * answers that question at all.
  */
 import { existsSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -17,7 +20,6 @@ import { main } from "../src/v8/main";
 import { assembleRuntime, type HostProcess } from "../src/v8/runtime";
 
 vi.mock("@repo/cli-telemetry", () => ({ runTelemetry: vi.fn() }));
-vi.mock("ci-info", () => ({ isCI: false }));
 
 const SENDER_ENTRY = /sender\.js$/;
 
@@ -113,16 +115,16 @@ describe("the runtime's telemetry seam", () => {
     expect(runtime.spawnTelemetry).toBeTypeOf("function");
   });
 
-  it("takes the CI answer from ci-info, so a CI run never reports", async () => {
-    vi.resetModules();
-    vi.doMock("ci-info", () => ({ isCI: true }));
-    const { assembleRuntime: assembleInCI } = await import("../src/v8/runtime");
+  /** The shell answers nothing about CI, even standing in one. It hands
+   *  the environment over and the engine detects from it, which is why
+   *  this package imports no CI-detection library. */
+  it("leaves the CI question to the engine and hands over the environment", async () => {
+    const proc = makeProcess({ env: { TEAMCITY_VERSION: "2024.03.1" } });
 
-    const runtime = await assembleInCI(makeProcess());
+    const runtime = await assembleRuntime(proc);
 
-    expect(runtime.isCI).toBe(true);
-    vi.doUnmock("ci-info");
-    vi.resetModules();
+    expect(runtime.isCIOverride).toBeUndefined();
+    expect(runtime.env).toBe(proc.env);
   });
 });
 
