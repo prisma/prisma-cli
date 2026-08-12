@@ -123,7 +123,7 @@ One standing caveat: every endpoint above is marked experimental and subject to 
 
 ### S7 — Release pipeline + rc1
 
-Repo: prisma-cli. **In flight (PR #164).** Ruled 2026-08-12: rc1 publishes under the existing names (`@prisma/cli`, bin `prisma-cli`); the bare-`prisma` cutover follows once `prisma7` frees the name. Shipped so far: the ORM family mounted (one binary answers platform, composer and ORM), the grammar check promoted to `pnpm check:grammar` running in `pr-quality.yml` and before every publish, the declared bin flipped to the v8 tree, and the tarball install smoke in the publish path (packed tarballs verified out-of-workspace on plain Node, uploaded as artifacts, attached to the Release). The operator's one action is merging the bump PR, per `docs/oss/versioning.md`. Engine-pin convergence is deferred until `8.0.0-rc.1` publishes (contract STOP-7).
+**CLOSED 2026-08-12** — shipped as prisma-cli #164 plus the Release-immutability fix #166; acceptance verified in `specs/s7-release.md`'s Close-out; leftovers in `deferred.md`. The DoD artifact exists published: the operator's first real publish put `@prisma/cli@8.0.0-rc.1` (one binary answering platform, composer and ORM) and `@prisma/cli-engine@8.0.0-rc.1` on npm under `next`, `latest` untouched — RC releases publish under `next` by ruling until the deliberate flip. The bare-`prisma` cutover waits on `prisma7`; engine-pin convergence waits on the product repos bumping to the published engine. Next by the graph: S9 after the S5 cutover and S2d land (both dispatched elsewhere).
 
 ### S9 — The error-code catalogue (last)
 

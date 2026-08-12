@@ -6,6 +6,17 @@ Nothing here is tracked outside this file.
 
 ## After S7's first real publish
 
+- **The publish/Release shell in `publish.yml` should become a tested
+  script.** The operator called the inline `gh` calls janky
+  (2026-08-12); the agreed direction, not yet ruled go, is a
+  `scripts/publish-release.mjs` beside `determine-version.ts` — the
+  draft-create/attach/publish flow and the already-published tolerance
+  unit-tested like every other script, the yml steps collapsing to
+  one-liners. The alternative considered (pinning
+  `softprops/action-gh-release` into the job that holds
+  `id-token: write`) widens the trusted set of the repo's most
+  privileged workflow and was recommended against.
+
 - **The `v8.0.0-rc.1` GitHub Release has no tarballs attached, and
   none can be added.** The first real `next` publish (2026-08-12, run
   31618278670) published both packages to npm successfully, then the
