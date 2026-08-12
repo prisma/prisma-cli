@@ -183,6 +183,64 @@ composer can use it.
   next deploy. Full citations in `assets/s3/composer-inventory.md`
   §4a and D2's report.
 
+## Left open by S8 — the service family
+
+- **`resolvePinnedProject` can mask an API refusal as "generator body
+  threw".** `v8/project/context.ts` passes a throwing `listProjects`
+  into `resolveProjectTarget`, whose `Result.gen` body swallows the
+  thrown error's message. S8 hit the same shape in the service tree
+  (fixed in #162 by moving the fetch to the call site); the project
+  path has the latent equivalent, unverified. Whoever next works the
+  project family should reproduce and fix it the same way.
+- **`auth`'s workspace-ref lookup rejects the `wksp_`-prefixed id the
+  Console shows.** `src/v8/auth/session-ref.ts:24` compares a
+  user-typed workspace ref against stored session ids with no prefix
+  tolerance — the same bare-vs-`wksp_`-prefixed mismatch behind #144
+  and S8's workspace-filter defect (`bd8aa78`). Unlike those, it
+  fails loudly (falls back to name matching, then errors), so it is
+  an annoyance, not silent data loss. Found by S8's review sweep of
+  cross-origin id comparisons; the auth family is untouched by S8, so
+  it lands with whoever next works that family.
+- **The Composer-ownership note is deliberately not built (R-S8-4).**
+  `promote`, `rollback`, `start` and `stop` print no "Composer will
+  overwrite this on the next deploy" warning. Ruled NOT NOW (operator,
+  2026-08-12), and the grounding fact is why the revisit is real rather
+  than a shrug: **nothing in the app or deployment records identifies a
+  service as Composer-managed.** The only fingerprint is the `COMPOSER_*`
+  env-var namespace on the branch, which the CLI never fetches, so a
+  warning today would either be unconditional (noise on every
+  hand-managed service) or guesswork. Revisit when the API grows a
+  `managedBy` marker — the same request deferred alongside it. Users own
+  their resources, and Composer reconciling a manual change on the next
+  deploy is accepted behavior until then.
+- **`service logs` is a follow-up slice, and its transport question is
+  ANSWERED (R-S8-5).** API owners, via operator, 2026-08-12: **HTTP
+  instead of WebSocket is acceptable, provided live streaming can be
+  added at a later date.** So no engine socket transport was built. The
+  command lands as a copy of `build logs` — plain HTTP,
+  `parseAs: "stream"` — in a follow-up slice, once the platform endpoint
+  serves HTTP. The engine WebSocket design
+  (`assets/engine/websocket-transport-design.md`) is **shelved as the
+  later live-streaming path, not deleted.** The ownership question the
+  plan raised dissolved on investigation: `composer log` attaches to the
+  local dev daemon's streams, a `service deployment logs` would read the
+  platform endpoint — different data, no shared subgroup.
+- **The e2e suite should assert the real service-id prefix.** D2 wrote
+  `e2e/service.e2e.ts` without credentials to run it, so it asserts only
+  that `service create` reports a non-empty id. The sibling suites assert
+  real prefixes (`bkt_`, `db_`) because their authors could see one.
+  Whoever first runs this suite green should read the id the API actually
+  returns and tighten the assertion to match, as `bucket.e2e.ts` does.
+- **`service show` can have a real e2e now, and should.** It sat on the
+  `AWAITING_COVERAGE` backlog because the whole `service` family was
+  assumed to need a deployed service. `service create` falsified that:
+  `service show` works against a service that has never been promoted —
+  D1's own unit test asserts that case. Adding it to `e2e/service.e2e.ts`
+  alongside `create`/`list`/`remove` is a small job and removes the entry
+  rather than re-explaining it. The `service domain *` entries look like
+  the same case (they attach a domain to a service, not to a deployment)
+  and are worth checking at the same time.
+
 ## Composer's public surface — ruled, closed
 
 - **`ExtensionDescriptor.preflight` moved to method syntax** so an

@@ -12,7 +12,7 @@ export function runCommandAction(label: string, command: string): NextAction {
   return { kind: "run-command", label, command: `${CLI_NAME} ${command}` };
 }
 
-function adviceAction(label: string): NextAction {
+export function adviceAction(label: string): NextAction {
   return { kind: "user-choice", label };
 }
 
@@ -122,9 +122,25 @@ export function serviceSelectionInvalidError(
       why: `The service "${serviceName}" could not be found in resolved project "${projectId}".`,
       nextActions: [
         adviceAction(
-          "Pass the name of an existing service, or rerun list-deploys in a TTY to choose one.",
+          "Pass the name of an existing service, or rerun the command in a TTY to choose one.",
         ),
-        runCommandAction("List deployments", "service list-deploys"),
+        // Not `service deployment list`: that command has to select a
+        // service before it can list anything, so it fails the same way.
+        runCommandAction("List services", "service list"),
+      ],
+    },
+  );
+}
+
+export function serviceNameRequiredError(): CliStructuredError {
+  return new CliStructuredError(
+    "SERVICE.NAME_REQUIRED",
+    "Service create requires a name",
+    {
+      why: "The name positional was empty or only whitespace.",
+      nextActions: [
+        adviceAction("Pass a name, as in service create my-service."),
+        runCommandAction("List services", "service list"),
       ],
     },
   );
@@ -177,7 +193,7 @@ export function deploymentNotFoundError(
       nextActions: [
         runCommandAction(
           "Choose an available deployment id",
-          "service list-deploys",
+          "service deployment list",
         ),
       ],
     },
@@ -196,7 +212,7 @@ export function deploymentNotFoundForServiceError(
       nextActions: [
         runCommandAction(
           "Choose an available deployment id",
-          "service list-deploys",
+          "service deployment list",
         ),
       ],
     },
@@ -205,18 +221,20 @@ export function deploymentNotFoundForServiceError(
 
 /** promote / rollback / remove need a service that already exists. */
 export function releaseTargetRequiredError(
-  command: "promote" | "rollback" | "remove",
+  commandName: string,
 ): CliStructuredError {
   return new CliStructuredError(
     "SERVICE.TARGET_REQUIRED",
-    `Service ${command} requires an existing service`,
+    `Command "${commandName}" requires an existing service`,
     {
       why: "The resolved project does not have a service that can be selected for this command.",
       nextActions: [
         adviceAction(
-          `Deploy a service first, or rerun ${command} with --service <name> once a service exists.`,
+          `Deploy a service first, or rerun "${commandName}" with --service <name> once a service exists.`,
         ),
-        runCommandAction("List deployments", "service list-deploys"),
+        // Not `service deployment list`: it selects a service first, so
+        // it cannot help a run that could not select one.
+        runCommandAction("List services", "service list"),
       ],
     },
   );
@@ -232,7 +250,7 @@ export function noPreviousDeploymentError(): CliStructuredError {
         adviceAction(
           "Deploy a second version first, or pass --to <deployment-id> for a specific earlier deployment.",
         ),
-        runCommandAction("List deployments", "service list-deploys"),
+        runCommandAction("List deployments", "service deployment list"),
       ],
     },
   );
@@ -245,13 +263,13 @@ export function liveDeploymentUnknownError(): CliStructuredError {
     "SERVICE.LIVE_DEPLOYMENT_UNKNOWN",
     "Cannot determine which deployment is currently live",
     {
-      why: "Neither the service record, nor the platform's deployment listing, nor the local cache names a live deployment, so the deployment to roll back to cannot be chosen without guessing what production is serving.",
+      why: "The service record does not name a live deployment, so the deployment to roll back to cannot be chosen without guessing what production is serving.",
       nextActions: [
         runCommandAction(
           "Roll back to a named deployment",
-          "service rollback --to <deployment>",
+          "service deployment rollback --to <deployment>",
         ),
-        runCommandAction("List deployments", "service list-deploys"),
+        runCommandAction("List deployments", "service deployment list"),
       ],
     },
   );
@@ -265,7 +283,7 @@ export function removeFailedError(
     why: cause instanceof Error ? cause.message : String(cause),
     nextActions: [
       runCommandAction("Inspect the service", "service show"),
-      runCommandAction("List deployments", "service list-deploys"),
+      runCommandAction("List deployments", "service deployment list"),
     ],
     cause,
   });

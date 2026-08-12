@@ -39,13 +39,14 @@ function unknownLiveDeploymentRoutes(overrides: Routes = {}): Routes {
   });
 }
 
-describe("prisma-v8 service rollback", () => {
+describe("prisma-v8 service deployment rollback", () => {
   it("rolls back to the deployment before the live one by default", async () => {
     const harness = await makeServiceCli({ routes: releaseRoutes() });
 
     const result = await harness.cli.run(
       [
         "service",
+        "deployment",
         "rollback",
         "--project",
         "acme-app",
@@ -76,6 +77,7 @@ describe("prisma-v8 service rollback", () => {
     const result = await harness.cli.run(
       [
         "service",
+        "deployment",
         "rollback",
         "--to",
         "dep_2",
@@ -112,6 +114,7 @@ describe("prisma-v8 service rollback", () => {
     const result = await harness.cli.run(
       [
         "service",
+        "deployment",
         "rollback",
         "--to",
         "dep_1",
@@ -137,6 +140,7 @@ describe("prisma-v8 service rollback", () => {
     const result = await harness.cli.run(
       [
         "service",
+        "deployment",
         "rollback",
         "--project",
         "acme-app",
@@ -169,12 +173,13 @@ describe("prisma-v8 service rollback", () => {
     ]);
   });
 
-  it("emits the completed json envelope with commandId service.rollback", async () => {
+  it("emits the completed json envelope with commandId service.deployment.rollback", async () => {
     const harness = await makeServiceCli({ routes: releaseRoutes() });
 
     const result = await harness.cli.run(
       [
         "service",
+        "deployment",
         "rollback",
         "--project",
         "acme-app",
@@ -192,7 +197,7 @@ describe("prisma-v8 service rollback", () => {
     if (frame?.kind !== "result" || !frame.envelope.ok) {
       throw new Error("expected a completed envelope");
     }
-    expect(frame.envelope.commandId).toBe("service.rollback");
+    expect(frame.envelope.commandId).toBe("service.deployment.rollback");
     expect(frame.envelope.result).toMatchObject({
       deployment: { id: "dep_1" },
       previousLiveDeploymentId: "dep_2",
@@ -205,6 +210,7 @@ describe("prisma-v8 service rollback", () => {
     const result = await harness.cli.run(
       [
         "service",
+        "deployment",
         "rollback",
         "--project",
         "acme-app",
@@ -234,6 +240,7 @@ describe("prisma-v8 service rollback", () => {
     const result = await harness.cli.run(
       [
         "service",
+        "deployment",
         "rollback",
         "--project",
         "acme-app",
@@ -261,6 +268,7 @@ describe("prisma-v8 service rollback", () => {
     const result = await harness.cli.run(
       [
         "service",
+        "deployment",
         "rollback",
         "--project",
         "acme-app",
@@ -294,6 +302,7 @@ describe("prisma-v8 service rollback", () => {
     const result = await harness.cli.run(
       [
         "service",
+        "deployment",
         "rollback",
         "--project",
         "acme-app",
@@ -324,6 +333,7 @@ describe("prisma-v8 service rollback", () => {
     const result = await harness.cli.run(
       [
         "service",
+        "deployment",
         "rollback",
         "--project",
         "acme-app",
@@ -353,6 +363,7 @@ describe("prisma-v8 service rollback", () => {
     const result = await harness.cli.run(
       [
         "service",
+        "deployment",
         "rollback",
         "--project",
         "acme-app",
@@ -386,12 +397,12 @@ describe("prisma-v8 service rollback", () => {
       {
         kind: "run-command",
         label: "Roll back to a named deployment",
-        command: "prisma-cli service rollback --to <deployment>",
+        command: "prisma-cli service deployment rollback --to <deployment>",
       },
       {
         kind: "run-command",
         label: "List deployments",
-        command: "prisma-cli service list-deploys",
+        command: "prisma-cli service deployment list",
       },
     ]);
   });
@@ -404,6 +415,7 @@ describe("prisma-v8 service rollback", () => {
     const result = await harness.cli.run(
       [
         "service",
+        "deployment",
         "rollback",
         "--to",
         "dep_1",
@@ -440,6 +452,7 @@ describe("prisma-v8 service rollback", () => {
     const result = await harness.cli.run(
       [
         "service",
+        "deployment",
         "rollback",
         "--project",
         "acme-app",
@@ -466,7 +479,7 @@ describe("prisma-v8 service rollback", () => {
       {
         kind: "run-command",
         label: "List deployments",
-        command: "prisma-cli service list-deploys",
+        command: "prisma-cli service deployment list",
       },
     ]);
   });
@@ -481,6 +494,7 @@ describe("prisma-v8 service rollback", () => {
     const result = await harness.cli.run(
       [
         "service",
+        "deployment",
         "rollback",
         "--project",
         "acme-app",
@@ -514,6 +528,7 @@ describe("prisma-v8 service rollback", () => {
     const result = await harness.cli.run(
       [
         "service",
+        "deployment",
         "rollback",
         "--project",
         "acme-app",
@@ -545,7 +560,7 @@ describe("prisma-v8 service rollback", () => {
     });
 
     const result = await harness.cli.run(
-      ["service", "rollback", "--project", "acme-app", "--json"],
+      ["service", "deployment", "rollback", "--project", "acme-app", "--json"],
       { cwd: harness.cwd, env: harness.env },
     );
 
@@ -555,6 +570,9 @@ describe("prisma-v8 service rollback", () => {
       throw new Error("expected an errored envelope");
     }
     expect(frame.envelope.error.code).toBe("SERVICE.TARGET_REQUIRED");
+    expect(frame.envelope.error.summary).toBe(
+      'Command "service deployment rollback" requires an existing service',
+    );
   });
 
   it("fails early with the engine sign-in error when unauthenticated", async () => {
@@ -564,7 +582,7 @@ describe("prisma-v8 service rollback", () => {
     });
 
     const result = await harness.cli.run(
-      ["service", "rollback", "--project", "acme-app"],
+      ["service", "deployment", "rollback", "--project", "acme-app"],
       { cwd: harness.cwd, env: harness.env, isTty: { stdout: true } },
     );
 

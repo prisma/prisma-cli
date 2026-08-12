@@ -45,7 +45,7 @@ describe("prisma-v8 service open", () => {
       {
         kind: "run-command",
         label: "Show the live deployment",
-        command: "prisma-cli service show-deploy dep_2",
+        command: "prisma-cli service deployment show dep_2",
       },
     ]);
   });

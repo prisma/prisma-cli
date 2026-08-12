@@ -1,4 +1,4 @@
-import { readFile } from "node:fs/promises";
+import { readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 
@@ -49,7 +49,7 @@ describe("prisma-v8 service remove", () => {
       {
         kind: "run-command",
         label: "List deployments",
-        command: "prisma-cli service list-deploys",
+        command: "prisma-cli service deployment list",
       },
     ]);
   });
@@ -106,6 +106,15 @@ describe("prisma-v8 service remove", () => {
       ["service", "show", "--project", "acme-app", "--service", "hello-world"],
       { cwd: harness.cwd, env: harness.env },
     );
+    // Nothing in the v8 service family writes this key any more, but the
+    // legacy `app` family still does for the same project, so clearing
+    // it on removal has real effect until that family retires. Seeded
+    // here so the assertion below observes a key that was present.
+    const statePath = path.join(harness.stateDir, "state.json");
+    const seeded = JSON.parse(await readFile(statePath, "utf8"));
+    seeded.app.knownLiveDeploymentByProject = { proj_1: { svc_1: "dep_2" } };
+    await writeFile(statePath, JSON.stringify(seeded));
+
     await harness.cli.run(
       [
         "service",
@@ -395,16 +404,21 @@ describe("prisma-v8 service remove", () => {
       throw new Error("expected an errored envelope");
     }
     expect(frame.envelope.error.code).toBe("SERVICE.TARGET_REQUIRED");
+    expect(frame.envelope.error.summary).toBe(
+      'Command "service remove" requires an existing service',
+    );
     expect(frame.envelope.nextActions).toEqual([
       {
         kind: "user-choice",
         label:
-          "Deploy a service first, or rerun remove with --service <name> once a service exists.",
+          'Deploy a service first, or rerun "service remove" with --service <name> once a service exists.',
       },
+      // Not `service deployment list`: that command selects a service
+      // before it lists anything, so it fails the same way this did.
       {
         kind: "run-command",
-        label: "List deployments",
-        command: "prisma-cli service list-deploys",
+        label: "List services",
+        command: "prisma-cli service list",
       },
     ]);
   });

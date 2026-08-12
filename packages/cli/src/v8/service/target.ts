@@ -20,6 +20,7 @@ import {
 } from "../../lib/app/compute-config";
 import { resolveReadBranch } from "../../lib/app/read-branch";
 import { readLocalGitBranch } from "../../lib/git/local-branch";
+import { projectApiError } from "../../lib/project/provider";
 import {
   type ProjectCandidate,
   type ProjectResolutionContext,
@@ -50,6 +51,7 @@ import type {
   ServiceDeploymentSummary,
   ServiceDomainSummary,
   ServiceDomainTarget,
+  ServiceListEntry,
   ServiceSummary,
 } from "./results";
 
@@ -216,35 +218,56 @@ export function toBranchKind(name: string): BranchKind {
   return name === "production" || name === "main" ? "production" : "preview";
 }
 
-/** The same listing `controllers/project.ts#listRealWorkspaceProjects`
- *  performs, on ctx.api — duplicated here so the v8 tree does not drag
- *  the legacy controller import graph (child-process git adapters). */
+/**
+ * The same listing `controllers/project.ts#listRealWorkspaceProjects`
+ * performs, on ctx.api — duplicated here so the v8 tree does not drag
+ * the legacy controller import graph (child-process git adapters).
+ *
+ * No workspace filter, and no workspace parameter that could invite one
+ * back: the credential is issued for one workspace and the API answers
+ * within it. The filter this function used to carry compared the
+ * credential's bare workspace id against the API's `wksp_`-prefixed one
+ * and so discarded every project, every time — which made every service
+ * command report the pinned project as missing. #144 removed it from
+ * the legacy listing this mirrors; the copy here was written from the
+ * version that still had it.
+ *
+ * A refused request is raised, not read as an empty workspace. Without
+ * that, a 401, 403 or 500 becomes "no projects", the caller finds the
+ * pinned project missing, and the user is told their local binding is
+ * stale — sent to re-link a project that was never the problem. That is
+ * the same wrong recovery path the missing filter produced.
+ */
 async function listWorkspaceProjects(
   ctx: ServiceContext,
-  workspace: AuthWorkspace,
 ): Promise<ProjectCandidate[]> {
-  const { data } = await ctx.api.GET("/v1/projects", { signal: ctx.signal });
+  const { data, error, response } = await ctx.api.GET("/v1/projects", {
+    signal: ctx.signal,
+  });
+  if (error || !data) {
+    throw fromLegacyCliError(
+      projectApiError("Failed to list projects", response, error),
+    );
+  }
   return sortProjects(
-    (data?.data ?? [])
-      .filter((project) => project.workspace.id === workspace.id)
-      .map((project) => ({
-        id: project.id,
-        name: project.name,
-        ...("url" in project && typeof project.url === "string"
-          ? { url: project.url }
-          : {}),
-        ...("defaultRegion" in project
-          ? { defaultRegion: project.defaultRegion }
-          : {}),
-        slug:
-          "slug" in project && typeof project.slug === "string"
-            ? project.slug
-            : null,
-        workspace: {
-          id: project.workspace.id,
-          name: project.workspace.name,
-        },
-      })),
+    (data.data ?? []).map((project) => ({
+      id: project.id,
+      name: project.name,
+      ...("url" in project && typeof project.url === "string"
+        ? { url: project.url }
+        : {}),
+      ...("defaultRegion" in project
+        ? { defaultRegion: project.defaultRegion }
+        : {}),
+      slug:
+        "slug" in project && typeof project.slug === "string"
+          ? project.slug
+          : null,
+      workspace: {
+        id: project.workspace.id,
+        name: project.workspace.name,
+      },
+    })),
   );
 }
 
@@ -259,6 +282,11 @@ export async function resolveServiceProjectContext(
   },
 ): Promise<ResolvedServiceProjectContext> {
   const workspace = await requireWorkspace(ctx);
+  // Listed here rather than from inside `resolveProjectTarget`, which
+  // runs its body in a Result generator: a throw in the callback comes
+  // back as an opaque "generator body threw" instead of the API's own
+  // refusal. Fetching first lets that error settle as itself.
+  const projects = await listWorkspaceProjects(ctx);
   const resolvedResult = await resolveProjectTarget({
     context: resolutionContext(ctx),
     workspace,
@@ -269,7 +297,7 @@ export async function resolveServiceProjectContext(
     ...(options.projectDir !== undefined
       ? { projectDir: options.projectDir }
       : {}),
-    listProjects: () => listWorkspaceProjects(ctx, workspace),
+    listProjects: () => Promise.resolve(projects),
     commandName: options.commandName,
   });
   if (resolvedResult.isErr()) {
@@ -317,7 +345,7 @@ function isMissingProjectError(error: unknown): boolean {
   return error instanceof Error && error.message === "Resource Not Found";
 }
 
-async function listServices(
+export async function listServices(
   ctx: ServiceContext,
   provider: AppProvider,
   projectId: string,
@@ -397,37 +425,18 @@ export async function rememberSelectedService(
   });
 }
 
-export async function resolveCurrentLiveDeploymentId(
-  stateStore: LocalStateStore,
-  projectId: string,
-  service: Pick<AppRecord, "id" | "liveDeploymentId">,
+/** The live deployment is the one the service record names as its latest
+ *  deployment. Nothing else decides it — local CLI state never does. */
+export function resolveCurrentLiveDeploymentId(
+  service: Pick<AppRecord, "liveDeploymentId">,
   deployments: ServiceDeploymentSummary[],
-): Promise<string | null> {
+): string | null {
   if (
     service.liveDeploymentId &&
     deployments.some((deployment) => deployment.id === service.liveDeploymentId)
   ) {
     return service.liveDeploymentId;
   }
-
-  const providerLiveDeployment = deployments.find(
-    (deployment) => deployment.live === true,
-  );
-  if (providerLiveDeployment) {
-    return providerLiveDeployment.id;
-  }
-
-  const knownLiveDeploymentId = await stateStore.readKnownLiveDeployment(
-    projectId,
-    service.id,
-  );
-  if (
-    knownLiveDeploymentId &&
-    deployments.some((deployment) => deployment.id === knownLiveDeploymentId)
-  ) {
-    return knownLiveDeploymentId;
-  }
-
   return null;
 }
 
@@ -463,6 +472,20 @@ export function toServiceSummary(
   service: Pick<AppRecord, "id" | "name">,
 ): ServiceSummary {
   return { id: service.id, name: service.name };
+}
+
+/** A service record as the listing and create presenters report it. A
+ *  service that names no live deployment has no URL to show: the
+ *  endpoint domain it already carries does not resolve until the first
+ *  promote. */
+export function toServiceListEntry(service: AppRecord): ServiceListEntry {
+  return {
+    id: service.id,
+    name: service.name,
+    region: service.region,
+    liveDeploymentId: service.liveDeploymentId,
+    liveUrl: service.liveDeploymentId ? service.liveUrl : null,
+  };
 }
 
 export function toServiceDomainSummary(
@@ -553,7 +576,7 @@ export interface ServiceReadState {
   selected: AppRecord | null;
 }
 
-/** The shared read flow for show / list-deploys / open: config context,
+/** The shared read flow for show / deployment list / open: config context,
  *  project + branch resolution, service listing, and selection. */
 export async function resolveServiceReadState(
   ctx: ServiceContext,
