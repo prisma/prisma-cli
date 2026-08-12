@@ -1,20 +1,29 @@
-import type { ConfigSection } from "@prisma/cli-engine";
+/**
+ * A config section, structurally. Deliberately not imported from
+ * `@prisma/cli-engine`: this package checks the engine's consumers, so
+ * depending on the engine would put it downstream of the things it
+ * checks and make every dependency edge a potential cycle. The engine's
+ * own `ConfigSection<T>` satisfies this shape.
+ */
+export interface CheckableSection {
+  readonly name: string;
+  readonly validate: (raw: unknown) => unknown;
+}
 
 /**
- * The two places a section reaches the engine. Structural rather than
- * the engine's own types so a caller can pass toy values in a test
- * without building a command.
+ * The two places a section reaches the engine. Structural, so a caller
+ * can pass toy values in a test without building a command.
  */
 export interface SectionSources {
   readonly families: readonly {
-    readonly configSection?: ConfigSection<unknown> | undefined;
+    readonly configSection?: CheckableSection | undefined;
   }[];
   readonly commands: Readonly<
     Record<
       string,
       {
         readonly needs: {
-          readonly config?: ConfigSection<unknown> | undefined;
+          readonly config?: CheckableSection | undefined;
         };
       }
     >
@@ -31,8 +40,8 @@ export interface SectionSources {
  */
 export function sectionsFrom(
   sources: SectionSources,
-): readonly ConfigSection<unknown>[] {
-  const byName = new Map<string, ConfigSection<unknown>>();
+): readonly CheckableSection[] {
+  const byName = new Map<string, CheckableSection>();
   for (const family of sources.families) {
     const section = family.configSection;
     if (section !== undefined && !byName.has(section.name)) {

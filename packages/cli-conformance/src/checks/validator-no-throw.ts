@@ -1,5 +1,5 @@
-import type { ConfigSection } from "@prisma/cli-engine";
 import type { Finding } from "../findings";
+import type { CheckableSection } from "../subjects";
 
 /** One hostile value, with a label that names it in a finding. */
 export interface HostileInput {
@@ -84,7 +84,7 @@ export const HOSTILE_INPUTS: readonly HostileInput[] = [
 ];
 
 export interface ValidatorNoThrowInput {
-  readonly sections: readonly ConfigSection<unknown>[];
+  readonly sections: readonly CheckableSection[];
   readonly extraInputs?: readonly HostileInput[];
 }
 
@@ -111,7 +111,7 @@ export function checkValidatorNoThrow(
 }
 
 function checkOne(
-  section: ConfigSection<unknown>,
+  section: CheckableSection,
   corpus: readonly HostileInput[],
 ): readonly Finding[] {
   const threw: string[] = [];

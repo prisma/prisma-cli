@@ -72,6 +72,9 @@ importers:
         specifier: ^10.0.0
         version: 10.0.0
     devDependencies:
+      '@repo/cli-conformance':
+        specifier: workspace:8.0.0-rc.1
+        version: link:../cli-conformance
       '@repo/cli-telemetry':
         specifier: workspace:8.0.0-rc.1
         version: link:../cli-telemetry
@@ -96,12 +99,6 @@ importers:
 
   packages/cli-conformance:
     devDependencies:
-      '@prisma/cli':
-        specifier: workspace:8.0.0-rc.1
-        version: link:../cli
-      '@prisma/cli-engine':
-        specifier: workspace:8.0.0-rc.1
-        version: link:../cli-engine
       '@repo/tsconfig':
         specifier: workspace:8.0.0-rc.1
         version: link:../tsconfig
@@ -148,6 +145,9 @@ importers:
         specifier: ^8.2.1
         version: 8.2.1
     devDependencies:
+      '@repo/cli-conformance':
+        specifier: workspace:8.0.0-rc.1
+        version: link:../cli-conformance
       '@repo/tsconfig':
         specifier: workspace:8.0.0-rc.1
         version: link:../tsconfig

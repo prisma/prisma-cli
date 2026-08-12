@@ -205,3 +205,34 @@ composer can use it.
   (operator, 2026-08-11). No further action; the change ships with
   S3 and needs a divergence entry only if it breaks a published
   extension, which it does not.
+
+## Found during S6 — not S6's to fix
+
+- **`pnpm test` fails on a pre-existing concurrency race between two
+  packages' test tasks.** `@prisma/cli-engine`'s `test` script begins
+  with `pnpm run build`, and tsdown builds with `clean: true`, so it
+  empties and rewrites `packages/cli-engine/dist` while it runs.
+  `@prisma/cli`'s tests resolve `@prisma/cli-engine` through that same
+  `dist`, and turbo's `test` task depends only on `^build` — never on a
+  dependency's `test` — so the two run at the same time and the shell's
+  suite intermittently fails with "Failed to resolve entry for package
+  @prisma/cli-engine" across roughly two dozen files. Confirmed
+  pre-existing: the base commit `aa40790` fails three runs out of three,
+  and `turbo run test --concurrency=1` passes on both that commit and
+  the S6 branch. It is invisible in CI because `.github/workflows/
+  test.yml` runs only `pnpm --filter @prisma/cli test`, and
+  `pr-quality.yml`'s `pnpm test` has presumably been passing by timing
+  luck. Two candidate fixes, neither S6's call: drop the `pnpm run
+  build` from the engine's `test` script and let turbo's `^build`
+  dependency do that work, or stop the engine's build cleaning a
+  directory another package reads while it runs.
+- **The packed shell manifest carries `devDependencies` on private
+  packages at versions no registry has** — `@repo/cli-telemetry` and
+  `@repo/tsconfig`, both at `8.0.0-rc.1`. Harmless when a consumer
+  installs the tarball, because npm ignores a package's own
+  devDependencies; fatal for anyone installing the unpacked directory.
+  None of S6's three checks looks at that field, deliberately: check 3
+  compares only the fields a consumer installs. composer's and
+  prisma/prisma's `check-publish-deps.mjs` both catch this class, and
+  prisma-cli has no equivalent. Worth one small check, in its own
+  change.

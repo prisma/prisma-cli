@@ -63,6 +63,7 @@
     "wrap-ansi": "^10.0.0"
   },
   "devDependencies": {
+    "@repo/cli-conformance": "workspace:8.0.0-rc.1",
     "@repo/cli-telemetry": "workspace:8.0.0-rc.1",
     "@repo/tsconfig": "workspace:8.0.0-rc.1",
     "@types/node": "^22.19.19",

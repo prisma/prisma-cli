@@ -2,9 +2,14 @@
   "name": "@repo/cli-conformance",
   "private": true,
   "version": "8.0.0-rc.1",
-  "description": "The three conformance checks run before this repo publishes: import purity over built output, config-section validators that never throw, and verification of the tarballs the registry would receive",
+  "description": "Reusable conformance checks for the engine's consumers: import purity over built output, config-section validators that never throw, and verification of the tarballs a registry would receive. Depends on no package it checks.",
   "type": "module",
   "exports": {
+    "./module-graph": "./src/module-graph.ts",
+    "./import-purity": "./src/checks/import-purity.ts",
+    "./validator-no-throw": "./src/checks/validator-no-throw.ts",
+    "./subjects": "./src/subjects.ts",
+    "./findings": "./src/findings.ts",
     "./package.json": "./package.json"
   },
   "engines": {
@@ -12,18 +17,15 @@
   },
   "license": "Apache-2.0",
   "scripts": {
-    "check": "tsx src/bin.ts",
     "typecheck": "tsc --noEmit",
     "test": "pnpm run typecheck && vitest run"
   },
   "devDependencies": {
-    "@prisma/cli": "workspace:8.0.0-rc.1",
     "@repo/tsconfig": "workspace:8.0.0-rc.1",
     "@types/node": "^22.19.19",
     "es-module-lexer": "^2.1.0",
     "tsx": "^4.22.4",
     "typescript": "^6.0.3",
-    "vitest": "^4.1.8",
-    "@prisma/cli-engine": "workspace:8.0.0-rc.1"
+    "vitest": "^4.1.8"
   }
 }

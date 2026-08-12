@@ -8,13 +8,17 @@
  * Sections are injected as plain values, so nothing here is mocked. The
  * last case runs the real shipped composer validator.
  */
-import { defineConfigSection } from "@prisma/cli-engine";
+
 import { describe, expect, test } from "vitest";
 import {
   checkValidatorNoThrow,
   HOSTILE_INPUTS,
 } from "../src/checks/validator-no-throw";
+import type { CheckableSection } from "../src/subjects";
 import { sectionsFrom } from "../src/subjects";
+
+/** The engine's ConfigSection satisfies this shape; a literal is enough. */
+const asSection = (spec: CheckableSection): CheckableSection => spec;
 
 const ok = () => ({ ok: true as const, value: {}, diagnostics: [] });
 
@@ -55,7 +59,7 @@ describe("checkValidatorNoThrow", () => {
   test("a validator that throws on everything is one finding listing what provoked it", () => {
     const findings = checkValidatorNoThrow({
       sections: [
-        defineConfigSection({
+        asSection({
           name: "explodes",
           validate: () => {
             throw new Error("kaboom");
@@ -79,7 +83,7 @@ describe("checkValidatorNoThrow", () => {
   test("a validator that throws only on a hostile proxy is still reported", () => {
     const findings = checkValidatorNoThrow({
       sections: [
-        defineConfigSection({
+        asSection({
           name: "spreads",
           validate: (raw) => {
             const copy = { ...(raw as object) };
@@ -95,11 +99,11 @@ describe("checkValidatorNoThrow", () => {
   test("a validator returning something that is not a SectionValidation is its own finding", () => {
     const findings = checkValidatorNoThrow({
       sections: [
-        defineConfigSection({
+        asSection({
           name: "wrong-shape",
           // The point of the check is that this can happen, so the
           // deliberate lie has to be written down somewhere.
-          validate: (() => ({ fine: true })) as never,
+          validate: () => ({ fine: true }),
         }),
       ],
     });
@@ -112,9 +116,9 @@ describe("checkValidatorNoThrow", () => {
       kinds(
         checkValidatorNoThrow({
           sections: [
-            defineConfigSection({
+            asSection({
               name: "no-value",
-              validate: (() => ({ ok: true, diagnostics: [] })) as never,
+              validate: () => ({ ok: true, diagnostics: [] }),
             }),
           ],
         }),
@@ -125,7 +129,7 @@ describe("checkValidatorNoThrow", () => {
   test("a total validator reports nothing", () => {
     expect(
       checkValidatorNoThrow({
-        sections: [defineConfigSection({ name: "total", validate: ok })],
+        sections: [asSection({ name: "total", validate: ok })],
       }),
     ).toEqual([]);
   });
@@ -140,11 +144,11 @@ describe("checkValidatorNoThrow", () => {
 
 describe("sectionsFrom", () => {
   test("takes sections from families and from standalone commands alike", () => {
-    const fromFamily = defineConfigSection({
+    const fromFamily = asSection({
       name: "family-owned",
       validate: ok,
     });
-    const fromCommand = defineConfigSection({
+    const fromCommand = asSection({
       name: "command-owned",
       validate: ok,
     });
@@ -160,7 +164,7 @@ describe("sectionsFrom", () => {
   });
 
   test("a section declared by both a family and a command is listed once", () => {
-    const shared = defineConfigSection({ name: "shared", validate: ok });
+    const shared = asSection({ name: "shared", validate: ok });
     expect(
       sectionsFrom({
         families: [{ configSection: shared }],
