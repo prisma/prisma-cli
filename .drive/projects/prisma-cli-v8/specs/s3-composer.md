@@ -1,8 +1,10 @@
 # S3 — Composer adoption (slice contract, revision 2 final)
 
-Status: rev 2 final (2026-08-11) — the first-principles design
-(operator-settled) plus both delta reviews folded (architect + PE,
-accept-with-changes; all findings adopted, dispositions in §10).
+Status: CLOSED 2026-08-12 (acceptance verified; dispositions in the
+Close-out section). Was rev 2 final (2026-08-11) — the
+first-principles design (operator-settled) plus both delta reviews
+folded (architect + PE, accept-with-changes; all findings adopted,
+dispositions in §10).
 Precedence: this contract > `specs/s2-overview.md` standing rulings
 > `assets/s3/composer-inventory.md` > source. Unpinned facts are
 STOP-and-surface.
@@ -345,48 +347,50 @@ operator); 1c deliverable 2 beyond the config-load effect check
 
 ## Acceptance
 
-- [ ] Engine (real child, trivial script): exit passthrough incl.
+- [x] Engine (real child, trivial script): exit passthrough incl.
       1/2/3; ENOENT structured error; native Ctrl-C reaching the
       child (POSIX; fake-level on Windows); record-and-replay
       after child exit (one signal → abort; two → escalation);
       SIGTERM forwarded during window; abort ladder
       TERM→grace→KILL; engine-outlives-child; unframed child
       stdout; buffered events flushed in order.
-- [ ] Engine (fake spawn): `--json` parse rejection;
+- [x] Engine (fake spawn): `--json` parse rejection;
       near-expiry refusal; env composition both session sources;
       env KEYS never values; reentrancy construction error;
       telemetry settlement; the env-only credential manager's
       composition + mutation refusals.
-- [ ] SPI amendment recorded (single named call site + the
+- [x] SPI amendment recorded (single named call site + the
       one-client invariant outcome).
-- [ ] Composer family static graph alchemy-free + effect-free on
+- [x] Composer family static graph alchemy-free + effect-free on
       BUILT output (CI check anchored at the family entrypoint);
       executors remain behind the dynamic-import boundary; the
       engine-sole-listener DETECTOR assertion after config
       evaluation and local-target resolution (see design
       consequence 4 — no workaround behind it, by ruling).
-- [ ] Composer's rebuilt CLI (engine + own family + env-only
+- [x] Composer's rebuilt CLI (engine + own family + env-only
       manager) replaces clipanion; e2e tests drive the exported
       commands; old shell/runner deleted in D3; D2/D3 stacked.
-- [ ] Four commands green in composer CI (double + fake child; no
+- [x] Four commands green in composer CI (double + fake child; no
       alchemy, no containers) and mounted under `composer` in the
       prisma bin.
-- [ ] Tarball checks: engine external + exact pin; double's chunk
+- [x] Tarball checks: engine external + exact pin; double's chunk
       import-clean; dual-manifest pin equality; Dependabot ignore.
-- [ ] prisma bin: `node >= 24` (bin only); install-footprint
-      consequence recorded.
-- [ ] Divergences (`assets/s2/parity-divergences-s3.md`): dev
+- [x] prisma bin: `node >= 24` (bin only); install-footprint
+      consequence recorded. AMENDED — shipped as `>=22.18.0`; see
+      Close-out.
+- [x] Divergences (`assets/s2/parity-divergences-s3.md`): dev
       Ctrl-C 130-vs-0; `--production` dropped; reproduce-hint
       shape; `--json` rejection; PATH_MISMATCH conditional
       retirement; help/usage output shape + bare-invocation exit
       (inventory D6/D7); `--tail` becomes a typed number flag
       (D5); `[dev]`/`[log]` console prefixes become engine events;
       exit unifications on engine-side error paths.
-- [ ] 1c closed with explicit dispositions (D1 → R-S3-2; D2 split:
+- [x] 1c closed with explicit dispositions (D1 → R-S3-2; D2 split:
       config-load effect check owned here, rest composer team;
       D3 → R-S3-5).
-- [ ] Ledger Q2 + coverage-ledger rows corrected.
-- [ ] Both PRs through the slice review loop; suites green in
+- [x] Ledger Q2 + coverage-ledger rows corrected. AMENDED — Q2's
+      disposition changed; see Close-out.
+- [x] Both PRs through the slice review loop; suites green in
       both repos.
 
 ## §10 Disposition record
@@ -452,3 +456,41 @@ record, and settles a signal-killed child as the abort whatever
 retires with the argument that made the misuse reachable; a run that
 settles this way with no child on record is the construction error
 that takes its place.
+
+## Close-out (2026-08-12)
+
+Acceptance verified against source and merged PRs: prisma-cli #136,
+#145, #150, #151, #155, #152 (the mount, `42ee7891`); composer #220,
+#224, #226. Evidence, per item: the real-child and fake-spawn suites
+are `packages/cli-engine/tests/spawn-real-child.test.ts` and
+`spawn.test.ts` (plus `environment-credential-manager.test.ts`); the
+SPI amendment is `credential-manager-design.md` §11.5
+(`activeAccessToken()`, single consumer `execution/spawn.ts`); the
+static-graph check is composer's `check:family-static-graph` and the
+sole-listener detector is composer's
+`cli/src/family/__tests__/signal-listeners.test.ts`; the tarball
+checks are composer's `check:cli-engine-pin` / `check:publish-deps`
+plus the Dependabot ignore in composer's `.github/dependabot.yml`;
+the 1c closure is `assets/briefs/1c-leftovers-composer.md`.
+
+Two items shipped amended, deliberately, and are NOT claimed as
+written:
+
+- **The bin's Node floor is `>=22.18.0`, not `>=24`.** Composer #224
+  dropped composer's own floor to 22.18 (Node 22 suffices), and the
+  contract's rule — the bin takes composer's floor, max wins — held;
+  only the number moved. `@prisma/cli-engine` stays at 22.12 so
+  composer does not re-inherit a floor through the engine.
+- **Ledger Q2's disposition changed.** The Out-of-scope line "ledger
+  Q2 closes 'mechanism built in S3'" was superseded: `service run`
+  was RULED dropped (operator, 2026-08-11; `s2-overview.md` Q2), so
+  D4 recorded that S3 built the mechanism for a command that no
+  longer exists rather than claiming Q2 closed by it.
+
+Two acceptance-suite tests are flaky under load (a child writes its
+ready marker before installing its signal handler); both are recorded
+in `deferred.md`. Everything carried out of the slice — including the
+two-engine-copy install state that only the tandem release ends, and
+composer dropping its `isCI` answer at its next engine-pin bump — is
+in `deferred.md`. Hand-over context for a fresh agent:
+`assets/briefs/s3-closeout-handover.md`.

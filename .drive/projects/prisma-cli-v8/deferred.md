@@ -21,6 +21,13 @@ composer can use it.
   `0.6.0-dev.16` bundles. The effect-resolution check is unaffected and
   does run: it sits in `configSource`, the front both loader shapes
   share, so the throwing path the pipeline uses runs it first.
+- **Composer should drop its `isCI` answer.** prisma-cli #155 made
+  `Runtime.isCI` the optional `isCIOverride` — the engine detects CI
+  itself now. Composer still passes `isCI` (via `ci-info`) in
+  `packages/0-framework/3-tooling/cli/src/family/runtime.ts` because
+  it pins engine `0.0.9`, which predates #155. Harmless today. Drop
+  the parameter and the `ci-info` dependency when composer next bumps
+  its engine pin.
 - **`check:npm-effect-resolution` fixes are unverified.** D3 updated
   three assertions (help proves the family mounted; the adversarial
   `deploy` gets a service token because the credential check now

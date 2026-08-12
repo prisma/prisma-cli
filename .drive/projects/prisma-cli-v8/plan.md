@@ -40,6 +40,11 @@ deleted, per-family shell integration proofs, parity list reviewed.
 
 ### S3 — Composer adoption (first cross-repo consumer)
 
+**CLOSED 2026-08-12** — shipped as prisma-cli #136/#145/#150/#151/#155
+plus the mount (#152) and composer #220/#224/#226; acceptance verified
+in `specs/s3-composer.md`'s Close-out section; leftovers in
+`deferred.md`. Next by the dependency graph: S8 (design first).
+
 Repos: composer + prisma-cli. Composer exports a `CommandFamily`
 (the `composer` config section token — its validator rewritten from the
 current throwing loader per the section API — plus its command set);
