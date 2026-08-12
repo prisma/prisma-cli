@@ -7,7 +7,7 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "prisma": "tsx ../../packages/cli/src/bin.ts"
+    "prisma": "tsx ../../packages/cli/src/v8/bin.ts"
   },
   "dependencies": {
     "next": "16.2.6",

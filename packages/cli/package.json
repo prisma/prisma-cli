@@ -4,7 +4,7 @@
   "description": "Command-line interface for the Prisma Developer Platform.",
   "type": "module",
   "bin": {
-    "prisma-cli": "./dist/cli.js"
+    "prisma-cli": "./dist/v8/cli.js"
   },
   "exports": {
     "./package.json": "./package.json"
@@ -45,7 +45,6 @@
     "test:e2e": "vitest run --config vitest.e2e.config.ts"
   },
   "dependencies": {
-    "@clack/prompts": "1.5.0",
     "@prisma/cli-engine": "workspace:8.0.0-rc.1",
     "@prisma/composer": "0.6.0-dev.16",
     "@prisma/compute-sdk": "0.39.0",
@@ -53,14 +52,9 @@
     "@prisma/management-api-sdk": "1.55.0",
     "@vercel/detect-agent": "^1.2.3",
     "better-result": "^2.9.2",
-    "colorette": "^2.0.20",
-    "commander": "^14.0.3",
     "dotenv": "^17.4.2",
     "execa": "^9.6.1",
-    "open": "^11.0.0",
-    "string-width": "^8.2.1",
-    "strip-ansi": "^7.2.0",
-    "wrap-ansi": "^10.0.0"
+    "open": "^11.0.0"
   },
   "devDependencies": {
     "@repo/cli-telemetry": "workspace:8.0.0-rc.1",

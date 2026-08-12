@@ -23,9 +23,6 @@ importers:
 
   packages/cli:
     dependencies:
-      '@clack/prompts':
-        specifier: 1.5.0
-        version: 1.5.0
       '@prisma/cli-engine':
         specifier: workspace:8.0.0-rc.1
         version: link:../cli-engine
@@ -47,12 +44,6 @@ importers:
       better-result:
         specifier: ^2.9.2
         version: 2.9.2
-      colorette:
-        specifier: ^2.0.20
-        version: 2.0.20
-      commander:
-        specifier: ^14.0.3
-        version: 14.0.3
       dotenv:
         specifier: ^17.4.2
         version: 17.4.2
@@ -62,15 +53,6 @@ importers:
       open:
         specifier: ^11.0.0
         version: 11.0.0
-      string-width:
-        specifier: ^8.2.1
-        version: 8.2.1
-      strip-ansi:
-        specifier: ^7.2.0
-        version: 7.2.0
-      wrap-ansi:
-        specifier: ^10.0.0
-        version: 10.0.0
     devDependencies:
       '@repo/cli-telemetry':
         specifier: workspace:8.0.0-rc.1
@@ -2023,10 +2005,6 @@ packages:
   colorette@2.0.20:
     resolution: {integrity: sha512-IfEDxwoWIjkeXL1eXcDiow4UbKjhLdq6/EuSVR9GMN7KVH3r9gQ83e73hsz1Nd1T3ijd5xv1wcWRYO+D6kCI2w==}
 
-  commander@14.0.3:
-    resolution: {integrity: sha512-H+y0Jo/T1RZ9qPP4Eh1pkcQcLRglraJaSLoyOtHxu6AapkjWVCy2Sit1QQ4x3Dng8qDlSsZEet7g5Pq06MvTgw==}
-    engines: {node: '>=20'}
-
   confbox@0.2.4:
     resolution: {integrity: sha512-ysOGlgTFbN2/Y6Cg3Iye8YKulHw+R2fNXHrgSmXISQdMnomY6eNDprVdW9R5xBguEqI954+S6709UyiO7B+6OQ==}
 
@@ -3153,10 +3131,6 @@ packages:
     resolution: {integrity: sha512-GDZ0jzIYDYfN7rCt/oFJv4BG3QJ+4IS2kfRvxEMY9VKIfPhzo63PH69Ir7ug8LfORCgCtmfkiQVXrqbot7pZTQ==}
     engines: {node: '>=16'}
     hasBin: true
-
-  wrap-ansi@10.0.0:
-    resolution: {integrity: sha512-SGcvg80f0wUy2/fXES19feHMz8E0JoXv2uNgHOu4Dgi2OrCy1lqwFYEJz1BLbDI0exjPMe/ZdzZ/YpGECBG/aQ==}
-    engines: {node: '>=20'}
 
   wrap-ansi@9.0.2:
     resolution: {integrity: sha512-42AtmgqjV+X1VpdOfyTGOYRi0/zsoLqtXQckTmqTeybT+BDIbM/Guxo7x3pE2vtpr1ok6xRqM9OpBe+Jyoqyww==}
@@ -4846,8 +4820,6 @@ snapshots:
 
   colorette@2.0.20: {}
 
-  commander@14.0.3: {}
-
   confbox@0.2.4: {}
 
   consola@3.4.2: {}
@@ -5967,12 +5939,6 @@ snapshots:
       '@cloudflare/workerd-linux-64': 1.20260704.1
       '@cloudflare/workerd-linux-arm64': 1.20260704.1
       '@cloudflare/workerd-windows-64': 1.20260704.1
-
-  wrap-ansi@10.0.0:
-    dependencies:
-      ansi-styles: 6.2.3
-      string-width: 8.2.1
-      strip-ansi: 7.2.0
 
   wrap-ansi@9.0.2:
     dependencies:

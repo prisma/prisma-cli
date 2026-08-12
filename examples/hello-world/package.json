@@ -7,7 +7,7 @@
   "scripts": {
     "dev": "bun --watch server.ts",
     "start": "bun run server.ts",
-    "prisma": "tsx ../../packages/cli/src/bin.ts"
+    "prisma": "tsx ../../packages/cli/src/v8/bin.ts"
   },
   "devDependencies": {
     "@types/bun": "^1.3.14",
