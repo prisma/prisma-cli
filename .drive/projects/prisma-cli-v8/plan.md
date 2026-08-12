@@ -195,6 +195,42 @@ Recorded so they are not lost between slices.
   authenticated socket. Shelved, not rejected — unlike `service deploy`,
   which is not coming back in that shape.
 
+## E2E coverage of every command the binary answers to
+
+Spec R7 requires product-repo e2e in prisma/prisma and composer. It says nothing about this repo covering the grammar it ships, and the gap is bigger than the platform commands alone.
+
+**The `prisma` binary answers to 89 commands. 40 have an e2e test. 49 do not.** Counted by walking `--help` from the root through every group, against the `describeCommand` blocks in `packages/cli/e2e/*.e2e.ts`; nothing in the suite names a command the binary does not mount.
+
+### What the test has to be
+
+**One happy path per command, run through the assembled binary, doing the thing and succeeding.** Not `--help`, not "it parses its arguments", not "it fails honestly without credentials". Those prove a command is reachable; they do not prove it works.
+
+The reason this repo has to do it, rather than leaning on the owning repos: **the product repos test their own commands exhaustively, but none of them can reproduce the configuration this binary assembles.** The mount paths, the engine version actually linked, the config sections contributed by several families at once, the credential wiring, and the dependency tree inside the published tarball only exist here. A command can pass its owner's whole suite and still be broken the moment it is mounted — #171 is the proof: requiring `next` at runtime made `migration list` exit 2 while orm-toolchain's own tests knew nothing about it. The one in-process mount test caught that. Twenty-one other ORM commands have no such test.
+
+`tests/mount-coverage.test.ts` already refuses a tree that has lost a command. Nothing yet refuses a command that has never been made to work.
+
+### The fixtures decide the order, not the command groups
+
+Most of the 49 are blocked on the same few things, so the work is to build those, and the commands follow in bulk.
+
+- **A deployed service unlocks about 16.** `composer deploy` produces a deployment; with one in hand, `service deployment list|show|promote|rollback|start|stop|delete`, `service open`, `service show`, the five `service domain` verbs and `build logs` all have a happy path. Without it, none of them do. This is the single highest-value fixture and also the most expensive: it creates real infrastructure that the suite then has to remove.
+- **A project directory with a contract unlocks most of the ORM family.** `tests/fixtures/orm-project` already exists for the mount test. Extended with a contract and a migrations directory it covers `format`, `orm init`, `contract emit|infer`, `migration check|graph|list|log|new|plan|show|status` and `ref delete|list|set` — local commands that need no API.
+- **A database unlocks the rest of the ORM family.** `db init|schema|sign|update|verify` and `migrate` need one to act on, and the suite already creates Prisma Postgres databases in `postgres.e2e.ts`, so this is wiring rather than new capability.
+- **A GitHub repository owned by the test account unlocks `git connect` and `git disconnect`**, and needs a ruling on what state the suite may leave behind.
+- **A second workspace unlocks `project transfer`.**
+- **A project whose backups exist unlocks `postgres restore`.** Backups are platform-created on a schedule, so a database the suite made minutes ago has none; this needs a long-lived fixture project rather than a per-run one.
+
+### Four that need a ruling before anyone writes them
+
+- **`auth login`** drives a browser. Every other command in the suite authenticates with a service token, so the one command whose job is to obtain a credential is the one the suite cannot exercise the normal way. Either it is driven headlessly, or it is declared out of scope and said so out loud.
+- **`feedback`** sends a message to the Prisma CLI team. A happy path posts real feedback unless it can be pointed at a test endpoint.
+- **`composer dev`** starts a long-running local server; **`composer log`** streams. Neither settles on its own, so "happy path" has to mean something specific — started, served one request, shut down cleanly — rather than "exited 0".
+- **`lsp`** speaks the language-server protocol on stdio. Its happy path is an `initialize` request answered correctly, which is a different harness from every other test in the suite.
+
+### Sequencing
+
+Build the fixtures in the order above; the commands follow them. Nothing here should be written as a skipped test in the meantime — a skipped test reads as coverage.
+
 ## Coverage ledger (what proves what)
 
 | Engine surface | Proven by |
