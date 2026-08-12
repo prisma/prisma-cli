@@ -76,14 +76,14 @@ reinstatement (Q1 unless ruled meanwhile).
 
 ## Acceptance
 
-- [ ] `init` wizard green on the full prompt matrix (interactive,
+- [x] `init` wizard green on the full prompt matrix (interactive,
       `--yes`, non-interactive, cancel) with byte-asserted templates.
-- [ ] Bin cutover complete, config loaded through `c12` as the
+- [x] Bin cutover complete, config loaded through `c12` as the
       reference repositories do; `prisma-cli` runs the
       engine shell from a packed tarball on plain Node.
-- [ ] Commander shell + fixture machinery deleted per R-S2d-4's
+- [x] Commander shell + fixture machinery deleted per R-S2d-4's
       checklist; survivor list enumerated.
-- [ ] Grammar completeness test green.
-- [ ] Consolidated divergence document reviewed by the operator.
-- [ ] Root verification green; PR ≥1k LOC; review loop run; S2 slice
+- [x] Grammar completeness test green (landed via S7's `check:grammar`; `version` is a ruled removal, and the ORM's initializer moved to `orm init` so top-level `init` is the platform wizard — operator, 2026-08-12).
+- [x] Consolidated divergence document reviewed and RATIFIED by the operator (2026-08-12).
+- [x] Root verification green; PR ≥1k LOC; review loop run; S2 slice
       closed in the project plan.
