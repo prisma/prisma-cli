@@ -77,6 +77,7 @@ import { serviceDomainRetryCommand } from "./commands/service/domain-retry";
 import { serviceDomainShowCommand } from "./commands/service/domain-show";
 import { serviceDomainWaitCommand } from "./commands/service/domain-wait";
 import { serviceListCommand } from "./commands/service/list";
+import { serviceLogsCommand } from "./commands/service/logs";
 import { serviceOpenCommand } from "./commands/service/open";
 import { serviceRemoveCommand } from "./commands/service/remove";
 import { serviceShowCommand } from "./commands/service/show";
@@ -122,6 +123,7 @@ export const platformCommandFamily: CommandFamily = defineCommandFamily({
     gitConnect: gitConnectCommand,
     gitDisconnect: gitDisconnectCommand,
     serviceList: serviceListCommand,
+    serviceLogs: serviceLogsCommand,
     serviceCreate: serviceCreateCommand,
     serviceShow: serviceShowCommand,
     serviceOpen: serviceOpenCommand,
@@ -238,6 +240,7 @@ export const mountedCommands: Readonly<Record<string, AnyCommand>> = {
   "git connect": gitConnectCommand,
   "git disconnect": gitDisconnectCommand,
   "service list": serviceListCommand,
+  "service logs": serviceLogsCommand,
   "service create": serviceCreateCommand,
   "service show": serviceShowCommand,
   "service open": serviceOpenCommand,
