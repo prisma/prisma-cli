@@ -15,11 +15,12 @@ import { type ChildStatusSettlement, childExitCode } from "../spawn";
 import type { EngineSpec, Invocation } from "./engine";
 import { makePaint } from "./palette";
 import {
+  diagnosticSection,
   firstLine,
   renderCompletedHuman,
   renderNextAction,
   withDocsUrl,
-  writeDiagnostic,
+  writeSections,
 } from "./rendering";
 import { emitFrame } from "./reporting";
 import { resolveExample, usageErrorCode } from "./stricli-adapter";
@@ -316,12 +317,13 @@ export function emitErrored(
     });
     return;
   }
-  const stderr = invocation.runtime.stderr;
   const paint = makePaint(invocation.state.colorEnabled);
-  writeDiagnostic(stderr, envelope.error, paint);
-  for (const diagnostic of envelope.diagnostics) {
-    writeDiagnostic(stderr, diagnostic, paint);
-  }
+  writeSections(
+    [envelope.error, ...envelope.diagnostics].map((diagnostic) =>
+      diagnosticSection(diagnostic, paint),
+    ),
+    invocation.runtime.stderr,
+  );
 }
 
 /** `--version` prints createCli's version and exits 0. In json mode the

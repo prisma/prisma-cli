@@ -354,6 +354,54 @@ export function withDocsUrl(
   return { ...diagnostic, docsUrl: `${base}${diagnostic.code}` };
 }
 
+/** One rendered paragraph of human output. `compact` marks a run of
+ *  one-liners — summaries, next-action arrows, single-line diagnostics —
+ *  that reads as a glyph-aligned list. */
+export interface RenderedSection {
+  readonly lines: string[];
+  readonly compact: boolean;
+}
+
+const TRAILING_NEWLINE = /\n$/;
+
+export function diagnosticSection(
+  diagnostic: Diagnostic,
+  paint: Paint,
+): RenderedSection {
+  const lines: string[] = [];
+  writeDiagnostic(
+    {
+      write: (text) =>
+        lines.push(...text.replace(TRAILING_NEWLINE, "").split("\n")),
+    },
+    diagnostic,
+    paint,
+  );
+  return { lines, compact: lines.length === 1 };
+}
+
+/** A blank line between sections wherever a multi-line one is involved,
+ *  so a card, a table and the next actions each read as their own
+ *  paragraph; adjacent compact sections keep hugging. */
+export function writeSections(
+  sections: readonly RenderedSection[],
+  stream: { write(text: string): void },
+): void {
+  let previous: RenderedSection | undefined;
+  for (const section of sections) {
+    if (section.lines.length === 0) {
+      continue;
+    }
+    if (previous !== undefined && !(previous.compact && section.compact)) {
+      stream.write("\n");
+    }
+    for (const line of section.lines) {
+      stream.write(`${line}\n`);
+    }
+    previous = section;
+  }
+}
+
 /** Channel discipline (operator ruling, 2026-08-09): human Blocks,
  *  next-action lines, and diagnostics are presentation prose on stderr;
  *  the materialized `stdout` presentation lines are the machine-usable
@@ -364,15 +412,25 @@ export function renderCompletedHuman(
 ): void {
   const { runtime, state } = invocation;
   const paint = makePaint(state.colorEnabled);
-  for (const block of presented.presentation.human) {
-    renderBlock(block, paint, (line) => runtime.stderr.write(`${line}\n`));
-  }
-  for (const action of presented.presentation.next) {
-    runtime.stderr.write(`${renderNextAction(action, paint)}\n`);
+  const sections: RenderedSection[] = presented.presentation.human.map(
+    (block) => {
+      const lines: string[] = [];
+      renderBlock(block, paint, (line) => lines.push(line));
+      return { lines, compact: block.kind === "summary" };
+    },
+  );
+  if (presented.presentation.next.length > 0) {
+    sections.push({
+      lines: presented.presentation.next.map((action) =>
+        renderNextAction(action, paint),
+      ),
+      compact: true,
+    });
   }
   for (const diagnostic of presented.diagnostics) {
-    writeDiagnostic(runtime.stderr, withDocsUrl(state, diagnostic), paint);
+    sections.push(diagnosticSection(withDocsUrl(state, diagnostic), paint));
   }
+  writeSections(sections, runtime.stderr);
   /** The machine lines exist for a consumer on the other end of
    *  stdout. Only when stdout and stderr BOTH render to a terminal do
    *  the blocks and the mirror land on the same screen as visible

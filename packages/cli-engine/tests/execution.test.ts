@@ -1184,12 +1184,16 @@ describe("a failure carrying several findings", () => {
     };
   }
 
+  // Multi-line findings separate with a blank line; the trailing run of
+  // one-liners keeps hugging as one glyph-aligned list.
   const STDERR =
     "✘ [COMPOSER.CONFIG_INVALID] prisma.config.ts has 3 problems.\n" +
     "  why: Every problem found is listed below.\n" +
     "→ Fix all three, then run the command again.\n" +
+    "\n" +
     "✘ [COMPOSER.MISSING_NAME] services[0] has no name.\n" +
     "→ Give services[0] a name.\n" +
+    "\n" +
     "✘ [COMPOSER.UNKNOWN_ENGINE] services[1].engine 'postgres9' is not a known engine.\n" +
     "✘ [COMPOSER.PORT_OUT_OF_RANGE] services[1].port 70000 is above 65535.\n";
 
