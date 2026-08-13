@@ -10,10 +10,14 @@ import {
   rewriteWorkspaceDeps,
 } from "./set-version-utils.ts";
 
-// Operator ruling 2026-08-10: `@prisma/compute` versions independently
-// pending extraction to another repo; the lockstep set is the root plus
-// the CLI packages. Its manifest and publish workflow stay untouched.
-const LOCKSTEP_EXCLUDED = new Set(["@prisma/compute"]);
+// Operator rulings: `@prisma/compute` versions independently pending
+// extraction to another repo (2026-08-10), and `@prisma/cli-engine`
+// versions independently so an engine version means "the engine
+// changed" rather than "the CLI released" — which is what keeps the
+// exact peer pins on it cheap (2026-08-13, ADR 0004). A lockstep bump
+// never changes their `version` field; their workspace pins on
+// lockstep siblings ARE still swept, so those never go stale.
+const LOCKSTEP_EXCLUDED = new Set(["@prisma/compute", "@prisma/cli-engine"]);
 
 const rootDir = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 
@@ -56,23 +60,27 @@ let updatedCount = 0;
 // private packages drifted, that invariant would be silently violated
 // by direct invocations of this script.
 for (const pkg of workspacePackages) {
-  if (LOCKSTEP_EXCLUDED.has(pkg.name)) {
-    console.log(`Skipped ${pkg.name} (excluded from lockstep)`);
-    continue;
-  }
+  const excluded = LOCKSTEP_EXCLUDED.has(pkg.name);
   const packageJsonPath = path.join(pkg.path, "package.json");
   // biome-ignore lint/performance/noAwaitInLoops: each package prints its "Updated" line as its manifest is rewritten, so a run that fails part way through leaves an accurate record of which manifests already changed.
   const content = await fs.readFile(packageJsonPath, "utf-8");
   const packageJson: PackageJson = JSON.parse(content);
 
-  packageJson.version = version;
-  rewriteWorkspaceDeps(packageJson, version);
+  // An excluded package keeps its own version, but its workspace pins
+  // on LOCKSTEP siblings must still move with the bump, or they name a
+  // version that stops existing at publish time.
+  if (!excluded) packageJson.version = version;
+  rewriteWorkspaceDeps(packageJson, version, LOCKSTEP_EXCLUDED);
   await fs.writeFile(
     packageJsonPath,
     `${JSON.stringify(packageJson, null, 2)}\n`,
   );
 
-  console.log(`Updated ${pkg.name} to ${version}`);
+  console.log(
+    excluded
+      ? `Updated ${pkg.name} workspace pins only (excluded from lockstep)`
+      : `Updated ${pkg.name} to ${version}`,
+  );
   updatedCount++;
 }
 
@@ -98,7 +106,7 @@ for (const manifestPath of trackedManifests) {
   const packageJson: PackageJson = JSON.parse(content);
   if (!participatesInLockstep(packageJson)) continue;
   packageJson.version = version;
-  rewriteWorkspaceDeps(packageJson, version);
+  rewriteWorkspaceDeps(packageJson, version, LOCKSTEP_EXCLUDED);
   await fs.writeFile(manifestPath, `${JSON.stringify(packageJson, null, 2)}\n`);
   console.log(
     `Updated ${path.relative(rootDir, manifestPath)} (project-boundary manifest) to ${version}`,

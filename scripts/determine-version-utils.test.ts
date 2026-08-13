@@ -4,6 +4,7 @@ import {
   assertCanonicalBase,
   computeNextMinor,
   computeNextReleaseVersion,
+  devVersion,
   parseVersion,
   releaseDistTag,
 } from "./determine-version-utils.ts";
@@ -150,5 +151,22 @@ describe("releaseDistTag", () => {
 
   it("refuses a non-canonical base", () => {
     assert.throws(() => releaseDistTag("8.0.0-rc.1-dev.3"), NOT_CANONICAL);
+  });
+});
+
+describe("devVersion", () => {
+  it("suffixes the base with the workflow run number under -dev", () => {
+    assert.equal(devVersion("8.0.0-rc.2", "417"), "8.0.0-rc.2-dev.417");
+    assert.equal(devVersion("0.17.0", "3"), "0.17.0-dev.3");
+  });
+
+  it("refuses a missing or malformed run number", () => {
+    assert.throws(() => devVersion("8.0.0-rc.2", ""));
+    assert.throws(() => devVersion("8.0.0-rc.2", "0"));
+    assert.throws(() => devVersion("8.0.0-rc.2", "abc"));
+  });
+
+  it("refuses a non-canonical base, same as every other publish path", () => {
+    assert.throws(() => devVersion("8.0.0-rc.2-dev.1", "4"));
   });
 });

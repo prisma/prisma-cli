@@ -16,9 +16,11 @@ The transition onto the RC line is a one-time bump from the pre-8 base to `8.0.0
 
 Every lockstep workspace package — publishable, private, and the workspace root — carries the same `version`. One read of root [`package.json`](../../package.json) answers "what version is this code?" for the repository.
 
-**Exception:** `@prisma/compute` versions independently, pending extraction to another repository (operator ruling 2026-08-10). It is hard-excluded in [`scripts/set-version.ts`](../../scripts/set-version.ts) and keeps its own publish workflow ([`publish-compute.yml`](../../.github/workflows/publish-compute.yml)).
+**Exceptions:** `@prisma/compute` versions independently, pending extraction to another repository (operator ruling 2026-08-10), and keeps its own publish workflow ([`publish-compute.yml`](../../.github/workflows/publish-compute.yml)). `@prisma/cli-engine` also versions independently ([ADR 0004](../architecture/adrs/0004-engine-version-pinning.md), operator ruling 2026-08-13): an engine version means "the engine changed", not "the CLI released", which is what keeps the exact peer pins the product CLI packages hold on it cheap — they repin only when the engine actually moves. The engine follows honest pre-1.0 semver (a breaking change bumps the minor); bumping it is a deliberate edit to `packages/cli-engine/package.json` plus the shell's `workspace:<engine version>` pin, landed as a reviewed commit like any other version change. Both packages are hard-excluded in [`scripts/set-version.ts`](../../scripts/set-version.ts), which still sweeps their `workspace:` pins on lockstep siblings so those never go stale. At publish time the engine ships at its own manifest version; an already-published engine version is a no-op. The engine's own line continues from `0.1.0` (after the published `0.0.x` series); the `8.0.0-rc.N` engine versions that shipped while it was still in lockstep are burned values — they exist on the registry, nothing pins them, and version numbers are never reused.
 
-The lockstep set is: the workspace root, `packages/cli`, `packages/cli-engine`, `packages/cli-telemetry`, and `packages/tsconfig`. Private packages are never published (`pnpm publish` skips them), but they still version in lockstep so a contributor cloning the repo at any commit sees one consistent answer to "what version is this code?". Workspace-internal dependencies are pinned as `workspace:<version>` (e.g. `workspace:8.0.0-rc.1`); pnpm resolves them locally during development and rewrites them to the exact version at publish time, so every published package carries an exact-version pin on its siblings.
+The lockstep set is: the workspace root, `packages/cli`, `packages/cli-telemetry`, `packages/cli-conformance`, and `packages/tsconfig`. Private packages are never published (`pnpm publish` skips them), but they still version in lockstep so a contributor cloning the repo at any commit sees one consistent answer to "what version is this code?". Workspace-internal dependencies are pinned as `workspace:<version>` (e.g. `workspace:8.0.0-rc.1`); pnpm resolves them locally during development and rewrites them to the exact version at publish time, so every published package carries an exact-version pin on its siblings.
+
+How the packages published by *other* repositories relate to the engine's version — the product CLI packages the shell mounts, and the product libraries applications install — is governed by [ADR 0004](../architecture/adrs/0004-engine-version-pinning.md): product CLI packages declare `@prisma/cli-engine` as an exact peer dependency the shell satisfies, and product libraries carry no engine relationship at all.
 
 ## Dist-tag convention
 
@@ -28,7 +30,7 @@ The npm registry exposes the CLI packages under these dist-tags:
 - **`next`** — the Prisma 8 RC line (`8.0.0-rc.N`). A merged release PR on the RC line publishes here automatically.
 - **`beta`** — reserved for hand-cut previews ahead of significant changes, published by dispatching the workflow with that dist-tag. Routine releases do not use this tag.
 
-There is no `dev` channel. A push to `main` that does not change the version publishes nothing, because the version at that commit is already on the registry and there is nothing else this repository could honestly call the build. To hand someone an unreleased build, use the per-PR preview below.
+- **`dev`** — every routine push to `main` publishes `<base>-dev.<run>` here automatically (operator ruling 2026-08-13, superseding the earlier "no dev channel" ruling). The suffix derives from the workflow run number and is stamped ephemerally in CI, never committed, so release versions remain exactly what a commit says. The channel exists so automated family repins ([`auto-repin.yml`](../../.github/workflows/auto-repin.yml)) deploy without a human: composer's and prisma/prisma's publish workflows dispatch to this repo, an auto-merge repin PR runs the full quality and conformance checks, and its merge ships the dev build. Only a real release — an `rc.N` bump under `next`, or moving `latest` — is a human act.
 
 PR previews go through [`pkg.pr.new`](https://pkg.pr.new) ([`preview-cli-package.yml`](../../.github/workflows/preview-cli-package.yml)); they carry the committed base version and install via per-commit URLs, not dist-tags.
 
@@ -76,6 +78,6 @@ The pure version-computation helpers are covered by `pnpm test:scripts` (run in 
 
 ## Non-goals
 
-- **Independent per-package versioning** (beyond the ruled `@prisma/compute` exclusion). Lockstep is the invariant the rest of the contract is built on.
+- **Independent per-package versioning** (beyond the ruled exclusions: `@prisma/compute`, and `@prisma/cli-engine` per ADR 0004). Lockstep is the invariant the rest of the contract is built on for everything else.
 - **A scripted `beta` cadence.** The `beta` dist-tag exists but cutting beta builds is a manual `workflow_dispatch`. (The RC cadence, by contrast, *is* the routine scripted path.)
 - **Patch releases on the RC line.** A fix ships as the next `rc.N`.
