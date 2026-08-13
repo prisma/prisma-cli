@@ -69,38 +69,6 @@ jobs:
       - name: Build workspace packages
         run: pnpm build
 
-      # TEMP DIAGNOSTIC (remove before merge): the fstat probe correlates
-      # with an openapi-fetch resolution failure only in CI; dump the
-      # layout and probe the exact failing import chain.
-      # TEMP DIAGNOSTIC 2 (remove before merge): the harness child differs
-      # from a workflow-step child by minimal env + out-of-repo cwd.
-      # Reproduce each in isolation.
-      - name: Diagnose harness conditions
-        env:
-          PRISMA_E2E_SERVICE_TOKEN: ${{ secrets.PRISMA_E2E_SERVICE_TOKEN }}
-          PRISMA_E2E_WORKSPACE_ID: ${{ secrets.PRISMA_E2E_WORKSPACE_ID }}
-        run: |
-          REPO="$PWD"
-          SANDBOX="$(mktemp -d)"
-          echo "--- A: repo cwd, full env"
-          PRISMA_SERVICE_TOKEN="$PRISMA_E2E_SERVICE_TOKEN" PRISMA_WORKSPACE_ID="$PRISMA_E2E_WORKSPACE_ID" node "$REPO/packages/cli/dist/cli.js" project list --json | head -c 300; echo
-          echo "--- B: sandbox cwd, full env"
-          (cd "$SANDBOX" && PRISMA_SERVICE_TOKEN="$PRISMA_E2E_SERVICE_TOKEN" PRISMA_WORKSPACE_ID="$PRISMA_E2E_WORKSPACE_ID" node "$REPO/packages/cli/dist/cli.js" project list --json | head -c 300); echo
-          echo "--- C: sandbox cwd, minimal env (the harness shape)"
-          (cd "$SANDBOX" && env -i PATH="$PATH" HOME="$SANDBOX" TMPDIR="${TMPDIR:-/tmp}" CI=1 DO_NOT_TRACK=1 PRISMA_NEXT_DISABLE_TELEMETRY=1 PRISMA_SERVICE_TOKEN="$PRISMA_E2E_SERVICE_TOKEN" PRISMA_WORKSPACE_ID="$PRISMA_E2E_WORKSPACE_ID" node "$REPO/packages/cli/dist/cli.js" project list --json | head -c 300); echo
-          echo "--- D: repo cwd, minimal env"
-          env -i PATH="$PATH" HOME="$SANDBOX" TMPDIR="${TMPDIR:-/tmp}" CI=1 DO_NOT_TRACK=1 PRISMA_NEXT_DISABLE_TELEMETRY=1 PRISMA_SERVICE_TOKEN="$PRISMA_E2E_SERVICE_TOKEN" PRISMA_WORKSPACE_ID="$PRISMA_E2E_WORKSPACE_ID" node "$REPO/packages/cli/dist/cli.js" project list --json | head -c 300; echo
-
-      - name: Diagnose module layout
-        run: |
-          ls -la packages/cli-engine/node_modules/@prisma/ || true
-          ls node_modules/.pnpm/ | grep -iE "management|openapi" || true
-          ls node_modules/.pnpm/@prisma+management-api-sdk@1.55.0/node_modules/ || true
-          node -e "import('@prisma/management-api-sdk').then(() => console.log('root import ok'), (e) => console.log('root import FAIL:', e.message))"
-          node --input-type=module -e "import { pathToFileURL } from 'node:url'; const parent = pathToFileURL(process.cwd() + '/packages/cli-engine/dist/index.js').href; const r = await import.meta.resolve ? 'has-resolve' : 'no-resolve'; console.log(r); import(parent).then(() => console.log('engine dist import ok'), (e) => console.log('engine dist FAIL:', e.message));"
-          node packages/cli/dist/cli.js --version || true
-          PRISMA_SERVICE_TOKEN=invalid node packages/cli/dist/cli.js project list --json || true
-
       - name: Run the real-API end-to-end suite
         run: pnpm --filter @prisma/cli test:e2e
         env:
