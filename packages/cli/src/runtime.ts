@@ -1,3 +1,4 @@
+import { fstatSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import {
   type HostProcess,
@@ -79,6 +80,20 @@ function warnOnDeprecatedStateFileEnvVar(proc: HostProcess): void {
   );
 }
 
+/** Whether fd 1 and fd 2 are the same open device. Distinguishes one
+ *  terminal (mirror suppressed) from a harness that allocated separate
+ *  PTYs for the two streams (mirror kept). Undefined when the fds
+ *  cannot be inspected — the engine then assumes one terminal. */
+function outputStreamsShareDevice(): boolean | undefined {
+  try {
+    const out = fstatSync(1);
+    const err = fstatSync(2);
+    return out.dev === err.dev && out.ino === err.ino && out.rdev === err.rdev;
+  } catch {
+    return undefined;
+  }
+}
+
 export async function assembleRuntime(proc: HostProcess): Promise<Runtime> {
   const stdin: InputStream = {
     setRawMode:
@@ -113,6 +128,7 @@ export async function assembleRuntime(proc: HostProcess): Promise<Runtime> {
       stdout: proc.stdout.isTTY === true,
       stderr: proc.stderr.isTTY === true,
     },
+    outputStreamsShareDevice: outputStreamsShareDevice(),
     exit: (code) => proc.exit(code),
     onSignal: makeOnSignal(proc),
     loadConfig: (configPath) => loadConfig(proc.cwd(), configPath),

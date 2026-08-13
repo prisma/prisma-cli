@@ -432,12 +432,19 @@ export function renderCompletedHuman(
   }
   writeSections(sections, runtime.stderr);
   /** The machine lines exist for a consumer on the other end of
-   *  stdout. Only when stdout and stderr BOTH render to a terminal do
-   *  the blocks and the mirror land on the same screen as visible
-   *  duplication, so that is the one case that skips them (amends the
-   *  2026-08-09 "always" ruling; any redirection of either stream
-   *  keeps the mirror, so pipes still receive exactly the data lines). */
-  if (!(runtime.isTty.stdout && runtime.isTty.stderr)) {
+   *  stdout. Only when stdout and stderr both render to the SAME
+   *  terminal do the blocks and the mirror land on one screen as
+   *  visible duplication, so that is the one case that skips them
+   *  (amends the 2026-08-09 "always" ruling; any redirection of either
+   *  stream keeps the mirror, so pipes still receive exactly the data
+   *  lines). A harness that allocates two separate PTYs reports
+   *  outputStreamsShareDevice false and keeps its mirror; a host that
+   *  cannot tell is treated as one terminal. */
+  const oneScreen =
+    runtime.isTty.stdout &&
+    runtime.isTty.stderr &&
+    runtime.outputStreamsShareDevice !== false;
+  if (!oneScreen) {
     for (const line of presented.presentation.stdout) {
       runtime.stdout.write(`${line}\n`);
     }
