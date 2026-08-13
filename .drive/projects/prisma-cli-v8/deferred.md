@@ -199,6 +199,16 @@ CLI does not do, and each restarts as engine work if wanted:
   `packages/cli`. Fix: have the child write `ready` only after the
   handler is installed — the same ordering the engine's own
   `tests/fixtures/child.mjs` `trap-term` fixture already uses.
+- **`credential-manager.test.ts`'s crashed-lock contention test is
+  flaky on Windows CI.** "lets only one of two waiting mutations
+  clear the same crashed holder's lock" timed out at 5 s on
+  `windows-latest` during #181 (2026-08-13, a PR touching nothing
+  near the credential manager) and passed on the re-run of the same
+  commit. One sighting so far — same reddens-shared-checks family as
+  the two entries above. Likely shape: two waiters racing a lock
+  file under Windows FS latency needs more than the 5 s budget, or
+  the same write-marker-before-ready ordering. Diagnose on the
+  second sighting.
 
 ## Owned by whoever converts a family's renderers
 
