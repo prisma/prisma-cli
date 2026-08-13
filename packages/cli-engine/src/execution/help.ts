@@ -34,16 +34,18 @@ export function helpFlagGiven(argv: readonly string[]): boolean {
   );
 }
 
-/** Help renders before the shared flags are parsed, so its colour
- *  decision reads raw argv: explicit flag, then NO_COLOR, then the TTY
- *  of the stream help writes to. */
-export function helpColorEnabled(
+/** The colour decision available before the shared flags are parsed,
+ *  read from raw argv: explicit flag, then NO_COLOR, then the TTY of
+ *  the stream about to be written. Help and pre-mount failures both
+ *  render through this; applySharedFlags re-resolves once a command
+ *  actually parses. */
+export function preParseColorEnabled(
   argv: readonly string[],
   runtime: {
     readonly env: Readonly<Record<string, string | undefined>>;
     readonly isTty: { readonly stdout: boolean; readonly stderr: boolean };
   },
-  format: "human" | "json",
+  stream: "stdout" | "stderr",
 ): boolean {
   const tokens = flagTokens(argv);
   if (tokens.includes("--no-color")) {
@@ -55,7 +57,7 @@ export function helpColorEnabled(
   if (runtime.env.NO_COLOR !== undefined) {
     return false;
   }
-  return format === "human" ? runtime.isTty.stdout : runtime.isTty.stderr;
+  return runtime.isTty[stream];
 }
 
 /** The command path the user asked help for: the leading non-flag

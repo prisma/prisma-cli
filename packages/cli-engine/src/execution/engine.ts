@@ -40,8 +40,8 @@ import {
 } from "./command-tree";
 import {
   bareGroupInvocation,
-  helpColorEnabled,
   helpFlagGiven,
+  preParseColorEnabled,
   renderHelp,
 } from "./help";
 import { checkNeeds, type NeedsOutcome } from "./needs";
@@ -316,7 +316,10 @@ export class EngineImpl implements Engine {
       yes: false,
       confirmValues: [],
       interactive: defaultInteractive(runtime),
-      colorEnabled: false,
+      /** Pre-parse resolution so a run that never mounts a command — an
+       *  unknown command, a parse failure — still colours its
+       *  diagnostics; applySharedFlags re-resolves after parsing. */
+      colorEnabled: preParseColorEnabled(argv, runtime, "stderr"),
       configPath: undefined,
       resolved: false,
       settledExitCode: undefined,
@@ -382,7 +385,11 @@ export class EngineImpl implements Engine {
         this.spec,
         this.tree,
         argv,
-        helpColorEnabled(argv, runtime, format),
+        preParseColorEnabled(
+          argv,
+          runtime,
+          format === "human" ? "stdout" : "stderr",
+        ),
         stream,
       );
       return 0;
