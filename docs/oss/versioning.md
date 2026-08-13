@@ -20,6 +20,8 @@ Every lockstep workspace package — publishable, private, and the workspace roo
 
 The lockstep set is: the workspace root, `packages/cli`, `packages/cli-engine`, `packages/cli-telemetry`, and `packages/tsconfig`. Private packages are never published (`pnpm publish` skips them), but they still version in lockstep so a contributor cloning the repo at any commit sees one consistent answer to "what version is this code?". Workspace-internal dependencies are pinned as `workspace:<version>` (e.g. `workspace:8.0.0-rc.1`); pnpm resolves them locally during development and rewrites them to the exact version at publish time, so every published package carries an exact-version pin on its siblings.
 
+How the packages published by *other* repositories relate to the engine's version — the product CLI packages the shell mounts, and the product libraries applications install — is governed by [ADR 0004](../architecture/adrs/0004-engine-version-pinning.md): product CLI packages declare `@prisma/cli-engine` as an exact peer dependency the shell satisfies, and product libraries carry no engine relationship at all.
+
 ## Dist-tag convention
 
 The npm registry exposes the CLI packages under these dist-tags:
