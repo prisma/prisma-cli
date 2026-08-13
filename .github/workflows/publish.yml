@@ -22,9 +22,15 @@ name: Publish to npm
 #     under the chosen dist-tag (default `latest`); also the dry-run path.
 #
 # Scope: publishes `@prisma/cli-engine` then `@prisma/cli` (the cli
-# depends on the engine, so the engine goes first). `@prisma/compute` is
-# excluded from the lockstep by operator ruling (2026-08-10) and keeps
-# its own workflow (`publish-compute.yml`).
+# depends on the engine, so the engine goes first). The engine versions
+# INDEPENDENTLY of the lockstep (ADR 0004, operator 2026-08-13): it
+# publishes at whatever version its own manifest carries, and because
+# an already-published version is treated as done (see publish_one), an
+# unbumped engine is a no-op while a bumped one ships in the same run.
+# Its dist-tag rides the run's tag; every consumer pins it exactly, so
+# the tag is cosmetic for the engine. `@prisma/compute` is excluded
+# from the lockstep by operator ruling (2026-08-10) and keeps its own
+# workflow (`publish-compute.yml`).
 
 on:
   push:

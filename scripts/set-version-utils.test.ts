@@ -151,6 +151,26 @@ describe("rewriteWorkspaceDeps", () => {
     });
   });
 
+  it("keeps pins on excluded packages at their own version, per ADR 0004", () => {
+    const pkg: MutablePackageJson = {
+      name: "@prisma/cli",
+      version: "8.0.0-rc.1",
+      dependencies: {
+        "@prisma/cli-engine": "workspace:0.1.0",
+      },
+      devDependencies: {
+        "@repo/tsconfig": "workspace:8.0.0-rc.1",
+      },
+    };
+    rewriteWorkspaceDeps(pkg, "8.0.0-rc.2", new Set(["@prisma/cli-engine"]));
+    assert.deepEqual(pkg.dependencies, {
+      "@prisma/cli-engine": "workspace:0.1.0",
+    });
+    assert.deepEqual(pkg.devDependencies, {
+      "@repo/tsconfig": "workspace:8.0.0-rc.2",
+    });
+  });
+
   it("tolerates a package with missing dep-field objects", () => {
     const pkg: MutablePackageJson = { name: "sparse", version: "0.7.0" };
     rewriteWorkspaceDeps(pkg, "0.8.0");

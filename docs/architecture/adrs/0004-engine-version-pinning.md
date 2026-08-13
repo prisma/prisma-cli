@@ -2,7 +2,7 @@
 
 ## Status
 
-Accepted (operator, 2026-08-13). One sub-decision remains open and is marked below.
+Accepted (operator, 2026-08-13). The engine-versioning sub-decision was ruled the same day: the engine versions independently.
 
 ## Context
 
@@ -37,7 +37,7 @@ Per edge:
 
 **Exact now, range later.** During the rc line the engine breaks its consumers deliberately, slice by slice, so a version range would be fiction. Post-GA, the recorded destination is widening the peers to a range under a written engine compatibility contract, so a non-breaking engine release ships in the next shell release with zero family republishes. Widening is a deliberate future decision against that contract, not a drift.
 
-**OPEN — engine versioning.** Today the engine versions in lockstep with the shell (`8.0.0-rc.N`), which manufactures a family-repin obligation out of every CLI release whether or not the engine changed. The proposal on the table is to version the engine independently, bumping only when it changes. This reverses part of the lockstep ruling and awaits the operator's decision; nothing in this ADR depends on it except the *frequency* of the repin train.
+**Engine versioning — RULED (operator, 2026-08-13): the engine versions independently.** Under the shell lockstep it previously shared, every CLI release manufactured a new engine version — and with it a family-repin obligation — whether or not the engine changed. Decoupled, an engine version means "the engine changed", the exact peers stay valid between real engine changes, and the repin train runs only when there is something to repin for. Mechanically: the engine is excluded from `set-version.ts`'s lockstep (alongside `@prisma/compute`), follows honest pre-1.0 semver (breaking bumps the minor), and publishes at its own manifest version, with an already-published version treated as a no-op by the publish workflow.
 
 ## Enforcement
 
@@ -51,7 +51,7 @@ The conformance checkers in both publishing repos are the mechanism, evolved fro
 
 - *User installs the CLI alone* (global, `npx`, devDependency): peers guarantee one engine regardless of how the package manager arranges the tree.
 - *App depends on a product library and the CLI*: the library carries no engine, so no duplication is possible through that route. This case was unsolvable under `dependencies` pinning and is the reason peers plus the split were chosen.
-- *Release skew between the component repos*: an unsatisfied exact peer fails at install/publish-check time instead of shipping a duplicated tree; the open versioning decision above governs how often skew windows occur at all.
+- *Release skew between the component repos*: an unsatisfied exact peer fails at install/publish-check time instead of shipping a duplicated tree; with the engine versioned independently, skew windows open only when the engine actually changes.
 - *Two CLI versions in one monorepo*: nested and isolated; each tree satisfies its own peers.
 - *CLI ↔ library version skew* (the app's `@prisma/composer` vs the CLI's `composer-cli`): explicitly **not** a duplication problem and not addressed here; it is a compatibility-policy question (support floor or runtime detection) that needs its own owner.
 

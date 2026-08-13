@@ -87,7 +87,7 @@ async function tarball(): Promise<readonly Finding[]> {
         {
           familyPackage: "@prisma/composer",
           familyPin: "0.0.9",
-          shellPin: "8.0.0-rc.1",
+          shellPin: "0.1.0",
           reason:
             "operator ruling 2026-08-12: ignore for now — composer cannot pin an engine version that is not published yet",
           removeWhen:
@@ -96,7 +96,7 @@ async function tarball(): Promise<readonly Finding[]> {
         {
           familyPackage: "@prisma/orm-toolchain",
           familyPin: "0.0.9",
-          shellPin: "8.0.0-rc.1",
+          shellPin: "0.1.0",
           reason:
             "same class, same ruling: the ORM toolchain cannot pin an engine version that is not published yet",
           removeWhen:

@@ -42,12 +42,18 @@ const DEP_FIELDS = [
 export function rewriteWorkspaceDeps(
   packageJson: MutablePackageJson,
   version: string,
+  excluded: ReadonlySet<string> = new Set(),
 ): void {
   for (const field of DEP_FIELDS) {
     const deps = packageJson[field];
     if (!deps) continue;
     for (const [name, spec] of Object.entries(deps)) {
       if (typeof spec !== "string" || !spec.startsWith("workspace:")) continue;
+      // A pin on an independently-versioned sibling keeps ITS version:
+      // rewriting @prisma/cli's workspace:<engine version> to the CLI's
+      // lockstep version would silently point the shell at an engine
+      // version that does not exist (ADR 0004 decouples the engine).
+      if (excluded.has(name)) continue;
       deps[name] = `workspace:${version}`;
     }
   }
