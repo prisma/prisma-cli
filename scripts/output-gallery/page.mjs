@@ -4,8 +4,8 @@ import { fileURLToPath } from "node:url";
 
 const GALLERY_DIR =
   process.env.GALLERY_DIR ??
-  new URL("../../wip/gallery/", import.meta.url).pathname;
-const body = readFileSync(`${GALLERY_DIR}gallery-body.html`, "utf8");
+  fileURLToPath(new URL("../../wip/gallery/", import.meta.url));
+const body = readFileSync(join(GALLERY_DIR, "gallery-body.html"), "utf8");
 
 const html = `<title>Prisma CLI output gallery</title>
 <style>

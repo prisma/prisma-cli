@@ -6,8 +6,8 @@ import { fileURLToPath } from "node:url";
 // Captures and output live in the gitignored working dir by default.
 const GALLERY_DIR =
   process.env.GALLERY_DIR ??
-  new URL("../../wip/gallery/", import.meta.url).pathname;
-const AFTER = `${GALLERY_DIR}shots/`;
+  fileURLToPath(new URL("../../wip/gallery/", import.meta.url));
+const AFTER = join(GALLERY_DIR, "shots");
 
 const FG = {
   30: "#3f4451",
