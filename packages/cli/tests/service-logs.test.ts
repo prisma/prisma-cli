@@ -325,6 +325,32 @@ describe("prisma-cli service logs", () => {
     });
   });
 
+  /**
+   * A page always ends with a terminal record, so a body that stops
+   * without one was cut short. Exiting 0 there would present a partial
+   * log as the whole page, with nothing telling the user it was not.
+   */
+  it("settles a truncated page as SERVICE.LOGS_INCOMPLETE, keeping the lines it read", async () => {
+    const harness = await makeServiceCli({
+      routes: logRoutes([[log("arrived"), log("also arrived")]], []),
+    });
+
+    const result = await harness.cli.run(
+      ["service", "logs", ...TARGET, "--json"],
+      { cwd: harness.cwd, env: harness.env },
+    );
+
+    expect(result.exitCode).toBe(2);
+    const frame = result.json[result.json.length - 1];
+    if (frame?.kind !== "result" || frame.envelope.ok) {
+      throw new Error("expected an errored envelope");
+    }
+    expect(frame.envelope.error.code).toBe("SERVICE.LOGS_INCOMPLETE");
+    // What did arrive is still reported: the refusal is about
+    // completeness, not about discarding the lines that were read.
+    expect(dataLines(result.events)).toEqual(["arrived", "also arrived"]);
+  });
+
   it("settles a refused request as SERVICE.LOGS_FAILED carrying the status", async () => {
     const harness = await makeServiceCli({
       routes: readFlowRoutes({
@@ -498,10 +524,12 @@ describe("prisma-cli service logs --follow", () => {
     expect(queries).toHaveLength(1);
   });
 
-  it("stops with SERVICE.LOGS_NO_CURSOR when a page carries no terminal record", async () => {
+  /** A truncated page is an incomplete read, not a page that closed with
+   *  nothing to resume from, so it reports the more specific failure —
+   *  the same one page mode reports for the same body. */
+  it("stops with SERVICE.LOGS_INCOMPLETE when a page carries no terminal record", async () => {
     const queries: Array<Record<string, unknown> | undefined> = [];
     const harness = await makeServiceCli({
-      // A truncated body: the page never closed, so it named no cursor.
       routes: logRoutes([[log("truncated")]], queries),
     });
 
@@ -515,7 +543,7 @@ describe("prisma-cli service logs --follow", () => {
     if (frame?.kind !== "result" || frame.envelope.ok) {
       throw new Error("expected an errored envelope");
     }
-    expect(frame.envelope.error.code).toBe("SERVICE.LOGS_NO_CURSOR");
+    expect(frame.envelope.error.code).toBe("SERVICE.LOGS_INCOMPLETE");
     expect(queries).toHaveLength(1);
   });
 

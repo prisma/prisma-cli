@@ -110,6 +110,23 @@ function logsFailedError(
   );
 }
 
+/**
+ * The body ended mid-page, without the terminal record that closes one.
+ * Distinct from SERVICE.LOGS_NO_CURSOR, which is a page that closed
+ * properly and said there is nothing to resume from: this one is an
+ * incomplete read, and the lines already printed are not the whole page.
+ */
+function logsIncompleteError(deploymentId: string): CliStructuredError {
+  return new CliStructuredError(
+    "SERVICE.LOGS_INCOMPLETE",
+    `Incomplete log page for deployment ${deploymentId}`,
+    {
+      why: "The response ended without the record that closes a page, so the lines shown may be only part of it.",
+      nextActions: [adviceAction("Rerun the command to read the page again.")],
+    },
+  );
+}
+
 /** An error terminal record is the platform reporting that the log read
  *  itself failed, so it settles the run rather than printing. */
 function logStreamFailedError(
@@ -263,12 +280,17 @@ async function resolveLiveDeployment(
  * Reads one page and reports its log records. Returns the terminal
  * record that closed it — the caller decides whether that ends the run
  * or starts the next page.
+ *
+ * Every page ends with a terminal record, so a body that stops without
+ * one was truncated. The lines that did arrive have already been
+ * reported, but the run must not settle as though it had read the whole
+ * page: the user would have a partial log and no way to tell.
  */
 async function readPage(
   ctx: CommandContext,
   deploymentId: string,
   query: { tail?: number; from_start?: "true"; cursor?: string },
-): Promise<TerminalRecord | null> {
+): Promise<TerminalRecord> {
   const { data, response } = await ctx.api.GET(
     "/v1/deployments/{deploymentId}/logs",
     {
@@ -300,6 +322,9 @@ async function readPage(
       data: { byteStart: record.byteStart, byteEnd: record.byteEnd },
     });
   });
+  if (terminal === null) {
+    throw logsIncompleteError(deploymentId);
+  }
   return terminal;
 }
 
@@ -356,7 +381,7 @@ async function followPages(
     await sleep(interval, ctx.signal);
     const next = await readPage(ctx, deploymentId, { cursor });
 
-    if (next?.kind === "error") {
+    if (next.kind === "error") {
       if (!next.retryable || retriedAfterError) {
         throw logStreamFailedError(deploymentId, next);
       }
@@ -364,7 +389,7 @@ async function followPages(
       continue;
     }
     retriedAfterError = false;
-    cursor = requireResumeCursor(deploymentId, next?.cursor ?? null);
+    cursor = requireResumeCursor(deploymentId, next.cursor);
   }
 }
 
@@ -465,7 +490,7 @@ export const serviceLogsCommand = defineSessionCommand({
       : { tail: args.flags.tail ?? DEFAULT_TAIL };
 
     const terminal = await readPage(ctx, deploymentId, firstPageQuery);
-    if (terminal?.kind === "error") {
+    if (terminal.kind === "error") {
       throw logStreamFailedError(deploymentId, terminal);
     }
     if (!args.flags.follow) {
@@ -474,6 +499,6 @@ export const serviceLogsCommand = defineSessionCommand({
       return ok(undefined);
     }
 
-    return followPages(ctx, deploymentId, terminal?.cursor ?? null);
+    return followPages(ctx, deploymentId, terminal.cursor);
   },
 });
