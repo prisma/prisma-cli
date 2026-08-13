@@ -9,9 +9,11 @@ name: Publish to npm
 #   rewrites a manifest to get there.
 #
 # Trigger model:
-#   - push to `main` with the root `version` unchanged → nothing to
-#     publish; the committed version is already on the registry. Use
-#     the per-PR pkg.pr.new previews to try an unreleased build.
+#   - push to `main` with the root `version` unchanged → publish
+#     `<base>-dev.<run>` under the `dev` dist-tag (operator ruling
+#     2026-08-13: automated family repins deploy automatically; only a
+#     real release needs a human). The dev suffix is stamped
+#     ephemerally below and never committed.
 #   - push to `main` with the root `version` changed   → publish `<base>`
 #     under its canonical dist-tag — `next` on the RC line, `latest` for
 #     stable — and create a GitHub Release (marked pre-release on the RC
@@ -105,6 +107,14 @@ jobs:
           # the script also handles.
           PUSH_BEFORE_SHA: ${{ github.event.before }}
         run: node scripts/determine-version.ts
+
+      # Dev publishes only: stamp `<base>-dev.<run>` across the lockstep
+      # manifests for this run. Ephemeral — nothing is committed; release
+      # versions remain exactly what the commit says. The engine is
+      # excluded from the sweep and ships at its own committed version.
+      - name: Stamp dev version
+        if: ${{ steps.version.outputs.publish == 'true' && steps.version.outputs.tag == 'dev' }}
+        run: node scripts/set-version.ts "${{ steps.version.outputs.version }}"
 
       - name: Build packages
         if: ${{ steps.version.outputs.publish == 'true' }}

@@ -15,10 +15,11 @@
  *                          PR ships a release automatically — `latest`
  *                          keeps serving the pre-8 CLI until the
  *                          operator deliberately moves it.
- *                          Otherwise there is nothing to publish: the
- *                          committed version is already on the registry.
- *                          `publish` is written as `false` and the
- *                          workflow skips the remaining steps.
+ *                          Otherwise `<base>-dev.<run>` under the `dev`
+ *                          dist-tag: every routine main push — an
+ *                          automated family repin above all — ships an
+ *                          installable dev build automatically
+ *                          (operator ruling 2026-08-13).
  * - `workflow_dispatch` → `<base>` (no suffix), dist-tag from
  *                          `INPUT_DIST_TAG`; empty means the version's
  *                          canonical tag (`releaseDistTag`). Useful as a
@@ -30,9 +31,10 @@
  * Outputs `publish`, `version`, `tag` and `release` to `$GITHUB_OUTPUT`
  * for downstream workflow steps to consume.
  *
- * This script never rewrites a manifest. The version it reports is the
- * one committed at this ref, always — which is the whole point of
- * keeping the version in `package.json` (docs/oss/versioning.md).
+ * This script never rewrites a manifest. Release versions are the ones
+ * committed at this ref, always; a dev version derives its suffix from
+ * the run number, and the workflow stamps it ephemerally in CI without
+ * committing it (docs/oss/versioning.md).
  */
 
 import { execFileSync } from "node:child_process";
@@ -42,6 +44,7 @@ import { fileURLToPath } from "node:url";
 import type { VersionResult } from "./determine-version-utils.ts";
 import {
   assertCanonicalBase,
+  devVersion,
   releaseDistTag,
 } from "./determine-version-utils.ts";
 
@@ -155,12 +158,21 @@ switch (eventName) {
         `Previous root version: ${previous.version ?? "(unset)"} → release bump detected.`,
       );
       result = { version: baseVersion, tag: releaseDistTag(baseVersion) };
-    } else {
+    } else if (previous.available) {
+      // Routine push: publish `<base>-dev.<run>` under `dev` (operator
+      // ruling 2026-08-13 — automatic repins from the product repos
+      // deploy automatically; only a real release needs a human). The
+      // suffix is derived here and stamped ephemerally in CI; it is
+      // never committed, so releases remain committed-at-HEAD.
+      const runNumber = process.env.GITHUB_RUN_NUMBER ?? "";
       console.log(
-        previous.available
-          ? "Root version unchanged by this push — nothing to publish."
-          : "Could not read the previous root version — not publishing.",
+        `Root version unchanged by this push → dev publish (run ${runNumber}).`,
       );
+      result = { version: devVersion(baseVersion, runNumber), tag: "dev" };
+    } else {
+      // A transient git error must never publish anything; skipping is
+      // recoverable by dispatching the workflow.
+      console.log("Could not read the previous root version — not publishing.");
       result = undefined;
     }
     break;

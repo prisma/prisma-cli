@@ -11,6 +11,7 @@ const STABLE_BASE_PATTERN = new RegExp(`^${NUM}\\.${NUM}\\.${NUM}$`);
 // reaching the pipeline is a mistake to fail on, not a case to support.
 // A future RC line widens this constant.
 const RC_BASE_PATTERN = /^8\.0\.0-rc\.([1-9]\d*)$/;
+const RUN_NUMBER_PATTERN = /^[1-9]\d*$/;
 
 export interface ParsedVersion {
   major: number;
@@ -63,6 +64,22 @@ export function computeNextReleaseVersion(current: string): string {
 export interface VersionResult {
   version: string;
   tag: string;
+}
+
+/**
+ * The version a routine main push publishes under the `dev` dist-tag
+ * (operator ruling 2026-08-13: automatic repins deploy automatic dev
+ * versions; only a real release needs a human). The run number makes
+ * the suffix monotonic per workflow run without reading the registry.
+ */
+export function devVersion(base: string, runNumber: string): string {
+  assertCanonicalBase(base);
+  if (!RUN_NUMBER_PATTERN.test(runNumber)) {
+    throw new Error(
+      `dev publishes derive their suffix from the workflow run number; got "${runNumber}"`,
+    );
+  }
+  return `${base}-dev.${runNumber}`;
 }
 
 /**
