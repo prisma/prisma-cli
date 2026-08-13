@@ -17,6 +17,7 @@ function listPresentations(result: BucketListResult): Presentations {
   const rows = bucketRows(result.buckets);
   const stdoutRows = bucketStdoutRows(result.buckets);
   return {
+    next: () => [],
     human: (): Block[] => [
       { kind: "summary", status: "info", text: TITLE },
       {
@@ -29,7 +30,13 @@ function listPresentations(result: BucketListResult): Presentations {
         ],
       },
       ...(rows.length === 0
-        ? [{ kind: "list" as const, items: ["No buckets found."] }]
+        ? [
+            {
+              kind: "summary" as const,
+              status: "info" as const,
+              text: "No buckets found.",
+            },
+          ]
         : [
             {
               kind: "table" as const,

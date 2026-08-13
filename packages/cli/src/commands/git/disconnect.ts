@@ -19,6 +19,9 @@ function disconnectPresentations(
   result: ProjectRepositoryConnectionResult,
 ): Presentations {
   return {
+    stdout: () => [],
+    json: () => result,
+    next: () => [],
     human: (): Block[] => [
       {
         kind: "summary",

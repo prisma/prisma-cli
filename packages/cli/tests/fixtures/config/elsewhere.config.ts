@@ -1,5 +1,5 @@
-import { defineConfig } from "@prisma/cli-engine";
+import { definePrismaConfig } from "@prisma/cli-engine";
 
-export default defineConfig({
+export default definePrismaConfig({
   toy: { greeting: "from the named file" },
 });

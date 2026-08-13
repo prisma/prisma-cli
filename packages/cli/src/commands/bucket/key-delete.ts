@@ -13,6 +13,9 @@ import { mapBucketOperationError } from "./errors";
 
 function deletePresentations(result: BucketKeyDeleteResult): Presentations {
   return {
+    stdout: () => [],
+    json: () => result,
+    next: () => [],
     human: (): Block[] => [
       { kind: "summary", status: "ok", text: "Deleting bucket access key." },
       { kind: "fields", rows: [{ label: "key", value: result.key.id }] },

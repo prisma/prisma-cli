@@ -44,6 +44,13 @@ export function createCli(spec: {
     Record<string, { readonly brief: string; readonly description?: string }>
   >;
   readonly commands: MountedTree;
+  /** Words for the root help card; the engine formats. */
+  readonly help?: {
+    readonly tagline?: string;
+    readonly description?: string;
+    readonly examples?: readonly string[];
+    readonly docsUrl?: string;
+  };
   /**
    * Declaring this, together with a `Runtime.spawnTelemetry` seam,
    * turns telemetry on: the engine reads the user's preference,

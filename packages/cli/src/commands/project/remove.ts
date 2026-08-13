@@ -24,6 +24,9 @@ const CONSENT_QUESTION =
 
 function removePresentations(result: ProjectRemoveResult): Presentations {
   return {
+    stdout: () => [],
+    json: () => result,
+    next: () => [],
     human: (): Block[] => [
       { kind: "summary", status: "ok", text: "Removing project." },
       {

@@ -182,7 +182,15 @@ describe("the run records its most recent child", () => {
       maySpawn: true,
       handler: async (_args, ctx) =>
         ok(
-          ctx.present({ data: ctx.lastChild() ?? "none" }, { human: () => [] }),
+          ctx.present(
+            { data: ctx.lastChild() ?? "none" },
+            {
+              human: () => [],
+              stdout: () => [],
+              json: () => ctx.lastChild() ?? "none",
+              next: () => [],
+            },
+          ),
         ),
     });
     const cli = createTestCli({ commands: { asking }, now: CLOCK });
@@ -199,7 +207,17 @@ describe("the run records its most recent child", () => {
       maySpawn: true,
       handler: async (_args, ctx) => {
         await ctx.spawn({ command: "alchemy" });
-        return ok(ctx.present({ data: ctx.lastChild() }, { human: () => [] }));
+        return ok(
+          ctx.present(
+            { data: ctx.lastChild() },
+            {
+              human: () => [],
+              stdout: () => [],
+              json: () => ctx.lastChild(),
+              next: () => [],
+            },
+          ),
+        );
       },
     });
     const cli = createTestCli({
@@ -224,7 +242,12 @@ describe("the run records its most recent child", () => {
         return ok(
           ctx.present(
             { data: { afterFirst, afterSecond: ctx.lastChild() } },
-            { human: () => [] },
+            {
+              human: () => [],
+              stdout: () => [],
+              json: () => ({ afterFirst, afterSecond: ctx.lastChild() }),
+              next: () => [],
+            },
           ),
         );
       },
@@ -306,7 +329,17 @@ describe("the spawn request", () => {
           .spawn({ command: "second" })
           .then(() => "no error", String);
         await first;
-        return ok(ctx.present({ data: second }, { human: () => [] }));
+        return ok(
+          ctx.present(
+            { data: second },
+            {
+              human: () => [],
+              stdout: () => [],
+              json: () => second,
+              next: () => [],
+            },
+          ),
+        );
       },
     });
     const cli = createTestCli({ commands: { twice }, now: CLOCK });
@@ -322,7 +355,17 @@ describe("the spawn request", () => {
       help: { summary: "Spawns without declaring it" },
       handler: async (_args, ctx) => {
         await ctx.spawn({ command: "alchemy" });
-        return ok(ctx.present({ data: null }, { human: () => [] }));
+        return ok(
+          ctx.present(
+            { data: null },
+            {
+              human: () => [],
+              stdout: () => [],
+              json: () => null,
+              next: () => [],
+            },
+          ),
+        );
       },
     });
     const cli = createTestCli({ commands: { undeclared }, now: CLOCK });
@@ -338,7 +381,17 @@ describe("the spawn request", () => {
       help: { summary: "Wants credentials it cannot hand over" },
       needs: { credentials: "child" },
       handler: async (_args, ctx) =>
-        ok(ctx.present({ data: null }, { human: () => [] })),
+        ok(
+          ctx.present(
+            { data: null },
+            {
+              human: () => [],
+              stdout: () => [],
+              json: () => null,
+              next: () => [],
+            },
+          ),
+        ),
     });
 
     expect(() =>
@@ -393,7 +446,17 @@ describe("output while a child owns the terminal", () => {
         ctx.report({ kind: "message", severity: "info", text: "during-2" });
         await child;
         ctx.report({ kind: "message", severity: "info", text: "after" });
-        return ok(ctx.present({ data: null }, { human: () => [] }));
+        return ok(
+          ctx.present(
+            { data: null },
+            {
+              human: () => [],
+              stdout: () => [],
+              json: () => null,
+              next: () => [],
+            },
+          ),
+        );
       },
     });
     const cli = createTestCli({
@@ -425,14 +488,32 @@ describe("output while a child owns the terminal", () => {
         const child = ctx.spawn({ command: "alchemy" });
         const failure = (() => {
           try {
-            ctx.present({ data: null }, { human: () => [] });
+            ctx.present(
+              { data: null },
+              {
+                human: () => [],
+                stdout: () => [],
+                json: () => null,
+                next: () => [],
+              },
+            );
             return "no error";
           } catch (cause) {
             return String(cause);
           }
         })();
         await child;
-        return ok(ctx.present({ data: failure }, { human: () => [] }));
+        return ok(
+          ctx.present(
+            { data: failure },
+            {
+              human: () => [],
+              stdout: () => [],
+              json: () => failure,
+              next: () => [],
+            },
+          ),
+        );
       },
     });
     const cli = createTestCli({ commands: { presenting }, now: CLOCK });
@@ -458,7 +539,17 @@ describe("signals", () => {
         abortedNow = () => ctx.signal.aborted;
         await ctx.spawn({ command: "alchemy" });
         abortedAfterChild = ctx.signal.aborted;
-        return ok(ctx.present({ data: null }, { human: () => [] }));
+        return ok(
+          ctx.present(
+            { data: null },
+            {
+              human: () => [],
+              stdout: () => [],
+              json: () => null,
+              next: () => [],
+            },
+          ),
+        );
       },
     });
     const cli = createTestCli({
@@ -1126,7 +1217,17 @@ describe("the commentary buffer is bounded", () => {
           });
         }
         await child;
-        return ok(ctx.present({ data: null }, { human: () => [] }));
+        return ok(
+          ctx.present(
+            { data: null },
+            {
+              human: () => [],
+              stdout: () => [],
+              json: () => null,
+              next: () => [],
+            },
+          ),
+        );
       },
     });
     const messages: string[] = [];
@@ -1161,7 +1262,17 @@ describe("the terminal has one owner at a time", () => {
           .confirm("Proceed?", { default: true })
           .then(() => "no error", String);
         await child;
-        return ok(ctx.present({ data: failure }, { human: () => [] }));
+        return ok(
+          ctx.present(
+            { data: failure },
+            {
+              human: () => [],
+              stdout: () => [],
+              json: () => failure,
+              next: () => [],
+            },
+          ),
+        );
       },
     });
     const cli = createTestCli({ commands: { prompting }, now: CLOCK });
@@ -1185,7 +1296,17 @@ describe("the terminal has one owner at a time", () => {
           .spawn({ command: "alchemy" })
           .then(() => "no error", String);
         await answer;
-        return ok(ctx.present({ data: failure }, { human: () => [] }));
+        return ok(
+          ctx.present(
+            { data: failure },
+            {
+              human: () => [],
+              stdout: () => [],
+              json: () => failure,
+              next: () => [],
+            },
+          ),
+        );
       },
     });
     const cli = createTestCli({ commands: { prompting }, now: CLOCK });

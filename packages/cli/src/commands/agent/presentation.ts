@@ -61,6 +61,8 @@ export function installPresentations(
   statusCommand: string | null,
 ): Presentations {
   return {
+    stdout: () => [],
+    json: () => result,
     human: () => [
       {
         kind: "summary",
@@ -90,6 +92,8 @@ export function statusPresentations(
   installCommand: string | null,
 ): Presentations {
   return {
+    stdout: () => [],
+    json: () => result,
     human: () => [
       title(`Checking ${result.statusScope} Prisma skills.`),
       fields([
@@ -105,7 +109,11 @@ export function statusPresentations(
         ...projectStatusRows(result),
       ]),
       result.skills.length === 0
-        ? { kind: "list", items: ["No Prisma skills reported."] }
+        ? {
+            kind: "summary",
+            status: "info",
+            text: "No Prisma skills reported.",
+          }
         : {
             kind: "table",
             columns: ["skill", "scope", "agents"],

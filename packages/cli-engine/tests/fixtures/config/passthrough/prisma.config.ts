@@ -1,5 +1,5 @@
-import { defineConfig } from "@prisma/cli-engine";
+import { definePrismaConfig } from "@prisma/cli-engine";
 
-export default defineConfig({
+export default definePrismaConfig({
   values: { list: [1, 2], when: new Date(0) },
 });

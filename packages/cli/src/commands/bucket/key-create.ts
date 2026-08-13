@@ -19,6 +19,8 @@ function resolveKeyRole(role: string | undefined): "read" | "read_write" {
 
 function createPresentations(result: BucketKeyCreateResult): Presentations {
   return {
+    json: () => result,
+    next: () => [],
     human: (): Block[] => [
       {
         kind: "summary",

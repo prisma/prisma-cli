@@ -86,10 +86,11 @@ function domainFailureRows(domain: ServiceDomainSummary): FieldRow[] {
 
 export function listPresentations(result: ServiceListResult): Presentations {
   return {
+    json: () => result,
     human: () => [
       title("Listing services for the selected project."),
       fields([
-        { label: "project", value: result.projectId },
+        { label: "project", value: result.projectName },
         { label: "branch", value: result.branch },
       ]),
       ...(result.services.length === 0
@@ -107,7 +108,7 @@ export function listPresentations(result: ServiceListResult): Presentations {
               rows: result.services.map((service) => [
                 service.name,
                 service.id,
-                service.region ?? "none",
+                service.region ?? "",
                 service.liveUrl ?? "not deployed",
               ]),
             } as const,
@@ -150,6 +151,8 @@ export function createPresentations(
   result: ServiceCreateResult,
 ): Presentations {
   return {
+    stdout: () => [],
+    json: () => result,
     human: () => [
       result.existing
         ? title(
@@ -161,7 +164,7 @@ export function createPresentations(
         { label: "branch", value: result.branch },
         { label: "service", value: result.service.name },
         { label: "id", value: result.service.id },
-        { label: "region", value: result.service.region ?? "none" },
+        { label: "region", value: result.service.region ?? "" },
         // A service with no deployment has no address that resolves, so
         // it reports what it needs next instead of a dead URL.
         {
@@ -195,6 +198,8 @@ export function showPresentations(result: ServiceShowResult): Presentations {
     );
   }
   return {
+    stdout: () => [],
+    json: () => result,
     human: () => [
       title("Showing the selected service state."),
       fields([
@@ -202,7 +207,7 @@ export function showPresentations(result: ServiceShowResult): Presentations {
         { label: "service", value: result.service?.name ?? "not selected" },
         {
           label: "live deployment",
-          value: result.liveDeployment?.id ?? "none",
+          value: result.liveDeployment?.id ?? "",
         },
         { label: "live url", value: result.liveUrl ?? "unavailable" },
         {
@@ -219,6 +224,8 @@ export function deploymentListPresentations(
   result: ServiceDeploymentListResult,
 ): Presentations {
   return {
+    stdout: () => [],
+    json: () => result,
     human: () => [
       title("Listing deployments for the selected service."),
       fields([
@@ -262,6 +269,9 @@ export function deploymentShowPresentations(
   result: ServiceDeploymentShowResult,
 ): Presentations {
   return {
+    stdout: () => [],
+    json: () => result,
+    next: () => [],
     human: () => [
       title("Showing deployment details."),
       fields([
@@ -287,6 +297,7 @@ export function openPresentations(
   liveDeploymentId: string,
 ): Presentations {
   return {
+    json: () => result,
     human: () => [
       result.opened
         ? completed("Opened the live URL for the selected service.")
@@ -324,6 +335,8 @@ export function promotePresentations(
   alreadyLive: boolean,
 ): Presentations {
   return {
+    stdout: () => [],
+    json: () => result,
     human: () => [
       completed(
         alreadyLive
@@ -349,6 +362,8 @@ export function rollbackPresentations(
   alreadyLive: boolean,
 ): Presentations {
   return {
+    stdout: () => [],
+    json: () => result,
     human: () => [
       completed(
         alreadyLive
@@ -377,6 +392,8 @@ export function deploymentStartPresentations(
   result: ServiceDeploymentRunStateResult,
 ): Presentations {
   return {
+    stdout: () => [],
+    json: () => result,
     human: () => [
       completed(
         result.alreadyInState
@@ -401,6 +418,8 @@ export function deploymentStopPresentations(
   result: ServiceDeploymentRunStateResult,
 ): Presentations {
   return {
+    stdout: () => [],
+    json: () => result,
     human: () => [
       completed(
         result.alreadyInState
@@ -422,6 +441,8 @@ export function deploymentDeletePresentations(
   result: ServiceDeploymentDeleteResult,
 ): Presentations {
   return {
+    stdout: () => [],
+    json: () => result,
     human: () => [
       completed(`Deleted ${result.deploymentId} from ${result.service.name}.`),
       fields([
@@ -441,6 +462,8 @@ export function removePresentations(
   result: ServiceRemoveResult,
 ): Presentations {
   return {
+    stdout: () => [],
+    json: () => result,
     human: () => [
       completed(
         `Removed ${result.service.name} and every deployment it owned.`,
@@ -461,6 +484,8 @@ export function domainAddPresentations(
   result: ServiceDomainAddResult,
 ): Presentations {
   return {
+    stdout: () => [],
+    json: () => result,
     human: () => [
       result.existing
         ? title("Showing the existing custom domain for the selected service.")
@@ -491,6 +516,8 @@ export function domainShowPresentations(
   result: ServiceDomainShowResult,
 ): Presentations {
   return {
+    stdout: () => [],
+    json: () => result,
     human: () => [
       title("Showing custom domain status."),
       fields([
@@ -532,6 +559,9 @@ export function domainRemovePresentations(
   result: ServiceDomainRemoveResult,
 ): Presentations {
   return {
+    stdout: () => [],
+    json: () => result,
+    next: () => [],
     human: () => [
       completed(`Removed ${result.hostname} from ${result.service.name}.`),
       fields([
@@ -547,6 +577,8 @@ export function domainRetryPresentations(
   result: ServiceDomainRetryResult,
 ): Presentations {
   return {
+    stdout: () => [],
+    json: () => result,
     human: () => [
       completed(`Retried verification for ${result.domain.hostname}.`),
       fields([
@@ -570,6 +602,9 @@ export function domainWaitPresentations(
   result: ServiceDomainWaitResult,
 ): Presentations {
   return {
+    stdout: () => [],
+    json: () => result,
+    next: () => [],
     human: () => [
       completed(`${result.hostname} is live at ${result.liveUrl}`),
       fields([

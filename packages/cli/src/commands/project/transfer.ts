@@ -122,6 +122,8 @@ function transferPresentations(
   toWorkspace: string | undefined,
 ): Presentations {
   return {
+    stdout: () => [],
+    json: () => result,
     human: (): Block[] => [
       { kind: "summary", status: "ok", text: "Transferring project." },
       {

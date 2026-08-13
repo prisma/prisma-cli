@@ -212,7 +212,17 @@ function installer(
       if (!outcome.ok) {
         return notOk(outcome.failure);
       }
-      return ok(ctx.present({ data: null }, { human: () => [] }));
+      return ok(
+        ctx.present(
+          { data: null },
+          {
+            human: () => [],
+            stdout: () => [],
+            json: () => null,
+            next: () => [],
+          },
+        ),
+      );
     },
   });
 }
@@ -225,7 +235,17 @@ describe("the installsPackages capability", () => {
       installsPackages: true,
       handler: async (_args, ctx) => {
         present = "packages" in ctx;
-        return ok(ctx.present({ data: null }, { human: () => [] }));
+        return ok(
+          ctx.present(
+            { data: null },
+            {
+              human: () => [],
+              stdout: () => [],
+              json: () => null,
+              next: () => [],
+            },
+          ),
+        );
       },
     });
     const cli = createTestCli({ commands: { toy } });
@@ -242,7 +262,17 @@ describe("the installsPackages capability", () => {
       help: { summary: "Installs nothing" },
       handler: async (_args, ctx) => {
         present = "packages" in ctx;
-        return ok(ctx.present({ data: null }, { human: () => [] }));
+        return ok(
+          ctx.present(
+            { data: null },
+            {
+              human: () => [],
+              stdout: () => [],
+              json: () => null,
+              next: () => [],
+            },
+          ),
+        );
       },
     });
     const cli = createTestCli({ commands: { toy } });
@@ -615,7 +645,17 @@ describe("the two ways an operation does not resolve notOk", () => {
         if (rejected !== undefined) {
           throw rejected.reason;
         }
-        return ok(ctx.present({ data: null }, { human: () => [] }));
+        return ok(
+          ctx.present(
+            { data: null },
+            {
+              human: () => [],
+              stdout: () => [],
+              json: () => null,
+              next: () => [],
+            },
+          ),
+        );
       },
     });
     const cli = createTestCli({
@@ -677,7 +717,17 @@ describe("the two ways an operation does not resolve notOk", () => {
         const installing = ctx.packages.install({ packages: ["prisma"] });
         controller.abort();
         await installing;
-        return ok(ctx.present({ data: null }, { human: () => [] }));
+        return ok(
+          ctx.present(
+            { data: null },
+            {
+              human: () => [],
+              stdout: () => [],
+              json: () => null,
+              next: () => [],
+            },
+          ),
+        );
       },
     });
     // No packageManager seed, so detection actually runs.
@@ -713,7 +763,17 @@ describe("the two ways an operation does not resolve notOk", () => {
             (cause: unknown) => String(cause),
           );
         await child;
-        return ok(ctx.present({ data: failure }, { human: () => [] }));
+        return ok(
+          ctx.present(
+            { data: failure },
+            {
+              human: () => [],
+              stdout: () => [],
+              json: () => failure,
+              next: () => [],
+            },
+          ),
+        );
       },
     });
     const cli = createTestCli({
@@ -743,7 +803,17 @@ describe("the two ways an operation does not resolve notOk", () => {
           (cause: unknown) => String(cause),
         );
         await installing;
-        return ok(ctx.present({ data: failure }, { human: () => [] }));
+        return ok(
+          ctx.present(
+            { data: failure },
+            {
+              human: () => [],
+              stdout: () => [],
+              json: () => failure,
+              next: () => [],
+            },
+          ),
+        );
       },
     });
     const cli = createTestCli({
@@ -774,7 +844,17 @@ describe("the two ways an operation does not resolve notOk", () => {
       handler: async (_args, ctx) => {
         await ctx.packages.install({ packages: ["prisma"] });
         sameSignal = captured === ctx.signal;
-        return ok(ctx.present({ data: null }, { human: () => [] }));
+        return ok(
+          ctx.present(
+            { data: null },
+            {
+              human: () => [],
+              stdout: () => [],
+              json: () => null,
+              next: () => [],
+            },
+          ),
+        );
       },
     });
     const cli = createTestCli({

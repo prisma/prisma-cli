@@ -126,6 +126,9 @@ function connectPresentations(
 ): Presentations {
   const connection = result.repositoryConnection;
   return {
+    stdout: () => [],
+    json: () => result,
+    next: () => [],
     human: (): Block[] => [
       {
         kind: "summary",

@@ -36,7 +36,17 @@ test("installsPackages alone puts ctx.packages on the context and nothing else",
       expectTypeOf(ctx.packages).toEqualTypeOf<PackageOperations>();
       // @ts-expect-error managesCredentials was not declared
       void ctx.credentialManager;
-      return ok(ctx.present({ data: null }, { human: () => [] }));
+      return ok(
+        ctx.present(
+          { data: null },
+          {
+            human: () => [],
+            stdout: () => [],
+            json: () => null,
+            next: () => [],
+          },
+        ),
+      );
     },
   });
 
@@ -51,7 +61,12 @@ test("installsPackages alone puts ctx.packages on the context and nothing else",
     expectTypeOf(ctx.packages).toEqualTypeOf<PackageOperations>();
     // @ts-expect-error managesCredentials was not declared
     void ctx.credentialManager;
-    return ok(ctx.present({ data: null }, { human: () => [] }));
+    return ok(
+      ctx.present(
+        { data: null },
+        { human: () => [], stdout: () => [], json: () => null, next: () => [] },
+      ),
+    );
   };
   expectTypeOf(annotated).toEqualTypeOf<typeof def.handler>();
 });
@@ -64,7 +79,17 @@ test("managesCredentials alone puts ctx.credentialManager on the context and not
       expectTypeOf(ctx.credentialManager).toEqualTypeOf<CredentialManager>();
       // @ts-expect-error installsPackages was not declared
       void ctx.packages;
-      return ok(ctx.present({ data: null }, { human: () => [] }));
+      return ok(
+        ctx.present(
+          { data: null },
+          {
+            human: () => [],
+            stdout: () => [],
+            json: () => null,
+            next: () => [],
+          },
+        ),
+      );
     },
   });
 
@@ -79,7 +104,12 @@ test("managesCredentials alone puts ctx.credentialManager on the context and not
     expectTypeOf(ctx.credentialManager).toEqualTypeOf<CredentialManager>();
     // @ts-expect-error installsPackages was not declared
     void ctx.packages;
-    return ok(ctx.present({ data: null }, { human: () => [] }));
+    return ok(
+      ctx.present(
+        { data: null },
+        { human: () => [], stdout: () => [], json: () => null, next: () => [] },
+      ),
+    );
   };
   expectTypeOf(annotated).toEqualTypeOf<typeof def.handler>();
 });
@@ -92,7 +122,17 @@ test("both capabilities declared: both surfaces, and the shared context intact",
     handler: async (_args, ctx) => {
       expectTypeOf(ctx.credentialManager).toEqualTypeOf<CredentialManager>();
       expectTypeOf(ctx.packages).toEqualTypeOf<PackageOperations>();
-      return ok(ctx.present({ data: null }, { human: () => [] }));
+      return ok(
+        ctx.present(
+          { data: null },
+          {
+            human: () => [],
+            stdout: () => [],
+            json: () => null,
+            next: () => [],
+          },
+        ),
+      );
     },
   });
 
@@ -110,7 +150,12 @@ test("both capabilities declared: both surfaces, and the shared context intact",
   const annotated: CommandHandler<typeof def> = async (_args, ctx) => {
     expectTypeOf(ctx.credentialManager).toEqualTypeOf<CredentialManager>();
     expectTypeOf(ctx.packages).toEqualTypeOf<PackageOperations>();
-    return ok(ctx.present({ data: null }, { human: () => [] }));
+    return ok(
+      ctx.present(
+        { data: null },
+        { human: () => [], stdout: () => [], json: () => null, next: () => [] },
+      ),
+    );
   };
   expectTypeOf(annotated).toEqualTypeOf<typeof def.handler>();
 });
@@ -123,7 +168,17 @@ test("neither capability declared: neither surface", () => {
       void ctx.packages;
       // @ts-expect-error managesCredentials was not declared
       void ctx.credentialManager;
-      return ok(ctx.present({ data: null }, { human: () => [] }));
+      return ok(
+        ctx.present(
+          { data: null },
+          {
+            human: () => [],
+            stdout: () => [],
+            json: () => null,
+            next: () => [],
+          },
+        ),
+      );
     },
   });
 
@@ -137,7 +192,12 @@ test("neither capability declared: neither surface", () => {
     void ctx.packages;
     // @ts-expect-error managesCredentials was not declared
     void ctx.credentialManager;
-    return ok(ctx.present({ data: null }, { human: () => [] }));
+    return ok(
+      ctx.present(
+        { data: null },
+        { human: () => [], stdout: () => [], json: () => null, next: () => [] },
+      ),
+    );
   };
   expectTypeOf(annotated).toEqualTypeOf<typeof def.handler>();
 });
@@ -177,7 +237,17 @@ test("a flag that is not a literal infers boolean and loses its surface", () => 
     handler: async (_args, ctx) => {
       // @ts-expect-error the flag is not the literal true
       void ctx.packages;
-      return ok(ctx.present({ data: null }, { human: () => [] }));
+      return ok(
+        ctx.present(
+          { data: null },
+          {
+            human: () => [],
+            stdout: () => [],
+            json: () => null,
+            next: () => [],
+          },
+        ),
+      );
     },
   });
 
@@ -205,7 +275,17 @@ test("an explicit type argument can claim a capability the declaration omits", (
     help: { summary: "Claims installsPackages without declaring it" },
     handler: async (_args, ctx) => {
       expectTypeOf(ctx.packages).toEqualTypeOf<PackageOperations>();
-      return ok(ctx.present({ data: null }, { human: () => [] }));
+      return ok(
+        ctx.present(
+          { data: null },
+          {
+            human: () => [],
+            stdout: () => [],
+            json: () => null,
+            next: () => [],
+          },
+        ),
+      );
     },
   });
 
@@ -227,9 +307,17 @@ test("the capability generics leave the exit-code catalogue alone", () => {
   const annotated: CommandHandler<typeof def> = async (_args, ctx) => {
     expectTypeOf(ctx.credentialManager).toEqualTypeOf<CredentialManager>();
     expectTypeOf(ctx.packages).toEqualTypeOf<PackageOperations>();
-    // @ts-expect-error 7 is outside the command's catalogue
-    ctx.present({ data: null, exitCode: 7 }, { human: () => [] });
-    return ok(ctx.present({ data: null, exitCode: 4 }, { human: () => [] }));
+    ctx.present(
+      // @ts-expect-error 7 is outside the command's catalogue
+      { data: null, exitCode: 7 },
+      { human: () => [], stdout: () => [], json: () => null, next: () => [] },
+    );
+    return ok(
+      ctx.present(
+        { data: null, exitCode: 4 },
+        { human: () => [], stdout: () => [], json: () => null, next: () => [] },
+      ),
+    );
   };
   expectTypeOf(annotated).toEqualTypeOf<typeof def.handler>();
 });
@@ -243,7 +331,17 @@ test("maySpawn sits beside the capability flags without widening them", () => {
     handler: async (_args, ctx) => {
       expectTypeOf(ctx.credentialManager).toEqualTypeOf<CredentialManager>();
       expectTypeOf(ctx.packages).toEqualTypeOf<PackageOperations>();
-      return ok(ctx.present({ data: null }, { human: () => [] }));
+      return ok(
+        ctx.present(
+          { data: null },
+          {
+            human: () => [],
+            stdout: () => [],
+            json: () => null,
+            next: () => [],
+          },
+        ),
+      );
     },
   });
 

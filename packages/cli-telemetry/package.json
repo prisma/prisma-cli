@@ -1,7 +1,7 @@
 {
   "name": "@repo/cli-telemetry",
   "private": true,
-  "version": "8.0.0-rc.1",
+  "version": "8.0.0-rc.2",
   "description": "CLI telemetry child sender: the detached subprocess the engine hands a composed payload to, its system probes, and the POST",
   "type": "module",
   "sideEffects": [
@@ -35,7 +35,7 @@
     "@vercel/detect-agent": "^1.2.3"
   },
   "devDependencies": {
-    "@repo/tsconfig": "workspace:8.0.0-rc.1",
+    "@repo/tsconfig": "workspace:8.0.0-rc.2",
     "@types/node": "^22.19.19",
     "tsdown": "^0.21.10",
     "typescript": "^6.0.3",

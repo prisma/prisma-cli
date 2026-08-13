@@ -45,8 +45,9 @@ function listPresentations(
       ...(rows.length === 0
         ? [
             {
-              kind: "list" as const,
-              items: ["No environment variables defined in this scope."],
+              kind: "summary" as const,
+              status: "info" as const,
+              text: "No environment variables defined in this scope.",
             },
           ]
         : [

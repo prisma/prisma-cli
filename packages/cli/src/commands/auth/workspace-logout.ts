@@ -15,13 +15,17 @@ export interface WorkspaceLogoutResult {
   readonly wasSelected: boolean;
 }
 
-function logoutPresentations(spec: {
-  readonly label: string;
-  readonly wasSelected: boolean;
-  readonly environmentCredentialInForce: boolean;
-}): Presentations {
+function logoutPresentations(
+  spec: {
+    readonly label: string;
+    readonly wasSelected: boolean;
+    readonly environmentCredentialInForce: boolean;
+  },
+  result: WorkspaceLogoutResult,
+): Presentations {
   const rows = [{ label: "workspace", value: spec.label }];
   return {
+    json: () => result,
     human: () => [
       {
         kind: "summary",
@@ -95,11 +99,14 @@ export const authWorkspaceLogoutCommand = defineCommand({
     return ok(
       ctx.present(
         { data: result },
-        logoutPresentations({
-          label: sessionLabel(session),
-          wasSelected,
-          environmentCredentialInForce: environmentCredentialInForce(ctx.env),
-        }),
+        logoutPresentations(
+          {
+            label: sessionLabel(session),
+            wasSelected,
+            environmentCredentialInForce: environmentCredentialInForce(ctx.env),
+          },
+          result,
+        ),
       ),
     );
   },

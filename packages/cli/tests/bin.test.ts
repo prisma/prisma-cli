@@ -350,7 +350,7 @@ describe("buildCli", () => {
     const exitCode = await main(proc);
 
     expect(exitCode).toBe(0);
-    expect(proc.stdoutText).toContain("USAGE");
+    expect(proc.stdoutText).toContain("The Prisma Developer Platform");
     expect(proc.stdoutText).toContain("auth");
   });
 
@@ -410,17 +410,20 @@ describe("buildCli", () => {
     expect(run.proc.stdoutText).toContain("--config needs a path");
   });
 
-  it("lists --config among the global flags in help", async () => {
-    const proc = makeProcess({
+  it("names --config on leaf help and documents it on root help", async () => {
+    const leaf = makeProcess({
       argv: ["node", "bin.js", "telemetry", "status", "--help"],
       isTty: { stdout: true },
     });
+    expect(await main(leaf)).toBe(0);
+    expect(leaf.stdoutText).toContain("--config");
 
-    const exitCode = await main(proc);
-
-    expect(exitCode).toBe(0);
-    expect(proc.stdoutText).toContain("--config");
-    expect(proc.stdoutText).toContain(
+    const root = makeProcess({
+      argv: ["node", "bin.js", "--help"],
+      isTty: { stdout: true },
+    });
+    expect(await main(root)).toBe(0);
+    expect(root.stdoutText).toContain(
       "Read this config file instead of ./prisma.config.ts",
     );
   });

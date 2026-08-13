@@ -53,7 +53,26 @@ export function makeUi(colorEnabled: boolean, stderr: OutputStream): Ui {
 }
 
 /** Materializes ONLY the active format's presentation functions, at the
- *  return site: human → human + stdout + next; json → json + next. */
+ *  return site: human → human + stdout + next; json → json + next.
+ *
+ *  `stdout` and `next` may be absent at runtime, so both are called with
+ *  `?.()`. `Presentations` requires all four, so no command compiled
+ *  against this engine can omit one — but `@prisma/orm-toolchain` is
+ *  built against engine `0.0.9`, where three of the four were optional,
+ *  and its published commands took that up: `migration list` declares
+ *  `human` and `json` and neither of the others. Calling them
+ *  unconditionally makes it exit 2 — `stdout` in human mode, `next` in
+ *  both.
+ *
+ *  `json` is called unconditionally, and stays that way: a missing json
+ *  presentation is the defect this change removes, and every ORM command
+ *  already declares one.
+ *
+ *  This is version skew in our own code, not a foreign contract. The fix
+ *  is in prisma/prisma: declare the missing presentations in the ORM
+ *  commands and build orm-toolchain against this engine, where the type
+ *  refuses to compile without them. Delete both `?.()` when that
+ *  version is pinned here. */
 function materializePresentation(
   state: RunState,
   ui: Ui,
@@ -63,7 +82,7 @@ function materializePresentation(
     return {
       human: [],
       stdout: [],
-      json: presentations.json?.(),
+      json: presentations.json(),
       next: presentations.next?.() ?? [],
     };
   }

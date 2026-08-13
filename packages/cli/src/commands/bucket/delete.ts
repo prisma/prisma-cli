@@ -16,6 +16,9 @@ const CONSENT_QUESTION =
 
 function deletePresentations(result: BucketDeleteResult): Presentations {
   return {
+    stdout: () => [],
+    json: () => result,
+    next: () => [],
     human: (): Block[] => [
       { kind: "summary", status: "ok", text: "Deleting object-store bucket." },
       { kind: "fields", rows: [{ label: "bucket", value: result.bucket.id }] },

@@ -1,6 +1,6 @@
 /**
  * The config loader behind Runtime.loadConfig — cwd-only discovery,
- * defineConfig marker semantics with the pinned Prisma 7 fail-early
+ * definePrismaConfig marker semantics with the pinned Prisma 7 fail-early
  * diagnostic, the engine's closed set of section names, and
  * needs.config validation wired end to end through the harness.
  */
@@ -15,6 +15,7 @@ import {
   defineCommandFamily,
   defineConfig,
   defineConfigSection,
+  definePrismaConfig,
   flag,
   type LoadedConfig,
   loadConfig,
@@ -34,12 +35,18 @@ const FIXTURES = join(TESTS_DIR, "fixtures", "config");
 const EPOCH = () => new Date(0);
 const T0 = "1970-01-01T00:00:00.000Z";
 
-describe("defineConfig", () => {
+describe("definePrismaConfig", () => {
   test("stamps the version marker on the config object", () => {
-    expect(defineConfig({ toy: { greeting: "hi" } })).toEqual({
+    expect(definePrismaConfig({ toy: { greeting: "hi" } })).toEqual({
       toy: { greeting: "hi" },
       $prismaConfig: PRISMA_CONFIG_VERSION,
     });
+  });
+
+  test("the deprecated defineConfig alias stamps the same marker", () => {
+    expect(defineConfig({ toy: { greeting: "hi" } })).toEqual(
+      definePrismaConfig({ toy: { greeting: "hi" } }),
+    );
   });
 });
 
@@ -82,12 +89,12 @@ describe("loadConfig", { timeout: 60_000 }, () => {
             code: "CLI.CONFIG_MISSING_MARKER",
             severity: "error",
             summary: `${join(FIXTURES, "unmarked", "prisma.config.ts")} was not written for this version of the Prisma CLI, so it cannot be used.`,
-            why: "Configs for this CLI are created with defineConfig, which records a version marker on the exported object. This file's default export has no marker — it is most likely a Prisma 7 config, which uses the same filename — and the CLI stops rather than misread it.",
+            why: "Configs for this CLI are created with definePrismaConfig, which records a version marker on the exported object. This file's default export has no marker — it is most likely a Prisma 7 config, which uses the same filename — and the CLI stops rather than misread it.",
             nextActions: [
               {
                 kind: "user-choice",
                 label:
-                  "Migrate the file: wrap the exported object in defineConfig from @prisma/cli-engine and export the result as the default export.",
+                  "Migrate the file: wrap the exported object in definePrismaConfig from @prisma/cli-engine and export the result as the default export.",
               },
             ],
             where: { path: join(FIXTURES, "unmarked", "prisma.config.ts") },
@@ -112,7 +119,7 @@ describe("loadConfig", { timeout: 60_000 }, () => {
               {
                 kind: "user-choice",
                 label:
-                  "Regenerate the config with a defineConfig matching this CLI, or update the CLI to a version that supports the declared config version.",
+                  "Regenerate the config with a definePrismaConfig matching this CLI, or update the CLI to a version that supports the declared config version.",
               },
             ],
             where: {
@@ -242,7 +249,7 @@ describe("top-level keys that are not sections", { timeout: 60_000 }, () => {
    * The one key the report cannot cover. c12 takes `$meta` as layer
    * metadata and deletes it from the config object whatever else it is
    * told, so it never reaches the engine's unknown-key check.
-   * defineConfig freezes what it returns, so that delete throws and the
+   * definePrismaConfig freezes what it returns, so that delete throws and the
    * whole file is refused — a worse message than the unknown-key one,
    * and the reason no section may be named `$meta`.
    */
@@ -522,11 +529,11 @@ process.stdout.write("__PROBE__" + JSON.stringify({
 
 /** The file --config names in the probe: TypeScript plain Node cannot
  *  run, in a directory discovery would never look in. */
-const NAMED_CONFIG = `import { defineConfig } from "@prisma/cli-engine";
+const NAMED_CONFIG = `import { definePrismaConfig } from "@prisma/cli-engine";
 
 const greeting: string = "from the file --config named";
 
-export default defineConfig({ toy: { greeting } });
+export default definePrismaConfig({ toy: { greeting } });
 `;
 
 interface ProbeResult {
@@ -594,11 +601,11 @@ describe("loadConfig on a Node that cannot execute TypeScript", {
 }, () => {
   test("reads a config when Node's TypeScript support is switched off", () => {
     const probe = runProbeOnPlainNode(
-      `import { defineConfig } from "@prisma/cli-engine";
+      `import { definePrismaConfig } from "@prisma/cli-engine";
 
 const greeting: string = "hello from plain node";
 
-export default defineConfig({ toy: { greeting } });
+export default definePrismaConfig({ toy: { greeting } });
 `,
       ["--no-experimental-strip-types"],
     );
@@ -621,13 +628,13 @@ export default defineConfig({ toy: { greeting } });
 
   test("reads a config using TypeScript that Node cannot strip", () => {
     const probe = runProbeOnPlainNode(
-      `import { defineConfig } from "@prisma/cli-engine";
+      `import { definePrismaConfig } from "@prisma/cli-engine";
 
 enum Level {
   Verbose = "verbose",
 }
 
-export default defineConfig({ toy: { greeting: Level.Verbose } });
+export default definePrismaConfig({ toy: { greeting: Level.Verbose } });
 `,
       [],
     );
@@ -701,6 +708,9 @@ function showCommand(
             human: () => [
               { kind: "summary", status: "ok", text: ctx.config.greeting },
             ],
+            stdout: () => [],
+            json: () => ctx.config,
+            next: () => [],
           },
         ),
       );
@@ -878,7 +888,17 @@ describe("needs.config", { timeout: 60_000 }, () => {
     const plain = defineCommand({
       help: { summary: "No needs at all" },
       handler: async (_args, ctx) =>
-        ok(ctx.present({ data: null }, { human: () => [] })),
+        ok(
+          ctx.present(
+            { data: null },
+            {
+              human: () => [],
+              stdout: () => [],
+              json: () => null,
+              next: () => [],
+            },
+          ),
+        ),
     });
     const cli = createCli({
       name: "t",
@@ -1037,7 +1057,17 @@ describe("--config on the command line", { timeout: 60_000 }, () => {
       help: { summary: "Echoes a message" },
       args: { flags: { message: flag.string({ brief: "message" }) } },
       handler: async (args, ctx) =>
-        ok(ctx.present({ data: args.flags.message }, { human: () => [] })),
+        ok(
+          ctx.present(
+            { data: args.flags.message },
+            {
+              human: () => [],
+              stdout: () => [],
+              json: () => args.flags.message,
+              next: () => [],
+            },
+          ),
+        ),
     });
     const cli = createTestCli({ commands: { echo } });
     const run = await cli.run(["echo", "--message", "--config="]);
@@ -1061,7 +1091,17 @@ describe("--config on the command line", { timeout: 60_000 }, () => {
         },
       },
       handler: async (args, ctx) =>
-        ok(ctx.present({ data: args.positionals.rest }, { human: () => [] })),
+        ok(
+          ctx.present(
+            { data: args.positionals.rest },
+            {
+              human: () => [],
+              stdout: () => [],
+              json: () => args.positionals.rest,
+              next: () => [],
+            },
+          ),
+        ),
     });
     const cli = createTestCli({ commands: { passthrough } });
     const run = await cli.run(["passthrough", "--", "--config="]);

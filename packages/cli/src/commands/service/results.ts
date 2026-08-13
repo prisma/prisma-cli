@@ -29,6 +29,7 @@ export interface ServiceListEntry {
 
 export interface ServiceListResult {
   projectId: string;
+  projectName: string;
   branch: string;
   services: ServiceListEntry[];
 }

@@ -40,6 +40,7 @@ function listPresentations(result: DatabaseListResult): Presentations {
   const rows = databaseRows(result);
   const stdoutRows = databaseStdoutRows(result);
   return {
+    next: () => [],
     human: (): Block[] => [
       { kind: "summary", status: "info", text: TITLE },
       {
@@ -52,7 +53,13 @@ function listPresentations(result: DatabaseListResult): Presentations {
         ],
       },
       ...(rows.length === 0
-        ? [{ kind: "list" as const, items: ["No databases found."] }]
+        ? [
+            {
+              kind: "summary" as const,
+              status: "info" as const,
+              text: "No databases found.",
+            },
+          ]
         : [
             {
               kind: "table" as const,

@@ -183,7 +183,7 @@ export function resolveExample(example: string, cliName: string): string {
 
 /** The --json refusal is stated in help, so a machine consumer learns
  *  it without running the command. */
-const NO_JSON_NOTE =
+export const NO_JSON_NOTE =
   "This command hands the terminal to another program and does not support --json.";
 
 function commandDocs(

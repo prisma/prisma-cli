@@ -48,7 +48,12 @@ const requiresCredentials = defineCommand({
     ok(
       ctx.present(
         { data: null },
-        { human: () => [{ kind: "summary", status: "ok", text: "ran" }] },
+        {
+          human: () => [{ kind: "summary", status: "ok", text: "ran" }],
+          stdout: () => [],
+          json: () => null,
+          next: () => [],
+        },
       ),
     ),
   needs: { credentials: true },
@@ -96,7 +101,9 @@ describe("prisma-cli auth whoami", () => {
     expect(result.stdout).toBe("status: signed out\n");
     expect(result.stderr).toBe(
       "ℹ Showing the active authenticated identity.\n" +
+        "\n" +
         "status:  signed out\n" +
+        "\n" +
         "→ Sign in: prisma-cli auth login\n",
     );
   });
@@ -112,6 +119,7 @@ describe("prisma-cli auth whoami", () => {
     );
     expect(result.stderr).toBe(
       "ℹ Showing the active authenticated identity.\n" +
+        "\n" +
         "status:     signed in\n" +
         "user:       bob@example.com\n" +
         "workspace:  Acme Inc\n",
@@ -285,6 +293,7 @@ describe("prisma-cli auth whoami", () => {
     );
     expect(result.stderr).toBe(
       "ℹ Showing the active authenticated identity.\n" +
+        "\n" +
         "status:     signed in\n" +
         "user:       bob@example.com\n" +
         "workspace:  Acme Inc\n",

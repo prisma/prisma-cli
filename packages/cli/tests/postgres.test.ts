@@ -315,8 +315,9 @@ describe("prisma-cli postgres list", () => {
     );
 
     expect(blocks(result.presented)).toContainEqual({
-      kind: "list",
-      items: ["No databases found."],
+      kind: "summary",
+      status: "info",
+      text: "No databases found.",
     });
     expect(result.presented?.presentation.stdout).toEqual([]);
   });
@@ -1762,8 +1763,9 @@ describe("prisma-cli postgres backup list", () => {
     });
 
     expect(blocks(result.presented)).toContainEqual({
-      kind: "list",
-      items: ["No backups found."],
+      kind: "summary",
+      status: "info",
+      text: "No backups found.",
     });
   });
 
@@ -1936,8 +1938,9 @@ describe("prisma-cli postgres connection list", () => {
     );
 
     expect(blocks(result.presented)).toContainEqual({
-      kind: "list",
-      items: ["No database connections found."],
+      kind: "summary",
+      status: "info",
+      text: "No database connections found.",
     });
   });
 

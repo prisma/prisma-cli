@@ -17,11 +17,18 @@ const TITLE = "Listing access keys for bucket.";
 function listPresentations(result: BucketKeyListResult): Presentations {
   const rows = bucketKeyRows(result.keys);
   return {
+    next: () => [],
     human: (): Block[] => [
       { kind: "summary", status: "info", text: TITLE },
       { kind: "fields", rows: [{ label: "bucket", value: result.bucketId }] },
       ...(rows.length === 0
-        ? [{ kind: "list" as const, items: ["No keys found."] }]
+        ? [
+            {
+              kind: "summary" as const,
+              status: "info" as const,
+              text: "No keys found.",
+            },
+          ]
         : [
             {
               kind: "table" as const,

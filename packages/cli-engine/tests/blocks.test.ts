@@ -25,7 +25,17 @@ async function render(
   const show = defineCommand({
     help: { summary: "Render the fixture blocks" },
     handler: async (_args, ctx) =>
-      ok(ctx.present({ data: null }, { human: () => blocks })),
+      ok(
+        ctx.present(
+          { data: null },
+          {
+            human: () => blocks,
+            stdout: () => [],
+            json: () => null,
+            next: () => [],
+          },
+        ),
+      ),
   });
   const result = await createTestCli({ commands: { show } }).run(
     [
@@ -51,19 +61,19 @@ describe("table", () => {
     ],
   };
 
-  test("every column is as wide as its widest cell", async () => {
+  test("every column is as wide as its widest cell; headers are sentence-cased and an empty cell draws the placeholder dash", async () => {
     expect(await render([RAGGED])).toBe(
-      "name      id    status\n" +
+      "Name      Id    Status\n" +
         "Acme Inc  ws_1  current\n" +
-        "Globex    ws_2\n",
+        "Globex    ws_2  \u2014\n",
     );
   });
 
   test("headers are toned, and a line never ends in padding", async () => {
     expect(await render([RAGGED], { color: true })).toBe(
-      "\u001b[36mname    \u001b[39m  \u001b[36mid  \u001b[39m  \u001b[36mstatus\u001b[39m\n" +
+      "\u001b[36mName    \u001b[39m  \u001b[36mId  \u001b[39m  \u001b[36mStatus\u001b[39m\n" +
         "Acme Inc  ws_1  current\n" +
-        "Globex    ws_2\n",
+        "Globex    ws_2  \u001b[2m\u2014\u001b[22m\n",
     );
   });
 
@@ -107,7 +117,7 @@ describe("table", () => {
           ],
         },
       ]),
-    ).toBe("name  id\n用户  u1\nab    u2\n");
+    ).toBe("Name  Id\n用户  u1\nab    u2\n");
   });
 });
 
@@ -323,6 +333,9 @@ describe("one character per meaning", () => {
               human: () => [
                 { kind: "summary", status: "error", text: "Failed." },
               ],
+              stdout: () => [],
+              json: () => null,
+              next: () => [],
             },
           ),
         );
@@ -371,6 +384,9 @@ describe("one character per meaning", () => {
                 { kind: "summary", status: "warn", text: "Slowly." },
                 { kind: "summary", status: "info", text: "Noted." },
               ],
+              stdout: () => [],
+              json: () => null,
+              next: () => [],
             },
           ),
         );

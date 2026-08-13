@@ -27,6 +27,7 @@ function backupListPresentations(
   const rows = backupRows(result.backups);
   const stdoutRows = backupStdoutRows(result.backups);
   return {
+    next: () => [],
     human: (): Block[] => [
       { kind: "summary", status: "info", text: TITLE },
       {
@@ -39,7 +40,13 @@ function backupListPresentations(
         ],
       },
       ...(rows.length === 0
-        ? [{ kind: "list" as const, items: ["No backups found."] }]
+        ? [
+            {
+              kind: "summary" as const,
+              status: "info" as const,
+              text: "No backups found.",
+            },
+          ]
         : [
             {
               kind: "table" as const,

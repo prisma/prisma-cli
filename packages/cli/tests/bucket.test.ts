@@ -221,8 +221,9 @@ describe("prisma-cli bucket list", () => {
     );
 
     expect(blocks(result.presented)).toContainEqual({
-      kind: "list",
-      items: ["No buckets found."],
+      kind: "summary",
+      status: "info",
+      text: "No buckets found.",
     });
     expect(result.presented?.presentation.stdout).toEqual([]);
   });
@@ -625,8 +626,9 @@ describe("prisma-cli bucket key list", () => {
     );
 
     expect(blocks(result.presented)).toContainEqual({
-      kind: "list",
-      items: ["No keys found."],
+      kind: "summary",
+      status: "info",
+      text: "No keys found.",
     });
   });
 
