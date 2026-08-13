@@ -84,7 +84,7 @@ function warnOnDeprecatedStateFileEnvVar(proc: HostProcess): void {
  *  terminal (mirror suppressed) from a harness that allocated separate
  *  PTYs for the two streams (mirror kept). Undefined when the fds
  *  cannot be inspected — the engine then assumes one terminal. */
-export function outputStreamsShareDevice(): boolean | undefined {
+function outputStreamsShareDevice(): boolean | undefined {
   try {
     const out = fstatSync(1);
     const err = fstatSync(2);
@@ -128,8 +128,7 @@ export async function assembleRuntime(proc: HostProcess): Promise<Runtime> {
       stdout: proc.stdout.isTTY === true,
       stderr: proc.stderr.isTTY === true,
     },
-    // CI bisect: probe disabled; the engine treats absence as one terminal.
-    // outputStreamsShareDevice: outputStreamsShareDevice(),
+    outputStreamsShareDevice: outputStreamsShareDevice(),
     exit: (code) => proc.exit(code),
     onSignal: makeOnSignal(proc),
     loadConfig: (configPath) => loadConfig(proc.cwd(), configPath),
