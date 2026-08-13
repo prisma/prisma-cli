@@ -1,6 +1,6 @@
 {
   "name": "@prisma/cli",
-  "version": "8.0.0-rc.1",
+  "version": "8.0.0-rc.2",
   "description": "Command-line interface for the Prisma Developer Platform.",
   "type": "module",
   "bin": {
@@ -47,7 +47,7 @@
     "conformance": "tsx scripts/conformance.ts"
   },
   "dependencies": {
-    "@prisma/cli-engine": "workspace:8.0.0-rc.1",
+    "@prisma/cli-engine": "workspace:8.0.0-rc.2",
     "@prisma/composer": "0.6.0-dev.16",
     "@prisma/compute-sdk": "0.39.0",
     "@prisma/credentials-store": "^7.8.0",
@@ -60,9 +60,9 @@
     "open": "^11.0.0"
   },
   "devDependencies": {
-    "@repo/cli-conformance": "workspace:8.0.0-rc.1",
-    "@repo/cli-telemetry": "workspace:8.0.0-rc.1",
-    "@repo/tsconfig": "workspace:8.0.0-rc.1",
+    "@repo/cli-conformance": "workspace:8.0.0-rc.2",
+    "@repo/cli-telemetry": "workspace:8.0.0-rc.2",
+    "@repo/tsconfig": "workspace:8.0.0-rc.2",
     "@types/node": "^22.19.19",
     "tsdown": "^0.21.10",
     "tsx": "^4.22.4",
