@@ -55,22 +55,24 @@ export function makeUi(colorEnabled: boolean, stderr: OutputStream): Ui {
 /** Materializes ONLY the active format's presentation functions, at the
  *  return site: human → human + stdout + next; json → json + next.
  *
- *  `next` may be absent at runtime, so it alone is called with `?.()`.
- *  `Presentations` requires all four, so no command compiled against
- *  this engine can omit one — but a command family compiled against an
- *  earlier engine can, and one shipped does:
- *  `@prisma/orm-toolchain@8.0.0-rc.1-dev.40` declares `human`, `stdout`
- *  and `json` for `migration list` and no `next`, so calling `next`
- *  unconditionally makes that command exit 2.
+ *  `stdout` and `next` may be absent at runtime, so both are called with
+ *  `?.()`. `Presentations` requires all four, so no command compiled
+ *  against this engine can omit one — but `@prisma/orm-toolchain` is
+ *  built against engine `0.0.9`, where three of the four were optional,
+ *  and its published commands took that up: `migration list` declares
+ *  `human` and `json` and neither of the others. Calling them
+ *  unconditionally makes it exit 2 — `stdout` in human mode, `next` in
+ *  both.
  *
- *  `stdout` and `json` are called unconditionally, which was checked
- *  rather than assumed: both published families declare both, and
- *  requiring them breaks no test. They stay strict because a missing
- *  `json` is the defect this change exists to remove — it used to make
- *  the envelope publish the handler's internal `data`.
+ *  `json` is called unconditionally, and stays that way: a missing json
+ *  presentation is the defect this change removes, and every ORM command
+ *  already declares one.
  *
- *  Delete the `?.()` when the toolchain and composer pins converge on
- *  this engine, in the tandem release `deferred.md` describes. */
+ *  This is version skew in our own code, not a foreign contract. The fix
+ *  is in prisma/prisma: declare the missing presentations in the ORM
+ *  commands and build orm-toolchain against this engine, where the type
+ *  refuses to compile without them. Delete both `?.()` when that
+ *  version is pinned here. */
 function materializePresentation(
   state: RunState,
   ui: Ui,
@@ -86,7 +88,7 @@ function materializePresentation(
   }
   return {
     human: presentations.human(ui),
-    stdout: presentations.stdout(),
+    stdout: presentations.stdout?.() ?? [],
     json: undefined,
     next: presentations.next?.() ?? [],
   };
