@@ -304,6 +304,36 @@ async function readPage(
 }
 
 /**
+ * Following needs somewhere to resume from. Without a cursor the next
+ * request would carry no range at all, the endpoint would apply its
+ * default tail, and the same lines would print again every interval —
+ * silent duplication the user cannot act on. So the run stops and says
+ * why. It settles as an error rather than a clean end because `--follow`
+ * has no successful ending: it runs until interrupted (130) or fails,
+ * and an exit 0 here would be a novel outcome meaning "gave up".
+ */
+function requireResumeCursor(
+  deploymentId: string,
+  cursor: string | null,
+): string {
+  if (cursor === null) {
+    throw new CliStructuredError(
+      "SERVICE.LOGS_NO_CURSOR",
+      `Cannot follow logs for deployment ${deploymentId}`,
+      {
+        why: "The log page ended without a resume cursor, so there is no point to continue reading from.",
+        nextActions: [
+          adviceAction(
+            "Rerun without --follow to read the page, or retry if the deployment is still starting.",
+          ),
+        ],
+      },
+    );
+  }
+  return cursor;
+}
+
+/**
  * `--follow`: wait the poll interval, read the next page from the cursor
  * the last one ended on, repeat until the user interrupts. Never
  * returns — the run ends by abort (the engine settles 130) or by throw.
@@ -314,17 +344,17 @@ async function followPages(
   startCursor: string | null,
 ): Promise<never> {
   const interval = pollIntervalMs(ctx);
-  let cursor = startCursor;
+  let cursor = requireResumeCursor(deploymentId, startCursor);
   // One retry, not a loop: a retryable error that keeps happening is a
-  // persistent failure, and hammering it would hide that.
+  // persistent failure, and hammering it would hide that. Any page that
+  // succeeds restores the budget, so a long follow survives repeated
+  // transients without ever looping on a persistent one.
   let retriedAfterError = false;
 
   for (;;) {
     // biome-ignore lint/performance/noAwaitInLoops: --follow polls one page at a time; the wait between reads is the point, and each page starts at the cursor the previous one ended on.
     await sleep(interval, ctx.signal);
-    const next = await readPage(ctx, deploymentId, {
-      ...(cursor === null ? {} : { cursor }),
-    });
+    const next = await readPage(ctx, deploymentId, { cursor });
 
     if (next?.kind === "error") {
       if (!next.retryable || retriedAfterError) {
@@ -334,7 +364,7 @@ async function followPages(
       continue;
     }
     retriedAfterError = false;
-    cursor = next?.cursor ?? cursor;
+    cursor = requireResumeCursor(deploymentId, next?.cursor ?? null);
   }
 }
 

@@ -433,6 +433,92 @@ describe("prisma-cli service logs --follow", () => {
     expect(queries[1]).toEqual({ cursor: "100" });
   });
 
+  /**
+   * The retry budget is per failure, not per run: a page that succeeds
+   * restores it. Without that reset the second retryable error below
+   * would end the run, so this fixture is what separates "one retry per
+   * failure" from "one retry ever".
+   */
+  it("recovers from a retryable error and can retry again later", async () => {
+    const queries: Array<Record<string, unknown> | undefined> = [];
+    const controller = new AbortController();
+    const harness = await makeServiceCli({
+      routes: logRoutes(
+        [
+          [log("a"), end("100")],
+          [errorTerminal(true)],
+          [log("b"), end("200")],
+          [errorTerminal(true)],
+          [log("c"), end("300")],
+        ],
+        queries,
+        (index) => {
+          if (index === 4) {
+            controller.abort("SIGINT");
+          }
+        },
+      ),
+    });
+
+    const result = await harness.cli.run(
+      ["service", "logs", "--follow", ...TARGET],
+      {
+        cwd: harness.cwd,
+        env: { ...harness.env, ...FAST_POLL },
+        abort: controller.signal,
+      },
+    );
+
+    expect(result.exitCode).toBe(130);
+    expect(dataLines(result.events)).toEqual(["a", "b", "c"]);
+  });
+
+  it("stops with SERVICE.LOGS_NO_CURSOR when a page leaves nothing to resume from", async () => {
+    const queries: Array<Record<string, unknown> | undefined> = [];
+    const harness = await makeServiceCli({
+      // A terminal record carrying no cursor: re-requesting would fall
+      // back to the default tail and reprint these same lines forever.
+      routes: logRoutes([[log("only page"), end(null)]], queries),
+    });
+
+    const result = await harness.cli.run(
+      ["service", "logs", "--follow", ...TARGET, "--json"],
+      { cwd: harness.cwd, env: { ...harness.env, ...FAST_POLL } },
+    );
+
+    expect(result.exitCode).toBe(2);
+    const frame = result.json[result.json.length - 1];
+    if (frame?.kind !== "result" || frame.envelope.ok) {
+      throw new Error("expected an errored envelope");
+    }
+    expect(frame.envelope.error.code).toBe("SERVICE.LOGS_NO_CURSOR");
+    // The page itself was read and printed; only the follow stops.
+    expect(dataLines(result.events)).toEqual(["only page"]);
+    // And it stopped before asking for anything a second time.
+    expect(queries).toHaveLength(1);
+  });
+
+  it("stops with SERVICE.LOGS_NO_CURSOR when a page carries no terminal record", async () => {
+    const queries: Array<Record<string, unknown> | undefined> = [];
+    const harness = await makeServiceCli({
+      // A truncated body: the page never closed, so it named no cursor.
+      routes: logRoutes([[log("truncated")]], queries),
+    });
+
+    const result = await harness.cli.run(
+      ["service", "logs", "--follow", ...TARGET, "--json"],
+      { cwd: harness.cwd, env: { ...harness.env, ...FAST_POLL } },
+    );
+
+    expect(result.exitCode).toBe(2);
+    const frame = result.json[result.json.length - 1];
+    if (frame?.kind !== "result" || frame.envelope.ok) {
+      throw new Error("expected an errored envelope");
+    }
+    expect(frame.envelope.error.code).toBe("SERVICE.LOGS_NO_CURSOR");
+    expect(queries).toHaveLength(1);
+  });
+
   it("retries a retryable error terminal once, then reports it", async () => {
     const queries: Array<Record<string, unknown> | undefined> = [];
     const harness = await makeServiceCli({
