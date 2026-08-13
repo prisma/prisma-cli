@@ -56,17 +56,39 @@ out of scope for the CLI.
   { parseAs: "stream", params: { query: ... } })` — the `build logs`
   shape, line-split NDJSON, tolerant of a final partial line.
 
-## Known risk, surfaced up front
+## The SDK risk — RETIRED at D1 (the premise was wrong)
 
-The pinned `@prisma/management-api-sdk` (1.55.0) types this path's
-`query` as `never` and documents only the WebSocket mode — PR #4886
-changes routes, not the SDK package, so the published SDK gains the
-query params at the platform's next SDK release. If typecheck cannot
-pass the query params against 1.55.0 without a cast (casts are
-ratcheted), the dispatch STOPS on that item and reports — the branch
-then holds for the SDK bump rather than shipping a cast or an
-untyped URL. Everything else (resolution, presenters, loop,
-fixtures, tests) is SDK-version-independent.
+Rev 1 claimed the pinned SDK types this path's `query` as `never`.
+That read the path-item boilerplate (identical on every path); the
+OPERATION type (`getV1DeploymentsByDeploymentIdLogs`,
+`dist/index.d.ts:6188` in `@prisma/management-api-sdk@1.55.0`)
+already publishes `tail?: number`, `from_start?: "true" | "false"`
+(a string union — the command sends `"true"`), and
+`cursor?: string`. Verified empirically at D1 under `pnpm
+typecheck`. The stream body keeps `build logs`' established cast
+(the spec documents no 200 body); no new cast kind.
+
+## D1 amendments (implementer decisions, orchestrator-ratified)
+
+- The `--tail`/`--from-start` conflict refuses at HANDLER TOP per
+  the `project transfer` precedent (the engine has no declarative
+  flag-conflict mechanism), as `SERVICE.LOGS_RANGE_CONFLICT`, exit
+  2, before any request.
+- The poll interval is `PRISMA_CLI_SERVICE_LOGS_POLL_MS` per the
+  `service domain wait` precedent — the engine's delay seam is not
+  reachable from `CommandContext`; exposing it is an engine change
+  this slice does not make.
+- `build logs`' private NDJSON reader moved to `lib/ndjson.ts`,
+  shared by both commands — an extraction, not a behavior change;
+  duplicating chunk-boundary handling is the drift class the S8
+  workspace-filter defect came from.
+- Follow-mode retry: a retryable error terminal is retried once per
+  FAILURE, with the budget reset by any successful page — a long
+  follow survives repeated transients but never loops on a
+  persistent error.
+- e2e: `EXCLUSIONS` (needs a Composer-deployed service), matching
+  the S8 lifecycle commands — supersedes acceptance item 6's
+  "backlog" wording.
 
 ## Out of scope
 
