@@ -127,6 +127,12 @@ CLI does not do, and each restarts as engine work if wanted:
   with the commander shell and `service logs` waits on an engine
   streaming transport. The one capability loss of S2d; the S2c record
   has the design notes.
+  **Superseded by the `service-logs` slice (2026-08-13):** `service logs`
+  ships, reading the platform's HTTP page endpoint, so the capability is
+  no longer missing. What is still missing is the *streaming* half —
+  `--follow` polls on a 2s interval rather than holding a socket open.
+  The open remainder is the WebSocket live tail, in the closed
+  `service logs` entry further down this file.
 - **`build logs` cannot exit 1 on a failed build** until the engine
   grows a way for a stream to settle with a documented non-zero code.
 - **The crash-recovery feedback action does not port** (the legacy
@@ -305,29 +311,26 @@ CLI does not do, and each restarts as engine work if wanted:
   `managedBy` marker — the same request deferred alongside it. Users own
   their resources, and Composer reconciling a manual change on the next
   deploy is accepted behavior until then.
-- **`service logs` is a follow-up slice, and its transport question is
-  ANSWERED (R-S8-5).** API owners, via operator, 2026-08-12: **HTTP
-  instead of WebSocket is acceptable, provided live streaming can be
-  added at a later date.** So no engine socket transport was built. The
-  command lands as a copy of `build logs` — plain HTTP,
-  `parseAs: "stream"` — in a follow-up slice, once the platform endpoint
-  serves HTTP. The engine WebSocket design
-  (`assets/engine/websocket-transport-design.md`) is **shelved as the
-  later live-streaming path, not deleted.** The ownership question the
-  plan raised dissolved on investigation: `composer log` attaches to the
-  local dev daemon's streams, a `service deployment logs` would read the
-  platform endpoint — different data, no shared subgroup.
-  Two updates (operator, 2026-08-13): **the name is RULED — it mounts
-  as `service logs`**, the legacy spelling, not under the `deployment`
-  subgroup; and the platform-side ask is a self-contained brief at
-  `assets/briefs/deployment-logs-http-endpoint.md` (the pinned record
-  contract — NDJSON, unchanged log/terminal shapes, in-band terminal
-  record, `cursor` resume — grounded in the control plane: the source
-  is a 1 s poll relay, so HTTP loses nothing, and `streamBuildLogs`
-  is the in-repo template). CLI-side sequencing: build on the
-  platform team's contract confirmation; the final wiring typechecks
-  only once the endpoint reaches the generated
-  `@prisma/management-api-sdk` and the pin bumps.
+- **`service logs` SHIPPED** (slice `service-logs`, 2026-08-13 —
+  contract at `specs/service-logs.md`, divergences at
+  `assets/s2/parity-divergences-service-logs.md`). It mounts as
+  `service logs`, the legacy spelling (ruled, operator, 2026-08-13), and
+  reads the platform's HTTP page endpoint (pdp-control-plane #4886): one
+  page by default, `--follow` polling on the terminal record's cursor.
+  Closing this entry corrects one thing it predicted: the pinned
+  `@prisma/management-api-sdk` (1.55.0) did NOT need a bump. The
+  `query: never` the risk note named is path-item boilerplate that every
+  path in that file carries; the operation type
+  (`getV1DeploymentsByDeploymentIdLogs`) already declared `tail`,
+  `from_start` and `cursor`, so the wiring typechecked against the
+  existing pin with no cast.
+  **What stays open: the WebSocket live tail.** The platform serves the
+  upgrade on the same path and the CLI does not use it, so following is
+  polling on a 2s interval rather than push. The engine socket design
+  (`assets/engine/websocket-transport-design.md`) remains **shelved for
+  that later date, not deleted** — R-S8-5's "provided live streaming can
+  be added at a later date" is still the standing commitment, and this
+  slice is what it was traded against.
 - **The e2e suite should assert the real service-id prefix.** D2 wrote
   `e2e/service.e2e.ts` without credentials to run it, so it asserts only
   that `service create` reports a non-empty id. The sibling suites assert
