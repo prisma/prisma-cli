@@ -317,6 +317,17 @@ CLI does not do, and each restarts as engine work if wanted:
   plan raised dissolved on investigation: `composer log` attaches to the
   local dev daemon's streams, a `service deployment logs` would read the
   platform endpoint — different data, no shared subgroup.
+  Two updates (operator, 2026-08-13): **the name is RULED — it mounts
+  as `service logs`**, the legacy spelling, not under the `deployment`
+  subgroup; and the platform-side ask is a self-contained brief at
+  `assets/briefs/deployment-logs-http-endpoint.md` (the pinned record
+  contract — NDJSON, unchanged log/terminal shapes, in-band terminal
+  record, `cursor` resume — grounded in the control plane: the source
+  is a 1 s poll relay, so HTTP loses nothing, and `streamBuildLogs`
+  is the in-repo template). CLI-side sequencing: build on the
+  platform team's contract confirmation; the final wiring typechecks
+  only once the endpoint reaches the generated
+  `@prisma/management-api-sdk` and the pin bumps.
 - **The e2e suite should assert the real service-id prefix.** D2 wrote
   `e2e/service.e2e.ts` without credentials to run it, so it asserts only
   that `service create` reports a non-empty id. The sibling suites assert
