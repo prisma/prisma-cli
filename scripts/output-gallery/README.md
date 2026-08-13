@@ -15,4 +15,4 @@ open wip/gallery/gallery.html
 - `build.mjs` converts the ANSI captures to HTML panes (`gallery-body.html`).
 - `page.mjs` wraps them in the page shell (`gallery.html`).
 
-Everything is written under `wip/gallery/` (gitignored); set `GALLERY_DIR` to use another directory.
+Everything is written under `wip/gallery/` (gitignored); set `GALLERY_DIR` to an absolute directory path (no trailing slash needed) to use another one.

@@ -1,4 +1,6 @@
 import { readFileSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 
 const GALLERY_DIR =
   process.env.GALLERY_DIR ??
@@ -61,8 +63,8 @@ pre.term {
   <a href="#err-unknown">Errors</a>
 </nav>
 ${body}
-<p class="small">Captured with wip/gallery/capture-after.sh (script(1) PTY); ORM flows against a throwaway Postgres 17 container, cloud flows against Will's workspace, read-only. Re-run the harness and republish this file to refresh.</p>
+<p class="small">Captured with scripts/output-gallery/capture.zsh (script(1) PTY); ORM flows against a throwaway Postgres 17 container, cloud flows against Will's workspace, read-only. Re-run the harness and republish this file to refresh.</p>
 </main>`;
 
-writeFileSync(`${GALLERY_DIR}gallery.html`, html);
+writeFileSync(join(GALLERY_DIR, "gallery.html"), html);
 console.log("wrote gallery.html");

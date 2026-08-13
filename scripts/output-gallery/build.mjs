@@ -1,6 +1,7 @@
 // biome-ignore-all lint/suspicious/noControlCharactersInRegex: this file parses raw terminal output, and escape/control characters are exactly what it matches.
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 
 // Captures and output live in the gitignored working dir by default.
 const GALLERY_DIR =
@@ -201,5 +202,5 @@ const cards = SECTIONS.map(([title, shots]) => {
   return `<section><h2>${esc(title)}</h2>${body}</section>`;
 }).join("\n");
 
-writeFileSync(`${GALLERY_DIR}gallery-body.html`, cards);
+writeFileSync(join(GALLERY_DIR, "gallery-body.html"), cards);
 console.log("wrote gallery-body.html");

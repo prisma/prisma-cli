@@ -71,7 +71,10 @@ export interface ScratchHandle {
  * Registers the create/remove lifecycle for the calling test file.
  * Call at file top level, outside any `describe`.
  */
-const STALE_AFTER_MS = 60 * 60 * 1000;
+/** Comfortably beyond any live run: a GitHub Actions job is hard-capped
+ *  at 6 hours, so a scratch project older than a day cannot belong to a
+ *  run that is still executing. */
+const STALE_AFTER_MS = 24 * 60 * 60 * 1000;
 
 /** The base36 timestamp scratchName embeds, or undefined for a name
  *  this suite's naming scheme did not produce. */
@@ -97,7 +100,19 @@ let swept: Promise<void> | undefined;
 async function sweepStrandedScratchProjects(cli: {
   run: (args: readonly string[], options?: RunOptions) => Promise<CliRun>;
 }): Promise<void> {
-  const listing = await cli.run(["project", "list"], { expectOk: false });
+  let listing: CliRun;
+  try {
+    listing = await cli.run(["project", "list"], { expectOk: false });
+  } catch (failure) {
+    // A timeout or unreadable stream must not reject the shared `swept`
+    // promise — that would fail every later setup in this process. The
+    // sweep is best-effort; skipping it only leaves the strand for the
+    // next run.
+    console.warn(
+      `e2e sweep skipped: ${failure instanceof Error ? failure.message : String(failure)}`,
+    );
+    return;
+  }
   if (!listing.envelope.ok) {
     return;
   }

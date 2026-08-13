@@ -1,7 +1,8 @@
 #!/bin/zsh
 set -u
 ROOT=$(git rev-parse --show-toplevel)
-SHOTS=$ROOT/wip/gallery/shots
+GALLERY_DIR=${GALLERY_DIR:-$ROOT/wip/gallery}
+SHOTS=$GALLERY_DIR/shots
 mkdir -p "$SHOTS"
 NODE=$(command -v node)
 CLI=($NODE $ROOT/node_modules/tsx/dist/cli.mjs $ROOT/packages/cli/src/bin.ts)
