@@ -33,10 +33,17 @@ import {
   buildCommandTree,
   buildRedirectTable,
   type CommandTreeEntry,
+  type CommandTreeNode,
   matchFlagRedirect,
   matchVerbRedirect,
   type RedirectTable,
 } from "./command-tree";
+import {
+  bareGroupInvocation,
+  helpFlagGiven,
+  preParseColorEnabled,
+  renderHelp,
+} from "./help";
 import { checkNeeds, type NeedsOutcome } from "./needs";
 import {
   configFlagGivenNoValue,
@@ -83,6 +90,16 @@ export interface EngineSpec {
     Record<string, { readonly brief: string; readonly description?: string }>
   >;
   readonly commands: MountedTree;
+  /** Words for the root help card; the engine formats. */
+  readonly help?: {
+    /** One line after the binary name: what this CLI is. */
+    readonly tagline?: string;
+    /** A sentence or two under the command list. */
+    readonly description?: string;
+    /** Same {bin} substitution rule as command examples. */
+    readonly examples?: readonly string[];
+    readonly docsUrl?: string;
+  };
   /** Absent means this CLI reports nothing. */
   readonly telemetry?: TelemetryDeclaration;
 }
@@ -257,6 +274,7 @@ type ErasedServerHandler = (
 
 export class EngineImpl implements Engine {
   private readonly spec: EngineSpec;
+  private readonly tree: CommandTreeNode;
   private readonly root: StricliRouteMap<EngineRunContext>;
   private readonly redirects: RedirectTable;
   private readonly now: () => Date;
@@ -272,9 +290,10 @@ export class EngineImpl implements Engine {
     this.now = now;
     this.delay = delay;
     this.configSections = declaredConfigSections(spec);
+    this.tree = buildCommandTree(spec);
     this.root = buildRoutes(
       spec,
-      buildCommandTree(spec),
+      this.tree,
       "",
       (invocation, entry, flags, values) =>
         this.executeMounted(invocation, entry, flags, values),
@@ -297,7 +316,10 @@ export class EngineImpl implements Engine {
       yes: false,
       confirmValues: [],
       interactive: defaultInteractive(runtime),
-      colorEnabled: false,
+      /** Pre-parse resolution so a run that never mounts a command — an
+       *  unknown command, a parse failure — still colours its
+       *  diagnostics; applySharedFlags re-resolves after parsing. */
+      colorEnabled: preParseColorEnabled(argv, runtime, "stderr"),
       configPath: undefined,
       resolved: false,
       settledExitCode: undefined,
@@ -352,6 +374,25 @@ export class EngineImpl implements Engine {
       unsubscribe();
       settleErrored(invocation, configFlagGivenNoValueError());
       return 2;
+    }
+    if (helpFlagGiven(argv) || bareGroupInvocation(this.tree, argv)) {
+      unsubscribe();
+      /** Help prose follows stricli's channel rule: stdout in human
+       *  mode, stderr in json mode so stdout stays a clean frame
+       *  stream. Never fires telemetry, like --version. */
+      const stream = format === "human" ? runtime.stdout : runtime.stderr;
+      renderHelp(
+        this.spec,
+        this.tree,
+        argv,
+        preParseColorEnabled(
+          argv,
+          runtime,
+          format === "human" ? "stdout" : "stderr",
+        ),
+        stream,
+      );
+      return 0;
     }
     const stricliProcess = {
       /** stricli writes only help text here. In json mode stdout carries

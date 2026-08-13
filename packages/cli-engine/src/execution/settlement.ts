@@ -13,12 +13,14 @@ import {
 } from "../protocol";
 import { type ChildStatusSettlement, childExitCode } from "../spawn";
 import type { EngineSpec, Invocation } from "./engine";
+import { makePaint } from "./palette";
 import {
+  diagnosticSection,
   firstLine,
   renderCompletedHuman,
   renderNextAction,
   withDocsUrl,
-  writeDiagnostic,
+  writeSections,
 } from "./rendering";
 import { emitFrame } from "./reporting";
 import { resolveExample, usageErrorCode } from "./stricli-adapter";
@@ -239,7 +241,9 @@ export function settleChildStatus(
   // Only human format is reachable here: maySpawn forces it.
   if (child.signal === null) {
     for (const action of settlement.nextActions) {
-      invocation.runtime.stderr.write(`${renderNextAction(action)}\n`);
+      invocation.runtime.stderr.write(
+        `${renderNextAction(action, makePaint(invocation.state.colorEnabled))}\n`,
+      );
     }
   }
   settleVerbatimExitCode(invocation, childExitCode(child));
@@ -313,11 +317,13 @@ export function emitErrored(
     });
     return;
   }
-  const stderr = invocation.runtime.stderr;
-  writeDiagnostic(stderr, envelope.error);
-  for (const diagnostic of envelope.diagnostics) {
-    writeDiagnostic(stderr, diagnostic);
-  }
+  const paint = makePaint(invocation.state.colorEnabled);
+  writeSections(
+    [envelope.error, ...envelope.diagnostics].map((diagnostic) =>
+      diagnosticSection(diagnostic, paint),
+    ),
+    invocation.runtime.stderr,
+  );
 }
 
 /** `--version` prints createCli's version and exits 0. In json mode the
@@ -427,21 +433,94 @@ export function settleUnhandled(
     captured.length > 0 ? captured : "The command failed unexpectedly";
   const summary = firstLine(full);
   const remainder = full.slice(full.indexOf("\n") + 1).trim();
+  const code = usageErrorCode(raw) ?? "CLI.INTERNAL_ERROR";
+  const nextActions =
+    code === "CLI.UNKNOWN_COMMAND" ? unknownCommandActions(spec, state) : [];
   const envelope: ErroredEnvelope = {
     ok: false,
     commandId: segments.join("."),
     error: {
-      code: usageErrorCode(raw) ?? "CLI.INTERNAL_ERROR",
+      code,
       severity: "error",
       summary,
       ...(usage && full.includes("\n") && remainder.length > 0
         ? { why: remainder }
         : {}),
-      nextActions: [],
+      nextActions,
     },
     diagnostics: [],
-    nextActions: [],
+    nextActions,
   };
   emitErrored(invocation, envelope);
   return usage ? 2 : 1;
+}
+
+function editDistance(a: string, b: string): number {
+  const rows = a.length + 1;
+  const cols = b.length + 1;
+  const d: number[] = Array.from({ length: rows * cols }, () => 0);
+  for (let i = 0; i < rows; i += 1) {
+    d[i * cols] = i;
+  }
+  for (let j = 0; j < cols; j += 1) {
+    d[j] = j;
+  }
+  for (let i = 1; i < rows; i += 1) {
+    for (let j = 1; j < cols; j += 1) {
+      const substitution = a[i - 1] === b[j - 1] ? 0 : 1;
+      d[i * cols + j] = Math.min(
+        d[(i - 1) * cols + j] + 1,
+        d[i * cols + j - 1] + 1,
+        d[(i - 1) * cols + j - 1] + substitution,
+      );
+    }
+  }
+  return d[rows * cols - 1];
+}
+
+/** A misspelling is close (edit distance ≤ 2, and short paths tighter);
+ *  anything further is not a suggestion worth making. Every unknown
+ *  command at least learns where the command list is. */
+function unknownCommandActions(
+  spec: EngineSpec,
+  state: { readonly argv: readonly string[] },
+): NextAction[] {
+  const attempted: string[] = [];
+  for (const token of state.argv) {
+    if (token.startsWith("-")) {
+      break;
+    }
+    attempted.push(token);
+  }
+  const typed = attempted.join(" ");
+  const candidates = new Set<string>(Object.keys(spec.commands));
+  for (const path of Object.keys(spec.commands)) {
+    const segments = path.split(" ");
+    for (let depth = 1; depth < segments.length; depth += 1) {
+      candidates.add(segments.slice(0, depth).join(" "));
+    }
+  }
+  const ranked = [...candidates]
+    .map((path) => ({ path, distance: editDistance(typed, path) }))
+    .filter(
+      ({ path, distance }) =>
+        distance <=
+        Math.max(path.length >= 8 ? 3 : 1, Math.min(2, path.length - 1)),
+    )
+    .sort((a, b) => a.distance - b.distance)
+    .slice(0, 3);
+  return [
+    ...ranked.map(
+      ({ path }): NextAction => ({
+        kind: "run-command",
+        label: "Did you mean",
+        command: `${spec.name} ${path}`,
+      }),
+    ),
+    {
+      kind: "run-command",
+      label: "List every command",
+      command: `${spec.name} --help`,
+    },
+  ];
 }

@@ -29,7 +29,13 @@ function listPresentations(result: BucketListResult): Presentations {
         ],
       },
       ...(rows.length === 0
-        ? [{ kind: "list" as const, items: ["No buckets found."] }]
+        ? [
+            {
+              kind: "summary" as const,
+              status: "info" as const,
+              text: "No buckets found.",
+            },
+          ]
         : [
             {
               kind: "table" as const,

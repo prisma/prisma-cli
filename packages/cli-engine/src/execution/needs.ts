@@ -13,6 +13,7 @@ import {
 import { CliStructuredError, type Diagnostic } from "../protocol";
 import type { LoadedConfig } from "../runtime";
 import type { Invocation } from "./engine";
+import { makePaint } from "./palette";
 import { withDocsUrl, writeDiagnostic } from "./rendering";
 import { SEVERITY_RANK } from "./reporting";
 
@@ -331,7 +332,11 @@ function writeSectionWarnings(
     if (SEVERITY_RANK[diagnostic.severity] > SEVERITY_RANK[state.logLevel]) {
       continue;
     }
-    writeDiagnostic(invocation.runtime.stderr, withDocsUrl(state, diagnostic));
+    writeDiagnostic(
+      invocation.runtime.stderr,
+      withDocsUrl(state, diagnostic),
+      makePaint(state.colorEnabled),
+    );
   }
 }
 

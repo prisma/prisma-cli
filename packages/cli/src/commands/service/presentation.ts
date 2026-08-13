@@ -89,7 +89,7 @@ export function listPresentations(result: ServiceListResult): Presentations {
     human: () => [
       title("Listing services for the selected project."),
       fields([
-        { label: "project", value: result.projectId },
+        { label: "project", value: result.projectName },
         { label: "branch", value: result.branch },
       ]),
       ...(result.services.length === 0
@@ -107,7 +107,7 @@ export function listPresentations(result: ServiceListResult): Presentations {
               rows: result.services.map((service) => [
                 service.name,
                 service.id,
-                service.region ?? "none",
+                service.region ?? "",
                 service.liveUrl ?? "not deployed",
               ]),
             } as const,
@@ -161,7 +161,7 @@ export function createPresentations(
         { label: "branch", value: result.branch },
         { label: "service", value: result.service.name },
         { label: "id", value: result.service.id },
-        { label: "region", value: result.service.region ?? "none" },
+        { label: "region", value: result.service.region ?? "" },
         // A service with no deployment has no address that resolves, so
         // it reports what it needs next instead of a dead URL.
         {
@@ -202,7 +202,7 @@ export function showPresentations(result: ServiceShowResult): Presentations {
         { label: "service", value: result.service?.name ?? "not selected" },
         {
           label: "live deployment",
-          value: result.liveDeployment?.id ?? "none",
+          value: result.liveDeployment?.id ?? "",
         },
         { label: "live url", value: result.liveUrl ?? "unavailable" },
         {

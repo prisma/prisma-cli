@@ -52,6 +52,7 @@ export const serviceListCommand = defineCommand({
 
     const result: ServiceListResult = {
       projectId: target.project.id,
+      projectName: target.project.name,
       branch: target.branch.name,
       services: services.map(toServiceListEntry),
     };

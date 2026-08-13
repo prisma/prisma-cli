@@ -36,6 +36,16 @@ export interface Runtime {
     readonly stderr: boolean;
   };
   /**
+   * Whether stdout and stderr are the same open device — the case where
+   * human blocks and the machine stdout mirror would draw on one screen
+   * as visible duplication. Consulted only when both streams are TTYs:
+   * `false` there means two separate terminals, so the mirror is kept
+   * for whatever is reading stdout. Absent means the host cannot tell,
+   * which is treated as "same" — the overwhelmingly common case for two
+   * TTYs is one terminal.
+   */
+  readonly outputStreamsShareDevice?: boolean;
+  /**
    * Forces the answer to "is this CI", where telemetry never reports.
    * Absent — the normal case — means the engine detects CI from `env`
    * using ci-info's vendor table, which is why no host has to answer:

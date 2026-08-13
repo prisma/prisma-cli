@@ -82,7 +82,10 @@ function showPresentations(
         : {
             kind: "summary",
             status: "info",
-            text: "This directory is linked to the following platform project.",
+            text:
+              result.resolution.projectSource === "explicit"
+                ? "Showing the project named by --project (this directory's own link, if any, is unchanged)."
+                : "This directory is linked to the following platform project.",
           },
       { kind: "fields", rows },
     ],

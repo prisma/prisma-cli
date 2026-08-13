@@ -46,6 +46,7 @@ describe("prisma-cli service list", () => {
     expect(result.events).toEqual([]);
     expect(result.presented?.data).toEqual({
       projectId: "proj_1",
+      projectName: "acme-app",
       branch: "main",
       services: [
         {
@@ -113,6 +114,7 @@ describe("prisma-cli service list", () => {
     expect(result.exitCode).toBe(0);
     expect(result.presented?.data).toEqual({
       projectId: "proj_1",
+      projectName: "acme-app",
       branch: "main",
       services: [],
     });

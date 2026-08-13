@@ -1054,6 +1054,45 @@ describe("flag.optionalBoolean", () => {
   });
 });
 
+describe("implicit help is only for bare invocations", () => {
+  const grouped = () =>
+    createTestCli({
+      commands: { "auth login": greet },
+      groups: { auth: { brief: "Authentication" } },
+      now: EPOCH,
+    });
+
+  test("no argv renders root help and exits 0", async () => {
+    const result = await grouped().run([], { isTty: { stdout: true } });
+
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout).toContain("auth");
+  });
+
+  test("a bare group renders the group's help and exits 0", async () => {
+    const result = await grouped().run(["auth"], { isTty: { stdout: true } });
+
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout).toContain("login");
+  });
+
+  test("an unknown root flag is a usage error, not a help card", async () => {
+    const result = await grouped().run(["--frobnicate"], {
+      isTty: { stdout: true },
+    });
+
+    expect(result.exitCode).not.toBe(0);
+  });
+
+  test("a group invocation carrying a flag reaches routing", async () => {
+    const result = await grouped().run(["auth", "--frobnicate"], {
+      isTty: { stdout: true },
+    });
+
+    expect(result.exitCode).not.toBe(0);
+  });
+});
+
 describe("help examples", () => {
   test("examples get the CLI name: {bin} is substituted, plain examples are prefixed", async () => {
     const exemplified = defineCommand({
@@ -1081,7 +1120,7 @@ describe("help examples", () => {
 
     expect(result.exitCode).toBe(0);
     expect(result.stdout).toBe("");
-    expect(result.stderr).toContain("USAGE");
+    expect(result.stderr).toContain("Usage");
   });
 });
 
@@ -1184,12 +1223,16 @@ describe("a failure carrying several findings", () => {
     };
   }
 
+  // Multi-line findings separate with a blank line; the trailing run of
+  // one-liners keeps hugging as one glyph-aligned list.
   const STDERR =
     "✘ [COMPOSER.CONFIG_INVALID] prisma.config.ts has 3 problems.\n" +
     "  why: Every problem found is listed below.\n" +
     "→ Fix all three, then run the command again.\n" +
+    "\n" +
     "✘ [COMPOSER.MISSING_NAME] services[0] has no name.\n" +
     "→ Give services[0] a name.\n" +
+    "\n" +
     "✘ [COMPOSER.UNKNOWN_ENGINE] services[1].engine 'postgres9' is not a known engine.\n" +
     "✘ [COMPOSER.PORT_OUT_OF_RANGE] services[1].port 70000 is above 65535.\n";
 

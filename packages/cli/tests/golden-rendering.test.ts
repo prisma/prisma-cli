@@ -93,7 +93,9 @@ describe("golden rendering", () => {
     expect(result.exitCode).toBe(0);
     expect(result.stderr).toBe(
       "ℹ Clearing your stored workspace sessions.\n" +
+        "\n" +
         "ended:  1\n" +
+        "\n" +
         "✔ Ended 1 workspace session.\n" +
         "→ Sign in: prisma-cli auth login\n",
     );
@@ -109,9 +111,10 @@ describe("golden rendering", () => {
     expect(result.exitCode).toBe(0);
     expect(result.stderr).toBe(
       "ℹ Listing your workspace sessions on this machine.\n" +
-        "name      id    status\n" +
+        "\n" +
+        "Name      Id    Status\n" +
         "Acme Inc  ws_1  current\n" +
-        "Globex    ws_2\n",
+        "Globex    ws_2  \u2014\n",
     );
     expect(result.stdout).toBe("Acme Inc  ws_1  current\nGlobex  ws_2\n");
   });
@@ -132,8 +135,10 @@ describe("golden rendering", () => {
     expect(result.exitCode).toBe(0);
     expect(result.stderr).toBe(
       '✔ Created key "ci-key" for bucket "assets".\n' +
+        "\n" +
         "- The credentials below are shown once — copy them now.\n" +
         "- Set these environment variables to use this bucket:\n" +
+        "\n" +
         "S3_ENDPOINT:           https://s3.prisma.io\n" +
         "S3_ACCESS_KEY_ID:      ********\n" +
         "S3_SECRET_ACCESS_KEY:  ********\n" +
@@ -180,8 +185,10 @@ describe("golden rendering", () => {
 
     expect(result.stderr).toBe(
       '\u001b[92m\u2714\u001b[39m Created key "ci-key" for bucket "assets".\n' +
+        "\n" +
         "- The credentials below are shown once \u2014 copy them now.\n" +
         "- Set these environment variables to use this bucket:\n" +
+        "\n" +
         "\u001b[36mS3_ENDPOINT:         \u001b[39m  https://s3.prisma.io\n" +
         "\u001b[36mS3_ACCESS_KEY_ID:    \u001b[39m  ********\n" +
         "\u001b[36mS3_SECRET_ACCESS_KEY:\u001b[39m  ********\n" +
@@ -199,9 +206,10 @@ describe("golden rendering", () => {
 
     expect(result.stderr).toBe(
       "\u001b[34m\u2139\u001b[39m Listing your workspace sessions on this machine.\n" +
-        "\u001b[36mname    \u001b[39m  \u001b[36mid  \u001b[39m  \u001b[36mstatus\u001b[39m\n" +
+        "\n" +
+        "\u001b[36mName    \u001b[39m  \u001b[36mId  \u001b[39m  \u001b[36mStatus\u001b[39m\n" +
         "Acme Inc  ws_1  current\n" +
-        "Globex    ws_2\n",
+        "Globex    ws_2  [2m\u2014[22m\n",
     );
   });
 });

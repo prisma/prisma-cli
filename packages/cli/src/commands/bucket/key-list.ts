@@ -21,7 +21,13 @@ function listPresentations(result: BucketKeyListResult): Presentations {
       { kind: "summary", status: "info", text: TITLE },
       { kind: "fields", rows: [{ label: "bucket", value: result.bucketId }] },
       ...(rows.length === 0
-        ? [{ kind: "list" as const, items: ["No keys found."] }]
+        ? [
+            {
+              kind: "summary" as const,
+              status: "info" as const,
+              text: "No keys found.",
+            },
+          ]
         : [
             {
               kind: "table" as const,

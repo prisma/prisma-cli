@@ -188,7 +188,7 @@ describe("prisma-cli project list", () => {
       columns: ["name", "id", "region"],
       rows: [
         ["Billing", "proj_1", "us-east-1"],
-        ["Storefront", "proj_2", "none"],
+        ["Storefront", "proj_2", ""],
       ],
     });
     // stdout carries the values, not the table's "none" placeholder.
@@ -275,8 +275,9 @@ describe("prisma-cli project list", () => {
     );
 
     expect(blocks(result.presented)).toContainEqual({
-      kind: "list",
-      items: ["No projects found."],
+      kind: "summary",
+      status: "info",
+      text: "No projects found.",
     });
     expect(result.presented?.presentation.stdout).toEqual([]);
   });
@@ -2149,8 +2150,9 @@ describe("prisma-cli project env list", () => {
     );
 
     expect(blocks(result.presented)).toContainEqual({
-      kind: "list",
-      items: ["No environment variables defined in this scope."],
+      kind: "summary",
+      status: "info",
+      text: "No environment variables defined in this scope.",
     });
     expect(result.presented?.presentation.next).toEqual([
       {

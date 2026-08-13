@@ -52,7 +52,13 @@ function listPresentations(result: DatabaseListResult): Presentations {
         ],
       },
       ...(rows.length === 0
-        ? [{ kind: "list" as const, items: ["No databases found."] }]
+        ? [
+            {
+              kind: "summary" as const,
+              status: "info" as const,
+              text: "No databases found.",
+            },
+          ]
         : [
             {
               kind: "table" as const,

@@ -90,6 +90,32 @@ export function buildManagementApiClient(
   });
 }
 
+/**
+ * Loads the SDK, surviving a Node ESM resolver fault observed in the
+ * wild: the resolver can return the package's un-realpathed pnpm
+ * symlink URL (instead of the .pnpm real path), from which the SDK's
+ * own 'openapi-fetch' import cannot resolve. The fault is
+ * state-dependent — two fstatSync calls at process start reliably
+ * provoke it, and a module-loader hook masks it — so nothing here can
+ * rule it out. The fallback resolves through CJS require, which
+ * realpaths, and imports the real location directly; it never fires
+ * when the normal import works.
+ */
+async function importManagementApiSdk(): Promise<
+  typeof import("@prisma/management-api-sdk")
+> {
+  try {
+    return await import("@prisma/management-api-sdk");
+  } catch {
+    const { createRequire } = await import("node:module");
+    const { pathToFileURL } = await import("node:url");
+    const real = createRequire(import.meta.url).resolve(
+      "@prisma/management-api-sdk",
+    );
+    return await import(pathToFileURL(real).href);
+  }
+}
+
 async function constructClient(
   invocation: Invocation,
   debug: DebugLog,
@@ -118,7 +144,7 @@ async function constructClient(
     debug,
     probe,
   );
-  const { createManagementApiSdk } = await import("@prisma/management-api-sdk");
+  const { createManagementApiSdk } = await importManagementApiSdk();
   const sdk = createManagementApiSdk({
     clientId: config.clientId,
     redirectUri: config.redirectUri,
