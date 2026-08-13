@@ -41,7 +41,11 @@ export {
   type SessionCommandDefinition,
   type SpawnDeclarations,
 } from "../commands";
-export { defineConfig, loadConfig } from "../config-loader";
+export {
+  defineConfig,
+  definePrismaConfig,
+  loadConfig,
+} from "../config-loader";
 export {
   type ConfigSection,
   defineConfigSection,

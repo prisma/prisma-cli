@@ -31,6 +31,7 @@ describe("main export", () => {
       "defineCommandFamily",
       "defineConfig",
       "defineConfigSection",
+      "definePrismaConfig",
       "defineServerCommand",
       "defineSessionCommand",
       "emptyServiceTokenError",

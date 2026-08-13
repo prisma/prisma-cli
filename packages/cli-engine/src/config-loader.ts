@@ -62,13 +62,17 @@ export function reservedConfigSectionName(name: string): boolean {
  * top-level key names a config section, and the recognised section
  * names are exactly the ones the CLI's command families declare. Never
  * throws — bad section values are the section validator's problem, not
- * defineConfig's.
+ * definePrismaConfig's.
  */
-export function defineConfig<T extends Record<string, unknown>>(
+export function definePrismaConfig<T extends Record<string, unknown>>(
   config: T,
 ): T & { readonly $prismaConfig: number } {
   return Object.freeze({ ...config, $prismaConfig: PRISMA_CONFIG_VERSION });
 }
+
+/** @deprecated Renamed to {@link definePrismaConfig}: every family's
+ *  config helper carries a unique name, so none needs an import alias. */
+export const defineConfig = definePrismaConfig;
 
 function hasVersionMarker(value: unknown): value is Record<string, unknown> {
   return (
@@ -87,12 +91,12 @@ function missingMarkerDiagnostic(path: string): Diagnostic {
     code: "CLI.CONFIG_MISSING_MARKER",
     severity: "error",
     summary: `${path} was not written for this version of the Prisma CLI, so it cannot be used.`,
-    why: "Configs for this CLI are created with defineConfig, which records a version marker on the exported object. This file's default export has no marker — it is most likely a Prisma 7 config, which uses the same filename — and the CLI stops rather than misread it.",
+    why: "Configs for this CLI are created with definePrismaConfig, which records a version marker on the exported object. This file's default export has no marker — it is most likely a Prisma 7 config, which uses the same filename — and the CLI stops rather than misread it.",
     nextActions: [
       {
         kind: "user-choice",
         label:
-          "Migrate the file: wrap the exported object in defineConfig from @prisma/cli-engine and export the result as the default export.",
+          "Migrate the file: wrap the exported object in definePrismaConfig from @prisma/cli-engine and export the result as the default export.",
       },
     ],
     where: { path },
@@ -113,7 +117,7 @@ function unsupportedVersionDiagnostic(path: string, found: number): Diagnostic {
       {
         kind: "user-choice",
         label:
-          "Regenerate the config with a defineConfig matching this CLI, or update the CLI to a version that supports the declared config version.",
+          "Regenerate the config with a definePrismaConfig matching this CLI, or update the CLI to a version that supports the declared config version.",
       },
     ],
     where: { path },

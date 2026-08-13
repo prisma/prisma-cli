@@ -1,6 +1,6 @@
-import { defineConfig } from "@prisma/cli-engine";
+import { definePrismaConfig } from "@prisma/cli-engine";
 
-export default defineConfig({
+export default definePrismaConfig({
   toy: { greeting: "plain" },
   $production: { toy: { greeting: "overlaid by $production" } },
 });
