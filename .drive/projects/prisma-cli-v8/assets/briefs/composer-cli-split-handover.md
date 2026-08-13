@@ -17,7 +17,7 @@ The engine (`@prisma/cli-engine`) must exist exactly once in any installed tree 
 - Product CLI packages (composer's command family; the ORM's `@prisma/orm-toolchain`) declare the engine as an **exact `peerDependency`** (plus a `devDependency` for their own tests). The shell (`@prisma/cli`) carries the one real engine `dependency` and satisfies everyone's peer. Peers resolve against the ancestor, so one engine exists in any tree shape, and an unsatisfiable peer is an **install-time error** instead of a silent second copy.
 - Widening exact peers to a **range** is the recorded destination, post-GA, once the engine has a written compatibility contract. Not now: during the rc line the engine breaks consumers deliberately, so a range would be fiction.
 - Product **libraries carry no engine relationship at all**. Applications depend on libraries (`@prisma/composer`, `@prisma/orm-postgres`); only the consolidated CLI depends on product CLI packages; product CLI packages are reached only transitively through the CLI.
-- The target dependency tree, in the operator's words: `app → @prisma/prisma-cli → { orm-cli → engine(peer), composer-cli → engine(peer), engine }`, with `app → @prisma/composer` and `app → @prisma/orm-postgres` as ordinary library dependencies alongside.
+- The target dependency tree, in the operator's words: `app → @prisma/cli → { orm-cli → engine(peer), composer-cli → engine(peer), engine }` (the shell's published name is `@prisma/cli`), with `app → @prisma/composer` and `app → @prisma/orm-postgres` as ordinary library dependencies alongside.
 
 The ORM side already conforms structurally: `@prisma/orm-toolchain` is the dev/CLI package (applications reach its vite plugin through `@prisma/orm-postgres/vite-plugin-contract-emit`, a forwarded export — verified 2026-08-13), so it needs only the dependency-field change, in its own repo, **not in this brief's scope**. Composer is the one package that mixes the application-facing runtime library with the CLI family in one manifest. That split is your job.
 
@@ -64,7 +64,7 @@ Composer's `publish.yml` runs only `check:publish-deps` today; the pin, static-g
 
 - **Do not touch prisma-cli.** After `@prisma/composer-cli` publishes, the shell repins (`@prisma/composer` → `@prisma/composer-cli` in `dependencies` and in `packages/cli/src/cli.ts`), and its conformance check's 3c evolves from pin-equality to peer-satisfaction with the exception list deleted. That is a follow-up in the prisma-cli repo — name it in your PR body as the required next step, with the file pointers above.
 - **Do not touch prisma/prisma.** `@prisma/orm-toolchain`'s dependencies→peer change is the same strategy in another repo, separately dispatched.
-- **Do not change the engine's versioning.** Decoupling the engine's version from the shell's lockstep is flagged in the strategy discussion but NOT yet ruled by the operator.
+- **Do not change the engine's versioning.** The engine now versions independently of the shell's lockstep (ruled 2026-08-13, recorded in ADR 0004) — but that ruling is implemented in prisma-cli, not here; composer only consumes whatever exact engine version it builds against.
 - **Do not write the strategy ADR.** It is being recorded separately in prisma-cli; your PR implements composer's share of it.
 
 ## 6. STOP — surface before implementing

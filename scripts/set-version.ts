@@ -14,8 +14,9 @@ import {
 // extraction to another repo (2026-08-10), and `@prisma/cli-engine`
 // versions independently so an engine version means "the engine
 // changed" rather than "the CLI released" — which is what keeps the
-// exact peer pins on it cheap (2026-08-13, ADR 0004). Their manifests
-// stay untouched by lockstep bumps.
+// exact peer pins on it cheap (2026-08-13, ADR 0004). A lockstep bump
+// never changes their `version` field; their workspace pins on
+// lockstep siblings ARE still swept, so those never go stale.
 const LOCKSTEP_EXCLUDED = new Set(["@prisma/compute", "@prisma/cli-engine"]);
 
 const rootDir = path.dirname(path.dirname(fileURLToPath(import.meta.url)));

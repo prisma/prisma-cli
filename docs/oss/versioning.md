@@ -78,6 +78,6 @@ The pure version-computation helpers are covered by `pnpm test:scripts` (run in 
 
 ## Non-goals
 
-- **Independent per-package versioning** (beyond the ruled `@prisma/compute` exclusion). Lockstep is the invariant the rest of the contract is built on.
+- **Independent per-package versioning** (beyond the ruled exclusions: `@prisma/compute`, and `@prisma/cli-engine` per ADR 0004). Lockstep is the invariant the rest of the contract is built on for everything else.
 - **A scripted `beta` cadence.** The `beta` dist-tag exists but cutting beta builds is a manual `workflow_dispatch`. (The RC cadence, by contrast, *is* the routine scripted path.)
 - **Patch releases on the RC line.** A fix ships as the next `rc.N`.
