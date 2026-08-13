@@ -14,6 +14,7 @@ long-term architecture boundaries.
 | [0001](0001-preview-package-and-publishing.md) | Accepted | Use `@prisma/cli` latest for official beta releases, `dev` for integrated main builds, and PR previews for trusted unmerged work. |
 | [0002](0002-workflow-command-model.md) | Accepted | Group commands by developer workflow using `prisma <group> <action>`. |
 | [0003](0003-structured-output-and-errors.md) | Accepted | Treat structured output and stable error codes as public contracts. |
+| [0004](0004-platform-domain-model-and-language.md) | Proposed | Branch-scoped resources, Versions instead of Deployments, and one ubiquitous language across API, Console, and CLI. |
 
 ## ADR Template
 
