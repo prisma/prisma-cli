@@ -69,16 +69,20 @@ function nextActionsFor(
   ];
 }
 
-function presentationsFor(spec: {
-  readonly session: Session;
-  readonly environmentCredentialInForce: boolean;
-  readonly agentSetupTipCommand: string | null;
-}): Presentations {
+function presentationsFor(
+  spec: {
+    readonly session: Session;
+    readonly environmentCredentialInForce: boolean;
+    readonly agentSetupTipCommand: string | null;
+  },
+  result: LoginResult,
+): Presentations {
   const rows = [
     { label: "status", value: "signed in" },
     { label: "workspace", value: sessionLabel(spec.session) },
   ];
   return {
+    json: () => result,
     human: () => [
       { kind: "summary", status: "info", text: TITLE },
       { kind: "fields", rows },
@@ -152,11 +156,14 @@ export const authLoginCommand = defineCommand({
     return ok(
       ctx.present(
         { data: result },
-        presentationsFor({
-          session,
-          environmentCredentialInForce: environmentSession,
-          agentSetupTipCommand,
-        }),
+        presentationsFor(
+          {
+            session,
+            environmentCredentialInForce: environmentSession,
+            agentSetupTipCommand,
+          },
+          result,
+        ),
       ),
     );
   },

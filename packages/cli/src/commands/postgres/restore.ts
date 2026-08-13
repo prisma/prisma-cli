@@ -37,6 +37,8 @@ function restorePresentations(
   ];
 
   return {
+    stdout: () => [],
+    json: () => result,
     human: (): Block[] => [
       {
         kind: "summary",

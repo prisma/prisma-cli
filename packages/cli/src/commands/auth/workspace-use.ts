@@ -34,11 +34,14 @@ function noWorkspaceSessionsError(): CliStructuredError {
   );
 }
 
-function usePresentations(spec: {
-  readonly session: Session;
-  readonly previous: Session | undefined;
-  readonly environmentCredentialInForce: boolean;
-}): Presentations {
+function usePresentations(
+  spec: {
+    readonly session: Session;
+    readonly previous: Session | undefined;
+    readonly environmentCredentialInForce: boolean;
+  },
+  result: WorkspaceUseResult,
+): Presentations {
   const rows = [
     ...(spec.previous === undefined
       ? []
@@ -46,6 +49,7 @@ function usePresentations(spec: {
     { label: "workspace", value: sessionLabel(spec.session) },
   ];
   return {
+    json: () => result,
     human: () => [
       {
         kind: "summary",
@@ -124,11 +128,14 @@ export const authWorkspaceUseCommand = defineCommand({
     return ok(
       ctx.present(
         { data: result },
-        usePresentations({
-          session,
-          previous,
-          environmentCredentialInForce: environmentCredentialInForce(ctx.env),
-        }),
+        usePresentations(
+          {
+            session,
+            previous,
+            environmentCredentialInForce: environmentCredentialInForce(ctx.env),
+          },
+          result,
+        ),
       ),
     );
   },

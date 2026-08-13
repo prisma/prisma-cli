@@ -364,6 +364,14 @@ CLI does not do, and each restarts as engine work if wanted:
   build` from the engine's `test` script and let turbo's `^build`
   dependency do that work, or stop the engine's build cleaning a
   directory another package reads while it runs.
+  Seen again on the presentations branch (2026-08-12) with a second
+  message for the same cause — `Cannot find package
+  '@prisma/cli-engine/testing'` — and a failure count that varied 13,
+  34 and 43 files across three runs of one commit, while
+  `--concurrency=1` and a direct `npx vitest run` in `packages/cli`
+  both passed all 60 every time. The varying count is the tell: a
+  change that touches many files shifts the timing and makes it fire
+  more often, which reads as "this branch broke everything".
 - **The packed shell manifest carries `devDependencies` on private
   packages at versions no registry has** — `@repo/cli-telemetry` and
   `@repo/tsconfig`, both at `8.0.0-rc.1`. Harmless when a consumer

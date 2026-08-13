@@ -87,6 +87,29 @@ describe("the ORM family answers from the assembled tree", () => {
     });
   });
 
+  /**
+   * The same command in the other format, because the two formats call
+   * different presentation functions: json mode calls `json` and `next`
+   * and never touches `stdout`, human mode calls `human`, `stdout` and
+   * `next` and never touches `json`. A run in one format therefore
+   * proves nothing about the other.
+   *
+   * This exists because it was missed. #171 made the engine call every
+   * presentation a command declares, was checked against the json test
+   * above, and was reported safe for `stdout` on that basis — while
+   * orm-toolchain's `migration list` declares no `stdout` at all, so
+   * human mode would have exited 2 for every user at a terminal.
+   */
+  it("runs migration list in human mode, which calls different presentations", async () => {
+    const result = await shell({ orm: ORM_SECTION }).run(
+      ["migration", "list", "--format", "human"],
+      { cwd: ORM_PROJECT_DIR },
+    );
+
+    expect(result.exitCode).toBe(0);
+    expect(result.stderr).toContain("migration");
+  });
+
   it("validates the family's config section before running a command", async () => {
     const result = await shell({}).run(["migration", "list", "--json"], {
       cwd: ORM_PROJECT_DIR,

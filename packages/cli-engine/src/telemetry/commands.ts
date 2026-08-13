@@ -99,6 +99,7 @@ function statusPresentations(status: TelemetryStatus): Presentations {
     ],
     stdout: () => [...formatTelemetryStatusLines(status)],
     json: () => status,
+    next: () => [],
   };
 }
 
@@ -109,6 +110,7 @@ function consentPresentations(line: string, json: unknown): Presentations {
     human: () => [{ kind: "summary", status: "ok", text: line }],
     stdout: () => [line],
     json: () => json,
+    next: () => [],
   };
 }
 

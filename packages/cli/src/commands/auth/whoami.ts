@@ -97,13 +97,17 @@ function mergedIdentity(
   };
 }
 
-function presentationsFor(spec: {
-  readonly credential: ActiveCredential | null;
-  readonly identity: CredentialIdentity | null;
-}): Presentations {
+function presentationsFor(
+  spec: {
+    readonly credential: ActiveCredential | null;
+    readonly identity: CredentialIdentity | null;
+  },
+  result: WhoamiResult,
+): Presentations {
   const rows = credentialFieldRows(spec);
   const fromEnvironment = spec.credential?.origin.source === "environment";
   return {
+    json: () => result,
     human: () => [
       { kind: "summary", status: "info", text: TITLE },
       { kind: "fields", rows },
@@ -157,7 +161,10 @@ export const authWhoamiCommand = defineCommand({
       expiresAt: credential?.expiresAt?.toISOString() ?? null,
     };
     return ok(
-      ctx.present({ data: result }, presentationsFor({ credential, identity })),
+      ctx.present(
+        { data: result },
+        presentationsFor({ credential, identity }, result),
+      ),
     );
   },
 });

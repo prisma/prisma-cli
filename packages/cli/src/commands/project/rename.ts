@@ -18,6 +18,9 @@ import { mapProjectOperationError } from "./errors";
 
 function renamePresentations(result: ProjectRenameResult): Presentations {
   return {
+    stdout: () => [],
+    json: () => result,
+    next: () => [],
     human: () => [
       { kind: "summary", status: "ok", text: "Renaming project." },
       {

@@ -25,6 +25,7 @@ function presentationsFor(
       : `Ended ${result.endedCount} workspace ${result.endedCount === 1 ? "session" : "sessions"}.`;
   const rows = [{ label: "ended", value: String(result.endedCount) }];
   return {
+    json: () => result,
     human: () => [
       {
         kind: "summary",

@@ -38,6 +38,9 @@ const TITLE = "Replacing the environment variable's value.";
 
 function singlePresentations(result: EnvUpdateResult): Presentations {
   return {
+    stdout: () => [],
+    json: () => result,
+    next: () => [],
     human: (): Block[] => [
       { kind: "summary", status: "info", text: TITLE },
       {
@@ -121,13 +124,16 @@ export const projectEnvUpdateCommand = defineCommand({
         return ok(
           ctx.present(
             { data: result },
-            fileWritePresentations({
-              title: "Replacing environment variable values from file.",
-              emptyMessage: "No environment variables updated.",
-              scope: result.scope,
-              filePath: result.file.path,
-              variables: result.variables,
-            }),
+            fileWritePresentations(
+              {
+                title: "Replacing environment variable values from file.",
+                emptyMessage: "No environment variables updated.",
+                scope: result.scope,
+                filePath: result.file.path,
+                variables: result.variables,
+              },
+              result,
+            ),
           ),
         );
       }

@@ -40,6 +40,7 @@ function listPresentations(result: DatabaseListResult): Presentations {
   const rows = databaseRows(result);
   const stdoutRows = databaseStdoutRows(result);
   return {
+    next: () => [],
     human: (): Block[] => [
       { kind: "summary", status: "info", text: TITLE },
       {

@@ -105,6 +105,9 @@ const check = defineCommand({
         },
         {
           human: () => [{ kind: "summary", status: "warn", text: "1 finding" }],
+          stdout: () => [],
+          json: () => ({ findings: 1 }),
+          next: () => [],
         },
       ),
     ),
@@ -115,6 +118,34 @@ const throwing = defineCommand({
   handler: async () => {
     throw new Error("kaboom");
   },
+});
+
+/** Its `data` and its json presentation deliberately differ. Every other
+ *  fixture here passes the same value to both, so none of them can tell
+ *  which one the envelope published — `data` is what the handler worked
+ *  with, `result` is what the command chose to publish, and the engine
+ *  used to publish `data` for any command that declared no json.
+ *
+ *  What this catches: settlement publishing `data` rather than the json
+ *  presentation. What it does not catch: the old conditional fallback
+ *  returning, because this command declares a json presentation, so the
+ *  fallback's branch is never taken. Nothing compiled against this
+ *  engine can omit `json`, so that branch is unreachable rather than
+ *  untested. */
+const divergent = defineCommand({
+  help: { summary: "Publishes something other than its working data" },
+  handler: async (_args, ctx) =>
+    ok(
+      ctx.present(
+        { data: { internal: "the handler's own object" } },
+        {
+          human: () => [],
+          stdout: () => [],
+          json: () => ({ published: "what the command states" }),
+          next: () => [],
+        },
+      ),
+    ),
 });
 
 const whoami = defineCommand({
@@ -133,6 +164,9 @@ const whoami = defineCommand({
               text: `Signed in (${active?.workspaceId})`,
             },
           ],
+          stdout: () => [],
+          json: () => ({ workspaceId: active?.workspaceId }),
+          next: () => [],
         },
       ),
     );
@@ -146,6 +180,7 @@ function makeCli() {
       failing,
       check,
       throwing,
+      divergent,
       "tool greet": greet,
       "auth whoami": whoami,
     },
@@ -196,6 +231,15 @@ describe("completed commands", () => {
         timestamp: T0,
       },
     ]);
+  });
+
+  test("the envelope's result is the json presentation, never the handler's data", async () => {
+    const result = await makeCli().run(["divergent", "--json"]);
+
+    const last = result.json[result.json.length - 1];
+    expect(
+      last.kind === "result" && last.envelope.ok && last.envelope.result,
+    ).toEqual({ published: "what the command states" });
   });
 
   test("commandId is the full dotted mount path", async () => {
@@ -517,7 +561,17 @@ describe("needs preconditions", () => {
         }),
       },
       handler: async (_args, ctx) =>
-        ok(ctx.present({ data: null }, { human: () => [] })),
+        ok(
+          ctx.present(
+            { data: null },
+            {
+              human: () => [],
+              stdout: () => [],
+              json: () => null,
+              next: () => [],
+            },
+          ),
+        ),
     });
   }
 
@@ -626,7 +680,12 @@ describe("undocumented completion exit codes", () => {
         ok(
           ctx.present(
             { data: null, exitCode: 7 } as unknown as { data: null },
-            { human: () => [] },
+            {
+              human: () => [],
+              stdout: () => [],
+              json: () => null,
+              next: () => [],
+            },
           ),
         ),
     });
@@ -647,7 +706,17 @@ describe("undocumented completion exit codes", () => {
       help: { summary: "Documents 4 but returns 5" },
       exitCodes: { 4: "findings" },
       handler: async (_args, ctx) =>
-        ok(ctx.present({ data: null, exitCode: 5 as 4 }, { human: () => [] })),
+        ok(
+          ctx.present(
+            { data: null, exitCode: 5 as 4 },
+            {
+              human: () => [],
+              stdout: () => [],
+              json: () => null,
+              next: () => [],
+            },
+          ),
+        ),
     });
     const cli = createTestCli({ commands: { rogue }, now: EPOCH });
     const result = await cli.run(["rogue", "--json"]);
@@ -683,6 +752,9 @@ describe("sensitive field rows", () => {
                 ],
               },
             ],
+            stdout: () => [],
+            json: () => ({ token: "tok_secret" }),
+            next: () => [],
           },
         ),
       ),
@@ -715,7 +787,17 @@ describe("report() after the handler resolved", () => {
       help: { summary: "Leaks its report function" },
       handler: async (_args, ctx) => {
         smuggled = ctx.report;
-        return ok(ctx.present({ data: null }, { human: () => [] }));
+        return ok(
+          ctx.present(
+            { data: null },
+            {
+              human: () => [],
+              stdout: () => [],
+              json: () => null,
+              next: () => [],
+            },
+          ),
+        );
       },
     });
     const cli = createCli({
@@ -776,7 +858,17 @@ describe("credentials that cannot be read", () => {
       help: { summary: "Needs credentials" },
       needs: { credentials: true },
       handler: async (_args, ctx) =>
-        ok(ctx.present({ data: null }, { human: () => [] })),
+        ok(
+          ctx.present(
+            { data: null },
+            {
+              human: () => [],
+              stdout: () => [],
+              json: () => null,
+              next: () => [],
+            },
+          ),
+        ),
     });
     const cli = createCli({
       name: "t",
@@ -887,7 +979,17 @@ describe("parse and route failures", () => {
         },
       },
       handler: async (_args, ctx) =>
-        ok(ctx.present({ data: null }, { human: () => [] })),
+        ok(
+          ctx.present(
+            { data: null },
+            {
+              human: () => [],
+              stdout: () => [],
+              json: () => null,
+              next: () => [],
+            },
+          ),
+        ),
     });
     const cli = createTestCli({ commands: { strict }, now: EPOCH });
     const result = await cli.run(["strict", "--mode", "z", "--count", "q"], {
@@ -910,7 +1012,17 @@ describe("parse and route failures", () => {
         flags: { count: flag.number({ brief: "how many", placeholder: "n" }) },
       },
       handler: async (_args, ctx) =>
-        ok(ctx.present({ data: null }, { human: () => [] })),
+        ok(
+          ctx.present(
+            { data: null },
+            {
+              human: () => [],
+              stdout: () => [],
+              json: () => null,
+              next: () => [],
+            },
+          ),
+        ),
     });
     const cli = createTestCli({ commands: { counting }, now: EPOCH });
     const result = await cli.run(["counting", "--count", ""], {
@@ -954,7 +1066,12 @@ describe("parse and route failures", () => {
         ok(
           ctx.present(
             { data: { bang: args.flags.withBang } },
-            { human: () => [] },
+            {
+              human: () => [],
+              stdout: () => [],
+              json: () => ({ bang: args.flags.withBang }),
+              next: () => [],
+            },
           ),
         ),
     });
@@ -970,7 +1087,17 @@ describe("ctx.host", () => {
   const reporting = defineCommand({
     help: { summary: "Report the host" },
     handler: async (_args, ctx) =>
-      ok(ctx.present({ data: ctx.host }, { human: () => [] })),
+      ok(
+        ctx.present(
+          { data: ctx.host },
+          {
+            human: () => [],
+            stdout: () => [],
+            json: () => ctx.host,
+            next: () => [],
+          },
+        ),
+      ),
   });
 
   test("a command reads the runtime, platform and arch from the context", async () => {
@@ -1016,6 +1143,9 @@ describe("flag.optionalBoolean", () => {
           { data: { link: args.flags.link ?? null } },
           {
             human: () => [],
+            stdout: () => [],
+            json: () => ({ link: args.flags.link ?? null }),
+            next: () => [],
           },
         ),
       ),
@@ -1101,7 +1231,17 @@ describe("help examples", () => {
         examples: ["greet world --loud", "{bin} greet world | cat"],
       },
       handler: async (_args, ctx) =>
-        ok(ctx.present({ data: null }, { human: () => [] })),
+        ok(
+          ctx.present(
+            { data: null },
+            {
+              human: () => [],
+              stdout: () => [],
+              json: () => null,
+              next: () => [],
+            },
+          ),
+        ),
     });
     const cli = createTestCli({ commands: { greet: exemplified }, now: EPOCH });
     const result = await cli.run(["greet", "--help"], {
