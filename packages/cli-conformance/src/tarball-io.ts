@@ -171,22 +171,16 @@ export function realTarballIo(
 
     async startBin({
       sandboxDir,
+      packageName,
       binName: _binName,
       relPath,
       argv,
       timeoutMs,
     }) {
-      const rootManifestPath = join(sandbox(), "package.json");
-      const rootManifest = JSON.parse(
-        readFileSync(rootManifestPath, "utf8"),
-      ) as {
-        dependencies: Record<string, string>;
-      };
-      const shellName = Object.keys(rootManifest.dependencies)[0] ?? "";
       const binPath = join(
         sandboxDir,
         "node_modules",
-        ...shellName.split("/"),
+        ...packageName.split("/"),
         relPath,
       );
       try {

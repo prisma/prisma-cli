@@ -1,0 +1,40 @@
+{
+  "name": "prisma",
+  "version": "8.0.0-rc.1",
+  "description": "Command-line interface for the Prisma Developer Platform.",
+  "type": "module",
+  "bin": {
+    "prisma": "./bin/prisma.js"
+  },
+  "files": [
+    "bin",
+    "README.md",
+    "LICENSE"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
+  "engines": {
+    "node": ">=22.18.0"
+  },
+  "keywords": [
+    "prisma",
+    "cli",
+    "database",
+    "app",
+    "deployment"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/prisma/prisma-cli.git",
+    "directory": "packages/prisma"
+  },
+  "homepage": "https://github.com/prisma/prisma-cli#readme",
+  "bugs": {
+    "url": "https://github.com/prisma/prisma-cli/issues"
+  },
+  "license": "Apache-2.0",
+  "dependencies": {
+    "@prisma/cli": "workspace:8.0.0-rc.1"
+  }
+}

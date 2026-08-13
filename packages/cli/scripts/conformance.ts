@@ -33,6 +33,7 @@ import {
 
 const CLI_DIR = fileURLToPath(new URL("..", import.meta.url));
 const ENGINE_DIR = join(CLI_DIR, "..", "cli-engine");
+const BARE_DIR = join(CLI_DIR, "..", "prisma");
 // At the REPO ROOT, not inside this package: a sandbox node_modules of
 // ~440 packages inside packages/cli slows vitest's file crawl enough to
 // time out unrelated tests.
@@ -77,10 +78,12 @@ async function tarball(): Promise<readonly Finding[]> {
   return checkTarball(
     {
       packages: [
+        { name: "prisma", dir: BARE_DIR },
         { name: "@prisma/cli", dir: CLI_DIR },
         { name: "@prisma/cli-engine", dir: ENGINE_DIR },
       ],
       shellPackage: "@prisma/cli",
+      wrapperPackage: "prisma",
       enginePackage: "@prisma/cli-engine",
       familyPackages: ["@prisma/composer", "@prisma/orm-toolchain"],
       exceptions: [
@@ -120,6 +123,6 @@ const findings: Finding[] = [
   ...validatorNoThrow(),
   ...(await tarball()),
 ];
-const report = { findings, subjectsChecked: 2 + 1 + 2 };
+const report = { findings, subjectsChecked: 2 + 1 + 3 };
 process.stdout.write(renderHuman(report));
 process.exitCode = exitCodeFor(report);

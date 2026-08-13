@@ -54,6 +54,8 @@ export interface TarballIo {
   ): Promise<readonly { version: string; path: string }[]>;
   startBin(input: {
     readonly sandboxDir: string;
+    /** The installed package whose tree contains the bin file. */
+    readonly packageName: string;
     readonly binName: string;
     readonly relPath: string;
     readonly argv: readonly string[];
@@ -80,6 +82,13 @@ export interface PinException extends Suppression {
 export interface TarballInput {
   readonly packages: readonly { name: string; dir: string }[];
   readonly shellPackage: string;
+  /**
+   * A published package that re-exposes the shell under another name
+   * (the bare `prisma` package wrapping `@prisma/cli`). When set, the
+   * sandbox install is rooted here, its bins are started alongside the
+   * shell's, and its packed manifest must pin the shell exactly.
+   */
+  readonly wrapperPackage?: string;
   readonly enginePackage: string;
   /** Command-family packages the shell mounts; must be shell deps. */
   readonly familyPackages: readonly string[];
@@ -130,9 +139,19 @@ export async function checkTarball(
 
   const shell = packed.get(input.shellPackage);
   if (shell === undefined) return findings;
+  const wrapper =
+    input.wrapperPackage === undefined
+      ? undefined
+      : packed.get(input.wrapperPackage);
+  if (input.wrapperPackage !== undefined && wrapper === undefined) {
+    return findings;
+  }
 
   findings.push(...manifestPinFindings(input, shell.manifest));
-  findings.push(...(await sandboxFindings(input, shell, packed, io)));
+  if (wrapper !== undefined) {
+    findings.push(...wrapperPinFindings(input, wrapper.manifest));
+  }
+  findings.push(...(await sandboxFindings(input, shell, wrapper, packed, io)));
   return applyExceptions(findings, input.exceptions);
 }
 
@@ -188,13 +207,48 @@ function manifestPinFindings(
   return findings;
 }
 
+/** The wrapper's leg of 3c: it must pin the shell, exactly. */
+function wrapperPinFindings(
+  input: TarballInput,
+  wrapperManifest: PackedManifest,
+): readonly Finding[] {
+  const pin = wrapperManifest.dependencies?.[input.shellPackage];
+  if (pin === undefined) {
+    return [
+      finding(
+        "engine-pin-mismatch",
+        input.wrapperPackage ?? "(wrapper)",
+        `the wrapper does not declare ${input.shellPackage} as a dependency — it has nothing to delegate to`,
+      ),
+    ];
+  }
+  if (!EXACT_VERSION.test(pin)) {
+    return [
+      finding(
+        "engine-pin-mismatch",
+        input.wrapperPackage ?? "(wrapper)",
+        `the wrapper pins ${input.shellPackage} as "${pin}", which is not an exact version — a workspace: or range specifier survived packing`,
+      ),
+    ];
+  }
+  return [];
+}
+
 /** 3b + 3c's installed legs, all downstream of one sandbox install. */
 async function sandboxFindings(
   input: TarballInput,
   shell: { tarball: string; manifest: PackedManifest },
+  wrapper: { tarball: string; manifest: PackedManifest } | undefined,
   packed: ReadonlyMap<string, { tarball: string; manifest: PackedManifest }>,
   io: TarballIo,
 ): Promise<readonly Finding[]> {
+  // The install is rooted at what a user would install: the wrapper
+  // when one ships, the shell otherwise.
+  const root = wrapper ?? shell;
+  const rootName =
+    wrapper === undefined
+      ? input.shellPackage
+      : (input.wrapperPackage ?? input.shellPackage);
   // Transitive: a sibling reached only through another sibling still
   // needs its override, or the install falls back to the registry.
   const overrides: Record<string, string> = {};
@@ -208,38 +262,48 @@ async function sandboxFindings(
       visit(entry.manifest);
     }
   };
-  visit(shell.manifest);
+  visit(root.manifest);
   const install = await io.installSandbox({
     sandboxDir: input.sandboxDir,
-    rootTarball: shell.tarball,
+    rootTarball: root.tarball,
     overrides,
   });
   if (!install.ok) {
     return [
       finding(
         "install-failed",
-        input.shellPackage,
+        rootName,
         "the packed tarball did not install into a clean tree",
         install.output,
       ),
     ];
   }
-  return [
-    ...(await binFindings(input, shell.manifest, io)),
-    ...(await installedPinFindings(input, shell.manifest, io)),
+  const subjects: readonly { name: string; manifest: PackedManifest }[] = [
+    { name: rootName, manifest: root.manifest },
+    ...(wrapper === undefined
+      ? []
+      : [{ name: input.shellPackage, manifest: shell.manifest }]),
   ];
+  const findings: Finding[] = [];
+  for (const subject of subjects) {
+    // biome-ignore lint/performance/noAwaitInLoops: bins start one package at a time so a failure names its package
+    findings.push(...(await binFindings(input, subject, io)));
+  }
+  findings.push(...(await installedPinFindings(input, shell.manifest, io)));
+  return findings;
 }
 
 async function binFindings(
   input: TarballInput,
-  shellManifest: PackedManifest,
+  subject: { name: string; manifest: PackedManifest },
   io: TarballIo,
 ): Promise<readonly Finding[]> {
   const findings: Finding[] = [];
-  for (const [binName, relPath] of declaredBins(shellManifest)) {
+  for (const [binName, relPath] of declaredBins(subject.manifest)) {
     // biome-ignore lint/performance/noAwaitInLoops: bins start one at a time so a failure names its bin and concurrent processes cannot confound each other's exit
     const run = await io.startBin({
       sandboxDir: input.sandboxDir,
+      packageName: subject.name,
       binName,
       relPath,
       argv: ["--version"],
@@ -249,7 +313,7 @@ async function binFindings(
       findings.push(
         finding(
           "bin-failed",
-          input.shellPackage,
+          subject.name,
           `bin ${binName} timed out instead of exiting`,
           run.stderr,
         ),
@@ -258,7 +322,7 @@ async function binFindings(
       findings.push(
         finding(
           "bin-failed",
-          input.shellPackage,
+          subject.name,
           `bin ${binName} exited ${run.exitCode} on plain node`,
           `stdout:\n${run.stdout}\nstderr:\n${run.stderr}`,
         ),
@@ -306,19 +370,23 @@ async function installedPinFindings(
     }
   }
 
-  const copies = await io.listInstalledCopies(
-    input.sandboxDir,
-    input.enginePackage,
-  );
-  if (copies.length > 1) {
-    findings.push(
-      finding(
-        "engine-pin-mismatch",
-        input.enginePackage,
-        `${copies.length} copies of ${input.enginePackage} resolve in the installed tree (${copies.map((c) => c.version).join(", ")})`,
-        copies.map((c) => `${c.version}  ${c.path}`).join("\n"),
-      ),
-    );
+  const singletons =
+    input.wrapperPackage === undefined
+      ? [input.enginePackage]
+      : [input.enginePackage, input.shellPackage];
+  for (const name of singletons) {
+    // biome-ignore lint/performance/noAwaitInLoops: one sweep per singleton package keeps findings ordered
+    const copies = await io.listInstalledCopies(input.sandboxDir, name);
+    if (copies.length > 1) {
+      findings.push(
+        finding(
+          "engine-pin-mismatch",
+          name,
+          `${copies.length} copies of ${name} resolve in the installed tree (${copies.map((c) => c.version).join(", ")})`,
+          copies.map((c) => `${c.version}  ${c.path}`).join("\n"),
+        ),
+      );
+    }
   }
   return findings;
 }

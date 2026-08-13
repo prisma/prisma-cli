@@ -66,7 +66,7 @@ jobs:
       - name: Publish installable PR preview
         id: publish_preview
         continue-on-error: ${{ vars.CLI_PR_PREVIEW_REQUIRED != 'true' }}
-        run: pnpm exec pkg-pr-new publish --bin --comment=update packages/cli packages/cli-engine
+        run: pnpm exec pkg-pr-new publish --bin --comment=update packages/cli packages/cli-engine packages/prisma
 
       - name: Summarize PR preview publish
         if: ${{ always() }}

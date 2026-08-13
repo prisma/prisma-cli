@@ -297,7 +297,8 @@ describe("checkTarball", () => {
   test("3b: every declared bin is started; a non-zero exit names the bin", async () => {
     const started: string[] = [];
     const io = fakeIo({
-      startBin: ({ binName }) => {
+      startBin: ({ binName, packageName }) => {
+        expect(packageName).toBe("@prisma/cli");
         started.push(binName);
         return Promise.resolve({
           exitCode: binName === "prisma-cli" ? 3 : 0,
@@ -400,6 +401,162 @@ describe("checkTarball", () => {
     });
     await checkTarball(input(), io);
     expect(started).toEqual([{ binName: "cli", relPath: "./dist/cli.js" }]);
+  });
+
+  describe("wrapper package", () => {
+    const WRAPPER_MANIFEST = {
+      name: "prisma",
+      version: "8.0.0-rc.1",
+      bin: { prisma: "./bin/prisma.js" },
+      dependencies: { "@prisma/cli": "8.0.0-rc.1" },
+    } as unknown as PackageManifest;
+
+    function packedManifestFor(
+      tarball: string,
+      wrapperManifest: PackageManifest,
+    ): PackageManifest {
+      if (tarball.includes("cli-engine")) return ENGINE_MANIFEST;
+      if (tarball.includes("packages/prisma")) return wrapperManifest;
+      return {
+        ...SHELL_MANIFEST,
+        name: "@prisma/cli",
+        version: "8.0.0-rc.1",
+      } as PackageManifest;
+    }
+
+    function packedFilesFor(tarball: string): ReadonlyMap<string, string> {
+      if (tarball.includes("cli-engine")) {
+        return new Map([
+          ["dist/index.js", 'import "@stricli/core";\nimport "colorette";\n'],
+        ]);
+      }
+      if (tarball.includes("packages/prisma")) {
+        return new Map([["bin/prisma.js", 'import "@prisma/cli/cli";\n']]);
+      }
+      return new Map([
+        [
+          "dist/cli.js",
+          'import "colorette";\nimport "@prisma/cli-engine";\nimport "@prisma/composer/family";\n',
+        ],
+      ]);
+    }
+
+    function wrapperIo(
+      wrapperManifest = WRAPPER_MANIFEST,
+      overrides: Partial<TarballIo> = {},
+    ): TarballIo {
+      return fakeIo({
+        pack: (pkgDir) => Promise.resolve({ tarball: `/abs/${pkgDir}.tgz` }),
+        readPackedManifest: (tarball) =>
+          Promise.resolve(packedManifestFor(tarball, wrapperManifest)),
+        readPackedFiles: (tarball) => Promise.resolve(packedFilesFor(tarball)),
+        ...overrides,
+      });
+    }
+
+    const wrapperInput = (overrides: Partial<TarballInput> = {}) =>
+      input({
+        packages: [
+          { name: "prisma", dir: "packages/prisma" },
+          { name: "@prisma/cli", dir: "packages/cli" },
+          { name: "@prisma/cli-engine", dir: "packages/cli-engine" },
+        ],
+        wrapperPackage: "prisma",
+        ...overrides,
+      });
+
+    test("the install is rooted at the wrapper with the shell and engine overridden in", async () => {
+      let root = "";
+      let seen: Readonly<Record<string, string>> = {};
+      const io = wrapperIo(WRAPPER_MANIFEST, {
+        installSandbox: ({ rootTarball, overrides: o }) => {
+          root = rootTarball;
+          seen = o;
+          return Promise.resolve({ ok: true as const });
+        },
+      });
+      await checkTarball(wrapperInput(), io);
+      expect(root).toBe("/abs/packages/prisma.tgz");
+      expect(seen["@prisma/cli@8.0.0-rc.1"]).toBe("file:/abs/packages/cli.tgz");
+    });
+
+    test("both the wrapper's and the shell's bins are started in their own package trees", async () => {
+      const started: { packageName: string; binName: string }[] = [];
+      const io = wrapperIo(WRAPPER_MANIFEST, {
+        startBin: ({ packageName, binName }) => {
+          started.push({ packageName, binName });
+          return Promise.resolve({
+            exitCode: 0,
+            stdout: "8.0.0-rc.1",
+            stderr: "",
+            timedOut: false,
+          });
+        },
+      });
+      await checkTarball(wrapperInput(), io);
+      expect(started).toEqual([
+        { packageName: "prisma", binName: "prisma" },
+        { packageName: "@prisma/cli", binName: "prisma-cli" },
+      ]);
+    });
+
+    test("a wrapper whose shell pin is not exact is a finding naming the wrapper", async () => {
+      const io = wrapperIo({
+        ...WRAPPER_MANIFEST,
+        dependencies: { "@prisma/cli": "workspace:8.0.0-rc.1" },
+      } as PackageManifest);
+      const findings = await checkTarball(wrapperInput(), io);
+      expect(
+        findings.some(
+          (f) =>
+            f.kind === "engine-pin-mismatch" &&
+            f.subject === "prisma" &&
+            f.summary.includes("workspace:"),
+        ),
+      ).toBe(true);
+    });
+
+    test("a wrapper that does not depend on the shell is a finding", async () => {
+      const io = wrapperIo({
+        ...WRAPPER_MANIFEST,
+        dependencies: {},
+      } as PackageManifest);
+      const findings = await checkTarball(wrapperInput(), io);
+      expect(
+        findings.some(
+          (f) =>
+            f.kind === "engine-pin-mismatch" &&
+            f.subject === "prisma" &&
+            f.summary.includes("nothing to delegate to"),
+        ),
+      ).toBe(true);
+    });
+
+    test("two installed copies of the shell under a wrapper is a finding", async () => {
+      const io = wrapperIo(WRAPPER_MANIFEST, {
+        listInstalledCopies: (_s, name) =>
+          Promise.resolve(
+            name === "@prisma/cli"
+              ? [
+                  { version: "8.0.0-rc.1", path: "node_modules/@prisma/cli" },
+                  {
+                    version: "8.0.0-rc.0",
+                    path: "node_modules/prisma/node_modules/@prisma/cli",
+                  },
+                ]
+              : [],
+          ),
+      });
+      const findings = await checkTarball(wrapperInput(), io);
+      expect(
+        findings.some(
+          (f) =>
+            f.kind === "engine-pin-mismatch" &&
+            f.subject === "@prisma/cli" &&
+            f.summary.includes("2 copies"),
+        ),
+      ).toBe(true);
+    });
   });
 
   test("no packages at all is a finding, not a pass", async () => {

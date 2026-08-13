@@ -21,10 +21,13 @@ name: Publish to npm
 #   - workflow_dispatch                                 → publish `<base>`
 #     under the chosen dist-tag (default `latest`); also the dry-run path.
 #
-# Scope: publishes `@prisma/cli-engine` then `@prisma/cli` (the cli
-# depends on the engine, so the engine goes first). `@prisma/compute` is
-# excluded from the lockstep by operator ruling (2026-08-10) and keeps
-# its own workflow (`publish-compute.yml`).
+# Scope: publishes `@prisma/cli-engine`, then `@prisma/cli`, then the
+# bare `prisma` wrapper (each depends on the one before it, so they go
+# in that order). On the RC line all three land under `next`; the bare
+# package's `latest` keeps serving the pre-8 CLI shipped by
+# prisma/prisma until the operator moves it deliberately.
+# `@prisma/compute` is excluded from the lockstep by operator ruling
+# (2026-08-10) and keeps its own workflow (`publish-compute.yml`).
 
 on:
   push:
@@ -152,7 +155,8 @@ jobs:
       # manifest. `--no-git-checks` because the packing step touches the
       # tree; the version itself is whatever the commit says.
       #
-      # Publish order: the engine first, then the cli that depends on it.
+      # Publish order: the engine, then the cli that depends on it, then
+      # the bare `prisma` wrapper that pins the cli.
 
       # Dry-run path: exercises the full publish pipeline (pack, validate
       # tarball contents, dependency rewriting) without touching the npm
@@ -163,6 +167,7 @@ jobs:
         run: |
           pnpm --filter @prisma/cli-engine publish --tag "${{ steps.version.outputs.tag }}" --access public --no-git-checks --dry-run
           pnpm --filter @prisma/cli publish --tag "${{ steps.version.outputs.tag }}" --access public --no-git-checks --dry-run
+          pnpm --filter prisma publish --tag "${{ steps.version.outputs.tag }}" --access public --no-git-checks --dry-run
 
       # A rerun (or a re-publish dispatch) meets versions that are
       # already on the registry. npm refuses to publish over them —
@@ -191,6 +196,7 @@ jobs:
           }
           publish_one @prisma/cli-engine
           publish_one @prisma/cli
+          publish_one prisma
 
       # Emit a GitHub Release for releases only — runs whose dist-tag is
       # the canonical one for their version (`next` on the RC line,
