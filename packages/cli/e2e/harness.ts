@@ -71,7 +71,12 @@ export interface ResultEnvelope {
   readonly ok: boolean;
   readonly commandId?: string;
   readonly result?: unknown;
-  readonly error?: { readonly code?: string; readonly summary?: string };
+  readonly error?: {
+    readonly code?: string;
+    readonly summary?: string;
+    readonly why?: string;
+    readonly meta?: unknown;
+  };
   readonly exitCode?: number;
 }
 
@@ -200,10 +205,18 @@ export class E2eSession {
 
     const envelope = parseResultFrame(stdout);
     if (options.expectOk !== false && !envelope.ok) {
+      const why =
+        envelope.error?.why === undefined
+          ? ""
+          : `\n  why: ${envelope.error.why}`;
+      const meta =
+        envelope.error?.meta === undefined
+          ? ""
+          : `\n  meta: ${JSON.stringify(envelope.error.meta)}`;
       throw new Error(
         `expected \`${argv.join(" ")}\` to succeed, but it failed with ` +
           `${envelope.error?.code ?? "(no code)"}: ` +
-          `${envelope.error?.summary ?? "(no summary)"}\n${stderr.slice(0, 2000)}`,
+          `${envelope.error?.summary ?? "(no summary)"}${why}${meta}\n${stderr.slice(0, 2000)}`,
       );
     }
     return { exitCode, stdout, stderr, envelope };

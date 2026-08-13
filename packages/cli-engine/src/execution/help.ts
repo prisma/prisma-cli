@@ -100,15 +100,21 @@ function resolveTarget(
   return { target: { kind: "node", node }, path };
 }
 
-/** A bare group invocation (`prisma-cli project`) is a help request;
- *  a bare leaf is a command run and is left alone. */
+/** A BARE group invocation (`prisma-cli project`, or no argv at all)
+ *  is a help request; anything carrying flags or extra tokens is not —
+ *  `cli --unknown` and `cli project --frobnicate` must reach routing
+ *  and usage validation, not exit 0 with a help card. A bare leaf is a
+ *  command run and is left alone. */
 export function bareGroupInvocation(
   root: CommandTreeNode,
   argv: readonly string[],
 ): boolean {
   const segments = helpPath(argv);
+  if (segments.length !== argv.length) {
+    return false;
+  }
   if (segments.length === 0) {
-    return flagTokens(argv).every((token) => token !== "--version");
+    return true;
   }
   const { target, path } = resolveTarget(root, segments);
   return target.kind === "node" && path.length === segments.length;
