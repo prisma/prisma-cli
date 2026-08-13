@@ -95,6 +95,35 @@ describeCommand("service list", () => {
   });
 });
 
+describeCommand("service show", () => {
+  it("shows the created service, with nothing deployed to it", async () => {
+    const existing = requireService();
+    const run = await scratch.run([
+      "service",
+      "show",
+      "--service",
+      existing.name,
+    ]);
+    const shown = run.envelope.result as {
+      readonly projectId: string;
+      readonly service: { readonly id: string; readonly name: string };
+      readonly liveDeployment: unknown;
+      readonly liveUrl: string | null;
+      readonly recentDeployments: readonly unknown[];
+    };
+
+    expect(shown.projectId).toBe(scratch.project().id);
+    expect(shown.service.id).toBe(existing.id);
+    expect(shown.service.name).toBe(existing.name);
+    // `service create` does not deploy, so these three state the same
+    // fact three ways, and each is a separate chance to invent one: no
+    // promoted deployment, so no live URL, and no history to show.
+    expect(shown.liveDeployment).toBeNull();
+    expect(shown.liveUrl).toBeNull();
+    expect(shown.recentDeployments).toEqual([]);
+  });
+});
+
 describeCommand("service remove", () => {
   it("removes the service, and the listing no longer reports it", async () => {
     const existing = requireService();

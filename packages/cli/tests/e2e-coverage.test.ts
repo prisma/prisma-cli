@@ -94,23 +94,24 @@ const EXCLUSIONS: Readonly<Record<string, string>> = {
  * here. A command added from today on needs a test or an EXCLUSIONS
  * entry saying why it cannot have one.
  *
- * These entries are owed for two different reasons, and the difference
- * matters to whoever picks one up.
+ * Every entry here needs the same thing: a service that has been
+ * DEPLOYED, which Composer does and this repo cannot. Covering them
+ * needs a fixture service that outlives a CI run.
  *
- * `service open`, the four `service deployment *` commands and
- * `build logs` need a service that has been DEPLOYED, which Composer
- * does and this repo cannot; covering them needs a fixture service that
- * outlives a CI run.
+ * An earlier revision of this comment split the list in two and said the
+ * five `service domain *` commands needed no deployment, because they
+ * act on a service that merely exists. That was wrong, and checking it
+ * against the API is what showed it: `service domain add` on a service
+ * created but never deployed answers
+ * `SERVICE.NO_DEPLOYMENTS` — "The selected production service does not
+ * have a promoted version that can receive a custom domain." So the
+ * domain verbs belong with the deployment-blocked group, not apart from
+ * it.
  *
- * `service show` and the five `service domain *` commands need no such
- * thing — they act on a service that merely exists, and `service create`
- * makes one without deploying. They are simply unwritten. `service show`
- * is the easiest of them: D1's unit tests already cover it against a
- * service that was never promoted, so a real happy path in
- * `e2e/service.e2e.ts` has no remaining obstacle.
+ * `service show` was the one command that split was right about, and it
+ * now has a happy path in `e2e/service.e2e.ts`.
  */
 const AWAITING_COVERAGE: readonly string[] = [
-  "service show",
   "service open",
   "service deployment list",
   "service deployment show",
