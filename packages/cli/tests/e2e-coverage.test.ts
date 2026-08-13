@@ -77,14 +77,6 @@ const EXCLUSIONS: Readonly<Record<string, string>> = {
     "A session command: it runs until SIGINT or SIGTERM, redeploying on file change, so it has no happy path that terminates on its own.",
   "composer log":
     "A session command that streams until interrupted, against an app only `composer deploy` could have deployed.",
-  "service deployment start":
-    "Acts on a deployment, and the API only accepts a start once an artifact has been uploaded. Only `composer deploy` produces one, which this suite cannot run.",
-  "service deployment stop":
-    "Acts on a deployment, which only `composer deploy` can create here. Same reason as `service deployment start`.",
-  "service deployment delete":
-    "Deletes a deployment, which only `composer deploy` can create here. Same reason as `service deployment start`.",
-  "service logs":
-    "Reads a deployment's log output, so it needs a deployment that has run. Only `composer deploy` produces one, which this suite cannot run.",
 };
 
 /**
@@ -94,29 +86,37 @@ const EXCLUSIONS: Readonly<Record<string, string>> = {
  * here. A command added from today on needs a test or an EXCLUSIONS
  * entry saying why it cannot have one.
  *
- * Every entry here needs the same thing: a service that has been
- * DEPLOYED, which Composer does and this repo cannot. Covering them
- * needs a fixture service that outlives a CI run.
+ * This list used to hold everything that needed a DEPLOYED service, on
+ * the grounds that only Composer can make one. It can now be made here:
+ * `e2e/deployed-service.ts` creates a deployment through the management
+ * API, uploads an artifact to the pre-signed URL it answers with, and
+ * starts and promotes it through the CLI. That covered seven commands,
+ * and what is left needs something the deployment alone does not give.
  *
- * An earlier revision of this comment split the list in two and said the
- * five `service domain *` commands needed no deployment, because they
- * act on a service that merely exists. That was wrong, and checking it
- * against the API is what showed it: `service domain add` on a service
- * created but never deployed answers
- * `SERVICE.NO_DEPLOYMENTS` — "The selected production service does not
- * have a promoted version that can receive a custom domain." So the
- * domain verbs belong with the deployment-blocked group, not apart from
- * it.
+ * `service deployment rollback` needs a SECOND promoted deployment to
+ * roll back from. The fixture makes one; making two and promoting them
+ * in order is more run time and more teardown, and is the next thing to
+ * write.
  *
- * `service show` was the one command that split was right about, and it
- * now has a happy path in `e2e/service.e2e.ts`.
+ * The five `service domain *` commands need a hostname whose DNS we
+ * control. With a promoted deployment in place, `service domain add`
+ * gets all the way to `SERVICE.DOMAIN_DNS_NOT_CONFIGURED` — "DNS
+ * verification failed: ensure the hostname CNAMEs to
+ * switchboard.ewr.prisma.build." No fixture inside this repo can satisfy
+ * that; it needs a domain the test account owns and a DNS record.
+ *
+ * `build logs` needs a build, which comes from a git push or a Console
+ * action, not from anything the CLI can do.
+ *
+ * `service logs` arrived while this was being written, excluded because
+ * "only `composer deploy` produces" a deployment to read logs from. That
+ * is no longer true, so it is owed rather than excused — it needs a
+ * deployment that has actually served traffic, which is a little more
+ * than the fixture does today.
  */
 const AWAITING_COVERAGE: readonly string[] = [
-  "service open",
-  "service deployment list",
-  "service deployment show",
-  "service deployment promote",
   "service deployment rollback",
+  "service logs",
   "service domain add",
   "service domain show",
   "service domain remove",
