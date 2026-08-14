@@ -16,6 +16,7 @@ import type {
 import { constructionError } from "./command-tree";
 import { makeDebugLog } from "./debug";
 import type { Invocation } from "./engine";
+import { CREDENTIAL_NEAR_EXPIRY_MS } from "./needs";
 import { firstLine } from "./rendering";
 import { flushBufferedEvents } from "./reporting";
 
@@ -306,15 +307,21 @@ async function composeChildEnv(
 
 /**
  * The child's copy of the credential: the manager's activeAccessToken()
- * operation, read at spawn time. The refresh token is never injected:
- * the child runs on a snapshot it cannot refresh.
+ * operation, validated again at spawn time. This preserves the fresh re-read
+ * while ensuring a token changed after preflight still satisfies the child's
+ * minimum lifetime. The refresh token is never injected: the child runs on a
+ * snapshot it cannot refresh.
  */
 async function spawnToken(invocation: Invocation): Promise<string> {
   const manager = invocation.runtime.credentialManager;
   if (manager === undefined) {
     throw credentialsRequiredError();
   }
-  const accessToken = await manager.activeAccessToken();
+  const accessToken = await manager.activeAccessToken({
+    minimumValidityMs: CREDENTIAL_NEAR_EXPIRY_MS,
+    now: invocation.now(),
+    signal: invocation.signal,
+  });
   if (accessToken === null) {
     throw credentialsRequiredError("session-ended");
   }

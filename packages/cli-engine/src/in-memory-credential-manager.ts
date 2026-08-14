@@ -125,11 +125,15 @@ function memoryBackedStorage(
       credentialWorkspaceId(credential.token) ?? NO_WORKSPACE_CLAIMED,
     accessToken: credential.token,
     refreshToken: credential.refreshToken,
+    expiresAt: claimedExpiresAt(credential.token) ?? credential.expiresAt,
   };
   return {
     getTokens: async () => tokens,
-    setTokens: async (rotated) => {
-      tokens = rotated;
+    setTokens: async (rotated, expiresAt) => {
+      tokens = {
+        ...rotated,
+        expiresAt: claimedExpiresAt(rotated.accessToken) ?? expiresAt,
+      };
     },
     clearTokens: async () => {
       tokens = null;
@@ -268,7 +272,7 @@ export class InMemoryCredentialManager implements CredentialManager {
     return this.activeStorage;
   }
 
-  /** The spawn path's read: the active credential's access token,
+  /** The delegated path's read: the active credential's access token,
    *  fresh on every call, never the refresh token. Null when there is
    *  no active credential to read — storage exists only once
    *  activeCredential() has returned non-null. */
@@ -280,12 +284,7 @@ export class InMemoryCredentialManager implements CredentialManager {
       return null;
     }
     const storage = await this.activeCredentialStorage();
-    return readActiveAccessToken(
-      storage,
-      this.refreshCredential,
-      options,
-      credential.expiresAt,
-    );
+    return readActiveAccessToken(storage, this.refreshCredential, options);
   }
 
   private buildActiveStorage(): TokenStorage {
@@ -318,9 +317,10 @@ export class InMemoryCredentialManager implements CredentialManager {
           workspaceId,
           accessToken: record.credential.token,
           refreshToken: record.credential.refreshToken,
+          expiresAt: record.credential.expiresAt,
         };
       },
-      setTokens: async (tokens) => {
+      setTokens: async (tokens, expiresAt) => {
         const record = pinnedRecord();
         if (record === undefined) {
           // The same structured error the real manager raises, so a
@@ -339,7 +339,7 @@ export class InMemoryCredentialManager implements CredentialManager {
                 credential: {
                   token: tokens.accessToken,
                   refreshToken: tokens.refreshToken,
-                  expiresAt: claimedExpiresAt(tokens.accessToken),
+                  expiresAt: claimedExpiresAt(tokens.accessToken) ?? expiresAt,
                 },
               }
             : stored,

@@ -3,10 +3,12 @@ import type { CredentialRefresher } from "@prisma/cli-engine";
 import { CLIENT_ID } from "./client";
 
 const TRAILING_SLASH = /\/$/;
+const CREDENTIAL_REFRESH_TIMEOUT_MS = 10_000;
 
 interface TokenEndpointBody {
   readonly access_token?: unknown;
   readonly refresh_token?: unknown;
+  readonly expires_in?: unknown;
   readonly error?: unknown;
 }
 
@@ -17,6 +19,10 @@ export function makeCredentialRefresher(
   const endpoint = `${authBaseUrl.replace(TRAILING_SLASH, "")}/token`;
   return async ({ refreshToken, signal }) => {
     signal.throwIfAborted();
+    const refreshSignal = AbortSignal.any([
+      signal,
+      AbortSignal.timeout(CREDENTIAL_REFRESH_TIMEOUT_MS),
+    ]);
     const response = await fetch(endpoint, {
       method: "POST",
       headers: { "content-type": "application/x-www-form-urlencoded" },
@@ -25,7 +31,7 @@ export function makeCredentialRefresher(
         refresh_token: refreshToken,
         client_id: CLIENT_ID,
       }),
-      signal,
+      signal: refreshSignal,
     });
     const body = await readBody(response);
     if (
@@ -38,14 +44,20 @@ export function makeCredentialRefresher(
     if (
       !response.ok ||
       typeof body?.access_token !== "string" ||
-      typeof body.refresh_token !== "string"
+      typeof body.refresh_token !== "string" ||
+      typeof body.expires_in !== "number" ||
+      !Number.isFinite(body.expires_in) ||
+      body.expires_in < 0
     ) {
-      throw new Error("OAuth token refresh failed");
+      throw new Error(
+        `OAuth token refresh failed (status ${String(response.status)})`,
+      );
     }
     return {
       kind: "success",
       accessToken: body.access_token,
       refreshToken: body.refresh_token,
+      expiresAt: new Date(Date.now() + body.expires_in * 1_000),
     };
   };
 }

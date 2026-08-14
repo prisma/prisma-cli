@@ -11,15 +11,14 @@ import type {
   TokenStorage,
 } from "@prisma/cli-engine";
 import {
-  authServiceError,
   claimedExpiresAt,
   claimedIdentity,
   credentialsRequiredError,
   credentialWorkspaceId,
   credentialWorkspaceMismatchError,
   noSessionForWorkspaceError,
+  readActiveAccessToken,
 } from "@prisma/cli-engine";
-import { CliStructuredError } from "@prisma/cli-engine/protocol";
 import { environmentServiceToken } from "./service-token";
 import {
   type CredentialState,
@@ -84,89 +83,21 @@ function memoryBackedStorage(
       credentialWorkspaceId(credential.token) ?? NO_WORKSPACE_CLAIMED,
     accessToken: credential.token,
     refreshToken: credential.refreshToken,
+    expiresAt: claimedExpiresAt(credential.token) ?? credential.expiresAt,
   };
   return {
     getTokens: async () => tokens,
-    setTokens: async (rotated) => {
-      tokens = rotated;
+    setTokens: async (rotated, expiresAt) => {
+      tokens = {
+        ...rotated,
+        expiresAt: claimedExpiresAt(rotated.accessToken) ?? expiresAt,
+      };
     },
     clearTokens: async () => {
       tokens = null;
     },
     withRefreshLock,
   };
-}
-
-async function readActiveAccessToken(
-  storage: TokenStorage,
-  refreshCredential: CredentialRefresher | undefined,
-  options?: ActiveAccessTokenOptions,
-  fallbackExpiresAt?: Date,
-): Promise<string | null> {
-  if (options === undefined) {
-    return (await storage.getTokens())?.accessToken ?? null;
-  }
-  const runLocked = storage.withRefreshLock ?? (async (fn) => fn());
-  try {
-    return await runLocked(async () => {
-      const current = await storage.getTokens();
-      if (current === null) return null;
-      if (!expiresSoon(current.accessToken, options, fallbackExpiresAt)) {
-        return current.accessToken;
-      }
-      if (!current.refreshToken) {
-        throw credentialsRequiredError("expiring-soon");
-      }
-      if (refreshCredential === undefined) {
-        throw new Error(
-          "@prisma/cli: delegated OAuth refresh requires a credential refresher",
-        );
-      }
-      const refreshed = await refreshCredential({
-        refreshToken: current.refreshToken,
-        signal: options.signal,
-      });
-      if (refreshed.kind === "invalid") {
-        await clearCurrentTokens(storage, current);
-        throw credentialsRequiredError("expired");
-      }
-      if (expiresSoon(refreshed.accessToken, options)) {
-        throw new Error("the OAuth endpoint returned a short-lived token");
-      }
-      await storage.setTokens({
-        workspaceId: current.workspaceId,
-        accessToken: refreshed.accessToken,
-        refreshToken: refreshed.refreshToken,
-      });
-      return refreshed.accessToken;
-    });
-  } catch (cause) {
-    if (CliStructuredError.is(cause) || options.signal.aborted) throw cause;
-    throw authServiceError();
-  }
-}
-
-function expiresSoon(
-  token: string,
-  options: ActiveAccessTokenOptions,
-  fallbackExpiresAt?: Date,
-): boolean {
-  const expiresAt = claimedExpiresAt(token) ?? fallbackExpiresAt;
-  return (
-    expiresAt !== undefined &&
-    expiresAt.getTime() - options.now.getTime() <= options.minimumValidityMs
-  );
-}
-
-async function clearCurrentTokens(
-  storage: TokenStorage,
-  current: Tokens,
-): Promise<void> {
-  if (storage.clearTokensIfCurrent !== undefined) {
-    await storage.clearTokensIfCurrent(current);
-    return;
-  }
-  await storage.clearTokens();
 }
 
 /**
@@ -344,7 +275,7 @@ export class FileCredentialManager implements CredentialManager {
     return this.#activeStorage;
   }
 
-  /** The spawn path's read: the active credential's access token,
+  /** The delegated path's read: the active credential's access token,
    *  fresh on every call, never the refresh token. Null when there is
    *  no active credential to read — storage exists only once
    *  activeCredential() has returned non-null. */
@@ -356,12 +287,7 @@ export class FileCredentialManager implements CredentialManager {
       return null;
     }
     const storage = await this.activeCredentialStorage();
-    return readActiveAccessToken(
-      storage,
-      this.#refreshCredential,
-      options,
-      credential.expiresAt,
-    );
+    return readActiveAccessToken(storage, this.#refreshCredential, options);
   }
 
   /** §11.2: which storage is chosen once, when the pin resolves. Each
@@ -406,10 +332,13 @@ export class FileCredentialManager implements CredentialManager {
           ...(record.refreshToken === undefined
             ? {}
             : { refreshToken: record.refreshToken }),
+          ...(record.expiresAt === undefined
+            ? {}
+            : { expiresAt: new Date(record.expiresAt) }),
         };
       },
 
-      setTokens: async (tokens) => {
+      setTokens: async (tokens, expiresAt) => {
         this.#debug(`rotation write for session ${workspaceId}`);
         const claimed = credentialWorkspaceId(tokens.accessToken);
         if (claimed !== undefined && claimed !== workspaceId) {
@@ -429,7 +358,7 @@ export class FileCredentialManager implements CredentialManager {
             ...(tokens.refreshToken === undefined
               ? {}
               : { refreshToken: tokens.refreshToken }),
-            ...expiresAtSlice(tokens.accessToken, undefined),
+            ...expiresAtSlice(tokens.accessToken, expiresAt),
           };
           return {
             state: {

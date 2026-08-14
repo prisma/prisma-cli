@@ -1056,6 +1056,7 @@ describe("delegated access-token preparation", () => {
           kind: "success",
           accessToken: freshToken,
           refreshToken: "refresh-2",
+          expiresAt: new Date(now.getTime() + 3_600_000),
         };
       },
     });
@@ -1079,10 +1080,80 @@ describe("delegated access-token preparation", () => {
     });
   });
 
+  it("persists the token-endpoint expiry for a rotated opaque token", async () => {
+    const opaqueToken = "opaque-access-token";
+    const expiresAt = new Date(now.getTime() + 3_600_000);
+    let refreshes = 0;
+    const manager = makeManager({
+      refreshCredential: async () => {
+        refreshes += 1;
+        return {
+          kind: "success",
+          accessToken: opaqueToken,
+          refreshToken: "refresh-2",
+          expiresAt,
+        };
+      },
+    });
+    await manager.createSession(
+      {
+        token: expiringToken,
+        refreshToken: "refresh-1",
+        expiresAt: undefined,
+      },
+      WORKSPACE_A,
+    );
+
+    await expect(manager.activeAccessToken(options)).resolves.toBe(opaqueToken);
+    await expect(manager.activeAccessToken(options)).resolves.toBe(opaqueToken);
+
+    expect(refreshes).toBe(1);
+    expect(
+      (await readCredentialState(stateFilePath)).sessions[0],
+    ).toMatchObject({
+      token: opaqueToken,
+      refreshToken: "refresh-2",
+      expiresAt: expiresAt.toISOString(),
+    });
+  });
+
+  it("rejects and does not persist a rotated token that expires too soon", async () => {
+    const manager = makeManager({
+      refreshCredential: async () => ({
+        kind: "success",
+        accessToken: "short-lived-opaque-token",
+        refreshToken: "refresh-2",
+        expiresAt: new Date(now.getTime() + 60_000),
+      }),
+    });
+    await manager.createSession(
+      {
+        token: expiringToken,
+        refreshToken: "refresh-1",
+        expiresAt: undefined,
+      },
+      WORKSPACE_A,
+    );
+
+    await expect(manager.activeAccessToken(options)).rejects.toMatchObject({
+      code: "CLI.AUTH_SERVICE_ERROR",
+    });
+    expect(
+      (await readCredentialState(stateFilePath)).sessions[0],
+    ).toMatchObject({
+      token: expiringToken,
+      refreshToken: "refresh-1",
+    });
+  });
+
   it("removes only the current pair after invalid_grant", async () => {
     const manager = makeManager({
       refreshCredential: async () => ({ kind: "invalid" }),
     });
+    await manager.createSession(
+      credentialFor(WORKSPACE_B, "refresh-b"),
+      WORKSPACE_B,
+    );
     await manager.createSession(
       {
         token: expiringToken,
@@ -1095,7 +1166,12 @@ describe("delegated access-token preparation", () => {
     await expect(manager.activeAccessToken(options)).rejects.toMatchObject({
       code: "CLI.CREDENTIALS_REQUIRED",
     });
-    expect((await readCredentialState(stateFilePath)).sessions).toEqual([]);
+    expect((await readCredentialState(stateFilePath)).sessions).toEqual([
+      expect.objectContaining({
+        workspaceId: WORKSPACE_B,
+        refreshToken: "refresh-b",
+      }),
+    ]);
   });
 
   it("preserves the pair after a transient refresh failure", async () => {

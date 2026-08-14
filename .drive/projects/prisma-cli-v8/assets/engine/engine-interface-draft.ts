@@ -43,8 +43,9 @@
  * separate credentialsForSpawn declaration is gone, and the entailment
  * (child credentials imply the credentials need) is structural. The
  * manager gains the named engine-facing operation activeAccessToken()
- * for the spawn path's read, so the "engine never calls storage
- * methods" rule is absolute — no sanctioned exception.
+ * for delegated preflight and the spawn-time read, so the "engine
+ * never calls storage methods" rule is absolute — no sanctioned
+ * exception.
  * exitWithChildStatus(opts?) takes { nextActions? }, rendered
  * to stderr before the exit (R-S3-4's reproduce hint).
  * Amended 2026-08-11 (operator ruling) — SIGNAL SETTLEMENT IS THE
@@ -635,8 +636,9 @@ export interface CredentialManager {
    *  process that authenticates as this process does. Never the
    *  refresh token — the child gets a snapshot it cannot refresh.
    *  With options, refreshes a near-expiry stored OAuth pair before
-   *  returning its access token. With no options, this is ctx.spawn's
-   *  fresh read. The refresh token never reaches the child. */
+   *  returning its access token. Preflight and ctx.spawn both use the
+   *  options form so the spawn-time fresh read is also validated. The
+   *  refresh token never reaches the child. */
   activeAccessToken(options?: ActiveAccessTokenOptions): Promise<string | null>
 }
 
@@ -649,7 +651,12 @@ import type {
 } from '@prisma/management-api-sdk'
 
 export type ManagementApiClient = SdkClient
-export type TokenStorage = SdkTokenStorage
+type SdkTokens = NonNullable<Awaited<ReturnType<SdkTokenStorage['getTokens']>>>
+type StoredTokens = SdkTokens & { readonly expiresAt?: Date }
+export type TokenStorage = Omit<SdkTokenStorage, 'getTokens' | 'setTokens'> & {
+  getTokens(): Promise<StoredTokens | null>
+  setTokens(tokens: SdkTokens, expiresAt?: Date): Promise<void>
+}
 
 /** SDK client construction config, injected by the bin beside the
  *  manager (§10). All four fields: the SDK's refreshing fetch

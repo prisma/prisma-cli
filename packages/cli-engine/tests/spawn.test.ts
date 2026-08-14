@@ -742,6 +742,52 @@ describe("credential injection", () => {
     expect(Object.values(seen)).not.toContain("refresh-material");
   });
 
+  test("a token replaced after preflight is validated again at spawn time", async () => {
+    const reportThenSpawn = defineCommand({
+      help: { summary: "Reports, then hands credentials to a child" },
+      maySpawn: true,
+      needs: { credentials: "child" },
+      handler: async (_args, ctx) => {
+        ctx.report({ kind: "status", subject: "run", status: "pre-spawn" });
+        await ctx.spawn({ command: "alchemy" });
+        return ok(exitWithChildStatus());
+      },
+    });
+    const cli = createTestCli({
+      commands: { converge: reportThenSpawn },
+      now: CLOCK,
+      credential: {
+        token: jwtExpiringIn(3_600, "ws_1"),
+        refreshToken: undefined,
+        expiresAt: undefined,
+      },
+    });
+
+    const result = await cli.run(["converge"], {
+      onEvent: (event) => {
+        if (event.kind === "status") {
+          cli.credentialManager.overwriteStoredState({
+            sessions: [
+              {
+                workspaceId: "ws_1",
+                workspaceName: undefined,
+                credential: {
+                  token: jwtExpiringIn(60, "ws_1"),
+                  refreshToken: undefined,
+                  expiresAt: undefined,
+                },
+              },
+            ],
+          });
+        }
+      },
+    });
+
+    expect(result.exitCode).toBe(2);
+    expect(result.stderr).toContain("expires too soon");
+    expect(result.spawns).toEqual([]);
+  });
+
   test("an environment credential's token is injected unchanged", async () => {
     let seen: Readonly<Record<string, string | undefined>> = {};
     const token = jwtExpiringIn(3600, "ws_env");
@@ -822,6 +868,7 @@ describe("credential injection", () => {
           kind: "success",
           accessToken: rotatedToken,
           refreshToken: "refresh-2",
+          expiresAt: new Date(NOW.getTime() + 3_600_000),
         };
       },
       spawnScript: (request) => {
@@ -848,8 +895,12 @@ describe("credential injection", () => {
     const rotatedToken = jwtExpiringIn(3600, "ws_1");
     let refreshes = 0;
     let releaseRefresh: (() => void) | undefined;
+    let markRefreshStarted: (() => void) | undefined;
     const held = new Promise<void>((resolve) => {
       releaseRefresh = resolve;
+    });
+    const refreshStarted = new Promise<void>((resolve) => {
+      markRefreshStarted = resolve;
     });
     const cli = createTestCli({
       commands: { converge: credentialedConverge },
@@ -861,18 +912,20 @@ describe("credential injection", () => {
       },
       refreshCredential: async () => {
         refreshes += 1;
+        markRefreshStarted?.();
         await held;
         return {
           kind: "success",
           accessToken: rotatedToken,
           refreshToken: "refresh-2",
+          expiresAt: new Date(NOW.getTime() + 3_600_000),
         };
       },
     });
 
     const first = cli.run(["converge"]);
     const second = cli.run(["converge"]);
-    await new Promise((resolve) => setTimeout(resolve, 0));
+    await refreshStarted;
     releaseRefresh?.();
 
     expect(

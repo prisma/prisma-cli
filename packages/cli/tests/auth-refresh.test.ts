@@ -5,10 +5,13 @@ import { makeCredentialRefresher } from "../src/auth/refresh";
 
 afterEach(() => {
   vi.unstubAllGlobals();
+  vi.restoreAllMocks();
 });
 
 describe("makeCredentialRefresher", () => {
   it("exchanges a refresh token using the OAuth refresh grant", async () => {
+    const now = new Date("2030-01-01T00:00:00.000Z");
+    vi.spyOn(Date, "now").mockReturnValue(now.getTime());
     const requestBodies: string[] = [];
     vi.stubGlobal(
       "fetch",
@@ -18,6 +21,7 @@ describe("makeCredentialRefresher", () => {
           JSON.stringify({
             access_token: "access-2",
             refresh_token: "refresh-2",
+            expires_in: 3_600,
           }),
           { status: 200, headers: { "content-type": "application/json" } },
         );
@@ -45,6 +49,7 @@ describe("makeCredentialRefresher", () => {
       kind: "success",
       accessToken: "access-2",
       refreshToken: "refresh-2",
+      expiresAt: new Date(now.getTime() + 3_600_000),
     });
   });
 
@@ -71,7 +76,7 @@ describe("makeCredentialRefresher", () => {
     ).resolves.toEqual({ kind: "invalid" });
   });
 
-  it("throws a fixed error for transient and malformed responses", async () => {
+  it("throws a fixed error for a transient response", async () => {
     vi.stubGlobal(
       "fetch",
       vi.fn(
@@ -88,6 +93,61 @@ describe("makeCredentialRefresher", () => {
         refreshToken: "refresh-1",
         signal: new AbortController().signal,
       }),
-    ).rejects.toThrow("OAuth token refresh failed");
+    ).rejects.toThrow("OAuth token refresh failed (status 503)");
+  });
+
+  it("throws a fixed error for a malformed successful response", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(
+        async () =>
+          new Response(
+            JSON.stringify({
+              access_token: "access-2",
+              expires_in: 3_600,
+            }),
+            { status: 200, headers: { "content-type": "application/json" } },
+          ),
+      ),
+    );
+
+    await expect(
+      makeCredentialRefresher("https://auth.example.test")({
+        refreshToken: "refresh-1",
+        signal: new AbortController().signal,
+      }),
+    ).rejects.toThrow("OAuth token refresh failed (status 200)");
+  });
+
+  it("aborts a stalled refresh after the fixed timeout", async () => {
+    const timeout = new AbortController();
+    const timeoutSpy = vi
+      .spyOn(AbortSignal, "timeout")
+      .mockReturnValue(timeout.signal);
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(
+        async (_url: string, init: RequestInit) =>
+          await new Promise<Response>((_resolve, reject) => {
+            init.signal?.addEventListener(
+              "abort",
+              () => reject(init.signal?.reason),
+              { once: true },
+            );
+          }),
+      ),
+    );
+    const refresh = makeCredentialRefresher("https://auth.example.test")({
+      refreshToken: "refresh-1",
+      signal: new AbortController().signal,
+    });
+    const rejection = expect(refresh).rejects.toMatchObject({
+      name: "TimeoutError",
+    });
+
+    timeout.abort(new DOMException("Timed out", "TimeoutError"));
+
+    await rejection;
+    expect(timeoutSpy).toHaveBeenCalledWith(10_000);
   });
 });

@@ -5,6 +5,7 @@
  * The test harness lives on the ./testing subpath.
  */
 
+export { readActiveAccessToken } from "../active-access-token";
 export {
   type Args,
   type ArgsSpec,

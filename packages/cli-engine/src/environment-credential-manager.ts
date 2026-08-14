@@ -100,7 +100,7 @@ export class EnvironmentCredentialManager implements CredentialManager {
     return this.#activeStorage;
   }
 
-  /** The spawn path's read: the env token passes through directly. It
+  /** The delegated path's read: the env token passes through directly. It
    *  is already a snapshot with no refresh token behind it. */
   async activeAccessToken(
     options?: ActiveAccessTokenOptions,
@@ -111,7 +111,6 @@ export class EnvironmentCredentialManager implements CredentialManager {
       await this.activeCredentialStorage(),
       undefined,
       options,
-      credential.expiresAt,
     );
   }
 
@@ -128,6 +127,7 @@ export class EnvironmentCredentialManager implements CredentialManager {
       workspaceId: this.#workspaceId(token) ?? NO_WORKSPACE_NAMED,
       accessToken: token,
       refreshToken: undefined,
+      expiresAt: claimedExpiresAt(token),
     };
     const singleFlight = <T>(fn: () => Promise<T>): Promise<T> => {
       const queued = this.#refreshLock.then(fn, fn);
@@ -139,8 +139,11 @@ export class EnvironmentCredentialManager implements CredentialManager {
     };
     return {
       getTokens: async () => tokens,
-      setTokens: async (rotated) => {
-        tokens = rotated;
+      setTokens: async (rotated, expiresAt) => {
+        tokens = {
+          ...rotated,
+          expiresAt: claimedExpiresAt(rotated.accessToken) ?? expiresAt,
+        };
       },
       clearTokens: async () => {
         tokens = null;

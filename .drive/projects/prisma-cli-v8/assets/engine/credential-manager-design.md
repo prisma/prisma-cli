@@ -309,8 +309,10 @@ current") with nextActions `auth workspace use` and login.
 TokenStorage view; the exchange itself runs OUTSIDE the file lock
 (§8) — only the resulting write takes it:
 - `setTokens` (the rotation write): updates IN PLACE only `token`,
-  `refreshToken`, `expiresAt` (re-derived from claims; the SDK's
-  pair carries no expiry) of its workspace's record. NEVER creates
+  `refreshToken`, `expiresAt` (the proactive token-endpoint adapter
+  supplies the explicit OAuth lifetime; an SDK-driven rotation falls
+  back to the access token's claim) of its workspace's record. NEVER
+  creates
   a record, NEVER moves the marker, NEVER touches the name. If the
   freshly-read state has no record for that workspace (ended by
   another process), refuse and throw — no resurrection. If the new
@@ -758,9 +760,12 @@ endAllSessions(): Promise<void>;
  *  has returned non-null; the engine resolves that first. */
 activeCredentialStorage(): Promise<TokenStorage>;
 /** ENGINE-FACING (S3). The active credential's ACCESS token, read
- *  fresh on every call, for handing to a child process. Never the
- *  refresh token. Single consumer: ctx.spawn's credential injection. */
-activeAccessToken(): Promise<string | null>;
+ *  fresh on every call, for handing to a child process. With options,
+ *  refreshes or refuses a token that lacks the required remaining
+ *  lifetime. Never the refresh token. */
+activeAccessToken(
+  options?: ActiveAccessTokenOptions,
+): Promise<string | null>;
 ```
 
 All three mutations are workspace-id-keyed, symmetric with
@@ -774,10 +779,10 @@ S3 amendment (2026-08-11, re-ruled after the PR-136 architect review):
 the engine forwards the storage `activeCredentialStorage()` returns
 into SDK client config and never calls its methods itself — no
 exceptions. What the spawn path needs is a manager OPERATION, not a
-carve-out: the interface gains `activeAccessToken()`, whose single
-consumer is `ctx.spawn`'s credential injection in the engine's spawn
-module (`packages/cli-engine/src/execution/spawn.ts`, `spawnToken`).
-It is read at spawn time and handed to the child as
+carve-out: the interface gains `activeAccessToken()`, consumed by the
+delegated-credential preflight and by `ctx.spawn`'s credential injection
+in the engine's spawn module (`packages/cli-engine/src/execution/spawn.ts`,
+`spawnToken`). It is read at spawn time and handed to the child as
 `PRISMA_SERVICE_TOKEN` (+ `PRISMA_WORKSPACE_ID` when the credential
 names a workspace; when it names none, an inherited
 `PRISMA_WORKSPACE_ID` is DELETED from the child environment — the two
@@ -798,9 +803,9 @@ engine asks `activeAccessToken(options)` to refresh the pair under the
 manager's storage lock, persist the rotation, and return the new access token.
 The shipped manager receives a host-side token-endpoint adapter at construction;
 the manager remains the sole owner of storage reads and writes, and the
-refresh token is never added to child env. Calling `activeAccessToken()` with
-no options remains the fresh spawn-time read, so rotation by another process
-between preflight and spawn is still observed.
+refresh token is never added to child env. The spawn-time call is another
+validated fresh read, so rotation by another process between preflight and
+spawn is still observed without handing the child an unchecked replacement.
 
 ### 11.6 whoami
 

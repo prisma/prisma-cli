@@ -14,7 +14,6 @@ export async function readActiveAccessToken(
   storage: TokenStorage,
   refreshCredential: CredentialRefresher | undefined,
   options?: ActiveAccessTokenOptions,
-  fallbackExpiresAt?: Date,
 ): Promise<string | null> {
   if (options === undefined) {
     return (await storage.getTokens())?.accessToken ?? null;
@@ -26,7 +25,7 @@ export async function readActiveAccessToken(
       // race is used without exchanging the old refresh token again.
       const current = await storage.getTokens();
       if (current === null) return null;
-      if (!expiresSoon(current.accessToken, options, fallbackExpiresAt)) {
+      if (!expiresSoon(current.accessToken, options, current.expiresAt)) {
         return current.accessToken;
       }
       if (!current.refreshToken) {
@@ -45,14 +44,17 @@ export async function readActiveAccessToken(
         await clearCurrentTokens(storage, current);
         throw credentialsRequiredError("expired");
       }
-      if (expiresSoon(refreshed.accessToken, options)) {
+      if (expiresSoon(refreshed.accessToken, options, refreshed.expiresAt)) {
         throw new Error("the OAuth endpoint returned a short-lived token");
       }
-      await storage.setTokens({
-        workspaceId: current.workspaceId,
-        accessToken: refreshed.accessToken,
-        refreshToken: refreshed.refreshToken,
-      });
+      await storage.setTokens(
+        {
+          workspaceId: current.workspaceId,
+          accessToken: refreshed.accessToken,
+          refreshToken: refreshed.refreshToken,
+        },
+        refreshed.expiresAt,
+      );
       return refreshed.accessToken;
     });
   } catch (cause) {
