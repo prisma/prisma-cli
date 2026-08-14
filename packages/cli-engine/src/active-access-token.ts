@@ -14,6 +14,7 @@ export async function readActiveAccessToken(
   storage: TokenStorage,
   refreshCredential: CredentialRefresher | undefined,
   options?: ActiveAccessTokenOptions,
+  fallbackExpiresAt?: Date,
 ): Promise<string | null> {
   if (options === undefined) {
     return (await storage.getTokens())?.accessToken ?? null;
@@ -25,7 +26,7 @@ export async function readActiveAccessToken(
       // race is used without exchanging the old refresh token again.
       const current = await storage.getTokens();
       if (current === null) return null;
-      if (!expiresSoon(current.accessToken, options)) {
+      if (!expiresSoon(current.accessToken, options, fallbackExpiresAt)) {
         return current.accessToken;
       }
       if (!current.refreshToken) {
@@ -63,8 +64,9 @@ export async function readActiveAccessToken(
 function expiresSoon(
   token: string,
   options: ActiveAccessTokenOptions,
+  fallbackExpiresAt?: Date,
 ): boolean {
-  const expiresAt = claimedExpiresAt(token);
+  const expiresAt = claimedExpiresAt(token) ?? fallbackExpiresAt;
   return (
     expiresAt !== undefined &&
     expiresAt.getTime() - options.now.getTime() <= options.minimumValidityMs

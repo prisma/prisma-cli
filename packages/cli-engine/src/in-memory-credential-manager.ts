@@ -275,11 +275,17 @@ export class InMemoryCredentialManager implements CredentialManager {
   async activeAccessToken(
     options?: ActiveAccessTokenOptions,
   ): Promise<string | null> {
-    if ((await this.activeCredential()) === null) {
+    const credential = await this.activeCredential();
+    if (credential === null) {
       return null;
     }
     const storage = await this.activeCredentialStorage();
-    return readActiveAccessToken(storage, this.refreshCredential, options);
+    return readActiveAccessToken(
+      storage,
+      this.refreshCredential,
+      options,
+      credential.expiresAt,
+    );
   }
 
   private buildActiveStorage(): TokenStorage {

@@ -1031,6 +1031,22 @@ describe("delegated access-token preparation", () => {
     signal: new AbortController().signal,
   };
 
+  it("uses the stored expiry when the access token has no exp claim", async () => {
+    const manager = makeManager();
+    await manager.createSession(
+      {
+        token: mintToken(WORKSPACE_A),
+        refreshToken: undefined,
+        expiresAt: new Date(now.getTime() + 60_000),
+      },
+      WORKSPACE_A,
+    );
+
+    await expect(manager.activeAccessToken(options)).rejects.toMatchObject({
+      code: "CLI.CREDENTIALS_REQUIRED",
+    });
+  });
+
   it("persists a rotated pair and returns only its access token", async () => {
     const refreshes: string[] = [];
     const manager = makeManager({

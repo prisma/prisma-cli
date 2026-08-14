@@ -101,6 +101,7 @@ async function readActiveAccessToken(
   storage: TokenStorage,
   refreshCredential: CredentialRefresher | undefined,
   options?: ActiveAccessTokenOptions,
+  fallbackExpiresAt?: Date,
 ): Promise<string | null> {
   if (options === undefined) {
     return (await storage.getTokens())?.accessToken ?? null;
@@ -110,7 +111,7 @@ async function readActiveAccessToken(
     return await runLocked(async () => {
       const current = await storage.getTokens();
       if (current === null) return null;
-      if (!expiresSoon(current.accessToken, options)) {
+      if (!expiresSoon(current.accessToken, options, fallbackExpiresAt)) {
         return current.accessToken;
       }
       if (!current.refreshToken) {
@@ -148,8 +149,9 @@ async function readActiveAccessToken(
 function expiresSoon(
   token: string,
   options: ActiveAccessTokenOptions,
+  fallbackExpiresAt?: Date,
 ): boolean {
-  const expiresAt = claimedExpiresAt(token);
+  const expiresAt = claimedExpiresAt(token) ?? fallbackExpiresAt;
   return (
     expiresAt !== undefined &&
     expiresAt.getTime() - options.now.getTime() <= options.minimumValidityMs
@@ -349,11 +351,17 @@ export class FileCredentialManager implements CredentialManager {
   async activeAccessToken(
     options?: ActiveAccessTokenOptions,
   ): Promise<string | null> {
-    if ((await this.activeCredential()) === null) {
+    const credential = await this.activeCredential();
+    if (credential === null) {
       return null;
     }
     const storage = await this.activeCredentialStorage();
-    return readActiveAccessToken(storage, this.#refreshCredential, options);
+    return readActiveAccessToken(
+      storage,
+      this.#refreshCredential,
+      options,
+      credential.expiresAt,
+    );
   }
 
   /** §11.2: which storage is chosen once, when the pin resolves. Each

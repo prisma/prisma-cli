@@ -786,6 +786,24 @@ describe("credential injection", () => {
     expect(result.spawns).toEqual([]);
   });
 
+  test("a token without exp uses its explicit expiry for the threshold", async () => {
+    const cli = createTestCli({
+      commands: { converge: credentialedConverge },
+      now: CLOCK,
+      credential: {
+        token: mintTestJwt({ workspace_id: "ws_1" }),
+        refreshToken: undefined,
+        expiresAt: new Date(NOW.getTime() + 60_000),
+      },
+    });
+
+    const result = await cli.run(["converge"]);
+
+    expect(result.exitCode).toBe(2);
+    expect(result.stderr).toContain("expires too soon");
+    expect(result.spawns).toEqual([]);
+  });
+
   test("a refreshable near-expiry session is rotated before the child starts", async () => {
     let seen: Readonly<Record<string, string | undefined>> = {};
     const rotatedToken = jwtExpiringIn(3600, "ws_1");

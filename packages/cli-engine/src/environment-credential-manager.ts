@@ -105,11 +105,13 @@ export class EnvironmentCredentialManager implements CredentialManager {
   async activeAccessToken(
     options?: ActiveAccessTokenOptions,
   ): Promise<string | null> {
-    if ((await this.activeCredential()) === null) return null;
+    const credential = await this.activeCredential();
+    if (credential === null) return null;
     return readActiveAccessToken(
       await this.activeCredentialStorage(),
       undefined,
       options,
+      credential.expiresAt,
     );
   }
 
