@@ -142,7 +142,7 @@ export async function assembleRuntime(proc: HostProcess): Promise<Runtime> {
       apiBaseUrl,
       authBaseUrl: getAuthBaseUrl(proc.env),
     },
-    spawn: makeSpawnChild({ write: (text) => proc.stderr.write(text) }),
+    spawn: makeSpawnChild(proc.stderr),
     /** The engine has already decided and composed; the bin only forks
      *  the detached sender and hands the payload over. Every failure is
      *  swallowed inside runTelemetry. */

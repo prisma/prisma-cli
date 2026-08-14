@@ -146,4 +146,58 @@ describe("the shipped spawn adapter", () => {
     expect(diagnosticText).toContain("child-out");
     expect(diagnosticText).toContain("child-err");
   });
+
+  test("preserves a UTF-8 character split across child output chunks", async () => {
+    const child = spawnChild({
+      command: NODE,
+      args: [
+        "-e",
+        "process.stdout.write(Buffer.from([0xf0, 0x9f])); setTimeout(() => process.stdout.write(Buffer.from([0x98, 0x80])), 50)",
+      ],
+      cwd: process.cwd(),
+      env: process.env,
+      output: "diagnostic",
+    });
+
+    await expect(child.ended).resolves.toEqual({ exitCode: 0, signal: null });
+    expect(diagnosticText).toBe("😀");
+  });
+
+  test("waits for diagnostic backpressure to drain before settling", async () => {
+    let drainListener: (() => void) | undefined;
+    let firstWrite = true;
+    let forwarded = "";
+    const backpressuredSpawn = makeSpawnChild({
+      write: (text) => {
+        forwarded += text;
+        if (!firstWrite) return true;
+        firstWrite = false;
+        return false;
+      },
+      once: (event, listener) => {
+        expect(event).toBe("drain");
+        drainListener = listener;
+      },
+    });
+    const child = backpressuredSpawn({
+      command: NODE,
+      args: ["-e", "process.stdout.write('held-output')"],
+      cwd: process.cwd(),
+      env: process.env,
+      output: "diagnostic",
+    });
+    let settled = false;
+    const ended = child.ended.then((result) => {
+      settled = true;
+      return result;
+    });
+
+    await vi.waitFor(() => expect(drainListener).toBeDefined());
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    expect(settled).toBe(false);
+    drainListener?.();
+
+    await expect(ended).resolves.toEqual({ exitCode: 0, signal: null });
+    expect(forwarded).toBe("held-output");
+  });
 });
