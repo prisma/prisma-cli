@@ -14,19 +14,21 @@
  * in the CLI's own tests.
  */
 import { Buffer } from "node:buffer";
+import { readActiveAccessToken } from "./active-access-token";
 import {
   credentialsRequiredError,
   credentialWorkspaceMismatchError,
   noSessionForWorkspaceError,
 } from "./credential-errors";
 import type {
+  ActiveAccessTokenOptions,
   ActiveCredential,
   Credential,
   CredentialManager,
   Session,
   StoredSessions,
 } from "./credential-manager";
-import type { TokenStorage } from "./management-api";
+import type { CredentialRefresher, TokenStorage } from "./management-api";
 import {
   claimedExpiresAt,
   claimedIdentity,
@@ -61,6 +63,8 @@ export interface InMemoryCredentialManagerSeed {
   /** The credential PRISMA_SERVICE_TOKEN supplies. Its token may carry
    *  no `workspace_id` claim, and it may carry a refresh token. */
   readonly environmentCredential?: Credential;
+  /** OAuth exchange used when delegated credentials need rotation. */
+  readonly refreshCredential?: CredentialRefresher;
 }
 
 /** The whole stored state, readable back after a run. */
@@ -158,6 +162,7 @@ export class InMemoryCredentialManager implements CredentialManager {
   private storedSessions: SessionRecord[];
   private selection: string | undefined;
   private readonly environmentCredential: Credential | undefined;
+  private readonly refreshCredential: CredentialRefresher | undefined;
   private pin: Pin = { kind: "unresolved" };
   private activeStorage: TokenStorage | undefined;
 
@@ -165,6 +170,7 @@ export class InMemoryCredentialManager implements CredentialManager {
     this.storedSessions = [...(seed.sessions ?? [])];
     this.selection = seed.selectedWorkspaceId;
     this.environmentCredential = seed.environmentCredential;
+    this.refreshCredential = seed.refreshCredential;
     if (seed.credential !== undefined) {
       const workspaceId = credentialWorkspaceId(seed.credential.token);
       if (workspaceId === undefined) {
@@ -266,13 +272,14 @@ export class InMemoryCredentialManager implements CredentialManager {
    *  fresh on every call, never the refresh token. Null when there is
    *  no active credential to read — storage exists only once
    *  activeCredential() has returned non-null. */
-  async activeAccessToken(): Promise<string | null> {
+  async activeAccessToken(
+    options?: ActiveAccessTokenOptions,
+  ): Promise<string | null> {
     if ((await this.activeCredential()) === null) {
       return null;
     }
     const storage = await this.activeCredentialStorage();
-    const tokens = await storage.getTokens();
-    return tokens === null ? null : tokens.accessToken;
+    return readActiveAccessToken(storage, this.refreshCredential, options);
   }
 
   private buildActiveStorage(): TokenStorage {

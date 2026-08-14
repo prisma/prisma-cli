@@ -791,6 +791,17 @@ that same `ctx.api` through its `deps.client` seam, not by composing
 another client from env). For an environment-only manager the
 operation is a pass-through of the env token — no storage involved.
 
+S3 amendment (2026-08-14): the child still receives only an access-token
+snapshot, but a stored OAuth session is no longer rejected merely because
+that snapshot is inside the five-minute window. Before the handler runs, the
+engine asks `activeAccessToken(options)` to refresh the pair under the
+manager's storage lock, persist the rotation, and return the new access token.
+The shipped manager receives a host-side token-endpoint adapter at construction;
+the manager remains the sole owner of storage reads and writes, and the
+refresh token is never added to child env. Calling `activeAccessToken()` with
+no options remains the fresh spawn-time read, so rotation by another process
+between preflight and spawn is still observed.
+
 ### 11.6 whoami
 
 `whoami` asks for the active credential's identity and renders it. It

@@ -68,6 +68,7 @@ export {
   noSessionForWorkspaceError,
 } from "../credential-errors";
 export {
+  type ActiveAccessTokenOptions,
   type ActiveCredential,
   type Credential,
   type CredentialIdentity,
@@ -85,6 +86,8 @@ export type {
   StreamMeta,
 } from "../events";
 export type {
+  CredentialRefresher,
+  CredentialRefreshResult,
   ManagementApiClient,
   ManagementApiClientConfig,
   TokenStorage,

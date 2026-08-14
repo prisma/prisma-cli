@@ -29,3 +29,26 @@ export interface ManagementApiClientConfig {
   readonly apiBaseUrl: string;
   readonly authBaseUrl: string;
 }
+
+/**
+ * The host-side OAuth exchange the engine may request before handing an
+ * access-token snapshot to a child. The refresh token crosses only this
+ * in-process seam; it is never added to the child's environment.
+ *
+ * `invalid` is the token endpoint's definitive `invalid_grant` verdict.
+ * Transport failures and every other endpoint failure are thrown so the
+ * engine can map them to CLI.AUTH_SERVICE_ERROR without exposing endpoint
+ * response text.
+ */
+export type CredentialRefreshResult =
+  | {
+      readonly kind: "success";
+      readonly accessToken: string;
+      readonly refreshToken: string;
+    }
+  | { readonly kind: "invalid" };
+
+export type CredentialRefresher = (request: {
+  readonly refreshToken: string;
+  readonly signal: AbortSignal;
+}) => Promise<CredentialRefreshResult>;

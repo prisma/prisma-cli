@@ -8,6 +8,7 @@ import {
   type SessionRecord,
 } from "./in-memory-credential-manager";
 import type {
+  CredentialRefresher,
   ManagementApiClient,
   ManagementApiClientConfig,
 } from "./management-api";
@@ -227,6 +228,8 @@ export function createTestCli(spec: {
   /** The SDK client construction config; defaults point every
    *  endpoint at test.invalid hosts. */
   readonly managementApiClientConfig?: ManagementApiClientConfig;
+  /** OAuth exchange behind delegated-credential preparation. */
+  readonly refreshCredential?: CredentialRefresher;
   /** baseUrl defaults to "https://test.invalid"; when `client` is
    *  supplied, ctx.api IS that object. */
   readonly managementApi?: {
@@ -279,6 +282,7 @@ export function createTestCli(spec: {
     selectedWorkspaceId: spec.selectedWorkspaceId,
     credential: spec.credential,
     environmentCredential: spec.environmentCredential,
+    refreshCredential: spec.refreshCredential,
   });
   const managementApiBaseUrl =
     spec.managementApi?.baseUrl ?? "https://test.invalid";

@@ -14,7 +14,7 @@ import fsPromises, {
 } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import type { TokenStorage } from "@prisma/cli-engine";
+import type { CredentialRefresher, TokenStorage } from "@prisma/cli-engine";
 import { mintTestJwt } from "@prisma/cli-engine/testing";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -90,12 +90,14 @@ function makeManager(
       credential: { token: string },
       workspaceId: string,
     ) => Promise<string | undefined>;
+    refreshCredential?: CredentialRefresher;
     debugWrite?: (text: string) => void;
   } = {},
 ) {
   return new FileCredentialManager({
     env: { PRISMA_AUTH_FILE: stateFilePath, ...options.env },
     fetchWorkspaceName: options.fetchWorkspaceName,
+    refreshCredential: options.refreshCredential,
     debugWrite: options.debugWrite,
   });
 }
@@ -1012,6 +1014,98 @@ describe("the file-backed TokenStorage", () => {
       WORKSPACE_A,
     );
     expect((await storage.getTokens())?.refreshToken).toBe("refresh-2");
+  });
+});
+
+describe("delegated access-token preparation", () => {
+  const now = new Date("2030-01-01T00:00:00.000Z");
+  const expiringToken = mintToken(WORKSPACE_A, {
+    exp: Math.floor(now.getTime() / 1000) + 60,
+  });
+  const freshToken = mintToken(WORKSPACE_A, {
+    exp: Math.floor(now.getTime() / 1000) + 3600,
+  });
+  const options = {
+    minimumValidityMs: 5 * 60_000,
+    now,
+    signal: new AbortController().signal,
+  };
+
+  it("persists a rotated pair and returns only its access token", async () => {
+    const refreshes: string[] = [];
+    const manager = makeManager({
+      refreshCredential: async ({ refreshToken }) => {
+        refreshes.push(refreshToken);
+        return {
+          kind: "success",
+          accessToken: freshToken,
+          refreshToken: "refresh-2",
+        };
+      },
+    });
+    await manager.createSession(
+      {
+        token: expiringToken,
+        refreshToken: "refresh-1",
+        expiresAt: undefined,
+      },
+      WORKSPACE_A,
+    );
+
+    expect(await manager.activeAccessToken(options)).toBe(freshToken);
+    expect(refreshes).toEqual(["refresh-1"]);
+    expect(
+      (await readCredentialState(stateFilePath)).sessions[0],
+    ).toMatchObject({
+      token: freshToken,
+      refreshToken: "refresh-2",
+      expiresAt: new Date(now.getTime() + 3_600_000).toISOString(),
+    });
+  });
+
+  it("removes only the current pair after invalid_grant", async () => {
+    const manager = makeManager({
+      refreshCredential: async () => ({ kind: "invalid" }),
+    });
+    await manager.createSession(
+      {
+        token: expiringToken,
+        refreshToken: "refresh-1",
+        expiresAt: undefined,
+      },
+      WORKSPACE_A,
+    );
+
+    await expect(manager.activeAccessToken(options)).rejects.toMatchObject({
+      code: "CLI.CREDENTIALS_REQUIRED",
+    });
+    expect((await readCredentialState(stateFilePath)).sessions).toEqual([]);
+  });
+
+  it("preserves the pair after a transient refresh failure", async () => {
+    const manager = makeManager({
+      refreshCredential: async () => {
+        throw new Error("auth unavailable");
+      },
+    });
+    await manager.createSession(
+      {
+        token: expiringToken,
+        refreshToken: "refresh-1",
+        expiresAt: undefined,
+      },
+      WORKSPACE_A,
+    );
+
+    await expect(manager.activeAccessToken(options)).rejects.toMatchObject({
+      code: "CLI.AUTH_SERVICE_ERROR",
+    });
+    expect(
+      (await readCredentialState(stateFilePath)).sessions[0],
+    ).toMatchObject({
+      token: expiringToken,
+      refreshToken: "refresh-1",
+    });
   });
 });
 

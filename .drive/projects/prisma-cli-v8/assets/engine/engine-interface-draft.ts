@@ -585,6 +585,12 @@ export interface Session {
   readonly current: boolean
 }
 
+export interface ActiveAccessTokenOptions {
+  readonly minimumValidityMs: number
+  readonly now: Date
+  readonly signal: AbortSignal
+}
+
 /** Manages sessions: six user-facing operations plus one
  *  engine-facing accessor. Custody, not user interaction: never opens
  *  a browser, never prompts. Env is a construction input. The manager
@@ -628,10 +634,10 @@ export interface CredentialManager {
    *  credential's ACCESS token, read fresh, for handing to a child
    *  process that authenticates as this process does. Never the
    *  refresh token — the child gets a snapshot it cannot refresh.
-   *  Single consumer: ctx.spawn's credential injection. The read
-   *  builds no second API client, so the one-client-per-process
-   *  invariant holds (credential-manager-design.md §11.5). */
-  activeAccessToken(): Promise<string | null>
+   *  With options, refreshes a near-expiry stored OAuth pair before
+   *  returning its access token. With no options, this is ctx.spawn's
+   *  fresh read. The refresh token never reaches the child. */
+  activeAccessToken(options?: ActiveAccessTokenOptions): Promise<string | null>
 }
 
 /** The SDK's typed client and token-storage contract, re-exported by

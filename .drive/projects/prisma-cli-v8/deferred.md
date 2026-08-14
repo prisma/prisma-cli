@@ -147,17 +147,15 @@ CLI does not do, and each restarts as engine work if wanted:
   consumer (`packages/cli-engine/src/execution/spawn.ts`) moves with
   it. Recorded in `assets/engine/credential-manager-design.md`.
 - **Nothing bounds a child run to the token it was given.** A
-  `credentials: "child"` command hands the child a snapshot of the
+  `credentials: "child"` command still hands the child a snapshot of the
   access token and never the refresh token
-  (`packages/cli-engine/src/execution/spawn.ts`), and the only check is
-  the near-expiry refusal in `execution/needs.ts`:
-  `CREDENTIAL_NEAR_EXPIRY_MS` is 5 minutes, so the guarantee at spawn is
-  "more than five minutes left", not "enough for this run". A converge
-  that outlives the snapshot fails on an expired token, after the child
-  has already created resources. Two ways out, both unbuilt: hand the
-  child something that can refresh, or bound the child's run and refuse
-  when the remaining lifetime cannot cover it. Recorded as a release
-  limitation in `plan.md`'s coverage ledger.
+  (`packages/cli-engine/src/execution/spawn.ts`). The parent now refreshes a
+  stored OAuth pair before the handler when its access token is inside
+  `CREDENTIAL_NEAR_EXPIRY_MS`, so a refreshable session receives a fresh
+  snapshot instead of an unnecessary sign-in error. That does not bound the
+  child's total runtime: a converge that outlives even the refreshed snapshot
+  can still fail after creating resources. The remaining ways out are to hand
+  the child something that can refresh or to bound the child's run.
 - **A validated number flag**, if `--tail`'s old constraint is wanted
   back. `flag.number` accepts negatives and fractions, so "non-negative
   integer" is enforced nowhere. D4 took the other branch this item

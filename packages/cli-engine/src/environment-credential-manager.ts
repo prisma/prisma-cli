@@ -6,8 +6,10 @@
  * refuses with a structured error. Env is a construction input; nothing
  * here reads process.env.
  */
+import { readActiveAccessToken } from "./active-access-token";
 import { emptyServiceTokenError } from "./credential-errors";
 import {
+  type ActiveAccessTokenOptions,
   type ActiveCredential,
   type Credential,
   type CredentialManager,
@@ -100,8 +102,15 @@ export class EnvironmentCredentialManager implements CredentialManager {
 
   /** The spawn path's read: the env token passes through directly. It
    *  is already a snapshot with no refresh token behind it. */
-  async activeAccessToken(): Promise<string | null> {
-    return this.#token() ?? null;
+  async activeAccessToken(
+    options?: ActiveAccessTokenOptions,
+  ): Promise<string | null> {
+    if ((await this.activeCredential()) === null) return null;
+    return readActiveAccessToken(
+      await this.activeCredentialStorage(),
+      undefined,
+      options,
+    );
   }
 
   #buildActiveStorage(): TokenStorage {
