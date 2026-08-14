@@ -29,6 +29,23 @@ Rules:
 - never write decorative or human-only output to stdout
 - when `--json` is active, stdout must contain only structured output
 
+### Delegated child processes
+
+Commands that declare `maySpawn` use the same format rules as every other
+command:
+
+- in human mode, the child inherits stdin, stdout, and stderr
+- in JSON mode, stdin remains inherited while the child's stdout and stderr
+  are routed to the CLI's diagnostic stderr stream
+- JSON stdout remains an NDJSON event stream with exactly one terminal result
+  frame
+- a non-zero child status is preserved as the process exit code and is
+  represented by `CLI.CHILD_PROCESS_FAILED`, with `exitCode` and `signal` in
+  `error.meta`
+
+This lets automation consume a command family's structured result without
+having to parse the delegated tool's human output.
+
 ## TTY and Piped Behavior
 
 Interactive TTY behavior:

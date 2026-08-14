@@ -13,6 +13,9 @@ export interface SpawnRequest {
   readonly args: readonly string[];
   readonly cwd: string;
   readonly env: Readonly<Record<string, string | undefined>>;
+  /** Human mode hands the terminal over unchanged. Structured mode keeps
+   * stdout framed and routes the child's human output to diagnostics. */
+  readonly output: "inherit" | "diagnostic";
 }
 
 /** How a child ended. A signal-killed child carries `signal` and a null
@@ -33,10 +36,11 @@ export interface SpawnedChild {
 }
 
 /**
- * The Runtime seam. The adapter starts the child with INHERITED stdio,
- * in the caller's own process group (POSIX) / console (Windows) — no
- * `detached`, no new console — so the terminal delivers Ctrl-C to the
- * child natively.
+ * The Runtime seam. In human mode the adapter starts the child with
+ * inherited stdio, in the caller's own process group (POSIX) / console
+ * (Windows). In structured mode stdin remains inherited while stdout and
+ * stderr are routed to the host's diagnostic stream, preserving framed
+ * stdout. Neither mode detaches or opens a new console.
  */
 export type SpawnChild = (request: SpawnRequest) => SpawnedChild;
 

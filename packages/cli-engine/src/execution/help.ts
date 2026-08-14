@@ -17,7 +17,7 @@ import type { CommandTreeEntry, CommandTreeNode } from "./command-tree";
 import type { EngineSpec } from "./engine";
 import { makePaint, type Paint, textWidth } from "./palette";
 import { SHARED_ALIASES, SHARED_FLAG_PARAMETERS } from "./shared-flags";
-import { NO_JSON_NOTE, resolveExample } from "./stricli-adapter";
+import { resolveExample } from "./stricli-adapter";
 
 const RAIL = "│";
 const GAP = "  ";
@@ -487,13 +487,6 @@ function renderLeafHelp(
     lines.push(rail(paint));
     proseLines(def.help.description, paint, lines);
   }
-  if (def.maySpawn) {
-    lines.push(rail(paint));
-    // One line on purpose: the sentence is the contract several tests
-    // and consumers grep for, so it never wraps.
-    lines.push(rail(paint, paint("muted", NO_JSON_NOTE)));
-  }
-
   const positionalEntries = Object.values<PositionalSpec<unknown>>(
     def.args.positionals,
   ).map((spec) => positionalRuntime(spec));

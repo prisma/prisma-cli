@@ -1,6 +1,6 @@
 /**
- * ctx.spawn against the harness's scripted fake child: the --json
- * refusal, credential injection through both credential origins, the
+ * ctx.spawn against the harness's scripted fake child: structured output,
+ * credential injection through both credential origins, the
  * near-expiry refusal, reentrancy, buffered commentary, the abort
  * ladder, and signal record-and-replay.
  */
@@ -49,43 +49,106 @@ const converge = defineCommand({
   },
 });
 
-describe("--json is refused for commands that may spawn", () => {
-  test("--json settles 2 with a structured refusal and no frames", async () => {
+describe("structured output for commands that may spawn", () => {
+  test("--json keeps stdout framed and marks the child diagnostic", async () => {
     const cli = createTestCli({ commands: { converge }, now: CLOCK });
 
     const result = await cli.run(["converge", "--json"]);
 
-    expect(result.exitCode).toBe(2);
-    expect(result.json).toEqual([]);
-    expect(result.stderr).toContain("does not support json output");
-    expect(result.spawns).toEqual([]);
+    expect(result.exitCode).toBe(0);
+    expect(result.json).toHaveLength(1);
+    expect(result.json[0]).toMatchObject({
+      kind: "result",
+      envelope: { ok: true, commandId: "converge", result: null, exitCode: 0 },
+    });
+    expect(result.spawns[0]?.output).toBe("diagnostic");
   });
 
-  test("--format json is refused the same way", async () => {
+  test("--format json selects the same structured handoff", async () => {
     const cli = createTestCli({ commands: { converge }, now: CLOCK });
 
     const result = await cli.run(["converge", "--format", "json"]);
 
-    expect(result.exitCode).toBe(2);
-    expect(result.json).toEqual([]);
+    expect(result.exitCode).toBe(0);
+    expect(result.json).toHaveLength(1);
+    expect(result.spawns[0]?.output).toBe("diagnostic");
   });
 
-  test("an auto-selected json format falls back to human instead of failing", async () => {
+  test("a non-TTY caller auto-selects structured output", async () => {
     const cli = createTestCli({ commands: { converge }, now: CLOCK });
 
     const result = await cli.run(["converge"]);
 
     expect(result.exitCode).toBe(0);
-    expect(result.json).toEqual([]);
+    expect(result.json).toHaveLength(1);
     expect(result.spawns).toHaveLength(1);
+    expect(result.spawns[0]?.output).toBe("diagnostic");
   });
 
-  test("help states the refusal", async () => {
+  test("a Composer-shaped deployment summary reaches the terminal result", async () => {
+    const deploy = defineCommand({
+      help: { summary: "Deploys through a child" },
+      maySpawn: true,
+      handler: async (_args, ctx) => {
+        await ctx.spawn({ command: "alchemy", args: ["deploy"] });
+        const summary = {
+          app: "my-app",
+          nodes: [
+            {
+              address: "https://my-app.prisma.build",
+              entities: [{ kind: "service", id: "web" }],
+            },
+          ],
+        };
+        return ok(
+          ctx.present(
+            { data: { summary } },
+            {
+              human: () => [],
+              stdout: () => [],
+              json: () => ({ summary }),
+              next: () => [],
+            },
+          ),
+        );
+      },
+    });
+    const cli = createTestCli({ commands: { deploy }, now: CLOCK });
+
+    const result = await cli.run(["deploy"]);
+
+    expect(result.exitCode).toBe(0);
+    expect(result.json.at(-1)).toMatchObject({
+      kind: "result",
+      envelope: {
+        ok: true,
+        result: {
+          summary: {
+            nodes: [{ address: "https://my-app.prisma.build" }],
+          },
+        },
+      },
+    });
+  });
+
+  test("a TTY caller keeps the inherited terminal handoff", async () => {
+    const cli = createTestCli({ commands: { converge }, now: CLOCK });
+
+    const result = await cli.run(["converge"], {
+      isTty: { stdout: true, stderr: true },
+    });
+
+    expect(result.exitCode).toBe(0);
+    expect(result.json).toEqual([]);
+    expect(result.spawns[0]?.output).toBe("inherit");
+  });
+
+  test("help no longer claims json is unsupported", async () => {
     const cli = createTestCli({ commands: { converge }, now: CLOCK });
 
     const result = await cli.run(["converge", "--help"]);
 
-    expect(`${result.stdout}${result.stderr}`).toContain(
+    expect(`${result.stdout}${result.stderr}`).not.toContain(
       "does not support --json",
     );
   });
@@ -99,7 +162,7 @@ describe("the child's status", () => {
       spawnScript: () => ({ exitCode: 3, signal: null }),
     });
 
-    const result = await cli.run(["converge"]);
+    const result = await cli.run(["converge", "--format", "human"]);
 
     expect(result.exitCode).toBe(3);
     expect(result.stdout).toBe("");
@@ -113,7 +176,19 @@ describe("the child's status", () => {
       spawnScript: () => ({ exitCode: null, signal: "SIGINT" }),
     });
 
-    expect((await cli.run(["converge"])).exitCode).toBe(130);
+    const result = await cli.run(["converge"]);
+
+    expect(result.exitCode).toBe(130);
+    expect(result.json.at(-1)).toMatchObject({
+      kind: "result",
+      envelope: {
+        ok: false,
+        error: {
+          code: "CLI.CHILD_PROCESS_FAILED",
+          meta: { exitCode: null, signal: "SIGINT" },
+        },
+      },
+    });
   });
 
   test("the settlement summary carries the child's code", async () => {
@@ -146,7 +221,18 @@ describe("the child's status", () => {
       spawnScript: () => ({ exitCode: 5, signal: null }),
     });
 
-    expect((await cli.run(["dev"])).exitCode).toBe(5);
+    const result = await cli.run(["dev"]);
+
+    expect(result.exitCode).toBe(5);
+    expect(result.json.at(-1)).toMatchObject({
+      envelope: {
+        ok: false,
+        error: {
+          code: "CLI.CHILD_PROCESS_FAILED",
+          meta: { exitCode: 5, signal: null },
+        },
+      },
+    });
   });
 
   test("a launch failure is a structured error, not a crash", async () => {
@@ -158,7 +244,7 @@ describe("the child's status", () => {
       },
     });
 
-    const result = await cli.run(["converge"]);
+    const result = await cli.run(["converge", "--format", "human"]);
 
     expect(result.exitCode).toBe(2);
     expect(result.stderr).toContain("CLI.SPAWN_FAILED");
@@ -593,7 +679,9 @@ describe("signals", () => {
       },
     });
 
-    const result = await cli.run(["dev"], { abort: controller.signal });
+    const result = await cli.run(["dev", "--format", "human"], {
+      abort: controller.signal,
+    });
 
     expect(result.exitCode).toBe(130);
     expect(result.stderr).toContain("stopped");
@@ -759,7 +847,7 @@ describe("credential injection", () => {
       },
     });
 
-    const result = await cli.run(["converge"]);
+    const result = await cli.run(["converge", "--format", "human"]);
 
     expect(result.exitCode).toBe(0);
     expect(seen.PRISMA_SERVICE_TOKEN).toBe(token);
@@ -777,7 +865,7 @@ describe("credential injection", () => {
       },
     });
 
-    const result = await cli.run(["converge"]);
+    const result = await cli.run(["converge", "--format", "human"]);
 
     expect(result.exitCode).toBe(2);
     expect(result.stderr).toContain("CLI.CREDENTIALS_REQUIRED");
@@ -800,7 +888,7 @@ describe("credential injection", () => {
       },
     });
 
-    const result = await cli.run(["converge"]);
+    const result = await cli.run(["converge", "--format", "human"]);
 
     expect(result.exitCode).toBe(2);
     expect(result.stderr).toContain("expires too soon");
@@ -992,7 +1080,7 @@ describe("next actions on a child-status settlement", () => {
       spawnScript: () => ({ exitCode: 3, signal: null }),
     });
 
-    const result = await cli.run(["hinting"]);
+    const result = await cli.run(["hinting"], { isTty: { stdout: true } });
 
     expect(result.exitCode).toBe(3);
     expect(result.stdout).toBe("");
@@ -1008,13 +1096,37 @@ describe("next actions on a child-status settlement", () => {
       spawnScript: () => ({ exitCode: null, signal: "SIGINT" }),
     });
 
-    const result = await cli.run(["hinting"]);
+    const result = await cli.run(["hinting"], { isTty: { stdout: true } });
 
     // The user stopped the converge, so there is nothing to reproduce:
     // the abort wins over what the handler asked for.
     expect(result.exitCode).toBe(130);
     expect(result.stdout).toBe("");
     expect(result.stderr).toBe("");
+  });
+
+  test("json carries reproduce guidance in the terminal error envelope", async () => {
+    const cli = createTestCli({
+      commands: { hinting },
+      now: CLOCK,
+      spawnScript: () => ({ exitCode: 3, signal: null }),
+    });
+
+    const result = await cli.run(["hinting", "--json"]);
+
+    expect(result.exitCode).toBe(3);
+    expect(result.json.at(-1)).toMatchObject({
+      envelope: {
+        ok: false,
+        error: { code: "CLI.CHILD_PROCESS_FAILED" },
+        nextActions: [
+          {
+            kind: "run-command",
+            command: "alchemy deploy ./entry.ts",
+          },
+        ],
+      },
+    });
   });
 });
 
@@ -1068,7 +1180,7 @@ describe("a handler that abandons the spawn promise", () => {
       spawnScript: childEndingOnlyWhenKilled(order),
     });
 
-    const result = await cli.run(["abandoning"]);
+    const result = await cli.run(["abandoning", "--format", "human"]);
     order.push("run settled");
 
     expect(result.exitCode).toBe(1);
@@ -1093,7 +1205,7 @@ describe("a handler that abandons the spawn promise", () => {
       spawnScript: childEndingOnlyWhenKilled(order),
     });
 
-    const result = await cli.run(["throwing"]);
+    const result = await cli.run(["throwing", "--format", "human"]);
     order.push("run settled");
 
     expect(result.exitCode).toBe(1);
@@ -1123,7 +1235,7 @@ describe("a handler that abandons the spawn promise", () => {
       spawnScript: childEndingOnlyWhenKilled(order),
     });
 
-    const result = await cli.run(["abandoning"]);
+    const result = await cli.run(["abandoning", "--format", "human"]);
 
     expect(result.stderr).toContain("during-child");
   });

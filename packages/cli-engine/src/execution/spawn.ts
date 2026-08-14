@@ -138,6 +138,7 @@ async function runDelegated(
       args: options.args ?? [],
       cwd: options.cwd ?? invocation.runtime.cwd,
       env: await composeChildEnv(invocation, def, options.env),
+      output: state.format === "json" ? "diagnostic" : "inherit",
     };
     debug(
       `spawn: ${request.command} ${request.args.join(" ")} (cwd ${request.cwd})`,

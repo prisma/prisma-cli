@@ -100,8 +100,9 @@ const child = await ctx.spawn({ command, args, cwd, env });
   through this path (it used to hard-code 0, and now also settles
   130/143 on its own — below),
   and the session-kind "always supports json" guarantee is amended:
-  a command that may spawn rejects `--json` at PARSE time
-  (delegated terminal output cannot be framed; stated in help).
+  a command that may spawn keeps stdout framed in JSON mode by routing the
+  child's output to diagnostic stderr; the session then emits its normal
+  terminal result frame.
 - **Exit codes are the engine's** (operator ruling, 2026-08-11): a
   run a delivered signal terminated settles 128+signal from the
   ENGINE's own record of that signal, for both command kinds and

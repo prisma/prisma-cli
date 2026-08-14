@@ -16,11 +16,16 @@ const [scenario, dir] = process.argv.slice(2);
 const childScript = fileURLToPath(new URL("./child.mjs", import.meta.url));
 
 const spawnChild = (request) => {
+  const structured = request.output === "diagnostic";
   const child = spawn(request.command, [...request.args], {
     cwd: request.cwd,
     env: request.env,
-    stdio: "inherit",
+    stdio: structured ? ["inherit", "pipe", "pipe"] : "inherit",
   });
+  if (structured) {
+    child.stdout.on("data", (chunk) => process.stderr.write(chunk));
+    child.stderr.on("data", (chunk) => process.stderr.write(chunk));
+  }
   writeFileSync(join(dir, "child-pid"), String(child.pid));
   return {
     ended: new Promise((resolve, reject) => {
@@ -80,7 +85,11 @@ const runtime = {
   },
   cwd: process.cwd(),
   env: process.env,
-  isTty: { stdin: false, stdout: false, stderr: false },
+  isTty: {
+    stdin: false,
+    stdout: scenario !== "unframed-stdout",
+    stderr: scenario !== "unframed-stdout",
+  },
   exit: (code) => process.exit(code),
   onSignal: (subscriber) => {
     // The marker is written AFTER the engine has handled the press, so

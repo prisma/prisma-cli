@@ -34,6 +34,7 @@ export interface SpawnRecord {
   readonly command: string;
   readonly args: readonly string[];
   readonly cwd: string;
+  readonly output: SpawnRequest["output"];
   /** Environment KEYS only. Values are never recorded: a fixture file
    *  must not be able to carry token material. */
   readonly envKeys: readonly string[];
@@ -83,6 +84,7 @@ function recordingSpawn(
       command: request.command,
       args: [...request.args],
       cwd: request.cwd,
+      output: request.output,
       envKeys: Object.keys(request.env),
       kills: [],
     };

@@ -4,13 +4,13 @@
  * about test-local copies, so this is the test that pins the adapter
  * production actually wires — exit passthrough, ENOENT rejection, kill
  * delivery, and the spawn options the whole design rests on (inherited
- * stdio, no `detached`, no new console). Runs on the Windows CI leg
+ * human stdio, piped structured output, no `detached`, no new console). Runs on the Windows CI leg
  * too, which is where the options assertion earns its keep.
  */
 import { existsSync, mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { describe, expect, test, vi } from "vitest";
+import { beforeEach, describe, expect, test, vi } from "vitest";
 
 const spawnOptionsSeen = vi.hoisted(() => [] as Array<Record<string, unknown>>);
 
@@ -29,9 +29,19 @@ vi.mock("node:child_process", async (importOriginal) => {
   };
 });
 
-import { spawnChild } from "../src/spawn";
+import { makeSpawnChild } from "../src/spawn";
 
 const NODE = process.execPath;
+let diagnosticText = "";
+const spawnChild = makeSpawnChild({
+  write: (text) => {
+    diagnosticText += text;
+  },
+});
+
+beforeEach(() => {
+  diagnosticText = "";
+});
 
 async function waitForFile(path: string, timeoutMs = 10_000): Promise<void> {
   const deadline = Date.now() + timeoutMs;
@@ -51,6 +61,7 @@ describe("the shipped spawn adapter", () => {
       args: ["-e", "process.exit(0)"],
       cwd: process.cwd(),
       env: process.env,
+      output: "inherit",
     });
     await child.ended;
 
@@ -68,6 +79,7 @@ describe("the shipped spawn adapter", () => {
       args: ["-e", "process.exit(3)"],
       cwd: process.cwd(),
       env: process.env,
+      output: "inherit",
     });
 
     await expect(child.ended).resolves.toEqual({ exitCode: 3, signal: null });
@@ -79,6 +91,7 @@ describe("the shipped spawn adapter", () => {
       args: [],
       cwd: process.cwd(),
       env: process.env,
+      output: "inherit",
     });
 
     await expect(child.ended).rejects.toMatchObject({ code: "ENOENT" });
@@ -100,6 +113,7 @@ describe("the shipped spawn adapter", () => {
         ],
         cwd: process.cwd(),
         env: process.env,
+        output: "inherit",
       });
       await waitForFile(ready);
 
@@ -114,4 +128,22 @@ describe("the shipped spawn adapter", () => {
     },
     20_000,
   );
+
+  test("routes both child streams to diagnostics in structured mode", async () => {
+    const child = spawnChild({
+      command: NODE,
+      args: [
+        "-e",
+        "process.stdout.write('child-out'); process.stderr.write('child-err')",
+      ],
+      cwd: process.cwd(),
+      env: process.env,
+      output: "diagnostic",
+    });
+
+    await expect(child.ended).resolves.toEqual({ exitCode: 0, signal: null });
+    expect(spawnOptionsSeen.at(-1)?.stdio).toEqual(["inherit", "pipe", "pipe"]);
+    expect(diagnosticText).toContain("child-out");
+    expect(diagnosticText).toContain("child-err");
+  });
 });
