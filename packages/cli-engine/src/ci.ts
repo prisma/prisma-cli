@@ -1,4 +1,4 @@
-import vendors from "ci-info/vendors.json" with { type: "json" };
+import { createRequire } from "node:module";
 import type { Runtime } from "./runtime";
 
 type Env = Readonly<Record<string, string | undefined>>;
@@ -24,8 +24,19 @@ interface Vendor {
  * module evaluates against the real `process.env` the moment it is
  * imported, and the engine may only read the environment its host
  * injected.
+ *
+ * Read through the CJS require cache, never as an ES-module JSON
+ * import: ci-info's own index.js requires this same file, and under Bun
+ * a JSON file that entered the ES module registry first is handed back
+ * to `require` as its `{__esModule, default}` wrapper — so any host
+ * process that also loads ci-info (composer's config graph does, via
+ * orm-toolchain) got an object where ci-info expects an array. Found in
+ * prisma/composer#234's engine-0.1.0 adoption; pinned by
+ * tests/no-esm-json-import-in-dist.test.ts.
  */
-const VENDORS: readonly Vendor[] = vendors;
+const VENDORS: readonly Vendor[] = createRequire(import.meta.url)(
+  "ci-info/vendors.json",
+);
 
 /**
  * The variables ci-info checks outside the vendor table, catching CI

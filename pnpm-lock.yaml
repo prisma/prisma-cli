@@ -24,7 +24,7 @@ importers:
   packages/cli:
     dependencies:
       '@prisma/cli-engine':
-        specifier: workspace:0.1.0
+        specifier: workspace:0.1.1
         version: link:../cli-engine
       '@prisma/composer':
         specifier: 0.6.0-dev.16

@@ -31,6 +31,12 @@ describe("conformance: import purity", () => {
         label: "@prisma/cli-engine",
         output,
         manifest,
+        // ci-info's vendor table is read through createRequire — a CJS
+        // require the lexer rightly does not count as an import — so the
+        // ES module registry never holds vendors.json and ci-info's own
+        // require of it stays sane under Bun (see
+        // no-esm-json-import-in-dist.test.ts).
+        allowedUnimported: ["ci-info"],
         // Anti-vacuity: a run that swept the wrong directory would
         // otherwise report a clean sweep of nothing.
         requiredSpecifiers: ["@stricli/core"],
