@@ -111,3 +111,13 @@ export function releaseDistTag(base: string): "latest" | "next" {
   assertCanonicalBase(base);
   return base.includes("-rc.") ? "next" : "latest";
 }
+
+/**
+ * Whether a publish is a release — under the canonical tag for its BASE
+ * version. Dev publishes never are, and their suffixed version must not
+ * reach releaseDistTag, which asserts a canonical base.
+ */
+export function isReleasePublish(base: string, tag: string): boolean {
+  if (tag === "dev") return false;
+  return tag === releaseDistTag(base);
+}

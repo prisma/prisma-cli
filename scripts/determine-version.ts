@@ -45,6 +45,7 @@ import type { VersionResult } from "./determine-version-utils.ts";
 import {
   assertCanonicalBase,
   devVersion,
+  isReleasePublish,
   releaseDistTag,
 } from "./determine-version-utils.ts";
 
@@ -100,6 +101,7 @@ function readPreviousRootVersion(): PreviousVersionLookup {
 }
 
 function writeGitHubOutput(
+  base: string,
   result: VersionResult | undefined,
   publish: boolean,
 ): void {
@@ -110,10 +112,11 @@ function writeGitHubOutput(
   appendFileSync(outputFile, `version<<EOF\n${result.version}\nEOF\n`);
   appendFileSync(outputFile, `tag<<EOF\n${result.tag}\nEOF\n`);
   // A run is a release — and gets the GitHub Release + tag — when it
-  // publishes under the canonical tag for its version. Push bumps
+  // publishes under the canonical tag for its BASE version. Push bumps
   // always do; a dispatch counts only when the chosen tag matches
-  // (re-publishing a release), not for beta/preview cuts.
-  const release = result.tag === releaseDistTag(result.version);
+  // (re-publishing a release); dev publishes never do, and their
+  // suffixed version must not reach releaseDistTag's canonical check.
+  const release = isReleasePublish(base, result.tag);
   appendFileSync(outputFile, `release<<EOF\n${String(release)}\nEOF\n`);
 }
 
@@ -183,9 +186,9 @@ switch (eventName) {
 }
 
 if (result === undefined) {
-  writeGitHubOutput(undefined, false);
+  writeGitHubOutput(baseVersion, undefined, false);
 } else {
   console.log(`Resolved version:      ${result.version}`);
   console.log(`Resolved dist-tag:     ${result.tag}`);
-  writeGitHubOutput(result, true);
+  writeGitHubOutput(baseVersion, result, true);
 }

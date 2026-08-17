@@ -200,6 +200,61 @@ export function deploymentNotFoundError(
   );
 }
 
+/** `--tail` and `--from-start` ask for opposite ends of the log, so a
+ *  run naming both has no answer to give. Refused before any work. */
+export function logsRangeConflictError(): CliStructuredError {
+  return new CliStructuredError(
+    "SERVICE.LOGS_RANGE_CONFLICT",
+    "Choose one end of the log to read from",
+    {
+      why: "--tail and --from-start are mutually exclusive: one reads the last lines, the other reads from the beginning.",
+      nextActions: [
+        adviceAction(
+          "Pass --tail <n> for the last n lines, or --from-start for the whole log.",
+        ),
+      ],
+    },
+  );
+}
+
+/** A deployment id resolves globally, so one that exists but belongs to
+ *  another project is its own failure — not "not found". */
+export function deploymentOutsideProjectError(
+  deploymentId: string,
+): CliStructuredError {
+  return new CliStructuredError(
+    "SERVICE.DEPLOYMENT_OUTSIDE_PROJECT",
+    `Deployment "${deploymentId}" belongs to another project`,
+    {
+      why: "The deployment exists, but the service that owns it is not in the resolved project.",
+      nextActions: [
+        adviceAction("Pass --project for the project that owns it."),
+        runCommandAction("List services", "service list"),
+      ],
+    },
+  );
+}
+
+/** The deployment exists but names no owning service, so there is no
+ *  project to check it against and nothing to scope logs by. */
+export function deploymentDetachedError(
+  deploymentId: string,
+): CliStructuredError {
+  return new CliStructuredError(
+    "SERVICE.DEPLOYMENT_DETACHED",
+    `Deployment "${deploymentId}" has no owning service`,
+    {
+      why: "The Management API returned the deployment without a service, so it cannot be scoped to a project.",
+      nextActions: [
+        runCommandAction(
+          "Show the deployment",
+          `service deployment show ${deploymentId}`,
+        ),
+      ],
+    },
+  );
+}
+
 export function deploymentNotFoundForServiceError(
   deploymentId: string,
   serviceName: string,

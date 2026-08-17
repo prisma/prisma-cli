@@ -21,6 +21,12 @@ const CLAIMED_TOKEN = mintTestJwt({
 });
 const CLAIMLESS_TOKEN = mintTestJwt({ sub: "user_1" });
 
+const READ_OPTIONS = {
+  minimumValidityMs: 0,
+  now: new Date(0),
+  signal: new AbortController().signal,
+};
+
 describe("composition from the environment", () => {
   test("token and claimed workspace compose the active credential", async () => {
     const manager = new EnvironmentCredentialManager({
@@ -58,7 +64,7 @@ describe("composition from the environment", () => {
     const manager = new EnvironmentCredentialManager({ env: {} });
 
     expect(await manager.activeCredential()).toBeNull();
-    expect(await manager.activeAccessToken()).toBeNull();
+    expect(await manager.activeAccessToken(READ_OPTIONS)).toBeNull();
     expect(await manager.sessions()).toEqual({
       sessions: [],
       selectedWorkspaceId: undefined,
@@ -111,7 +117,7 @@ describe("the engine-facing reads", () => {
       env: { PRISMA_SERVICE_TOKEN: CLAIMED_TOKEN },
     });
 
-    expect(await manager.activeAccessToken()).toBe(CLAIMED_TOKEN);
+    expect(await manager.activeAccessToken(READ_OPTIONS)).toBe(CLAIMED_TOKEN);
   });
 
   test("the storage is memory-backed and carries no refresh token", async () => {

@@ -83,6 +83,8 @@ const EXCLUSIONS: Readonly<Record<string, string>> = {
     "Acts on a deployment, which only `composer deploy` can create here. Same reason as `service deployment start`.",
   "service deployment delete":
     "Deletes a deployment, which only `composer deploy` can create here. Same reason as `service deployment start`.",
+  "service logs":
+    "Reads a deployment's log output, so it needs a deployment that has run. Only `composer deploy` produces one, which this suite cannot run.",
 };
 
 /**

@@ -179,7 +179,7 @@ function observedTokenStorage(
   };
   return {
     getTokens: () => storage.getTokens(),
-    setTokens: (tokens) => storage.setTokens(tokens),
+    setTokens: (tokens, expiresAt) => storage.setTokens(tokens, expiresAt),
     clearTokens: () => storage.clearTokens(),
     ...(storage.clearTokensIfCurrent === undefined
       ? {}

@@ -13,7 +13,8 @@ name: Update product CLI versions
 #     by at most a day.
 #   - workflow_dispatch: run it by hand.
 #
-# The PR is opened with BOT_GITHUB_TOKEN, not GITHUB_TOKEN, for two reasons:
+# The PR is opened with DEPLOY_GITHUB_TOKEN — the deploy automation's
+# own account, not a person's — rather than GITHUB_TOKEN, for two reasons:
 # pull requests created with the workflow token never trigger CI, and
 # without CI the required checks never report, so auto-merge would hang
 # forever. The PAT is the wmadden-electric bot's.
@@ -67,11 +68,11 @@ jobs:
       - name: Open the version-update PR with auto-merge
         if: ${{ steps.compare.outputs.changed == 'true' }}
         env:
-          GH_TOKEN: ${{ secrets.BOT_GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.DEPLOY_GITHUB_TOKEN }}
           SUMMARY: ${{ steps.compare.outputs.summary }}
         run: |
           if [ -z "$GH_TOKEN" ]; then
-            echo "::error::BOT_GITHUB_TOKEN is not configured; cannot open a CI-triggering PR. Add the bot PAT as the BOT_GITHUB_TOKEN repository secret."
+            echo "::error::DEPLOY_GITHUB_TOKEN is not configured; cannot open a CI-triggering PR. Add the deploy automation's GitHub token as the DEPLOY_GITHUB_TOKEN repository secret (see docs/oss/release-automation.md)."
             exit 1
           fi
           BRANCH="auto/update-product-versions-$(date -u +%Y%m%d%H%M%S)"
