@@ -23,8 +23,10 @@ name: Publish to npm
 #   - workflow_dispatch                                 → publish `<base>`
 #     under the chosen dist-tag (default `latest`); also the dry-run path.
 #
-# Scope: publishes `@prisma/cli-engine` then `@prisma/cli` (the cli
-# depends on the engine, so the engine goes first). The engine versions
+# Scope: publishes `@prisma/cli-engine`, then `@prisma/cli`, then
+# `prisma` — the unscoped name is the same shell under the `prisma` bin,
+# and it goes last because it carries the whole tree (dependents after
+# dependencies). The engine versions
 # INDEPENDENTLY of the lockstep (ADR 0004, operator 2026-08-13): it
 # publishes at whatever version its own manifest carries, and because
 # an already-published version is treated as done (see publish_one), an
@@ -186,6 +188,7 @@ jobs:
         run: |
           pnpm --filter @prisma/cli-engine publish --tag "${{ steps.version.outputs.tag }}" --access public --no-git-checks --dry-run
           pnpm --filter @prisma/cli publish --tag "${{ steps.version.outputs.tag }}" --access public --no-git-checks --dry-run
+          pnpm --filter prisma publish --tag "${{ steps.version.outputs.tag }}" --access public --no-git-checks --dry-run
 
       # A rerun (or a re-publish dispatch) meets versions that are
       # already on the registry. npm refuses to publish over them —
@@ -214,6 +217,7 @@ jobs:
           }
           publish_one @prisma/cli-engine
           publish_one @prisma/cli
+          publish_one prisma
 
       # Emit a GitHub Release for releases only — runs whose dist-tag is
       # the canonical one for their version (`next` on the RC line,

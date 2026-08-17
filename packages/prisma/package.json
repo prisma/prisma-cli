@@ -1,14 +1,13 @@
 {
-  "name": "@prisma/cli",
+  "name": "prisma",
   "version": "8.0.0-rc.3",
-  "description": "Command-line interface for the Prisma Developer Platform.",
+  "description": "The Prisma CLI: one binary for the ORM, Composer, and the Prisma Developer Platform.",
   "type": "module",
   "bin": {
-    "prisma-cli": "./dist/cli.js"
+    "prisma": "./dist/prisma.js"
   },
   "exports": {
-    "./package.json": "./package.json",
-    "./src/bin": "./src/bin.ts"
+    "./package.json": "./package.json"
   },
   "files": [
     "dist",
@@ -24,14 +23,14 @@
   "keywords": [
     "prisma",
     "cli",
+    "orm",
     "database",
-    "app",
     "deployment"
   ],
   "repository": {
     "type": "git",
     "url": "https://github.com/prisma/prisma-cli.git",
-    "directory": "packages/cli"
+    "directory": "packages/prisma"
   },
   "homepage": "https://github.com/prisma/prisma-cli#readme",
   "bugs": {
@@ -41,11 +40,7 @@
   "scripts": {
     "build": "tsdown",
     "prepack": "pnpm run build",
-    "check:grammar": "vitest run tests/mount-coverage.test.ts",
-    "typecheck": "tsc --noEmit",
-    "test": "pnpm run build && vitest run",
-    "test:e2e": "vitest run --config vitest.e2e.config.ts",
-    "conformance": "tsx scripts/conformance.ts"
+    "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "@prisma/cli-engine": "workspace:0.1.1",
@@ -61,13 +56,11 @@
     "open": "^11.0.0"
   },
   "devDependencies": {
-    "@repo/cli-conformance": "workspace:8.0.0-rc.3",
+    "@prisma/cli": "workspace:8.0.0-rc.3",
     "@repo/cli-telemetry": "workspace:8.0.0-rc.3",
     "@repo/tsconfig": "workspace:8.0.0-rc.3",
     "@types/node": "^22.19.19",
     "tsdown": "^0.21.10",
-    "tsx": "^4.22.4",
-    "typescript": "^6.0.3",
-    "vitest": "^4.1.8"
+    "typescript": "^6.0.3"
   }
 }

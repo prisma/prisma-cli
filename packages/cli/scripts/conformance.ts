@@ -33,6 +33,7 @@ import {
 
 const CLI_DIR = fileURLToPath(new URL("..", import.meta.url));
 const ENGINE_DIR = join(CLI_DIR, "..", "cli-engine");
+const PRISMA_DIR = join(CLI_DIR, "..", "prisma");
 // At the REPO ROOT, not inside this package: a sandbox node_modules of
 // ~440 packages inside packages/cli slows vitest's file crawl enough to
 // time out unrelated tests.
@@ -51,13 +52,19 @@ async function importPurity(): Promise<readonly Finding[]> {
     manifest: await manifest(CLI_DIR),
     requiredSpecifiers: ["@prisma/cli-engine", "@prisma/composer/family"],
   });
+  const unscoped = checkImportPurity({
+    label: "prisma",
+    output: await sweepBuiltOutput(join(PRISMA_DIR, "dist")),
+    manifest: await manifest(PRISMA_DIR),
+    requiredSpecifiers: ["@prisma/cli-engine", "@prisma/composer/family"],
+  });
   const engine = checkImportPurity({
     label: "@prisma/cli-engine",
     output: await sweepBuiltOutput(join(ENGINE_DIR, "dist")),
     manifest: await manifest(ENGINE_DIR),
     requiredSpecifiers: ["@stricli/core"],
   });
-  return [...shell, ...engine];
+  return [...shell, ...unscoped, ...engine];
 }
 
 function validatorNoThrow(): readonly Finding[] {
@@ -78,6 +85,7 @@ async function tarball(): Promise<readonly Finding[]> {
     {
       packages: [
         { name: "@prisma/cli", dir: CLI_DIR },
+        { name: "prisma", dir: PRISMA_DIR },
         { name: "@prisma/cli-engine", dir: ENGINE_DIR },
       ],
       shellPackage: "@prisma/cli",
