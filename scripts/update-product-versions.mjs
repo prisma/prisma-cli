@@ -18,10 +18,9 @@
 //     between a product's dev build and a dev CLI.
 //
 // Which dist-tag "last published" means is per package and per channel:
-// composer releases under `latest`, prisma/prisma's RC line releases go
-// to `next`, and both publish dev builds under `dev`. A package absent
-// from a manifest is skipped — the table names candidates, not
-// requirements.
+// see the table below for releases; both products publish dev builds
+// under `dev`. A package absent from a manifest is skipped — the table
+// names candidates, not requirements.
 //
 // Exit codes: 0 whether or not anything changed (callers read the
 // summary), 1 on any error — including a registry lookup that fails for
@@ -34,17 +33,24 @@ import { appendFileSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
-// Release tags verified against the registry on 2026-08-17: all three
-// publish releases under `latest` and dev builds under `dev`. The ORM
-// has never had a `next` tag, despite the RC line living behind `next`
-// for the packages THIS repo publishes.
+// Where each product publishes its releases, most-preferred tag first:
+// the first tag that exists wins. A list rather than one name because
+// the two products differ and the ORM is mid-move — asking for a single
+// tag is what made the previous version of this script silently never
+// update the ORM (it asked for `next`, which did not exist).
 const WATCHED = /** @type {const} */ ([
-  { name: "@prisma/composer-cli", release: "latest" },
+  { name: "@prisma/composer-cli", release: ["latest"] },
   // The library, a devDependency here: the startup probe imports it to
   // prove the eager-loading detector works. It must move with the CLI
   // package it ships beside, or the fixture resolves a second copy.
-  { name: "@prisma/composer", release: "latest" },
-  { name: "@prisma/orm-toolchain", release: "latest" },
+  { name: "@prisma/composer", release: ["latest"] },
+  // The v8 RC line publishes under `next` (operator, 2026-08-17).
+  // prisma/prisma's own versioning doc still describes the RC line
+  // moving `latest`, and `latest` points at 8.0.0-rc.1 today, so both
+  // are listed: `next` once it exists, `latest` until then. The one case
+  // this list cannot see is a `next` left behind after the line goes
+  // stable — reorder it then.
+  { name: "@prisma/orm-toolchain", release: ["next", "latest"] },
 ]);
 
 const MANIFEST_PATHS = [
@@ -58,13 +64,31 @@ const FIELDS = ["dependencies", "devDependencies", "optionalDependencies"];
 const rootDir = dirname(dirname(fileURLToPath(import.meta.url)));
 
 /**
- * The dist-tag a package publishes this channel under.
+ * The dist-tags a package publishes this channel under, most-preferred
+ * first.
  *
- * @param {{ release: string }} entry
+ * @param {{ release: readonly string[] }} entry
  * @param {"release" | "dev"} channel
+ * @returns {readonly string[]}
  */
-export function tagFor(entry, channel) {
-  return channel === "dev" ? "dev" : entry.release;
+export function tagsFor(entry, channel) {
+  return channel === "dev" ? ["dev"] : entry.release;
+}
+
+/**
+ * The first candidate tag the package actually publishes. Pure;
+ * exported for tests.
+ *
+ * @param {Record<string, string>} distTags
+ * @param {readonly string[]} candidates
+ * @returns {{ tag: string; version: string } | undefined}
+ */
+export function selectTag(distTags, candidates) {
+  for (const tag of candidates) {
+    const version = distTags[tag];
+    if (version !== undefined) return { tag, version };
+  }
+  return undefined;
 }
 
 /**
@@ -162,23 +186,25 @@ function distTags(name) {
 }
 
 /**
- * A package that exists but has no such tag is a mistake in this
- * script's table, or a product that moved where it publishes. Either
- * way it must fail rather than look like "nothing to move to": the old
- * version of this script read `next` for the ORM, which has never had
- * that tag, and silently never updated it.
+ * A package that exists but publishes none of its candidate tags is a
+ * mistake in this script's table, or a product that moved where it
+ * publishes. Either way it must fail rather than look like "nothing to
+ * move to": the previous version of this script asked for `next` on the
+ * ORM, which has never had that tag, and silently never updated it.
+ *
+ * @param {readonly string[]} candidates
  */
-function publishedVersion(name, tag) {
+function publishedVersion(name, candidates) {
   const tags = distTags(name);
   if (tags === undefined) return undefined;
-  const version = tags[tag];
-  if (version === undefined) {
+  const chosen = selectTag(tags, candidates);
+  if (chosen === undefined) {
     const available = Object.keys(tags).join(", ") || "none";
     throw new Error(
-      `${name} has no "${tag}" dist-tag (it publishes: ${available}). Fix the table in this script, or the product moved where it publishes.`,
+      `${name} publishes none of the dist-tags ${candidates.join(", ")} (it publishes: ${available}). Fix the table in this script, or the product moved where it publishes.`,
     );
   }
-  return version;
+  return chosen.version;
 }
 
 function main() {
@@ -196,7 +222,7 @@ function main() {
   const published = new Map(
     WATCHED.map((entry) => [
       entry.name,
-      publishedVersion(entry.name, tagFor(entry, channel)),
+      publishedVersion(entry.name, tagsFor(entry, channel)),
     ]),
   );
   const updates = computeUpdates(manifests, published);

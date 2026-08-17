@@ -4,20 +4,54 @@ import {
   applyUpdates,
   computeUpdates,
   isPackageAbsent,
-  tagFor,
+  selectTag,
+  tagsFor,
 } from "./update-product-versions.mjs";
 
 const CLI = "packages/cli/package.json";
 const PRISMA = "packages/prisma/package.json";
 
-describe("tagFor", () => {
-  it("reads each package's own release tag on the release channel", () => {
-    assert.equal(tagFor({ release: "latest" }, "release"), "latest");
-    assert.equal(tagFor({ release: "next" }, "release"), "next");
+describe("tagsFor", () => {
+  it("reads each package's own release tags on the release channel", () => {
+    assert.deepEqual(tagsFor({ release: ["latest"] }, "release"), ["latest"]);
+    assert.deepEqual(tagsFor({ release: ["next", "latest"] }, "release"), [
+      "next",
+      "latest",
+    ]);
   });
 
   it("reads the shared dev tag on the dev channel", () => {
-    assert.equal(tagFor({ release: "next" }, "dev"), "dev");
+    assert.deepEqual(tagsFor({ release: ["next", "latest"] }, "dev"), ["dev"]);
+  });
+});
+
+describe("selectTag", () => {
+  it("takes the first candidate the package publishes", () => {
+    assert.deepEqual(
+      selectTag({ next: "8.0.0-rc.2", latest: "8.0.0-rc.1" }, [
+        "next",
+        "latest",
+      ]),
+      { tag: "next", version: "8.0.0-rc.2" },
+    );
+  });
+
+  /** The ORM today: the RC line is moving to `next`, which does not exist yet. */
+  it("falls through to a later candidate when the preferred tag does not exist", () => {
+    assert.deepEqual(
+      selectTag({ latest: "8.0.0-rc.1", dev: "8.0.0-rc.1-dev.46" }, [
+        "next",
+        "latest",
+      ]),
+      { tag: "latest", version: "8.0.0-rc.1" },
+    );
+  });
+
+  it("finds nothing when the package publishes none of them", () => {
+    assert.equal(
+      selectTag({ dev: "0.1.0-dev.1" }, ["next", "latest"]),
+      undefined,
+    );
   });
 });
 
