@@ -51,7 +51,11 @@
       // package's own build is a dependency because the entry reads
       // dist/ before packing rebuilds it.
       "dependsOn": ["build"],
-      "cache": false
+      "cache": false,
+      // turbo passes only declared variables to a task, and the
+      // dev-build check answers differently per channel. Undeclared, it
+      // would silently read `release` in every run.
+      "env": ["PUBLISH_CHANNEL"]
     },
     "typecheck": {
       "dependsOn": ["^build"],

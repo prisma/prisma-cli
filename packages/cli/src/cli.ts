@@ -6,18 +6,7 @@ import {
   defineCommandFamily,
   telemetryCommandGroup,
 } from "@prisma/cli-engine";
-// TODO(release): @prisma/composer@0.6.0-dev.16 pins
-// @prisma/cli-engine@0.0.9, while this package ships the workspace
-// engine at the lockstep version (8.0.0-rc.1). Those are different
-// versions, so an install of @prisma/cli resolves two copies of the
-// engine. Closing it is composer's move, not this repo's: composer
-// must pin the same engine version prisma-cli publishes, per the
-// tandem release order engine → composer → prisma-cli (R-S3-6).
-import { createComposerFamily } from "@prisma/composer/family";
-// TODO(release): @prisma/orm-toolchain@8.0.0-rc.1-dev.40 pins
-// @prisma/cli-engine@0.0.9, the same second copy composer's pin
-// installs. Both close the same way: the two packages pin the engine
-// version prisma-cli publishes, per the tandem release order.
+import { createComposerFamily } from "@prisma/composer-cli/family";
 import { ormCommandFamily as ormToolchainFamily } from "@prisma/orm-toolchain/cli";
 import { CLI_DOCS_URL, CLI_NAME } from "./cli-name";
 import { agentInstallCommand } from "./commands/agent/install";

@@ -68,8 +68,9 @@ export interface VersionResult {
 
 /**
  * The version a routine main push publishes under the `dev` dist-tag
- * (operator ruling 2026-08-13: automatic repins deploy automatic dev
- * versions; only a real release needs a human). The run number makes
+ * (operator ruling 2026-08-13: a product's new version deploys as a dev
+ * version without a human; only a real release needs one). The run
+ * number makes
  * the suffix monotonic per workflow run without reading the registry.
  */
 export function devVersion(base: string, runNumber: string): string {

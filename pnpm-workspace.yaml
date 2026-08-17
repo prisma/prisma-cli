@@ -15,13 +15,15 @@ allowBuilds:
 # publishes; it's the wrong threat model for packages we build ourselves, and
 # provenance is the stronger control for "is this really our build". Exempt at
 # the package level rather than re-pinning each version on every release.
+# Exempt by package, never by version: the family pins move with every
+# product release (update-product-versions.yml), and a version-qualified
+# exemption would need editing on each move.
 minimumReleaseAgeExclude:
   - '@prisma/compute-sdk'
   - '@prisma/management-api-sdk'
   - '@prisma/composer'
-  # Reached through @prisma/composer, which pins it exactly.
+  - '@prisma/composer-cli'
   - '@prisma/cli-engine'
-  # The ORM family and the framework it reaches through, at the exact
-  # interim versions packages/cli pins until the rc lines converge.
-  - '@prisma/orm-toolchain@8.0.0-rc.1-dev.40'
-  - '@prisma/orm-framework@8.0.0-rc.1-dev.40'
+  # The ORM family and the framework it reaches through.
+  - '@prisma/orm-toolchain'
+  - '@prisma/orm-framework'

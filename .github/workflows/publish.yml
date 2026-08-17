@@ -11,9 +11,9 @@ name: Publish to npm
 # Trigger model:
 #   - push to `main` with the root `version` unchanged → publish
 #     `<base>-dev.<run>` under the `dev` dist-tag (operator ruling
-#     2026-08-13: automated family repins deploy automatically; only a
-#     real release needs a human). The dev suffix is stamped
-#     ephemerally below and never committed.
+#     2026-08-13: a product's new version reaches the CLI and deploys
+#     without a human; only a real release needs one). The dev suffix is
+#     stamped ephemerally below and never committed.
 #   - push to `main` with the root `version` changed   → publish `<base>`
 #     under its canonical dist-tag — `next` on the RC line, `latest` for
 #     stable — and create a GitHub Release (marked pre-release on the RC
@@ -110,10 +110,19 @@ jobs:
           PUSH_BEFORE_SHA: ${{ github.event.before }}
         run: node scripts/determine-version.ts
 
-      # Dev publishes only: stamp `<base>-dev.<run>` across the lockstep
-      # manifests for this run. Ephemeral — nothing is committed; release
-      # versions remain exactly what the commit says. The engine is
-      # excluded from the sweep and ships at its own committed version.
+      # Dev publishes only, and ephemeral — nothing is committed, so a
+      # release publishes exactly what the commit says. Two stamps:
+      #
+      #   1. `<base>-dev.<run>` across the lockstep manifests. The engine
+      #      is excluded from the sweep and ships at its own committed
+      #      version.
+      #   2. The product CLI packages move to their `dev` builds. A dev
+      #      CLI depends on the products' latest dev versions and a
+      #      release depends only on their releases (operator ruling
+      #      2026-08-17), and the committed manifests hold the release
+      #      versions. The build and the conformance checks below run
+      #      after this, so a broken product dev build fails the dev
+      #      publish instead of shipping in it.
       - name: Stamp dev version
         if: ${{ steps.version.outputs.publish == 'true' && steps.version.outputs.tag == 'dev' }}
         # The lockfile refresh is part of the stamp: pnpm verifies
@@ -123,6 +132,7 @@ jobs:
         # bump-version does for committed bumps; still ephemeral.
         run: |
           node scripts/set-version.ts "${{ steps.version.outputs.version }}"
+          node scripts/update-product-versions.mjs --channel dev
           pnpm install --lockfile-only --no-frozen-lockfile
 
       - name: Build packages
@@ -141,20 +151,25 @@ jobs:
         if: ${{ steps.version.outputs.publish == 'true' }}
         run: pnpm test:scripts
 
-      # The three conformance checks against what is about to ship:
-      # built output imports only declared dependencies, every mounted
-      # config-section validator survives hostile input, and the packed
+      # The conformance checks against what is about to ship: built
+      # output imports only declared dependencies, every mounted
+      # config-section validator survives hostile input, the packed
       # tarballs survive a registry consumer's install — clean sandbox,
       # npm with --ignore-scripts, unpublished workspace siblings via
       # computed file: overrides, every declared bin started on plain
-      # Node at exit 0, engine pins agreeing everywhere. Runs before
-      # BOTH publish paths so the dry run is covered too. The tarballs
-      # it packs land in artifacts/tarballs and are the ones uploaded
-      # below: what was verified is what ships. (This absorbed the
-      # interim scripts/tarball-smoke.mjs, which was written to this
-      # check's design.)
+      # Node at exit 0, engine pins agreeing everywhere — and a release
+      # depends on no dev build. Runs before BOTH publish paths so the
+      # dry run is covered too. The tarballs it packs land in
+      # artifacts/tarballs and are the ones uploaded below: what was
+      # verified is what ships.
+      #
+      # PUBLISH_CHANNEL is what makes the dev-build check answer
+      # correctly for this run. It is the run's own dist-tag, so a dev
+      # publish is allowed its dev builds and a release is not.
       - name: Run conformance checks
         if: ${{ steps.version.outputs.publish == 'true' }}
+        env:
+          PUBLISH_CHANNEL: ${{ steps.version.outputs.tag == 'dev' && 'dev' || 'release' }}
         run: pnpm check:conformance
 
       # The verified tarballs, retrievable per run. On a real release the

@@ -428,3 +428,14 @@ CLI does not do, and each restarts as engine work if wanted:
   move `config-loader` into a shared library package the ORM publishes
   for exactly this kind of consumer, or cut the cloud extension's use
   of it. Spans both product repos; Will decides which.
+
+## Left open by the dev-build fix (2026-08-17)
+
+The release channel is green as of 2026-08-17: `@prisma/composer-cli@0.7.0` and `@prisma/orm-toolchain@8.0.0-rc.2` are both released and both peer `@prisma/cli-engine@0.1.1`, so the conformance run reports nothing and `packages/cli/scripts/conformance.ts` carries no exceptions. What closed, for the record: composer's `0.6.0` was uninstallable (published out-of-band with `npm publish`, leaving `workspace:0.6.0` in its manifest) and the ORM had no released version carrying the command family.
+
+Still open:
+
+- **Both product repos need their publish-notification step** (the work in the closed composer#232 and prisma#30033): a `repository_dispatch` of type `product-published` to `prisma/prisma-cli`, placed immediately after the publish step and keyed on its outcome. Until then a daily scheduled run is what notices a product release, so a new product version reaches the CLI within a day rather than within minutes. `docs/oss/release-automation.md` carries the exact step, and `DEPLOY_GITHUB_TOKEN` is provisioned in all three repositories (2026-08-17).
+- **Neither product repo installs its own tarball before publishing.** That is why an uninstallable `@prisma/composer-cli@0.6.0` sat on `latest` unnoticed. prisma-cli's check 3 does exactly this — pack, install into a clean sandbox with `npm --ignore-scripts`, start every declared bin — and is worth porting to both.
+- **The engine-pin check compares for equality, not peer satisfaction.** Both families now declare an exact peer equal to the shell's pin, so equality is correct and stricter today. Widening to range satisfaction belongs with the post-GA move to engine ranges (ADR 0004), not before.
+- **`credential-manager.ts` uses the banned word.** `packages/cli/src/auth/credential-manager.ts` has a private `#repin` method (about the active-workspace marker, a different concept from dependency versions). The operator banned the word outright; renaming it is a mechanical change to a private method, left out of the publish-channel work to keep that diff to one subject.
