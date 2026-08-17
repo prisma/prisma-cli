@@ -58,13 +58,13 @@ importers:
         version: 11.0.0
     devDependencies:
       '@repo/cli-conformance':
-        specifier: workspace:8.0.0-rc.2
+        specifier: workspace:8.0.0-rc.3
         version: link:../cli-conformance
       '@repo/cli-telemetry':
-        specifier: workspace:8.0.0-rc.2
+        specifier: workspace:8.0.0-rc.3
         version: link:../cli-telemetry
       '@repo/tsconfig':
-        specifier: workspace:8.0.0-rc.2
+        specifier: workspace:8.0.0-rc.3
         version: link:../tsconfig
       '@types/node':
         specifier: ^22.19.19
@@ -85,7 +85,7 @@ importers:
   packages/cli-conformance:
     devDependencies:
       '@repo/tsconfig':
-        specifier: workspace:8.0.0-rc.2
+        specifier: workspace:8.0.0-rc.3
         version: link:../tsconfig
       '@types/node':
         specifier: ^22.19.19
@@ -128,10 +128,10 @@ importers:
         version: 8.2.1
     devDependencies:
       '@repo/cli-conformance':
-        specifier: workspace:8.0.0-rc.2
+        specifier: workspace:8.0.0-rc.3
         version: link:../cli-conformance
       '@repo/tsconfig':
-        specifier: workspace:8.0.0-rc.2
+        specifier: workspace:8.0.0-rc.3
         version: link:../tsconfig
       '@types/node':
         specifier: ^22.19.19
@@ -156,7 +156,7 @@ importers:
         version: 1.2.4
     devDependencies:
       '@repo/tsconfig':
-        specifier: workspace:8.0.0-rc.2
+        specifier: workspace:8.0.0-rc.3
         version: link:../tsconfig
       '@types/node':
         specifier: ^22.19.19
@@ -174,7 +174,7 @@ importers:
   packages/compute:
     devDependencies:
       '@repo/tsconfig':
-        specifier: workspace:*
+        specifier: workspace:8.0.0-rc.3
         version: link:../tsconfig
       '@types/node':
         specifier: ^22.19.19
@@ -188,6 +188,61 @@ importers:
       vitest:
         specifier: ^4.1.8
         version: 4.1.8(@types/node@22.19.19)(vite@7.3.5(@types/node@22.19.19)(jiti@2.7.0)(tsx@4.22.4)(yaml@2.9.0))
+
+  packages/prisma:
+    dependencies:
+      '@prisma/cli-engine':
+        specifier: workspace:0.1.1
+        version: link:../cli-engine
+      '@prisma/composer':
+        specifier: 0.6.0-dev.16
+        version: 0.6.0-dev.16(@types/node@22.19.19)(magicast@0.5.3)(rollup@4.62.2)(typescript@6.0.3)(vite@7.3.5(@types/node@22.19.19)(jiti@2.7.0)(tsx@4.22.4)(yaml@2.9.0))(vitest@4.1.8(@types/node@22.19.19)(vite@7.3.5(@types/node@22.19.19)(jiti@2.7.0)(tsx@4.22.4)(yaml@2.9.0)))(workerd@1.20260704.1)(ws@8.21.0)
+      '@prisma/compute-sdk':
+        specifier: 0.39.0
+        version: 0.39.0(@prisma/management-api-sdk@1.55.0)(rollup@4.62.2)
+      '@prisma/credentials-store':
+        specifier: ^7.8.0
+        version: 7.8.0
+      '@prisma/management-api-sdk':
+        specifier: 1.55.0
+        version: 1.55.0
+      '@prisma/orm-toolchain':
+        specifier: 8.0.0-rc.1-dev.40
+        version: 8.0.0-rc.1-dev.40(magicast@0.5.3)(typanion@3.14.0)(typescript@6.0.3)(vite@7.3.5(@types/node@22.19.19)(jiti@2.7.0)(tsx@4.22.4)(yaml@2.9.0))
+      '@vercel/detect-agent':
+        specifier: ^1.2.3
+        version: 1.2.4
+      better-result:
+        specifier: ^2.9.2
+        version: 2.9.2
+      dotenv:
+        specifier: ^17.4.2
+        version: 17.4.2
+      execa:
+        specifier: ^9.6.1
+        version: 9.6.1
+      open:
+        specifier: ^11.0.0
+        version: 11.0.0
+    devDependencies:
+      '@prisma/cli':
+        specifier: workspace:8.0.0-rc.3
+        version: link:../cli
+      '@repo/cli-telemetry':
+        specifier: workspace:8.0.0-rc.3
+        version: link:../cli-telemetry
+      '@repo/tsconfig':
+        specifier: workspace:8.0.0-rc.3
+        version: link:../tsconfig
+      '@types/node':
+        specifier: ^22.19.19
+        version: 22.19.19
+      tsdown:
+        specifier: ^0.21.10
+        version: 0.21.10(typescript@6.0.3)
+      typescript:
+        specifier: ^6.0.3
+        version: 6.0.3
 
   packages/tsconfig: {}
 
@@ -992,12 +1047,6 @@ packages:
     cpu: [x64]
     os: [win32]
 
-  '@napi-rs/wasm-runtime@1.1.4':
-    resolution: {integrity: sha512-3NQNNgA1YSlJb/kMH1ildASP9HW7/7kYnRI2szWJaofaS1hWmbGI4H+d3+22aGzXXN9IJ+n+GiFVcGipJP18ow==}
-    peerDependencies:
-      '@emnapi/core': ^1.7.1
-      '@emnapi/runtime': ^1.7.1
-
   '@napi-rs/wasm-runtime@1.2.2':
     resolution: {integrity: sha512-JfB4kuJQjaoHuCTseIINHtHWeJnvgEcxjwA5t/Y00ZgaOO1Crz3fjT/p8kT28zA/Caz7oiUMn3d6H2yOVCVwuw==}
     engines: {node: ^20.19.0 || ^22.13.0 || >=23.5.0}
@@ -1594,9 +1643,6 @@ packages:
     resolution: {integrity: sha512-W2Ub165Qv0iMFljbYKxxbZN+2dVSngnzEjQNEFXtnz5oJVx9XSypmNmUvMtuYMeZ3kdVC1zI7yd/rtuX+SDnbg==}
     cpu: [arm64]
     os: [win32]
-
-  '@tybys/wasm-util@0.10.2':
-    resolution: {integrity: sha512-RoBvJ2X0wuKlWFIjrwffGw1IqZHKQqzIchKaadZZfnNpsAYp2mM0h36JtPCjNDAHGgYez/15uMBpfGwchhiMgg==}
 
   '@tybys/wasm-util@0.10.3':
     resolution: {integrity: sha512-F3fo1MYrRJYL3zER0OUOmkutjr1Vp23m7OsSgp7nq4SP6OqX6C/56XFIPAl5bt3zaBRjmW7SGz3u/6LwFpYcOg==}
@@ -3847,11 +3893,11 @@ snapshots:
   '@msgpackr-extract/msgpackr-extract-win32-x64@3.0.4':
     optional: true
 
-  '@napi-rs/wasm-runtime@1.1.4(@emnapi/core@1.10.0)(@emnapi/runtime@1.10.0)':
+  '@napi-rs/wasm-runtime@1.2.2(@emnapi/core@1.10.0)(@emnapi/runtime@1.10.0)':
     dependencies:
       '@emnapi/core': 1.10.0
       '@emnapi/runtime': 1.10.0
-      '@tybys/wasm-util': 0.10.2
+      '@tybys/wasm-util': 0.10.3
     optional: true
 
   '@napi-rs/wasm-runtime@1.2.2(@emnapi/core@1.11.1)(@emnapi/runtime@1.11.1)':
@@ -3970,7 +4016,7 @@ snapshots:
       c12: 3.3.4(magicast@0.5.3)
       colorette: 2.0.20
       package-manager-detector: 1.8.0
-      string-width: 8.2.1
+      string-width: 8.2.2
     transitivePeerDependencies:
       - magicast
 
@@ -4197,7 +4243,7 @@ snapshots:
     dependencies:
       '@emnapi/core': 1.10.0
       '@emnapi/runtime': 1.10.0
-      '@napi-rs/wasm-runtime': 1.1.4(@emnapi/core@1.10.0)(@emnapi/runtime@1.10.0)
+      '@napi-rs/wasm-runtime': 1.2.2(@emnapi/core@1.10.0)(@emnapi/runtime@1.10.0)
     optional: true
 
   '@rolldown/binding-wasm32-wasi@1.1.5':
@@ -4392,11 +4438,6 @@ snapshots:
     optional: true
 
   '@turbo/windows-arm64@2.10.9':
-    optional: true
-
-  '@tybys/wasm-util@0.10.2':
-    dependencies:
-      tslib: 2.8.1
     optional: true
 
   '@tybys/wasm-util@0.10.3':
@@ -4720,7 +4761,7 @@ snapshots:
   cli-truncate@5.2.0:
     dependencies:
       slice-ansi: 8.0.0
-      string-width: 8.2.1
+      string-width: 8.2.2
 
   clipanion@4.0.0-rc.4(typanion@3.14.0):
     dependencies:
@@ -5044,7 +5085,7 @@ snapshots:
       signal-exit: 3.0.7
       slice-ansi: 8.0.0
       stack-utils: 2.0.6
-      string-width: 8.2.1
+      string-width: 8.2.2
       terminal-size: 4.0.1
       type-fest: 5.8.0
       widest-line: 6.0.0
@@ -5847,7 +5888,7 @@ snapshots:
 
   widest-line@6.0.0:
     dependencies:
-      string-width: 8.2.1
+      string-width: 8.2.2
 
   workerd@1.20260704.1:
     optionalDependencies:
@@ -5860,7 +5901,7 @@ snapshots:
   wrap-ansi@10.0.0:
     dependencies:
       ansi-styles: 6.2.3
-      string-width: 8.2.1
+      string-width: 8.2.2
       strip-ansi: 7.2.0
 
   wrap-ansi@9.0.2:
