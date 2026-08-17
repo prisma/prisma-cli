@@ -2,6 +2,7 @@ import type { CommandContext } from "@prisma/cli-engine";
 import { defineSessionCommand, flag, positional } from "@prisma/cli-engine";
 import { CliStructuredError, ok } from "@prisma/cli-engine/protocol";
 import { CLI_NAME } from "../../cli-name";
+import { forEachNdjsonRecord } from "../../lib/ndjson";
 
 const TRAILING_NEWLINE = /\n$/;
 
@@ -103,51 +104,6 @@ function buildFailedError(
         : []),
     ],
   });
-}
-
-/** Reads a newline-delimited JSON body line by line. */
-async function forEachNdjsonRecord<T>(
-  body: ReadableStream<Uint8Array>,
-  onRecord: (record: T) => void,
-): Promise<void> {
-  const reader = body.getReader();
-  const decoder = new TextDecoder();
-  let buffer = "";
-
-  // An abort, a malformed line, or a throwing onRecord all leave the
-  // loop without reaching `done`. Cancelling closes the HTTP body
-  // instead of holding the socket open until garbage collection, which
-  // a long `--follow` run makes observable.
-  try {
-    for (;;) {
-      // biome-ignore lint/performance/noAwaitInLoops: a stream must be read sequentially, chunk by chunk.
-      const { done, value } = await reader.read();
-      if (value) {
-        buffer += decoder.decode(value, { stream: true });
-      }
-
-      let newlineIndex = buffer.indexOf("\n");
-      while (newlineIndex !== -1) {
-        const line = buffer.slice(0, newlineIndex).trim();
-        buffer = buffer.slice(newlineIndex + 1);
-        if (line) {
-          onRecord(JSON.parse(line) as T);
-        }
-        newlineIndex = buffer.indexOf("\n");
-      }
-
-      if (done) {
-        const tail = buffer.trim();
-        if (tail) {
-          onRecord(JSON.parse(tail) as T);
-        }
-        return;
-      }
-    }
-  } finally {
-    await reader.cancel().catch(() => undefined);
-    reader.releaseLock();
-  }
 }
 
 function reportRecord(

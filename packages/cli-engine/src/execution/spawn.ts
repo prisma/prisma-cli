@@ -307,15 +307,23 @@ async function composeChildEnv(
 
 /**
  * The child's copy of the credential: the manager's activeAccessToken()
- * operation, read at spawn time. The refresh token is never injected:
- * the child runs on a snapshot it cannot refresh.
+ * operation, read fresh at spawn time. The near-expiry policy already ran
+ * at preflight, before the handler; the spawn-time read refuses only a
+ * token that is already expired, so a still-valid credential can never be
+ * refused after the handler's pre-spawn work has created resources. The
+ * refresh token is never injected: the child runs on a snapshot it cannot
+ * refresh.
  */
 async function spawnToken(invocation: Invocation): Promise<string> {
   const manager = invocation.runtime.credentialManager;
   if (manager === undefined) {
     throw credentialsRequiredError();
   }
-  const accessToken = await manager.activeAccessToken();
+  const accessToken = await manager.activeAccessToken({
+    minimumValidityMs: 0,
+    now: invocation.now(),
+    signal: invocation.signal,
+  });
   if (accessToken === null) {
     throw credentialsRequiredError("session-ended");
   }

@@ -76,6 +76,13 @@ export interface ActiveCredential {
   readonly origin: CredentialOrigin;
 }
 
+export interface ActiveAccessTokenOptions {
+  /** Refuse or refresh a token with no more than this lifetime left. */
+  readonly minimumValidityMs: number;
+  readonly now: Date;
+  readonly signal: AbortSignal;
+}
+
 /**
  * Manages the credentials this machine holds: the stored per-workspace
  * sessions, which one is selected, and the credential this process
@@ -142,11 +149,11 @@ export interface CredentialManager {
   /**
    * ENGINE-FACING. The active credential's ACCESS token, read fresh on
    * every call, for handing to a child process that authenticates as
-   * this process does. Never the refresh token: the child gets a
+   * this process does. An OAuth pair inside the caller's minimum
+   * validity is refreshed under the refresh lock before its access
+   * token is returned. Never the refresh token: the child gets a
    * snapshot it cannot refresh. Null when the material is gone (the
-   * session ended). Single consumer: ctx.spawn's credential injection
-   * (credential-manager-design.md §11.5) — the read builds no second
-   * API client, so the one-client-per-process invariant holds.
+   * session ended).
    */
-  activeAccessToken(): Promise<string | null>;
+  activeAccessToken(options: ActiveAccessTokenOptions): Promise<string | null>;
 }

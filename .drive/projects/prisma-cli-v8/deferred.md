@@ -127,6 +127,12 @@ CLI does not do, and each restarts as engine work if wanted:
   with the commander shell and `service logs` waits on an engine
   streaming transport. The one capability loss of S2d; the S2c record
   has the design notes.
+  **Superseded by the `service-logs` slice (2026-08-13):** `service logs`
+  ships, reading the platform's HTTP page endpoint, so the capability is
+  no longer missing. What is still missing is the *streaming* half —
+  `--follow` polls on a 2s interval rather than holding a socket open.
+  The open remainder is the WebSocket live tail, in the closed
+  `service logs` entry further down this file.
 - **`build logs` cannot exit 1 on a failed build** until the engine
   grows a way for a stream to settle with a documented non-zero code.
 - **The crash-recovery feedback action does not port** (the legacy
@@ -147,17 +153,15 @@ CLI does not do, and each restarts as engine work if wanted:
   consumer (`packages/cli-engine/src/execution/spawn.ts`) moves with
   it. Recorded in `assets/engine/credential-manager-design.md`.
 - **Nothing bounds a child run to the token it was given.** A
-  `credentials: "child"` command hands the child a snapshot of the
+  `credentials: "child"` command still hands the child a snapshot of the
   access token and never the refresh token
-  (`packages/cli-engine/src/execution/spawn.ts`), and the only check is
-  the near-expiry refusal in `execution/needs.ts`:
-  `CREDENTIAL_NEAR_EXPIRY_MS` is 5 minutes, so the guarantee at spawn is
-  "more than five minutes left", not "enough for this run". A converge
-  that outlives the snapshot fails on an expired token, after the child
-  has already created resources. Two ways out, both unbuilt: hand the
-  child something that can refresh, or bound the child's run and refuse
-  when the remaining lifetime cannot cover it. Recorded as a release
-  limitation in `plan.md`'s coverage ledger.
+  (`packages/cli-engine/src/execution/spawn.ts`). The parent now refreshes a
+  stored OAuth pair before the handler when its access token is inside
+  `CREDENTIAL_NEAR_EXPIRY_MS`, so a refreshable session receives a fresh
+  snapshot instead of an unnecessary sign-in error. That does not bound the
+  child's total runtime: a converge that outlives even the refreshed snapshot
+  can still fail after creating resources. The remaining ways out are to hand
+  the child something that can refresh or to bound the child's run.
 - **A validated number flag**, if `--tail`'s old constraint is wanted
   back. `flag.number` accepts negatives and fractions, so "non-negative
   integer" is enforced nowhere. D4 took the other branch this item
@@ -193,6 +197,16 @@ CLI does not do, and each restarts as engine work if wanted:
   `packages/cli`. Fix: have the child write `ready` only after the
   handler is installed — the same ordering the engine's own
   `tests/fixtures/child.mjs` `trap-term` fixture already uses.
+- **`credential-manager.test.ts`'s crashed-lock contention test is
+  flaky on Windows CI.** "lets only one of two waiting mutations
+  clear the same crashed holder's lock" timed out at 5 s on
+  `windows-latest` during #181 (2026-08-13, a PR touching nothing
+  near the credential manager) and passed on the re-run of the same
+  commit. One sighting so far — same reddens-shared-checks family as
+  the two entries above. Likely shape: two waiters racing a lock
+  file under Windows FS latency needs more than the 5 s budget, or
+  the same write-marker-before-ready ordering. Diagnose on the
+  second sighting.
 
 ## Owned by whoever converts a family's renderers
 
@@ -305,18 +319,26 @@ CLI does not do, and each restarts as engine work if wanted:
   `managedBy` marker — the same request deferred alongside it. Users own
   their resources, and Composer reconciling a manual change on the next
   deploy is accepted behavior until then.
-- **`service logs` is a follow-up slice, and its transport question is
-  ANSWERED (R-S8-5).** API owners, via operator, 2026-08-12: **HTTP
-  instead of WebSocket is acceptable, provided live streaming can be
-  added at a later date.** So no engine socket transport was built. The
-  command lands as a copy of `build logs` — plain HTTP,
-  `parseAs: "stream"` — in a follow-up slice, once the platform endpoint
-  serves HTTP. The engine WebSocket design
-  (`assets/engine/websocket-transport-design.md`) is **shelved as the
-  later live-streaming path, not deleted.** The ownership question the
-  plan raised dissolved on investigation: `composer log` attaches to the
-  local dev daemon's streams, a `service deployment logs` would read the
-  platform endpoint — different data, no shared subgroup.
+- **`service logs` SHIPPED** (slice `service-logs`, 2026-08-13 —
+  contract at `specs/service-logs.md`, divergences at
+  `assets/s2/parity-divergences-service-logs.md`). It mounts as
+  `service logs`, the legacy spelling (ruled, operator, 2026-08-13), and
+  reads the platform's HTTP page endpoint (pdp-control-plane #4886): one
+  page by default, `--follow` polling on the terminal record's cursor.
+  Closing this entry corrects one thing it predicted: the pinned
+  `@prisma/management-api-sdk` (1.55.0) did NOT need a bump. The
+  `query: never` the risk note named is path-item boilerplate that every
+  path in that file carries; the operation type
+  (`getV1DeploymentsByDeploymentIdLogs`) already declared `tail`,
+  `from_start` and `cursor`, so the wiring typechecked against the
+  existing pin with no cast.
+  **What stays open: the WebSocket live tail.** The platform serves the
+  upgrade on the same path and the CLI does not use it, so following is
+  polling on a 2s interval rather than push. The engine socket design
+  (`assets/engine/websocket-transport-design.md`) remains **shelved for
+  that later date, not deleted** — R-S8-5's "provided live streaming can
+  be added at a later date" is still the standing commitment, and this
+  slice is what it was traded against.
 - **The e2e suite should assert the real service-id prefix.** D2 wrote
   `e2e/service.e2e.ts` without credentials to run it, so it asserts only
   that `service create` reports a non-empty id. The sibling suites assert
@@ -382,3 +404,19 @@ CLI does not do, and each restarts as engine work if wanted:
   prisma/prisma's `check-publish-deps.mjs` both catch this class, and
   prisma-cli has no equivalent. Worth one small check, in its own
   change.
+
+## Found while fixing engine 0.1.1 (2026-08-17) — needs a decision from Will
+
+- **A library depends on CLI tooling: `@prisma/composer-prisma-cloud`
+  imports `@prisma/orm-toolchain/config-loader`.** ADR 0004 says
+  libraries applications install must not depend on product CLI/dev
+  packages, and this import breaks that rule today. It is also how an
+  engine implementation detail reached composer's users: evaluating
+  `prisma-composer.config.ts` loads `composer-prisma-cloud/control`,
+  which loads `orm-toolchain/config-loader`, which imports `ci-info` —
+  putting ORM tooling and its dependencies inside composer's config
+  evaluation in every user's process. The engine defect that exposed
+  this is fixed (prisma-cli#187), but the dependency remains. Options:
+  move `config-loader` into a shared library package the ORM publishes
+  for exactly this kind of consumer, or cut the cloud extension's use
+  of it. Spans both product repos; Will decides which.

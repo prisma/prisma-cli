@@ -876,6 +876,106 @@ describe("credential injection", () => {
     expect(Object.values(seen)).not.toContain("refresh-material");
   });
 
+  // The spawn-time read refuses only an already-expired token: the
+  // near-expiry policy ran at preflight, and a still-valid credential
+  // must never be refused after the handler's pre-spawn work.
+  test("a token expired by spawn time is refused", async () => {
+    const reportThenSpawn = defineCommand({
+      help: { summary: "Reports, then hands credentials to a child" },
+      maySpawn: true,
+      needs: { credentials: "child" },
+      handler: async (_args, ctx) => {
+        ctx.report({ kind: "status", subject: "run", status: "pre-spawn" });
+        await ctx.spawn({ command: "alchemy" });
+        return ok(exitWithChildStatus());
+      },
+    });
+    const cli = createTestCli({
+      commands: { converge: reportThenSpawn },
+      now: CLOCK,
+      credential: {
+        token: jwtExpiringIn(3_600, "ws_1"),
+        refreshToken: undefined,
+        expiresAt: undefined,
+      },
+    });
+
+    const result = await cli.run(["converge"], {
+      onEvent: (event) => {
+        if (event.kind === "status") {
+          cli.credentialManager.overwriteStoredState({
+            sessions: [
+              {
+                workspaceId: "ws_1",
+                workspaceName: undefined,
+                credential: {
+                  token: jwtExpiringIn(-60, "ws_1"),
+                  refreshToken: undefined,
+                  expiresAt: undefined,
+                },
+              },
+            ],
+          });
+        }
+      },
+    });
+
+    expect(result.exitCode).toBe(2);
+    expect(result.stderr).toContain("expires too soon");
+    expect(result.spawns).toEqual([]);
+  });
+
+  test("a token that drifts merely near expiry mid-handler still spawns", async () => {
+    let seen: Readonly<Record<string, string | undefined>> = {};
+    const nearExpiryToken = jwtExpiringIn(60, "ws_1");
+    const reportThenSpawn = defineCommand({
+      help: { summary: "Reports, then hands credentials to a child" },
+      maySpawn: true,
+      needs: { credentials: "child" },
+      handler: async (_args, ctx) => {
+        ctx.report({ kind: "status", subject: "run", status: "pre-spawn" });
+        await ctx.spawn({ command: "alchemy" });
+        return ok(exitWithChildStatus());
+      },
+    });
+    const cli = createTestCli({
+      commands: { converge: reportThenSpawn },
+      now: CLOCK,
+      credential: {
+        token: jwtExpiringIn(3_600, "ws_1"),
+        refreshToken: undefined,
+        expiresAt: undefined,
+      },
+      spawnScript: (request) => {
+        seen = request.env;
+        return { exitCode: 0, signal: null };
+      },
+    });
+
+    const result = await cli.run(["converge"], {
+      onEvent: (event) => {
+        if (event.kind === "status") {
+          cli.credentialManager.overwriteStoredState({
+            sessions: [
+              {
+                workspaceId: "ws_1",
+                workspaceName: undefined,
+                credential: {
+                  token: nearExpiryToken,
+                  refreshToken: undefined,
+                  expiresAt: undefined,
+                },
+              },
+            ],
+          });
+        }
+      },
+    });
+
+    expect(result.exitCode).toBe(0);
+    expect(seen.PRISMA_SERVICE_TOKEN).toBe(nearExpiryToken);
+  });
+
   test("an environment credential's token is injected unchanged", async () => {
     let seen: Readonly<Record<string, string | undefined>> = {};
     const token = jwtExpiringIn(3600, "ws_env");
@@ -918,6 +1018,153 @@ describe("credential injection", () => {
     expect(result.stderr).toContain("expires too soon");
     expect(result.stderr).toContain("Sign in");
     expect(result.spawns).toEqual([]);
+  });
+
+  test("a token without exp uses its explicit expiry for the threshold", async () => {
+    const cli = createTestCli({
+      commands: { converge: credentialedConverge },
+      now: CLOCK,
+      credential: {
+        token: mintTestJwt({ workspace_id: "ws_1" }),
+        refreshToken: undefined,
+        expiresAt: new Date(NOW.getTime() + 60_000),
+      },
+    });
+
+    const result = await cli.run(["converge"]);
+
+    expect(result.exitCode).toBe(2);
+    expect(result.stderr).toContain("expires too soon");
+    expect(result.spawns).toEqual([]);
+  });
+
+  test("a refreshable near-expiry session is rotated before the child starts", async () => {
+    let seen: Readonly<Record<string, string | undefined>> = {};
+    const rotatedToken = jwtExpiringIn(3600, "ws_1");
+    const refreshes: string[] = [];
+    const cli = createTestCli({
+      commands: { converge: credentialedConverge },
+      now: CLOCK,
+      credential: {
+        token: jwtExpiringIn(60, "ws_1"),
+        refreshToken: "refresh-1",
+        expiresAt: undefined,
+      },
+      refreshCredential: async ({ refreshToken }) => {
+        refreshes.push(refreshToken);
+        return {
+          kind: "success",
+          accessToken: rotatedToken,
+          refreshToken: "refresh-2",
+          expiresAt: new Date(NOW.getTime() + 3_600_000),
+        };
+      },
+      spawnScript: (request) => {
+        seen = request.env;
+        return { exitCode: 0, signal: null };
+      },
+    });
+
+    const result = await cli.run(["converge"]);
+
+    expect(result.exitCode).toBe(0);
+    expect(refreshes).toEqual(["refresh-1"]);
+    expect(seen.PRISMA_SERVICE_TOKEN).toBe(rotatedToken);
+    expect(Object.values(seen)).not.toContain("refresh-1");
+    expect(Object.values(seen)).not.toContain("refresh-2");
+    expect(cli.credentialManager.state().sessions[0]?.credential).toEqual({
+      token: rotatedToken,
+      refreshToken: "refresh-2",
+      expiresAt: new Date(NOW.getTime() + 3_600_000),
+    });
+  });
+
+  test("concurrent delegated runs exchange one refresh token once", async () => {
+    const rotatedToken = jwtExpiringIn(3600, "ws_1");
+    let refreshes = 0;
+    let releaseRefresh: (() => void) | undefined;
+    let markRefreshStarted: (() => void) | undefined;
+    const held = new Promise<void>((resolve) => {
+      releaseRefresh = resolve;
+    });
+    const refreshStarted = new Promise<void>((resolve) => {
+      markRefreshStarted = resolve;
+    });
+    const cli = createTestCli({
+      commands: { converge: credentialedConverge },
+      now: CLOCK,
+      credential: {
+        token: jwtExpiringIn(60, "ws_1"),
+        refreshToken: "refresh-1",
+        expiresAt: undefined,
+      },
+      refreshCredential: async () => {
+        refreshes += 1;
+        markRefreshStarted?.();
+        await held;
+        return {
+          kind: "success",
+          accessToken: rotatedToken,
+          refreshToken: "refresh-2",
+          expiresAt: new Date(NOW.getTime() + 3_600_000),
+        };
+      },
+    });
+
+    const first = cli.run(["converge"]);
+    const second = cli.run(["converge"]);
+    await refreshStarted;
+    releaseRefresh?.();
+
+    expect(
+      (await Promise.all([first, second])).map((run) => run.exitCode),
+    ).toEqual([0, 0]);
+    expect(refreshes).toBe(1);
+  });
+
+  test("invalid_grant ends the stored session and reports it as expired", async () => {
+    const cli = createTestCli({
+      commands: { converge: credentialedConverge },
+      now: CLOCK,
+      credential: {
+        token: jwtExpiringIn(60, "ws_1"),
+        refreshToken: "refresh-1",
+        expiresAt: undefined,
+      },
+      refreshCredential: async () => ({ kind: "invalid" }),
+    });
+
+    const result = await cli.run(["converge"]);
+
+    expect(result.exitCode).toBe(2);
+    expect(result.stderr).toContain("Your session has expired");
+    expect(result.spawns).toEqual([]);
+    expect(cli.credentialManager.state().sessions).toEqual([]);
+  });
+
+  test("a transient refresh failure preserves the session", async () => {
+    const token = jwtExpiringIn(60, "ws_1");
+    const cli = createTestCli({
+      commands: { converge: credentialedConverge },
+      now: CLOCK,
+      credential: {
+        token,
+        refreshToken: "refresh-1",
+        expiresAt: undefined,
+      },
+      refreshCredential: async () => {
+        throw new Error("endpoint response carrying SECRET material");
+      },
+    });
+
+    const result = await cli.run(["converge"]);
+
+    expect(result.exitCode).toBe(2);
+    expect(result.stderr).toContain("CLI.AUTH_SERVICE_ERROR");
+    expect(result.stderr).not.toContain("SECRET");
+    expect(cli.credentialManager.state().sessions[0]?.credential.token).toBe(
+      token,
+    );
   });
 
   // The threshold is five minutes. Bracketing it at 60 s and 3600 s

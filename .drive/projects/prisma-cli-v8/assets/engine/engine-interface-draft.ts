@@ -45,8 +45,9 @@
  * separate credentialsForSpawn declaration is gone, and the entailment
  * (child credentials imply the credentials need) is structural. The
  * manager gains the named engine-facing operation activeAccessToken()
- * for the spawn path's read, so the "engine never calls storage
- * methods" rule is absolute — no sanctioned exception.
+ * for delegated preflight and the spawn-time read, so the "engine
+ * never calls storage methods" rule is absolute — no sanctioned
+ * exception.
  * exitWithChildStatus(opts?) takes { nextActions? }, rendered
  * to stderr before the exit (R-S3-4's reproduce hint).
  * Amended 2026-08-11 (operator ruling) — SIGNAL SETTLEMENT IS THE
@@ -587,6 +588,12 @@ export interface Session {
   readonly current: boolean
 }
 
+export interface ActiveAccessTokenOptions {
+  readonly minimumValidityMs: number
+  readonly now: Date
+  readonly signal: AbortSignal
+}
+
 /** Manages sessions: six user-facing operations plus one
  *  engine-facing accessor. Custody, not user interaction: never opens
  *  a browser, never prompts. Env is a construction input. The manager
@@ -630,10 +637,12 @@ export interface CredentialManager {
    *  credential's ACCESS token, read fresh, for handing to a child
    *  process that authenticates as this process does. Never the
    *  refresh token — the child gets a snapshot it cannot refresh.
-   *  Single consumer: ctx.spawn's credential injection. The read
-   *  builds no second API client, so the one-client-per-process
-   *  invariant holds (credential-manager-design.md §11.5). */
-  activeAccessToken(): Promise<string | null>
+   *  Refreshes a stored OAuth pair inside the caller's minimum
+   *  validity before returning its access token. Preflight applies the
+   *  near-expiry window; ctx.spawn's fresh read refuses only an
+   *  already-expired token, so a run is never refused mid-handler. The
+   *  refresh token never reaches the child. */
+  activeAccessToken(options: ActiveAccessTokenOptions): Promise<string | null>
 }
 
 /** The SDK's typed client and token-storage contract, re-exported by
@@ -645,7 +654,12 @@ import type {
 } from '@prisma/management-api-sdk'
 
 export type ManagementApiClient = SdkClient
-export type TokenStorage = SdkTokenStorage
+type SdkTokens = NonNullable<Awaited<ReturnType<SdkTokenStorage['getTokens']>>>
+type StoredTokens = SdkTokens & { readonly expiresAt?: Date }
+export type TokenStorage = Omit<SdkTokenStorage, 'getTokens' | 'setTokens'> & {
+  getTokens(): Promise<StoredTokens | null>
+  setTokens(tokens: SdkTokens, expiresAt?: Date): Promise<void>
+}
 
 /** SDK client construction config, injected by the bin beside the
  *  manager (§10). All four fields: the SDK's refreshing fetch

@@ -586,6 +586,10 @@ export async function resolveServiceReadState(
     configTarget?: string;
     branchName?: string;
     commandName: string;
+    /** Skip the service picker entirely. A caller resolving its target
+     *  by a globally-unique deployment id does not use the selection,
+     *  and selecting first would prompt for something it ignores. */
+    skipSelection?: boolean;
   },
 ): Promise<ServiceReadState> {
   const compute = await resolveComputeManagementContext(
@@ -609,13 +613,15 @@ export async function resolveServiceReadState(
     projectId,
     target.branch.name,
   );
-  const selected = await resolveExistingServiceSelection(
-    ctx,
-    stateStore,
-    projectId,
-    services,
-    options.serviceName ?? compute.configServiceName,
-  );
+  const selected = options.skipSelection
+    ? null
+    : await resolveExistingServiceSelection(
+        ctx,
+        stateStore,
+        projectId,
+        services,
+        options.serviceName ?? compute.configServiceName,
+      );
   return { provider, stateStore, target, projectId, selected };
 }
 

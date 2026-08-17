@@ -65,9 +65,10 @@ export interface NeedsSpec<TConfig> {
    * Fail early with the sign-in error when unauthenticated. The
    * `"child"` form (S3) additionally makes the engine compose the
    * active credential into every child environment
-   * (PRISMA_SERVICE_TOKEN, PRISMA_WORKSPACE_ID) and refuse the run
-   * before the handler when that credential expires too soon to hand
-   * out — a child cannot refresh the snapshot it is given. It
+   * (PRISMA_SERVICE_TOKEN, PRISMA_WORKSPACE_ID). Before the handler it
+   * refreshes a stored OAuth session that expires too soon, or refuses
+   * an unrefreshable credential — a child cannot refresh the snapshot
+   * it is given. It
    * requires `maySpawn` (construction error otherwise) and entails
    * the plain credentials need.
    */

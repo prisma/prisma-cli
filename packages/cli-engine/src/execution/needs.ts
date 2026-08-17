@@ -18,10 +18,10 @@ import { withDocsUrl, writeDiagnostic } from "./rendering";
 import { SEVERITY_RANK } from "./reporting";
 
 /**
- * D1 ruling (S3): a session expiring within this window is refused
- * before the handler runs. The child receives a snapshot of the token
- * and cannot refresh it, and the in-process work that precedes the
- * spawn creates platform resources, so the refusal has to come first.
+ * A child receives an access-token snapshot it cannot refresh. Before
+ * the handler runs, a stored OAuth session inside this window is
+ * refreshed by the parent; a credential that cannot refresh is refused.
+ * The timing matters because pre-spawn work can create platform resources.
  */
 export const CREDENTIAL_NEAR_EXPIRY_MS = 5 * 60_000;
 
@@ -145,11 +145,11 @@ async function checkDependencies(
  * ctx.api raise identically. A host with no manager wired has no
  * credentials at all.
  *
- * The `"child"` form resolves the same credential ONCE, additionally
- * refuses a session about to expire — before the handler runs, not
- * before the spawn: the work that precedes a spawn creates real
- * platform resources, and the child cannot refresh the snapshot it is
- * given — and carries the credential forward for the spawn path.
+ * The `"child"` form resolves the same credential ONCE and prepares an
+ * access-token snapshot before the handler runs. A refreshable stored
+ * OAuth session inside the near-expiry window is rotated and persisted;
+ * an unrefreshable credential is refused. This happens before the
+ * handler because work preceding a spawn may create platform resources.
  */
 async function checkCredentials(
   needs: AnyCommand["needs"],
@@ -180,25 +180,24 @@ async function checkCredentials(
   if (needs.credentials !== "child") {
     return {};
   }
-  const expiry = nearExpiryFailure(credential, invocation);
-  return expiry === undefined
-    ? { spawnCredential: credential }
-    : { failure: expiry };
-}
-
-function nearExpiryFailure(
-  credential: ActiveCredential,
-  invocation: Invocation,
-): NeedsOutcome | undefined {
-  if (credential.expiresAt === undefined) {
-    return undefined;
+  try {
+    const accessToken = await manager.activeAccessToken({
+      minimumValidityMs: CREDENTIAL_NEAR_EXPIRY_MS,
+      now: invocation.now(),
+      signal: invocation.signal,
+    });
+    if (accessToken === null) {
+      return {
+        failure: needsErrored(credentialsRequiredError("session-ended")),
+      };
+    }
+    return { spawnCredential: credential };
+  } catch (cause) {
+    if (CliStructuredError.is(cause)) {
+      return { failure: needsErrored(cause) };
+    }
+    throw cause;
   }
-  const remainingMs =
-    credential.expiresAt.getTime() - invocation.now().getTime();
-  if (remainingMs > CREDENTIAL_NEAR_EXPIRY_MS) {
-    return undefined;
-  }
-  return needsErrored(credentialsRequiredError("expiring-soon"));
 }
 
 /**

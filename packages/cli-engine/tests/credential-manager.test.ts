@@ -65,6 +65,12 @@ const environmentCredentialFor = (claims: {
   expiresAt: undefined,
 });
 
+const READ_OPTIONS = {
+  minimumValidityMs: 0,
+  now: new Date(0),
+  signal: new AbortController().signal,
+};
+
 const credentialReader = () => {
   let seen: ActiveCredential | null | undefined;
   const command = defineCommand({
@@ -715,7 +721,7 @@ describe("activeAccessToken, the spawn path's read", () => {
   test("an unseeded manager has no token to give and returns null", async () => {
     const manager = new InMemoryCredentialManager({});
 
-    expect(await manager.activeAccessToken()).toBeNull();
+    expect(await manager.activeAccessToken(READ_OPTIONS)).toBeNull();
   });
 
   test("no token is available after the last session ends", async () => {
@@ -725,7 +731,7 @@ describe("activeAccessToken, the spawn path's read", () => {
     });
     await manager.endAllSessions();
 
-    expect(await manager.activeAccessToken()).toBeNull();
+    expect(await manager.activeAccessToken(READ_OPTIONS)).toBeNull();
   });
 
   test("a selected session's access token is what the child would get", async () => {
@@ -735,7 +741,9 @@ describe("activeAccessToken, the spawn path's read", () => {
       selectedWorkspaceId: "workspace-1",
     });
 
-    expect(await manager.activeAccessToken()).toBe(record.credential.token);
+    expect(await manager.activeAccessToken(READ_OPTIONS)).toBe(
+      record.credential.token,
+    );
   });
 });
 

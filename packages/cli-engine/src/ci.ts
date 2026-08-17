@@ -18,12 +18,12 @@ interface Vendor {
 }
 
 /**
- * ci-info's own list of CI providers, read from the installed package
- * rather than copied here, so upgrading ci-info is what teaches the
- * engine a new provider. Its `isCI` export cannot be used instead: that
- * module evaluates against the real `process.env` the moment it is
- * imported, and the engine may only read the environment its host
- * injected.
+ * ci-info's provider table. Its `isCI` export is unusable — it reads
+ * the real `process.env` at import; the engine reads only host-injected
+ * env. The table is inlined into the build (tsdown `noExternal`): the
+ * file is CJS-owned by ci-info, and loading it as ESM at runtime breaks
+ * hosts that also require ci-info (Bun's dual registry; composer#234).
+ * Pinned by tests/no-esm-json-import-in-dist.test.ts.
  */
 const VENDORS: readonly Vendor[] = vendors;
 

@@ -14,7 +14,7 @@ import fsPromises, {
 } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import type { TokenStorage } from "@prisma/cli-engine";
+import type { CredentialRefresher, TokenStorage } from "@prisma/cli-engine";
 import { mintTestJwt } from "@prisma/cli-engine/testing";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -90,12 +90,14 @@ function makeManager(
       credential: { token: string },
       workspaceId: string,
     ) => Promise<string | undefined>;
+    refreshCredential?: CredentialRefresher;
     debugWrite?: (text: string) => void;
   } = {},
 ) {
   return new FileCredentialManager({
     env: { PRISMA_AUTH_FILE: stateFilePath, ...options.env },
     fetchWorkspaceName: options.fetchWorkspaceName,
+    refreshCredential: options.refreshCredential,
     debugWrite: options.debugWrite,
   });
 }
@@ -1012,6 +1014,193 @@ describe("the file-backed TokenStorage", () => {
       WORKSPACE_A,
     );
     expect((await storage.getTokens())?.refreshToken).toBe("refresh-2");
+  });
+});
+
+describe("delegated access-token preparation", () => {
+  const now = new Date("2030-01-01T00:00:00.000Z");
+  const expiringToken = mintToken(WORKSPACE_A, {
+    exp: Math.floor(now.getTime() / 1000) + 60,
+  });
+  const freshToken = mintToken(WORKSPACE_A, {
+    exp: Math.floor(now.getTime() / 1000) + 3600,
+  });
+  const options = {
+    minimumValidityMs: 5 * 60_000,
+    now,
+    signal: new AbortController().signal,
+  };
+
+  it("uses the stored expiry when the access token has no exp claim", async () => {
+    const manager = makeManager();
+    await manager.createSession(
+      {
+        token: mintToken(WORKSPACE_A),
+        refreshToken: undefined,
+        expiresAt: new Date(now.getTime() + 60_000),
+      },
+      WORKSPACE_A,
+    );
+
+    await expect(manager.activeAccessToken(options)).rejects.toMatchObject({
+      code: "CLI.CREDENTIALS_REQUIRED",
+    });
+  });
+
+  it("persists a rotated pair and returns only its access token", async () => {
+    const refreshes: string[] = [];
+    const manager = makeManager({
+      refreshCredential: async ({ refreshToken }) => {
+        refreshes.push(refreshToken);
+        return {
+          kind: "success",
+          accessToken: freshToken,
+          refreshToken: "refresh-2",
+          expiresAt: new Date(now.getTime() + 3_600_000),
+        };
+      },
+    });
+    await manager.createSession(
+      {
+        token: expiringToken,
+        refreshToken: "refresh-1",
+        expiresAt: undefined,
+      },
+      WORKSPACE_A,
+    );
+
+    expect(await manager.activeAccessToken(options)).toBe(freshToken);
+    expect(refreshes).toEqual(["refresh-1"]);
+    expect(
+      (await readCredentialState(stateFilePath)).sessions[0],
+    ).toMatchObject({
+      token: freshToken,
+      refreshToken: "refresh-2",
+      expiresAt: new Date(now.getTime() + 3_600_000).toISOString(),
+    });
+  });
+
+  it("persists the token-endpoint expiry for a rotated opaque token", async () => {
+    const opaqueToken = "opaque-access-token";
+    const expiresAt = new Date(now.getTime() + 3_600_000);
+    let refreshes = 0;
+    const manager = makeManager({
+      refreshCredential: async () => {
+        refreshes += 1;
+        return {
+          kind: "success",
+          accessToken: opaqueToken,
+          refreshToken: "refresh-2",
+          expiresAt,
+        };
+      },
+    });
+    await manager.createSession(
+      {
+        token: expiringToken,
+        refreshToken: "refresh-1",
+        expiresAt: undefined,
+      },
+      WORKSPACE_A,
+    );
+
+    await expect(manager.activeAccessToken(options)).resolves.toBe(opaqueToken);
+    await expect(manager.activeAccessToken(options)).resolves.toBe(opaqueToken);
+
+    expect(refreshes).toBe(1);
+    expect(
+      (await readCredentialState(stateFilePath)).sessions[0],
+    ).toMatchObject({
+      token: opaqueToken,
+      refreshToken: "refresh-2",
+      expiresAt: expiresAt.toISOString(),
+    });
+  });
+
+  // The exchange has already consumed refresh-1 server-side, so the
+  // rotated pair must be persisted even when its access token is
+  // refused: keeping the old pair would strand a dead refresh token.
+  it("persists a short-lived rotated pair before refusing it", async () => {
+    const manager = makeManager({
+      refreshCredential: async () => ({
+        kind: "success",
+        accessToken: "short-lived-opaque-token",
+        refreshToken: "refresh-2",
+        expiresAt: new Date(now.getTime() + 60_000),
+      }),
+    });
+    await manager.createSession(
+      {
+        token: expiringToken,
+        refreshToken: "refresh-1",
+        expiresAt: undefined,
+      },
+      WORKSPACE_A,
+    );
+
+    await expect(manager.activeAccessToken(options)).rejects.toMatchObject({
+      code: "CLI.AUTH_SERVICE_ERROR",
+    });
+    expect(
+      (await readCredentialState(stateFilePath)).sessions[0],
+    ).toMatchObject({
+      token: "short-lived-opaque-token",
+      refreshToken: "refresh-2",
+    });
+  });
+
+  it("removes only the current pair after invalid_grant", async () => {
+    const manager = makeManager({
+      refreshCredential: async () => ({ kind: "invalid" }),
+    });
+    await manager.createSession(
+      credentialFor(WORKSPACE_B, "refresh-b"),
+      WORKSPACE_B,
+    );
+    await manager.createSession(
+      {
+        token: expiringToken,
+        refreshToken: "refresh-1",
+        expiresAt: undefined,
+      },
+      WORKSPACE_A,
+    );
+
+    await expect(manager.activeAccessToken(options)).rejects.toMatchObject({
+      code: "CLI.CREDENTIALS_REQUIRED",
+    });
+    expect((await readCredentialState(stateFilePath)).sessions).toEqual([
+      expect.objectContaining({
+        workspaceId: WORKSPACE_B,
+        refreshToken: "refresh-b",
+      }),
+    ]);
+  });
+
+  it("preserves the pair after a transient refresh failure", async () => {
+    const manager = makeManager({
+      refreshCredential: async () => {
+        throw new Error("auth unavailable");
+      },
+    });
+    await manager.createSession(
+      {
+        token: expiringToken,
+        refreshToken: "refresh-1",
+        expiresAt: undefined,
+      },
+      WORKSPACE_A,
+    );
+
+    await expect(manager.activeAccessToken(options)).rejects.toMatchObject({
+      code: "CLI.AUTH_SERVICE_ERROR",
+    });
+    expect(
+      (await readCredentialState(stateFilePath)).sessions[0],
+    ).toMatchObject({
+      token: expiringToken,
+      refreshToken: "refresh-1",
+    });
   });
 });
 

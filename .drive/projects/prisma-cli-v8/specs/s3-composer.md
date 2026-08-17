@@ -466,7 +466,8 @@ Acceptance verified against source and merged PRs: prisma-cli #136,
 are `packages/cli-engine/tests/spawn-real-child.test.ts` and
 `spawn.test.ts` (plus `environment-credential-manager.test.ts`); the
 SPI amendment is `credential-manager-design.md` §11.5
-(`activeAccessToken()`, single consumer `execution/spawn.ts`); the
+(`activeAccessToken(options)`, consumed by delegated preflight and
+`execution/spawn.ts`); the
 static-graph check is composer's `check:family-static-graph` and the
 sole-listener detector is composer's
 `cli/src/family/__tests__/signal-listeners.test.ts`; the tarball
