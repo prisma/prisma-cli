@@ -1,13 +1,7 @@
 /**
- * The vendor table is read through the CJS require cache, never as an
- * ES-module JSON import. Under Bun 1.3, a JSON file that enters the ES
- * module registry poisons a later CJS `require` of the same file — it
- * returns the `{__esModule, default}` wrapper instead of the array — and
- * ci-info's own index.js requires its vendors.json. The engine cannot
- * control what else a host process loads, so its built output must use
- * the same cache ci-info does. Found by composer's engine-0.1.0
- * adoption (prisma/composer#234): `vendors.map is not a function` when
- * any config graph reached `import { isCI } from "ci-info"` under bun.
+ * The vendor table is inlined at build time (src/ci.ts): built output
+ * that loads ci-info's CJS-owned vendors.json as ESM breaks any host
+ * that also requires ci-info (Bun's dual registry; composer#234).
  */
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";

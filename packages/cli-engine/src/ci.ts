@@ -18,25 +18,12 @@ interface Vendor {
 }
 
 /**
- * ci-info's own list of CI providers, INLINED INTO THE BUILT OUTPUT at
- * build time (tsdown `noExternal`), so upgrading ci-info and rebuilding
- * is what teaches the engine a new provider — the engine ships built,
- * so that is every release. Its `isCI` export cannot be used instead:
- * that module evaluates against the real `process.env` the moment it is
- * imported, and the engine may only read the environment its host
- * injected.
- *
- * Inlining is a correctness requirement, not an optimization. The file
- * is CJS-owned — ci-info's own index.js requires it — and a published
- * artifact that loads someone else's internal file at runtime puts one
- * file in two module systems in the same process. Under Bun, the
- * ES-module registry entry poisons the later CJS require (the array
- * arrives as its `{__esModule, default}` wrapper), which broke config
- * evaluation for every composer-under-bun host the moment the config
- * graph also loaded ci-info (prisma/composer#234). With the table
- * embedded, the built engine touches nothing of ci-info's at runtime
- * and ci-info is not a runtime dependency at all. Pinned by
- * tests/no-esm-json-import-in-dist.test.ts.
+ * ci-info's provider table. Its `isCI` export is unusable — it reads
+ * the real `process.env` at import; the engine reads only host-injected
+ * env. The table is inlined into the build (tsdown `noExternal`): the
+ * file is CJS-owned by ci-info, and loading it as ESM at runtime breaks
+ * hosts that also require ci-info (Bun's dual registry; composer#234).
+ * Pinned by tests/no-esm-json-import-in-dist.test.ts.
  */
 const VENDORS: readonly Vendor[] = vendors;
 
