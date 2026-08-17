@@ -16,11 +16,12 @@
     "lint:fix": "biome check . --write",
     "bump-version": "node scripts/bump-version.ts",
     "test": "turbo run test",
-    "test:scripts": "node --test scripts/determine-version-utils.test.ts scripts/set-version-utils.test.ts scripts/resolve-package-version.test.mjs scripts/auto-repin.test.mjs",
+    "test:scripts": "node --test scripts/determine-version-utils.test.ts scripts/set-version-utils.test.ts scripts/bump-cli-engine-version-utils.test.ts scripts/resolve-package-version.test.mjs scripts/auto-repin.test.mjs",
     "typecheck": "turbo run typecheck",
     "prisma-cli": "tsx packages/cli/src/bin.ts",
     "prisma": "tsx packages/cli/src/bin.ts",
-    "check:conformance": "turbo run conformance"
+    "check:conformance": "turbo run conformance",
+    "bump-cli-engine-version": "node scripts/bump-cli-engine-version.ts"
   },
   "devDependencies": {
     "@biomejs/biome": "2.4.16",
