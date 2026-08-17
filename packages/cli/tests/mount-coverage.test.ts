@@ -162,6 +162,7 @@ const EXPECTED_MOUNT_PATHS: readonly string[] = [
   "service domain show",
   "service domain wait",
   "service list",
+  "service logs",
   "service open",
   "service remove",
   "service show",
