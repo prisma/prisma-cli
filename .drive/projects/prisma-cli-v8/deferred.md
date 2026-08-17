@@ -317,6 +317,32 @@ CLI does not do, and each restarts as engine work if wanted:
   plan raised dissolved on investigation: `composer log` attaches to the
   local dev daemon's streams, a `service deployment logs` would read the
   platform endpoint — different data, no shared subgroup.
+
+  **UNBLOCKED (2026-08-17): the platform endpoint is merged and the
+  contract is pinned** (prisma/pdp-control-plane#4886). Shape, as
+  agreed under R-S8-5 and refined by the operator:
+  - `GET /v1/deployments/{deploymentId}/logs` on the management API,
+    normal Authorization header, addressable through the generated
+    `@prisma/management-api-sdk` after the next management-api
+    production deploy (the SDK regenerates on deploy).
+  - A plain GET is a **finite page read**, not a held-open stream: the
+    server drains the requested window and closes. Response is
+    `application/x-ndjson`, one record per line, record shapes exactly
+    as the old WebSocket contract: `type: "log"`
+    (`text`/`byteStart`/`byteEnd`) and `type: "terminal"`. The last
+    line is always a terminal; on the caught-up case it is
+    `kind: "end"`, `code: "end"`, `retryable: true`, with `cursor` as
+    the next page's starting point.
+  - Query params: `tail=N` (last N lines for a first page, default
+    100), `from_start=true`, `cursor=<byte offset>` to continue a
+    chain. Page again from each terminal's `cursor`.
+  - There is no `follow` param on HTTP; the same path with an
+    `Upgrade: websocket` header is the live tail, which stays the
+    shelved engine-transport question. The `build logs` consumer shape
+    (`parseAs: "stream"`, read lines until the terminal record) works
+    unchanged for one page; "follow" behavior, if wanted now, is a
+    page loop on `cursor` with a client-side delay.
+  The command can come off the shelf once the deploy lands.
 - **The e2e suite should assert the real service-id prefix.** D2 wrote
   `e2e/service.e2e.ts` without credentials to run it, so it asserts only
   that `service create` reports a non-empty id. The sibling suites assert
