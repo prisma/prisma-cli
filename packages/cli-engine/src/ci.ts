@@ -1,4 +1,4 @@
-import { createRequire } from "node:module";
+import vendors from "ci-info/vendors.json" with { type: "json" };
 import type { Runtime } from "./runtime";
 
 type Env = Readonly<Record<string, string | undefined>>;
@@ -18,25 +18,27 @@ interface Vendor {
 }
 
 /**
- * ci-info's own list of CI providers, read from the installed package
- * rather than copied here, so upgrading ci-info is what teaches the
- * engine a new provider. Its `isCI` export cannot be used instead: that
- * module evaluates against the real `process.env` the moment it is
+ * ci-info's own list of CI providers, INLINED INTO THE BUILT OUTPUT at
+ * build time (tsdown `noExternal`), so upgrading ci-info and rebuilding
+ * is what teaches the engine a new provider — the engine ships built,
+ * so that is every release. Its `isCI` export cannot be used instead:
+ * that module evaluates against the real `process.env` the moment it is
  * imported, and the engine may only read the environment its host
  * injected.
  *
- * Read through the CJS require cache, never as an ES-module JSON
- * import: ci-info's own index.js requires this same file, and under Bun
- * a JSON file that entered the ES module registry first is handed back
- * to `require` as its `{__esModule, default}` wrapper — so any host
- * process that also loads ci-info (composer's config graph does, via
- * orm-toolchain) got an object where ci-info expects an array. Found in
- * prisma/composer#234's engine-0.1.0 adoption; pinned by
+ * Inlining is a correctness requirement, not an optimization. The file
+ * is CJS-owned — ci-info's own index.js requires it — and a published
+ * artifact that loads someone else's internal file at runtime puts one
+ * file in two module systems in the same process. Under Bun, the
+ * ES-module registry entry poisons the later CJS require (the array
+ * arrives as its `{__esModule, default}` wrapper), which broke config
+ * evaluation for every composer-under-bun host the moment the config
+ * graph also loaded ci-info (prisma/composer#234). With the table
+ * embedded, the built engine touches nothing of ci-info's at runtime
+ * and ci-info is not a runtime dependency at all. Pinned by
  * tests/no-esm-json-import-in-dist.test.ts.
  */
-const VENDORS: readonly Vendor[] = createRequire(import.meta.url)(
-  "ci-info/vendors.json",
-);
+const VENDORS: readonly Vendor[] = vendors;
 
 /**
  * The variables ci-info checks outside the vendor table, catching CI
