@@ -33,7 +33,7 @@ How the packages published by *other* repositories relate to the engine's versio
 
 This is enforced, not remembered: the conformance checks refuse to publish a release whose dependencies include any `-dev.` version. `prisma@8.0.0-rc.3` shipped two of them — `@prisma/composer@0.6.0-dev.16` and `@prisma/orm-toolchain@8.0.0-rc.1-dev.40` — because nothing looked.
 
-**Where this stands today (2026-08-17):** the committed manifests still hold dev builds, because neither product has published a non-dev version this CLI can use — see [release automation](./release-automation.md) for what each one has to publish. So the dev channel works and the release channel is blocked by the check above. That is the intended behaviour of being in this state, not a workaround for it: the pins move to released versions the moment released versions exist.
+**Reached 2026-08-17:** the committed manifests hold `@prisma/composer-cli@0.7.0` and `@prisma/orm-toolchain@8.0.0-rc.2`, both released, both declaring `@prisma/cli-engine@0.1.1` as an exact peer. The release channel's conformance run reports nothing — no dev dependencies, one engine in the installed tree, and no recorded exceptions left. Before this the manifests held dev builds and `prisma@8.0.0-rc.3` shipped them.
 
 ## Dist-tag convention
 

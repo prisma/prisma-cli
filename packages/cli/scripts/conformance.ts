@@ -100,20 +100,15 @@ async function tarball(): Promise<readonly Finding[]> {
       shellPackage: "@prisma/cli",
       enginePackage: "@prisma/cli-engine",
       familyPackages: ["@prisma/composer-cli", "@prisma/orm-toolchain"],
-      // composer's exception is gone: @prisma/composer-cli declares the
-      // engine as an exact peer at the version this repo ships, which is
-      // what ADR 0004 asks for.
-      exceptions: [
-        {
-          familyPackage: "@prisma/orm-toolchain",
-          familyPin: "0.0.9",
-          shellPin: "0.1.1",
-          reason:
-            "the ORM toolchain still depends on @prisma/cli-engine@0.0.9 rather than peering the version this repo ships, so an install resolves two engines",
-          removeWhen:
-            "prisma/prisma publishes @prisma/orm-toolchain declaring @prisma/cli-engine as an exact peer at the version prisma-cli ships (ADR 0004)",
-        },
-      ],
+      // No exceptions. Both families declare @prisma/cli-engine as an
+      // exact peer at the version this repo ships, so one engine
+      // resolves in an install — what ADR 0004 asks for, reached
+      // 2026-08-17 by @prisma/composer-cli@0.7.0 and
+      // @prisma/orm-toolchain@8.0.0-rc.2. Anything that reopens the
+      // two-engine defect now fails the publish instead of being
+      // excused, and adding an entry here is a decision to be argued
+      // for, not a way to get green.
+      exceptions: [],
       channel: CHANNEL,
       sandboxDir: join(WORK_DIR, "sandbox"),
     },

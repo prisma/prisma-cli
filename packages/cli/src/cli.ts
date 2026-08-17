@@ -7,12 +7,6 @@ import {
   telemetryCommandGroup,
 } from "@prisma/cli-engine";
 import { createComposerFamily } from "@prisma/composer-cli/family";
-// TODO(release): @prisma/orm-toolchain@8.0.0-rc.1-dev.40 depends on
-// @prisma/cli-engine@0.0.9, while this package ships the engine at
-// 0.1.1. Those are different versions, so an install of @prisma/cli
-// resolves two copies of the engine. Closing it is the ORM's move: it
-// must declare the engine as a peer at the version prisma-cli
-// publishes (ADR 0004), and publish that as a real release.
 import { ormCommandFamily as ormToolchainFamily } from "@prisma/orm-toolchain/cli";
 import { CLI_DOCS_URL, CLI_NAME } from "./cli-name";
 import { agentInstallCommand } from "./commands/agent/install";

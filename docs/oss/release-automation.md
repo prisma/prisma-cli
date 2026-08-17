@@ -70,11 +70,17 @@ The payload is informational — this repository always re-reads the registry ra
 | The workflow fails with "DEPLOY_GITHUB_TOKEN is not configured" | The secret is absent from this repository | Add it (see above) |
 | A pull request opens but never merges | Required checks failing | Read the checks — this is the automation working; a product release broke something |
 | Two open version-update pull requests | The close-the-previous step failed | Close the older one by hand; they race each other's lockfile |
-| A release publish fails on the dev-build check | The products have no usable released version yet | The products must publish real releases; see below |
+| A release publish fails on the dev-build check | The committed pins are dev builds — a dev stamp was committed by mistake, or a product has no usable release | Run `node scripts/update-product-versions.mjs --channel release`; if that changes nothing, the product must publish a real release |
 
 ## The state this replaced
 
-`prisma@8.0.0-rc.3` shipped depending on `@prisma/composer@0.6.0-dev.16` and `@prisma/orm-toolchain@8.0.0-rc.1-dev.40`. Both were interim pins from earlier work that nothing moved off and no check refused. The dev-build check now refuses it, which means a release stays blocked until both products publish a version the CLI can use:
+`prisma@8.0.0-rc.3` shipped depending on `@prisma/composer@0.6.0-dev.16` and `@prisma/orm-toolchain@8.0.0-rc.1-dev.40`. Both were interim pins from earlier work that nothing moved off and no check refused.
 
-- **`@prisma/composer-cli`** — the only non-dev version, `0.6.0`, cannot be installed at all: it was published with `npm publish` rather than `pnpm publish`, so its dependency on `@prisma/composer` is the literal string `workspace:0.6.0` and `npm install` fails with `EUNSUPPORTEDPROTOCOL`. Composer needs to publish a release from a commit that peers `@prisma/cli-engine` at the version this repo ships, using `pnpm publish`.
-- **`@prisma/orm-toolchain`** — its released `8.0.0-rc.1` has no engine relationship and its `./cli` export contains no command family; the engine-based family exists only in dev builds, and the newest of those (`8.0.0-rc.1-dev.46`, checked 2026-08-17) declares the engine at `0.0.9` rather than the version this repo ships. prisma/prisma needs to adapt to the current engine and publish that as a release. The `-dev.40` named above is a different fact: it is what `rc.3` shipped, not the newest build.
+When the dev-build check first ran it refused the release channel, because neither product had a usable released version: `@prisma/composer-cli@0.6.0` could not be installed at all (published with `npm publish` rather than `pnpm publish`, so its dependency on `@prisma/composer` was the literal string `workspace:0.6.0` and `npm install` answered `EUNSUPPORTEDPROTOCOL`), and `@prisma/orm-toolchain@8.0.0-rc.1` had no engine relationship and no command family in its `./cli` export.
+
+Both were fixed the same day: composer published `0.7.0` and prisma/prisma published `8.0.0-rc.2`, each declaring `@prisma/cli-engine@0.1.1` as an exact peer. The release channel has reported nothing since, and the conformance checks carry no recorded exceptions.
+
+Two lessons worth keeping:
+
+- **Publish through the workflow.** The uninstallable `0.6.0` was published out-of-band with `npm publish`, which does not rewrite `workspace:` specifiers. The same batch's `@prisma/composer-prisma-cloud@0.6.0`, published by the workflow, was correct.
+- **A repository should install its own tarball before trusting it.** Nothing in composer's repository did, which is why an uninstallable package sat on `latest`. Check 3 here does exactly that, in a clean sandbox with `npm --ignore-scripts`, and is worth porting to both product repositories.
