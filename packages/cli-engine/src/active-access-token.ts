@@ -13,11 +13,8 @@ type Tokens = NonNullable<Awaited<ReturnType<TokenStorage["getTokens"]>>>;
 export async function readActiveAccessToken(
   storage: TokenStorage,
   refreshCredential: CredentialRefresher | undefined,
-  options?: ActiveAccessTokenOptions,
+  options: ActiveAccessTokenOptions,
 ): Promise<string | null> {
-  if (options === undefined) {
-    return (await storage.getTokens())?.accessToken ?? null;
-  }
   const runLocked = storage.withRefreshLock ?? (async (fn) => fn());
   try {
     return await runLocked(async () => {
@@ -44,9 +41,9 @@ export async function readActiveAccessToken(
         await clearCurrentTokens(storage, current);
         throw credentialsRequiredError("expired");
       }
-      if (expiresSoon(refreshed.accessToken, options, refreshed.expiresAt)) {
-        throw new Error("the OAuth endpoint returned a short-lived token");
-      }
+      // Persist before judging the new pair: the server has already
+      // invalidated the old refresh token, so discarding the rotation
+      // would strand a dead refresh token in storage.
       await storage.setTokens(
         {
           workspaceId: current.workspaceId,
@@ -55,6 +52,9 @@ export async function readActiveAccessToken(
         },
         refreshed.expiresAt,
       );
+      if (expiresSoon(refreshed.accessToken, options, refreshed.expiresAt)) {
+        throw new Error("the OAuth endpoint returned a short-lived token");
+      }
       return refreshed.accessToken;
     });
   } catch (cause) {

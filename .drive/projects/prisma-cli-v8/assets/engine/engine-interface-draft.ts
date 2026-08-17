@@ -635,11 +635,12 @@ export interface CredentialManager {
    *  credential's ACCESS token, read fresh, for handing to a child
    *  process that authenticates as this process does. Never the
    *  refresh token — the child gets a snapshot it cannot refresh.
-   *  With options, refreshes a near-expiry stored OAuth pair before
-   *  returning its access token. Preflight and ctx.spawn both use the
-   *  options form so the spawn-time fresh read is also validated. The
+   *  Refreshes a stored OAuth pair inside the caller's minimum
+   *  validity before returning its access token. Preflight applies the
+   *  near-expiry window; ctx.spawn's fresh read refuses only an
+   *  already-expired token, so a run is never refused mid-handler. The
    *  refresh token never reaches the child. */
-  activeAccessToken(options?: ActiveAccessTokenOptions): Promise<string | null>
+  activeAccessToken(options: ActiveAccessTokenOptions): Promise<string | null>
 }
 
 /** The SDK's typed client and token-storage contract, re-exported by

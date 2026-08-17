@@ -149,10 +149,11 @@ export interface CredentialManager {
   /**
    * ENGINE-FACING. The active credential's ACCESS token, read fresh on
    * every call, for handing to a child process that authenticates as
-   * this process does. With options, a near-expiry OAuth pair is refreshed
-   * under the storage lock before its access token is returned. Never the
-   * refresh token: the child gets a snapshot it cannot refresh. Null when
-   * the material is gone (the session ended).
+   * this process does. An OAuth pair inside the caller's minimum
+   * validity is refreshed under the refresh lock before its access
+   * token is returned. Never the refresh token: the child gets a
+   * snapshot it cannot refresh. Null when the material is gone (the
+   * session ended).
    */
-  activeAccessToken(options?: ActiveAccessTokenOptions): Promise<string | null>;
+  activeAccessToken(options: ActiveAccessTokenOptions): Promise<string | null>;
 }

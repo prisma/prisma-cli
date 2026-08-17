@@ -742,7 +742,10 @@ describe("credential injection", () => {
     expect(Object.values(seen)).not.toContain("refresh-material");
   });
 
-  test("a token replaced after preflight is validated again at spawn time", async () => {
+  // The spawn-time read refuses only an already-expired token: the
+  // near-expiry policy ran at preflight, and a still-valid credential
+  // must never be refused after the handler's pre-spawn work.
+  test("a token expired by spawn time is refused", async () => {
     const reportThenSpawn = defineCommand({
       help: { summary: "Reports, then hands credentials to a child" },
       maySpawn: true,
@@ -772,7 +775,7 @@ describe("credential injection", () => {
                 workspaceId: "ws_1",
                 workspaceName: undefined,
                 credential: {
-                  token: jwtExpiringIn(60, "ws_1"),
+                  token: jwtExpiringIn(-60, "ws_1"),
                   refreshToken: undefined,
                   expiresAt: undefined,
                 },
@@ -786,6 +789,57 @@ describe("credential injection", () => {
     expect(result.exitCode).toBe(2);
     expect(result.stderr).toContain("expires too soon");
     expect(result.spawns).toEqual([]);
+  });
+
+  test("a token that drifts merely near expiry mid-handler still spawns", async () => {
+    let seen: Readonly<Record<string, string | undefined>> = {};
+    const nearExpiryToken = jwtExpiringIn(60, "ws_1");
+    const reportThenSpawn = defineCommand({
+      help: { summary: "Reports, then hands credentials to a child" },
+      maySpawn: true,
+      needs: { credentials: "child" },
+      handler: async (_args, ctx) => {
+        ctx.report({ kind: "status", subject: "run", status: "pre-spawn" });
+        await ctx.spawn({ command: "alchemy" });
+        return ok(exitWithChildStatus());
+      },
+    });
+    const cli = createTestCli({
+      commands: { converge: reportThenSpawn },
+      now: CLOCK,
+      credential: {
+        token: jwtExpiringIn(3_600, "ws_1"),
+        refreshToken: undefined,
+        expiresAt: undefined,
+      },
+      spawnScript: (request) => {
+        seen = request.env;
+        return { exitCode: 0, signal: null };
+      },
+    });
+
+    const result = await cli.run(["converge"], {
+      onEvent: (event) => {
+        if (event.kind === "status") {
+          cli.credentialManager.overwriteStoredState({
+            sessions: [
+              {
+                workspaceId: "ws_1",
+                workspaceName: undefined,
+                credential: {
+                  token: nearExpiryToken,
+                  refreshToken: undefined,
+                  expiresAt: undefined,
+                },
+              },
+            ],
+          });
+        }
+      },
+    });
+
+    expect(result.exitCode).toBe(0);
+    expect(seen.PRISMA_SERVICE_TOKEN).toBe(nearExpiryToken);
   });
 
   test("an environment credential's token is injected unchanged", async () => {

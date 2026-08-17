@@ -103,7 +103,7 @@ export class EnvironmentCredentialManager implements CredentialManager {
   /** The delegated path's read: the env token passes through directly. It
    *  is already a snapshot with no refresh token behind it. */
   async activeAccessToken(
-    options?: ActiveAccessTokenOptions,
+    options: ActiveAccessTokenOptions,
   ): Promise<string | null> {
     const credential = await this.activeCredential();
     if (credential === null) return null;
@@ -142,7 +142,10 @@ export class EnvironmentCredentialManager implements CredentialManager {
       setTokens: async (rotated, expiresAt) => {
         tokens = {
           ...rotated,
-          expiresAt: claimedExpiresAt(rotated.accessToken) ?? expiresAt,
+          expiresAt:
+            claimedExpiresAt(rotated.accessToken) ??
+            expiresAt ??
+            tokens?.expiresAt,
         };
       },
       clearTokens: async () => {

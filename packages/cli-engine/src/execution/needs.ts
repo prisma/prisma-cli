@@ -181,34 +181,23 @@ async function checkCredentials(
     return {};
   }
   try {
-    return {
-      spawnCredential: await prepareChildCredential(invocation),
-    };
+    const accessToken = await manager.activeAccessToken({
+      minimumValidityMs: CREDENTIAL_NEAR_EXPIRY_MS,
+      now: invocation.now(),
+      signal: invocation.signal,
+    });
+    if (accessToken === null) {
+      return {
+        failure: needsErrored(credentialsRequiredError("session-ended")),
+      };
+    }
+    return { spawnCredential: credential };
   } catch (cause) {
     if (CliStructuredError.is(cause)) {
       return { failure: needsErrored(cause) };
     }
     throw cause;
   }
-}
-
-async function prepareChildCredential(
-  invocation: Invocation,
-): Promise<ActiveCredential> {
-  const manager = invocation.runtime.credentialManager;
-  if (manager === undefined) throw credentialsRequiredError();
-  const accessToken = await manager.activeAccessToken({
-    minimumValidityMs: CREDENTIAL_NEAR_EXPIRY_MS,
-    now: invocation.now(),
-    signal: invocation.signal,
-  });
-  if (accessToken === null) throw credentialsRequiredError("session-ended");
-
-  const refreshedCredential = await manager.activeCredential();
-  if (refreshedCredential === null) {
-    throw credentialsRequiredError("session-ended");
-  }
-  return refreshedCredential;
 }
 
 /**

@@ -28,6 +28,7 @@ import {
   readCredentialState,
   resolveStateFilePath,
   type StoredSession,
+  withRefreshFileLock,
   withStateLock,
   writeCredentialState,
 } from "./state-file";
@@ -90,7 +91,10 @@ function memoryBackedStorage(
     setTokens: async (rotated, expiresAt) => {
       tokens = {
         ...rotated,
-        expiresAt: claimedExpiresAt(rotated.accessToken) ?? expiresAt,
+        expiresAt:
+          claimedExpiresAt(rotated.accessToken) ??
+          expiresAt ??
+          tokens?.expiresAt,
       };
     },
     clearTokens: async () => {
@@ -280,7 +284,7 @@ export class FileCredentialManager implements CredentialManager {
    *  no active credential to read — storage exists only once
    *  activeCredential() has returned non-null. */
   async activeAccessToken(
-    options?: ActiveAccessTokenOptions,
+    options: ActiveAccessTokenOptions,
   ): Promise<string | null> {
     const credential = await this.activeCredential();
     if (credential === null) {
@@ -358,7 +362,15 @@ export class FileCredentialManager implements CredentialManager {
             ...(tokens.refreshToken === undefined
               ? {}
               : { refreshToken: tokens.refreshToken }),
-            ...expiresAtSlice(tokens.accessToken, expiresAt),
+            // An SDK-driven rotation passes no expiry; keep the record's
+            // rather than erase the one the proactive refresher stored.
+            ...expiresAtSlice(
+              tokens.accessToken,
+              expiresAt ??
+                (record.expiresAt === undefined
+                  ? undefined
+                  : new Date(record.expiresAt)),
+            ),
           };
           return {
             state: {
@@ -401,7 +413,14 @@ export class FileCredentialManager implements CredentialManager {
         });
       },
 
-      withRefreshLock: (fn) => this.#withRefreshLock(fn),
+      // The whole read → exchange → write sequence holds the
+      // cross-process refresh lock, so two processes never spend the
+      // same refresh token; the in-process chain serialises callers
+      // within this process first.
+      withRefreshLock: (fn) =>
+        this.#withRefreshLock(() =>
+          withRefreshFileLock(this.#filePath, this.#debug, fn),
+        ),
     };
   }
 

@@ -132,7 +132,10 @@ function memoryBackedStorage(
     setTokens: async (rotated, expiresAt) => {
       tokens = {
         ...rotated,
-        expiresAt: claimedExpiresAt(rotated.accessToken) ?? expiresAt,
+        expiresAt:
+          claimedExpiresAt(rotated.accessToken) ??
+          expiresAt ??
+          tokens?.expiresAt,
       };
     },
     clearTokens: async () => {
@@ -277,7 +280,7 @@ export class InMemoryCredentialManager implements CredentialManager {
    *  no active credential to read — storage exists only once
    *  activeCredential() has returned non-null. */
   async activeAccessToken(
-    options?: ActiveAccessTokenOptions,
+    options: ActiveAccessTokenOptions,
   ): Promise<string | null> {
     const credential = await this.activeCredential();
     if (credential === null) {
@@ -339,7 +342,10 @@ export class InMemoryCredentialManager implements CredentialManager {
                 credential: {
                   token: tokens.accessToken,
                   refreshToken: tokens.refreshToken,
-                  expiresAt: claimedExpiresAt(tokens.accessToken) ?? expiresAt,
+                  expiresAt:
+                    claimedExpiresAt(tokens.accessToken) ??
+                    expiresAt ??
+                    stored.credential.expiresAt,
                 },
               }
             : stored,

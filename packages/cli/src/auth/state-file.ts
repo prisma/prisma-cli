@@ -14,6 +14,29 @@ const FILE_MODE = 0o600;
 const LOCK_STALE_MS = 5_000;
 const LOCK_RETRY_MS = 10;
 const LOCK_WAIT_TIMEOUT_MS = 10_000;
+// The refresh lock is held across the token-endpoint exchange (a
+// network call bounded at 10s), so its budgets are network-sized.
+const REFRESH_LOCK_STALE_MS = 30_000;
+const REFRESH_LOCK_RETRY_MS = 100;
+const REFRESH_LOCK_WAIT_TIMEOUT_MS = 30_000;
+
+interface LockTimings {
+  readonly staleMs: number;
+  readonly retryMs: number;
+  readonly waitTimeoutMs: number;
+}
+
+const STATE_LOCK_TIMINGS: LockTimings = {
+  staleMs: LOCK_STALE_MS,
+  retryMs: LOCK_RETRY_MS,
+  waitTimeoutMs: LOCK_WAIT_TIMEOUT_MS,
+};
+
+const REFRESH_LOCK_TIMINGS: LockTimings = {
+  staleMs: REFRESH_LOCK_STALE_MS,
+  retryMs: REFRESH_LOCK_RETRY_MS,
+  waitTimeoutMs: REFRESH_LOCK_WAIT_TIMEOUT_MS,
+};
 
 export interface StoredSession {
   readonly workspaceId: string;
@@ -193,12 +216,12 @@ export async function writeCredentialState(
 }
 
 class StateLockTimeoutError extends CliStructuredError {
-  constructor(lockPath: string) {
+  constructor(lockPath: string, waitTimeoutMs: number) {
     super(
       "CLI.CREDENTIALS_LOCKED",
       "Another prisma process is still updating your credentials.",
       {
-        why: `The credentials lock at ${lockPath} was held for longer than ${LOCK_WAIT_TIMEOUT_MS}ms.`,
+        why: `The credentials lock at ${lockPath} was held for longer than ${waitTimeoutMs}ms.`,
         nextActions: [
           {
             kind: "user-choice",
@@ -222,8 +245,36 @@ export async function withStateLock<T>(
   debug: DebugLog,
   run: () => Promise<T>,
 ): Promise<T> {
-  const lockPath = `${filePath}.lock`;
-  const lockId = await acquireStateLock(lockPath, debug);
+  return withFileLock(`${filePath}.lock`, debug, STATE_LOCK_TIMINGS, run);
+}
+
+/**
+ * The cross-process lock the delegated refresh holds for its whole
+ * read → exchange → write sequence, so two processes never spend the
+ * same refresh token. Distinct from the state lock: it IS held across
+ * network I/O, so its staleness and wait budgets are larger, and it
+ * uses its own lock path so short mutations are not queued behind it.
+ */
+export async function withRefreshFileLock<T>(
+  filePath: string,
+  debug: DebugLog,
+  run: () => Promise<T>,
+): Promise<T> {
+  return withFileLock(
+    `${filePath}.refresh-lock`,
+    debug,
+    REFRESH_LOCK_TIMINGS,
+    run,
+  );
+}
+
+async function withFileLock<T>(
+  lockPath: string,
+  debug: DebugLog,
+  timings: LockTimings,
+  run: () => Promise<T>,
+): Promise<T> {
+  const lockId = await acquireStateLock(lockPath, debug, timings);
   debug(`lock acquired ${lockPath}`);
   try {
     return await run();
@@ -236,6 +287,7 @@ export async function withStateLock<T>(
 async function acquireStateLock(
   lockPath: string,
   debug: DebugLog,
+  timings: LockTimings,
 ): Promise<string> {
   const lockId = randomUUID();
   const startedAt = Date.now();
@@ -244,15 +296,15 @@ async function acquireStateLock(
   while (true) {
     if (await tryCreateStateLock(lockPath, lockId)) return lockId;
 
-    const tookOver = await takeOverStaleStateLock(lockPath, debug);
+    const tookOver = await takeOverStaleStateLock(lockPath, debug, timings);
     // The timeout is checked on every pass, including the ones that
     // took a lock over: a takeover that keeps appearing to succeed
     // must still end in a timeout rather than spinning.
-    if (Date.now() - startedAt >= LOCK_WAIT_TIMEOUT_MS) {
-      throw new StateLockTimeoutError(lockPath);
+    if (Date.now() - startedAt >= timings.waitTimeoutMs) {
+      throw new StateLockTimeoutError(lockPath, timings.waitTimeoutMs);
     }
     if (!tookOver) {
-      await new Promise((resolve) => setTimeout(resolve, LOCK_RETRY_MS));
+      await new Promise((resolve) => setTimeout(resolve, timings.retryMs));
     }
   }
 }
@@ -287,10 +339,11 @@ async function tryCreateStateLock(
 async function takeOverStaleStateLock(
   lockPath: string,
   debug: DebugLog,
+  timings: LockTimings,
 ): Promise<boolean> {
   const stale = await fs.stat(lockPath).catch(() => null);
   if (stale === null) return true;
-  if (Date.now() - stale.mtimeMs <= LOCK_STALE_MS) return false;
+  if (Date.now() - stale.mtimeMs <= timings.staleMs) return false;
 
   const takenPath = `${lockPath}.${randomUUID()}.stale`;
   try {

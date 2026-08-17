@@ -1117,7 +1117,10 @@ describe("delegated access-token preparation", () => {
     });
   });
 
-  it("rejects and does not persist a rotated token that expires too soon", async () => {
+  // The exchange has already consumed refresh-1 server-side, so the
+  // rotated pair must be persisted even when its access token is
+  // refused: keeping the old pair would strand a dead refresh token.
+  it("persists a short-lived rotated pair before refusing it", async () => {
     const manager = makeManager({
       refreshCredential: async () => ({
         kind: "success",
@@ -1141,8 +1144,8 @@ describe("delegated access-token preparation", () => {
     expect(
       (await readCredentialState(stateFilePath)).sessions[0],
     ).toMatchObject({
-      token: expiringToken,
-      refreshToken: "refresh-1",
+      token: "short-lived-opaque-token",
+      refreshToken: "refresh-2",
     });
   });
 

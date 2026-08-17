@@ -204,23 +204,21 @@ describe("across processes", () => {
     ).toEqual([WORKSPACE_A, WORKSPACE_B, WORKSPACE_C]);
   }, 30_000);
 
-  it("leaves a valid pair in the file when two processes really refresh the same session", async () => {
+  // The refresh lock is a cross-process file lock, so the loser of the
+  // race re-reads the rotated pair inside the lock and never spends the
+  // seed refresh token a second time.
+  it("exchanges one refresh token once when two processes refresh the same session", async () => {
     const seedAccessToken = mintToken(WORKSPACE_A);
     const issued = [
       {
         accessToken: mintToken(WORKSPACE_A, "rotated-1"),
         refreshToken: "refresh-1",
       },
-      {
-        accessToken: mintToken(WORKSPACE_A, "rotated-2"),
-        refreshToken: "refresh-2",
-      },
     ];
     const endpoint = await startTokenEndpoint({
       seedAccessToken,
       seedRefreshToken: "refresh-0",
       issued,
-      concurrentRefreshers: 2,
     });
     await runWorker("create", WORKSPACE_A, seedAccessToken, "refresh-0");
 
@@ -233,13 +231,13 @@ describe("across processes", () => {
       { status: 200 },
       { status: 200 },
     ]);
-    expect(endpoint.exchanges()).toBe(2);
+    expect(endpoint.exchanges()).toBe(1);
     const state = await readCredentialState(stateFilePath);
     expect(state.sessions).toHaveLength(1);
     const record = state.sessions[0];
-    expect(
-      issued.map((pair) => `${pair.accessToken}|${pair.refreshToken}`),
-    ).toContain(`${record.token}|${record.refreshToken}`);
+    expect(`${record.token}|${record.refreshToken}`).toBe(
+      `${issued[0].accessToken}|${issued[0].refreshToken}`,
+    );
   }, 30_000);
 
   it("takes over a crashed holder's lock after the stale threshold", async () => {
