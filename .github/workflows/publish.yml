@@ -11,7 +11,7 @@ name: Publish to npm
 # Trigger model:
 #   - push to `main` with the root `version` unchanged → publish
 #     `<base>-dev.<run>` under the `dev` dist-tag (operator ruling
-#     2026-08-13: automated family repins deploy automatically; only a
+#     2026-08-13: automated product-version updates deploy automatically; only a
 #     real release needs a human). The dev suffix is stamped
 #     ephemerally below and never committed.
 #   - push to `main` with the root `version` changed   → publish `<base>`

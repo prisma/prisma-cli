@@ -17,7 +17,7 @@
  *                          operator deliberately moves it.
  *                          Otherwise `<base>-dev.<run>` under the `dev`
  *                          dist-tag: every routine main push — an
- *                          automated family repin above all — ships an
+ *                          automated product-version update above all — ships an
  *                          installable dev build automatically
  *                          (operator ruling 2026-08-13).
  * - `workflow_dispatch` → `<base>` (no suffix), dist-tag from
@@ -160,8 +160,8 @@ switch (eventName) {
       result = { version: baseVersion, tag: releaseDistTag(baseVersion) };
     } else if (previous.available) {
       // Routine push: publish `<base>-dev.<run>` under `dev` (operator
-      // ruling 2026-08-13 — automatic repins from the product repos
-      // deploy automatically; only a real release needs a human). The
+      // ruling 2026-08-13 — automatic product-version updates deploy
+      // automatically; only a real release needs a human). The
       // suffix is derived here and stamped ephemerally in CI; it is
       // never committed, so releases remain committed-at-HEAD.
       const runNumber = process.env.GITHUB_RUN_NUMBER ?? "";

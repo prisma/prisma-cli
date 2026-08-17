@@ -68,7 +68,7 @@ export interface VersionResult {
 
 /**
  * The version a routine main push publishes under the `dev` dist-tag
- * (operator ruling 2026-08-13: automatic repins deploy automatic dev
+ * (operator ruling 2026-08-13: automatic product-version updates deploy dev
  * versions; only a real release needs a human). The run number makes
  * the suffix monotonic per workflow run without reading the registry.
  */
