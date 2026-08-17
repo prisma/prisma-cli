@@ -40,6 +40,7 @@ describe("main export", () => {
       "loadConfig",
       "noSessionForWorkspaceError",
       "positional",
+      "readActiveAccessToken",
       "telemetryCommandGroup",
     ]);
   });

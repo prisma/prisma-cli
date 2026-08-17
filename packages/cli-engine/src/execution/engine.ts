@@ -637,7 +637,10 @@ export class EngineImpl implements Engine {
       }
       needsOutcome = await checkNeeds(entry.def, invocation);
     } catch (cause) {
-      settleBug(invocation, cause);
+      // The child preflight can be awaiting the token endpoint when the
+      // user interrupts; settleThrown keeps an abort a signal settlement
+      // rather than reporting it as an engine bug.
+      settleThrown(invocation, cause);
       return;
     }
     if (needsOutcome.kind === "errored") {
@@ -719,7 +722,7 @@ export class EngineImpl implements Engine {
     try {
       needsOutcome = await checkNeeds(entry.def, invocation);
     } catch (cause) {
-      settleBug(invocation, cause);
+      settleThrown(invocation, cause);
       return;
     }
     if (needsOutcome.kind === "errored") {

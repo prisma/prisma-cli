@@ -1,9 +1,11 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import type {
+  ActiveAccessTokenOptions,
   ActiveCredential,
   Credential,
   CredentialManager,
+  CredentialRefresher,
   Session,
   StoredSessions,
   TokenStorage,
@@ -15,6 +17,7 @@ import {
   credentialWorkspaceId,
   credentialWorkspaceMismatchError,
   noSessionForWorkspaceError,
+  readActiveAccessToken,
 } from "@prisma/cli-engine";
 import { environmentServiceToken } from "./service-token";
 import {
@@ -25,6 +28,7 @@ import {
   readCredentialState,
   resolveStateFilePath,
   type StoredSession,
+  withRefreshFileLock,
   withStateLock,
   writeCredentialState,
 } from "./state-file";
@@ -49,6 +53,7 @@ export type FetchWorkspaceName = (
 export interface FileCredentialManagerOptions {
   readonly env: Readonly<Record<string, string | undefined>>;
   readonly fetchWorkspaceName?: FetchWorkspaceName;
+  readonly refreshCredential?: CredentialRefresher;
   readonly debugWrite?: (text: string) => void;
 }
 
@@ -79,11 +84,18 @@ function memoryBackedStorage(
       credentialWorkspaceId(credential.token) ?? NO_WORKSPACE_CLAIMED,
     accessToken: credential.token,
     refreshToken: credential.refreshToken,
+    expiresAt: claimedExpiresAt(credential.token) ?? credential.expiresAt,
   };
   return {
     getTokens: async () => tokens,
-    setTokens: async (rotated) => {
-      tokens = rotated;
+    setTokens: async (rotated, expiresAt) => {
+      tokens = {
+        ...rotated,
+        expiresAt:
+          claimedExpiresAt(rotated.accessToken) ??
+          expiresAt ??
+          tokens?.expiresAt,
+      };
     },
     clearTokens: async () => {
       tokens = null;
@@ -103,6 +115,7 @@ export class FileCredentialManager implements CredentialManager {
   readonly #filePath: string;
   readonly #debug: DebugLog;
   readonly #fetchWorkspaceName: FetchWorkspaceName | undefined;
+  readonly #refreshCredential: CredentialRefresher | undefined;
   #pin: Pin = { kind: "unresolved" };
   /** Built for one pinned credential. Every mutation that moves the
    *  pin discards it, so a command that mutates and then reaches for
@@ -116,6 +129,7 @@ export class FileCredentialManager implements CredentialManager {
     this.#filePath = resolveStateFilePath(options.env).filePath;
     this.#debug = makeDebugLog(options.env, options.debugWrite);
     this.#fetchWorkspaceName = options.fetchWorkspaceName;
+    this.#refreshCredential = options.refreshCredential;
     this.#debug(`state file ${this.#filePath}`);
   }
 
@@ -265,17 +279,19 @@ export class FileCredentialManager implements CredentialManager {
     return this.#activeStorage;
   }
 
-  /** The spawn path's read: the active credential's access token,
+  /** The delegated path's read: the active credential's access token,
    *  fresh on every call, never the refresh token. Null when there is
    *  no active credential to read — storage exists only once
    *  activeCredential() has returned non-null. */
-  async activeAccessToken(): Promise<string | null> {
-    if ((await this.activeCredential()) === null) {
+  async activeAccessToken(
+    options: ActiveAccessTokenOptions,
+  ): Promise<string | null> {
+    const credential = await this.activeCredential();
+    if (credential === null) {
       return null;
     }
     const storage = await this.activeCredentialStorage();
-    const tokens = await storage.getTokens();
-    return tokens === null ? null : tokens.accessToken;
+    return readActiveAccessToken(storage, this.#refreshCredential, options);
   }
 
   /** §11.2: which storage is chosen once, when the pin resolves. Each
@@ -320,10 +336,13 @@ export class FileCredentialManager implements CredentialManager {
           ...(record.refreshToken === undefined
             ? {}
             : { refreshToken: record.refreshToken }),
+          ...(record.expiresAt === undefined
+            ? {}
+            : { expiresAt: new Date(record.expiresAt) }),
         };
       },
 
-      setTokens: async (tokens) => {
+      setTokens: async (tokens, expiresAt) => {
         this.#debug(`rotation write for session ${workspaceId}`);
         const claimed = credentialWorkspaceId(tokens.accessToken);
         if (claimed !== undefined && claimed !== workspaceId) {
@@ -343,7 +362,15 @@ export class FileCredentialManager implements CredentialManager {
             ...(tokens.refreshToken === undefined
               ? {}
               : { refreshToken: tokens.refreshToken }),
-            ...expiresAtSlice(tokens.accessToken, undefined),
+            // An SDK-driven rotation passes no expiry; keep the record's
+            // rather than erase the one the proactive refresher stored.
+            ...expiresAtSlice(
+              tokens.accessToken,
+              expiresAt ??
+                (record.expiresAt === undefined
+                  ? undefined
+                  : new Date(record.expiresAt)),
+            ),
           };
           return {
             state: {
@@ -386,7 +413,14 @@ export class FileCredentialManager implements CredentialManager {
         });
       },
 
-      withRefreshLock: (fn) => this.#withRefreshLock(fn),
+      // The whole read → exchange → write sequence holds the
+      // cross-process refresh lock, so two processes never spend the
+      // same refresh token; the in-process chain serialises callers
+      // within this process first.
+      withRefreshLock: (fn) =>
+        this.#withRefreshLock(() =>
+          withRefreshFileLock(this.#filePath, this.#debug, fn),
+        ),
     };
   }
 

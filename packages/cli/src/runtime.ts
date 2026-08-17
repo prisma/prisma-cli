@@ -15,6 +15,7 @@ import {
   getAuthBaseUrl,
 } from "./auth/client";
 import { FileCredentialManager } from "./auth/credential-manager";
+import { makeCredentialRefresher } from "./auth/refresh";
 import {
   DEPRECATED_STATE_FILE_ENV_VAR,
   resolveStateFilePath,
@@ -106,6 +107,7 @@ export async function assembleRuntime(proc: HostProcess): Promise<Runtime> {
   };
   warnOnDeprecatedStateFileEnvVar(proc);
   const apiBaseUrl = getApiBaseUrl(proc.env);
+  const authBaseUrl = getAuthBaseUrl(proc.env);
   return {
     stdout: {
       write: (text) => {
@@ -135,12 +137,13 @@ export async function assembleRuntime(proc: HostProcess): Promise<Runtime> {
     credentialManager: new FileCredentialManager({
       env: proc.env,
       fetchWorkspaceName: fetchWorkspaceName(apiBaseUrl),
+      refreshCredential: makeCredentialRefresher(authBaseUrl),
     }),
     managementApiClientConfig: {
       clientId: CLIENT_ID,
       redirectUri: DEFAULT_REDIRECT_URI,
       apiBaseUrl,
-      authBaseUrl: getAuthBaseUrl(proc.env),
+      authBaseUrl,
     },
     spawn: spawnChild,
     /** The engine has already decided and composed; the bin only forks

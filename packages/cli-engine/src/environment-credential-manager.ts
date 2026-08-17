@@ -6,8 +6,10 @@
  * refuses with a structured error. Env is a construction input; nothing
  * here reads process.env.
  */
+import { readActiveAccessToken } from "./active-access-token";
 import { emptyServiceTokenError } from "./credential-errors";
 import {
+  type ActiveAccessTokenOptions,
   type ActiveCredential,
   type Credential,
   type CredentialManager,
@@ -98,10 +100,18 @@ export class EnvironmentCredentialManager implements CredentialManager {
     return this.#activeStorage;
   }
 
-  /** The spawn path's read: the env token passes through directly. It
+  /** The delegated path's read: the env token passes through directly. It
    *  is already a snapshot with no refresh token behind it. */
-  async activeAccessToken(): Promise<string | null> {
-    return this.#token() ?? null;
+  async activeAccessToken(
+    options: ActiveAccessTokenOptions,
+  ): Promise<string | null> {
+    const credential = await this.activeCredential();
+    if (credential === null) return null;
+    return readActiveAccessToken(
+      await this.activeCredentialStorage(),
+      undefined,
+      options,
+    );
   }
 
   #buildActiveStorage(): TokenStorage {
@@ -117,6 +127,7 @@ export class EnvironmentCredentialManager implements CredentialManager {
       workspaceId: this.#workspaceId(token) ?? NO_WORKSPACE_NAMED,
       accessToken: token,
       refreshToken: undefined,
+      expiresAt: claimedExpiresAt(token),
     };
     const singleFlight = <T>(fn: () => Promise<T>): Promise<T> => {
       const queued = this.#refreshLock.then(fn, fn);
@@ -128,8 +139,14 @@ export class EnvironmentCredentialManager implements CredentialManager {
     };
     return {
       getTokens: async () => tokens,
-      setTokens: async (rotated) => {
-        tokens = rotated;
+      setTokens: async (rotated, expiresAt) => {
+        tokens = {
+          ...rotated,
+          expiresAt:
+            claimedExpiresAt(rotated.accessToken) ??
+            expiresAt ??
+            tokens?.expiresAt,
+        };
       },
       clearTokens: async () => {
         tokens = null;

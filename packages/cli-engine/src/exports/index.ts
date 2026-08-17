@@ -5,6 +5,7 @@
  * The test harness lives on the ./testing subpath.
  */
 
+export { readActiveAccessToken } from "../active-access-token";
 export {
   type Args,
   type ArgsSpec,
@@ -68,6 +69,7 @@ export {
   noSessionForWorkspaceError,
 } from "../credential-errors";
 export {
+  type ActiveAccessTokenOptions,
   type ActiveCredential,
   type Credential,
   type CredentialIdentity,
@@ -85,6 +87,8 @@ export type {
   StreamMeta,
 } from "../events";
 export type {
+  CredentialRefresher,
+  CredentialRefreshResult,
   ManagementApiClient,
   ManagementApiClientConfig,
   TokenStorage,
