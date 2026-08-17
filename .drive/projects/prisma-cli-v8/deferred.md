@@ -382,3 +382,19 @@ CLI does not do, and each restarts as engine work if wanted:
   prisma/prisma's `check-publish-deps.mjs` both catch this class, and
   prisma-cli has no equivalent. Worth one small check, in its own
   change.
+
+## Found while fixing engine 0.1.1 (2026-08-17) — needs a decision from Will
+
+- **A library depends on CLI tooling: `@prisma/composer-prisma-cloud`
+  imports `@prisma/orm-toolchain/config-loader`.** ADR 0004 says
+  libraries applications install must not depend on product CLI/dev
+  packages, and this import breaks that rule today. It is also how an
+  engine implementation detail reached composer's users: evaluating
+  `prisma-composer.config.ts` loads `composer-prisma-cloud/control`,
+  which loads `orm-toolchain/config-loader`, which imports `ci-info` —
+  putting ORM tooling and its dependencies inside composer's config
+  evaluation in every user's process. The engine defect that exposed
+  this is fixed (prisma-cli#187), but the dependency remains. Options:
+  move `config-loader` into a shared library package the ORM publishes
+  for exactly this kind of consumer, or cut the cloud extension's use
+  of it. Spans both product repos; Will decides which.
