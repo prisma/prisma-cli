@@ -256,6 +256,7 @@ describe("the shipped spawn adapter", () => {
         },
         { drainGraceMs: 200 },
       );
+      const startedAt = Date.now();
       const child = gracedSpawn({
         command: NODE,
         args: [
@@ -268,7 +269,50 @@ describe("the shipped spawn adapter", () => {
       });
 
       await expect(child.ended).resolves.toEqual({ exitCode: 0, signal: null });
+      // Materially below the 5s default grace: proves the configured
+      // 200ms grace was honored, not merely eventual completion.
+      expect(Date.now() - startedAt).toBeLessThan(3_000);
     },
     20_000,
   );
+
+  test("removes its diagnostic listeners once forwarding ends", async () => {
+    const registered: Array<{
+      event: string;
+      listener: (cause?: unknown) => void;
+    }> = [];
+    const removed: Array<{
+      event: string;
+      listener: (cause?: unknown) => void;
+    }> = [];
+    const trackingSpawn = makeSpawnChild({
+      write: () => true,
+      once: (event, listener) => {
+        registered.push({ event, listener });
+      },
+      off: (event, listener) => {
+        removed.push({ event, listener });
+      },
+    });
+    const child = trackingSpawn({
+      command: NODE,
+      args: ["-e", "process.stdout.write('bye')"],
+      cwd: process.cwd(),
+      env: process.env,
+      output: "diagnostic",
+    });
+
+    await expect(child.ended).resolves.toEqual({ exitCode: 0, signal: null });
+    expect(registered.length).toBeGreaterThan(0);
+    expect(removed.length).toBe(registered.length);
+    for (const entry of registered) {
+      expect(
+        removed.some(
+          (candidate) =>
+            candidate.event === entry.event &&
+            candidate.listener === entry.listener,
+        ),
+      ).toBe(true);
+    }
+  });
 });

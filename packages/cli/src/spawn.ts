@@ -9,6 +9,10 @@ interface DiagnosticStream {
     event: "drain" | "error" | "close",
     listener: (cause?: unknown) => void,
   ): unknown;
+  off?(
+    event: "drain" | "error" | "close",
+    listener: (cause?: unknown) => void,
+  ): unknown;
 }
 
 /** How long after the child exits the relay keeps reading its pipes. A
@@ -106,6 +110,7 @@ function forwardOutput(
   diagnostics: DiagnosticStream,
 ): Promise<void> {
   let pendingDone: ((cause?: Error) => void) | undefined;
+  let pendingDrain: ((cause?: unknown) => void) | undefined;
   let failure: Error | undefined;
   const fail = (cause: Error) => {
     failure ??= cause;
@@ -113,12 +118,14 @@ function forwardOutput(
     pendingDone = undefined;
     done?.(cause);
   };
-  diagnostics.once?.("error", (cause) => {
+  const onSinkError = (cause?: unknown) => {
     fail(toError(cause));
-  });
-  diagnostics.once?.("close", () => {
+  };
+  const onSinkClose = () => {
     fail(new Error("the diagnostic stream closed during child output"));
-  });
+  };
+  diagnostics.once?.("error", onSinkError);
+  diagnostics.once?.("close", onSinkClose);
   const destination = new Writable({
     decodeStrings: false,
     write: (text: string, _encoding, done) => {
@@ -132,11 +139,14 @@ function forwardOutput(
           diagnostics.once !== undefined
         ) {
           pendingDone = done;
-          diagnostics.once("drain", () => {
+          const onDrain = () => {
+            pendingDrain = undefined;
             if (pendingDone !== done) return;
             pendingDone = undefined;
             done();
-          });
+          };
+          pendingDrain = onDrain;
+          diagnostics.once("drain", onDrain);
         } else {
           done();
         }
@@ -145,7 +155,14 @@ function forwardOutput(
       }
     },
   });
-  return pipeline(source.setEncoding("utf8"), destination);
+  // The diagnostic stream outlives this relay (it is the process's own
+  // stderr), so every listener registered here is removed when the
+  // pipeline settles — sequential children must not accumulate them.
+  return pipeline(source.setEncoding("utf8"), destination).finally(() => {
+    diagnostics.off?.("error", onSinkError);
+    diagnostics.off?.("close", onSinkClose);
+    if (pendingDrain !== undefined) diagnostics.off?.("drain", pendingDrain);
+  });
 }
 
 function toError(cause: unknown): Error {
