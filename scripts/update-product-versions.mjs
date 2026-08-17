@@ -24,20 +24,27 @@
 // requirements.
 //
 // Exit codes: 0 whether or not anything changed (callers read the
-// summary), 1 on any error.
+// summary), 1 on any error — including a registry lookup that fails for
+// any reason other than the package or tag not existing. Treating an
+// outage as "not published" would leave a dev publish pinned to the
+// committed release versions while calling itself a dev build.
 
 import { execFileSync } from "node:child_process";
 import { appendFileSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
+// Release tags verified against the registry on 2026-08-17: all three
+// publish releases under `latest` and dev builds under `dev`. The ORM
+// has never had a `next` tag, despite the RC line living behind `next`
+// for the packages THIS repo publishes.
 const WATCHED = /** @type {const} */ ([
   { name: "@prisma/composer-cli", release: "latest" },
   // The library, a devDependency here: the startup probe imports it to
   // prove the eager-loading detector works. It must move with the CLI
   // package it ships beside, or the fixture resolves a second copy.
   { name: "@prisma/composer", release: "latest" },
-  { name: "@prisma/orm-toolchain", release: "next" },
+  { name: "@prisma/orm-toolchain", release: "latest" },
 ]);
 
 const MANIFEST_PATHS = [
@@ -115,16 +122,63 @@ export function applyUpdates(manifests, updates) {
   }
 }
 
-function publishedVersion(name, tag) {
+const PACKAGE_ABSENT = /E404|404 Not Found/;
+
+/**
+ * npm's answer for "no such package", the one lookup failure that means
+ * "nothing to move to" — a product package this repo does not depend on
+ * yet. Anything else — an outage, a proxy, no npm on PATH — must not be
+ * read as absence, or a dev publish quietly keeps the committed release
+ * versions and ships a dev build pinned to them.
+ *
+ * @param {string} stderr
+ */
+export function isPackageAbsent(stderr) {
+  return PACKAGE_ABSENT.test(stderr);
+}
+
+/**
+ * Every dist-tag a package publishes, or undefined if the package does
+ * not exist. One call per package, not per tag, so a wrong tag name is
+ * distinguishable from a missing package.
+ *
+ * @returns {Record<string, string> | undefined}
+ */
+function distTags(name) {
   try {
-    const out = execFileSync("npm", ["view", `${name}@${tag}`, "version"], {
+    const out = execFileSync("npm", ["view", name, "dist-tags", "--json"], {
       encoding: "utf-8",
+      stdio: ["ignore", "pipe", "pipe"],
     }).trim();
-    return out.length > 0 ? out : undefined;
-  } catch {
-    // Not published yet (or the tag does not exist) — nothing to move to.
-    return undefined;
+    if (out.length === 0) throw new Error("npm printed nothing");
+    return JSON.parse(out);
+  } catch (error) {
+    const stderr = typeof error?.stderr === "string" ? error.stderr : "";
+    if (isPackageAbsent(stderr)) return undefined;
+    throw new Error(
+      `Could not read ${name}'s dist-tags from the registry: ${stderr.trim() || error.message}`,
+    );
   }
+}
+
+/**
+ * A package that exists but has no such tag is a mistake in this
+ * script's table, or a product that moved where it publishes. Either
+ * way it must fail rather than look like "nothing to move to": the old
+ * version of this script read `next` for the ORM, which has never had
+ * that tag, and silently never updated it.
+ */
+function publishedVersion(name, tag) {
+  const tags = distTags(name);
+  if (tags === undefined) return undefined;
+  const version = tags[tag];
+  if (version === undefined) {
+    const available = Object.keys(tags).join(", ") || "none";
+    throw new Error(
+      `${name} has no "${tag}" dist-tag (it publishes: ${available}). Fix the table in this script, or the product moved where it publishes.`,
+    );
+  }
+  return version;
 }
 
 function main() {

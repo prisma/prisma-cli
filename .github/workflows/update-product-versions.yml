@@ -39,9 +39,13 @@ jobs:
   update:
     name: Compare versions against the registry
     runs-on: ubuntu-latest
+    # Read-only: every write here goes through DEPLOY_GITHUB_TOKEN (the
+    # branch push, the pull request, auto-merge), and the checkout keeps
+    # no credentials, so the workflow token needs nothing but the
+    # checkout itself. Granting it write access would hand a
+    # write-capable token to every action in the job for no reason.
     permissions:
-      contents: write
-      pull-requests: write
+      contents: read
 
     steps:
       - name: Checkout

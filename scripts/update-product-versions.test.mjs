@@ -3,6 +3,7 @@ import { describe, it } from "node:test";
 import {
   applyUpdates,
   computeUpdates,
+  isPackageAbsent,
   tagFor,
 } from "./update-product-versions.mjs";
 
@@ -17,6 +18,28 @@ describe("tagFor", () => {
 
   it("reads the shared dev tag on the dev channel", () => {
     assert.equal(tagFor({ release: "next" }, "dev"), "dev");
+  });
+});
+
+describe("isPackageAbsent", () => {
+  it("reads npm's answer for a package that does not exist", () => {
+    assert.equal(
+      isPackageAbsent("npm error code E404\nnpm error 404 Not Found"),
+      true,
+    );
+  });
+
+  /**
+   * The reason this is a function and not a bare `catch`: any of these
+   * read as "not published" would leave a dev publish pinned to the
+   * committed release versions while calling itself a dev build.
+   */
+  it("refuses to read any other failure as absence", () => {
+    assert.equal(isPackageAbsent("npm error code ETIMEDOUT"), false);
+    assert.equal(isPackageAbsent("npm error code E401 Unauthorized"), false);
+    assert.equal(isPackageAbsent("npm error code EAI_AGAIN"), false);
+    assert.equal(isPackageAbsent("execFileSync ENOENT npm"), false);
+    assert.equal(isPackageAbsent(""), false);
   });
 });
 
