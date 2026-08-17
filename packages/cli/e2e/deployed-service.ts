@@ -141,22 +141,33 @@ export async function deployService(
   ).service;
 
   const deploymentId = await createDeployment(service.id);
-  await cli.run([
-    "service",
-    "deployment",
-    "start",
-    deploymentId,
-    "--service",
-    serviceName,
-  ]);
-  await cli.run([
-    "service",
-    "deployment",
-    "promote",
-    deploymentId,
-    "--service",
-    serviceName,
-  ]);
+  // Once the deployment exists it has to be deleted by someone, and
+  // until this function returns the caller has no id to delete. A throw
+  // from `start` or `promote` would otherwise leave a deployment nobody
+  // knows about, and `project remove` refuses while one exists — so the
+  // failure would strand the whole scratch project, not just this
+  // service.
+  try {
+    await cli.run([
+      "service",
+      "deployment",
+      "start",
+      deploymentId,
+      "--service",
+      serviceName,
+    ]);
+    await cli.run([
+      "service",
+      "deployment",
+      "promote",
+      deploymentId,
+      "--service",
+      serviceName,
+    ]);
+  } catch (failure) {
+    await deleteDeployment(cli, { id: deploymentId, serviceName });
+    throw failure;
+  }
 
   return { serviceId: service.id, serviceName: service.name, deploymentId };
 }
