@@ -42,7 +42,7 @@
     "test": "vitest run"
   },
   "devDependencies": {
-    "@repo/tsconfig": "workspace:8.0.0-rc.3",
+    "@repo/tsconfig": "workspace:8.0.0-rc.4",
     "@types/node": "^22.19.19",
     "tsdown": "^0.21.10",
     "typescript": "^6.0.3",
