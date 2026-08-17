@@ -122,7 +122,7 @@ const signedOut = defineCommand({
   },
 });
 
-/** Refused before its handler when the run asks for --json. */
+/** Declares the spawn capability and can still complete in json mode. */
 const spawning = defineCommand({
   help: { summary: "May hand the terminal to a child" },
   maySpawn: true,
@@ -235,11 +235,11 @@ describe("the engine reports at command start", () => {
     ]);
   });
 
-  it("reports a run refused before its handler for asking --json of a spawning command", async () => {
+  it("reports a spawning command before its json-capable handler", async () => {
     const result = await run(makeCli(), ["app", "spawner", "--json"]);
 
-    expect(result.exitCode).not.toBe(0);
-    expect(order).toEqual([]);
+    expect(result.exitCode).toBe(0);
+    expect(order).toEqual(["handler"]);
     expect(result.telemetry.map((payload) => payload.command)).toEqual([
       "app spawner",
     ]);

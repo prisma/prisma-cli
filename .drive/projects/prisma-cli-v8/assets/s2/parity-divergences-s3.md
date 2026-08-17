@@ -95,24 +95,18 @@ instead. Three things change for the user:
   handler asked for. Legacy collapsed a signalled child's status
   (`run-alchemy.ts:61`) and printed the hint anyway.
 
-## `--json` is refused on `deploy`, `destroy` and `dev`; `log` gains it
+## `deploy`, `destroy`, `dev`, and `log` support structured output
 
-No composer command had a json mode at all. The engine gives every
-command one, and these three give it back: they hand the terminal to a
-child process whose output cannot be framed, so `--json` (and
-`--format json`) is rejected **at parse time**, before the command does
-any work — `CLI.JSON_UNSUPPORTED`, exit 2, with the reason stated in the
-command's own help ("This command hands the terminal to another program
-and does not support --json.").
+Amended 2026-08-14: `maySpawn` no longer disables JSON. In human mode the
+child still inherits the terminal. In JSON mode its stdout and stderr are
+routed to diagnostic stderr while the engine retains framed NDJSON stdout and
+emits the command family's terminal result. A failed child keeps its verbatim
+process exit code and emits `CLI.CHILD_PROCESS_FAILED` with the child status in
+`error.meta`.
 
-`log` never spawns and keeps json: its lines are its payload. So a
-composer user gains a machine-readable `log` and gains an explicit,
-early refusal on the other three, where before there was no flag to
-pass.
-
-Note the interaction with format auto-selection: a piped
-`prisma composer deploy <entry>` does not silently become a json run —
-it stays human, because json is refused rather than auto-selected.
+This also restores normal format auto-selection: a piped
+`prisma composer deploy <entry>` produces structured output, including
+Composer's deployment summary, without requiring an explicit flag.
 
 ## Usage, parse errors and bare invocation
 

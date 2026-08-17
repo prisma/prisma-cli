@@ -123,10 +123,9 @@ function normalizeArgs<
  * The terminal-handoff declaration, normalized onto every definition
  * (server commands normalize to false: they own stdio already).
  *
- * `maySpawn` unlocks ctx.spawn and makes the command reject `--json`
- * as soon as the command is known, before anything runs: output
- * delegated to a child process cannot be framed. Handing credentials
- * to the child is a precondition, declared as
+ * `maySpawn` unlocks ctx.spawn. In human mode the child inherits the
+ * terminal; in json mode its output is routed to diagnostics so stdout
+ * remains framed. Handing credentials to the child is a precondition, declared as
  * `needs: { credentials: "child" }`.
  */
 export interface SpawnDeclarations {
@@ -297,10 +296,9 @@ export function defineCommand<
  * speaks entirely through events, returns Result<void>. No
  * presentation, no exit-code set.
  *
- * A session supports json mode — the event stream is its json surface —
- * UNLESS it declares `maySpawn`, in which case it rejects --json as soon
- * as the command is known, before anything runs (S3): output delegated
- * to a child process cannot be framed. A session that returns
+ * A session supports json mode — the event stream is its json surface.
+ * When it declares `maySpawn`, child output is routed to diagnostics while
+ * the engine retains ownership of structured stdout. A session that returns
  * ok(undefined) exits 0 — or 130/143 when a signal ended the run, which
  * the engine settles from its own record of that signal, not from
  * anything the handler returns; one that returns

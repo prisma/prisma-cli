@@ -33,11 +33,13 @@
  * Amended 2026-08-11 for S3 (the TERMINAL HANDOFF, contract
  * s3-composer.md): §4 gains ctx.spawn and §4c its shapes +
  * exitWithChildStatus; §6 gains the SpawnDeclarations (maySpawn) and
- * the two kind amendments (a maySpawn command rejects --json as soon
- * as the command is known — after routing, before the needs check and
- * before anything runs; a session settles non-zero through
+ * the two kind amendments (a maySpawn command owns structured stdout
+ * while routing child output to diagnostics in json mode; a session settles non-zero through
  * exitWithChildStatus and no other way); §10 gains Runtime.spawn. D1
  * rulings: abort-ladder grace 5s; near-expiry refusal threshold 5min.
+ * Amended 2026-08-14: maySpawn commands now support json. Human mode
+ * still delegates the terminal; json mode routes child output to
+ * diagnostic stderr and preserves framed stdout through settlement.
  * Re-amended after the PR-136 review round: handing credentials to the
  * child is a PRECONDITION, `needs: { credentials: 'child' }` — the
  * separate credentialsForSpawn declaration is gone, and the entailment
@@ -1117,19 +1119,14 @@ export type Handler<
  * S3: the terminal-handoff declaration, accepted by defineCommand and
  * defineSessionCommand and normalized onto every definition (server
  * commands normalize maySpawn to false: they own stdio already).
- * `maySpawn` unlocks ctx.spawn and makes the command reject `--json`
- * as soon as the command is known — after routing, before the needs
- * check and before anything runs (the rule depends on which command
- * was selected, so "parse time" was loose wording) — exit 2, stated
- * in help (delegated terminal output cannot be framed). Handing
+ * `maySpawn` unlocks ctx.spawn. Human mode hands over the terminal;
+ * json mode routes the child's stdout and stderr to diagnostics while
+ * the engine retains framed stdout and emits a terminal result. Handing
  * credentials to the child is a PRECONDITION, not a declaration:
  * `needs: { credentials: 'child' }` (see NeedsSpec).
- * Naming note (PR-136 review, considered and rejected): renaming
- * maySpawn to delegatesTerminal would state the --json rule's premise
- * directly, but the identifier is already woven through the S3 stack
- * (D2/D3 handlers, tests, this draft) and the rename's churn was
- * judged to outweigh the clarity gain. Do not re-open without new
- * evidence.
+ * Naming note (PR-136 review): `maySpawn` remains the capability name;
+ * structured mode no longer delegates stdout, so `delegatesTerminal`
+ * would now be actively misleading.
  */
 export interface SpawnDeclarations {
   readonly maySpawn?: boolean

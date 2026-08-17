@@ -23,7 +23,7 @@ import {
 } from "./auth/state-file";
 import { fetchWorkspaceName } from "./auth/workspace-name";
 import { runPackageManager } from "./package-manager-runner";
-import { spawnChild } from "./spawn";
+import { makeSpawnChild } from "./spawn";
 
 export type SignalProcess = Pick<HostProcess, "on" | "off" | "exit">;
 
@@ -145,7 +145,7 @@ export async function assembleRuntime(proc: HostProcess): Promise<Runtime> {
       apiBaseUrl,
       authBaseUrl,
     },
-    spawn: spawnChild,
+    spawn: makeSpawnChild(proc.stderr),
     /** The engine has already decided and composed; the bin only forks
      *  the detached sender and hands the payload over. Every failure is
      *  swallowed inside runTelemetry. */

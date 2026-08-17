@@ -44,10 +44,12 @@ export function reportEvent(invocation: Invocation, event: EngineEvent): void {
     reportAfterResolution(invocation);
     return;
   }
-  // No engine write may interleave with a delegated terminal's child
-  // output; the buffer is flushed in order when the child ends.
+  // In human mode the child owns the terminal, so no engine write may
+  // interleave with its output; the buffer is flushed in order when the
+  // child ends. In json mode the engine keeps stdout (the child is
+  // routed to diagnostic stderr), so frames stream live.
   const terminal = state.delegatedTerminal;
-  if (terminal !== undefined) {
+  if (terminal !== undefined && state.format !== "json") {
     if (terminal.buffered.length >= SPAWN_COMMENTARY_BUFFER_CAP) {
       terminal.dropped += 1;
       return;

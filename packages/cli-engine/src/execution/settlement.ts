@@ -211,9 +211,8 @@ export function settleVerbatimExitCode(
  * The status comes from the engine's own record of the child, never
  * from the handler, so there is nothing here for a handler to state.
  * Two conditions fence it, both construction errors: the command must
- * hand the terminal to another program — reachable from a
- * non-declaring handler this would also end a json stream without its
- * terminal result frame — and a child must actually have run.
+ * declare that it can hand execution to another program, and a child must
+ * actually have run.
  *
  * A signal-killed child overrules whatever the handler asked for. The
  * user stopped the run: it settles 128 + the signal number, with no
@@ -235,7 +234,11 @@ export function settleChildStatus(
       `@prisma/cli-engine: command '${invocation.state.commandId}' returned exitWithChildStatus without a child having run — that settlement reports the status of a child ctx.spawn started, and this run started none`,
     );
   }
-  // Only human format is reachable here: maySpawn forces it.
+  const exitCode = childExitCode(child);
+  if (invocation.state.format === "json") {
+    settleStructuredChildStatus(invocation, settlement, child, exitCode);
+    return;
+  }
   if (child.signal === null) {
     for (const action of settlement.nextActions) {
       invocation.runtime.stderr.write(
@@ -243,7 +246,51 @@ export function settleChildStatus(
       );
     }
   }
-  settleVerbatimExitCode(invocation, childExitCode(child));
+  settleVerbatimExitCode(invocation, exitCode);
+}
+
+function settleStructuredChildStatus(
+  invocation: Invocation,
+  settlement: ChildStatusSettlement,
+  child: { readonly exitCode: number | null; readonly signal: string | null },
+  exitCode: number,
+): void {
+  settleVerbatimExitCode(invocation, exitCode);
+  const nextActions = child.signal === null ? settlement.nextActions : [];
+  if (exitCode === 0) {
+    const envelope: CompletedEnvelope = {
+      ok: true,
+      commandId: invocation.state.commandId,
+      result: null,
+      exitCode,
+      diagnostics: [],
+      nextActions,
+    };
+    emitFrame(invocation, {
+      kind: "result",
+      envelope,
+      commandId: invocation.state.commandId,
+      timestamp: invocation.now().toISOString(),
+    });
+    return;
+  }
+  const how =
+    child.signal === null
+      ? `exited with code ${String(child.exitCode ?? "unknown")}`
+      : `was terminated by ${child.signal}`;
+  emitErrored(invocation, {
+    ok: false,
+    commandId: invocation.state.commandId,
+    error: {
+      code: "CLI.CHILD_PROCESS_FAILED",
+      severity: "error",
+      summary: `The delegated process ${how}.`,
+      nextActions,
+      meta: { exitCode: child.exitCode, signal: child.signal },
+    },
+    diagnostics: [],
+    nextActions,
+  });
 }
 
 /** A session command that returned ok shut down cleanly: no

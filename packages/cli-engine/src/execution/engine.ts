@@ -15,7 +15,7 @@ import type { ActiveCredential } from "../credential-manager";
 import type { EngineEvent, Severity, StreamEvent } from "../events";
 import type { ManagementApiClient } from "../management-api";
 import type { Format, PresentedResult } from "../presentation";
-import { CliStructuredError, type Result } from "../protocol";
+import type { CliStructuredError, Result } from "../protocol";
 import type { EngineCommandSnapshot, RunSummary } from "../run-summary";
 import type { InputStream, Runtime } from "../runtime";
 import {
@@ -45,11 +45,7 @@ import {
   renderHelp,
 } from "./help";
 import { checkNeeds, type NeedsOutcome } from "./needs";
-import {
-  configFlagGivenNoValue,
-  formatFlagGiven,
-  versionFlagGiven,
-} from "./pre-parse-argv";
+import { configFlagGivenNoValue, versionFlagGiven } from "./pre-parse-argv";
 import {
   commandSegments,
   settleBug,
@@ -520,10 +516,8 @@ export class EngineImpl implements Engine {
     }
   }
 
-  /** The refusals a maySpawn command can hit before anything runs: a
-   *  child's terminal output cannot be framed as a json stream, and a
-   *  host that mounts the command without a spawn adapter is
-   *  misconfigured. Returns whether the run was settled here. */
+  /** A host that mounts a maySpawn command without a spawn adapter is
+   *  misconfigured. Refuse before needs or handler side effects. */
   private refuseUnspawnable(
     invocation: Invocation,
     entry: CommandTreeEntry,
@@ -531,11 +525,6 @@ export class EngineImpl implements Engine {
     const state = invocation.state;
     if (!entry.def.maySpawn) {
       return false;
-    }
-    if (formatFlagGiven(state.argv) === "json") {
-      state.format = "human";
-      settleErrored(invocation, jsonUnsupportedError(entry.id));
-      return true;
     }
     if (invocation.runtime.spawn === undefined) {
       // The run is doomed, and refuses here, before the needs check,
@@ -632,9 +621,6 @@ export class EngineImpl implements Engine {
     let needsOutcome: NeedsOutcome;
     try {
       applySharedFlags(state, rawFlags as SharedFlags, invocation.runtime);
-      if (entry.def.maySpawn) {
-        state.format = "human";
-      }
       needsOutcome = await checkNeeds(entry.def, invocation);
     } catch (cause) {
       // The child preflight can be awaiting the token endpoint when the
@@ -792,25 +778,6 @@ function declaredConfigSections(spec: EngineSpec): readonly string[] {
       ].filter((name): name is string => name !== undefined),
     ),
   ];
-}
-
-/** A command that may hand the terminal to a child cannot frame its
- *  output, so json is refused as soon as the command is known — before
- *  the needs check and before anything runs. */
-function jsonUnsupportedError(commandId: string): CliStructuredError {
-  return new CliStructuredError(
-    "CLI.JSON_UNSUPPORTED",
-    `The '${commandId.replaceAll(".", " ")}' command does not support json output.`,
-    {
-      why: "It hands the terminal to another program, whose output cannot be framed as a json stream.",
-      nextActions: [
-        {
-          kind: "user-choice",
-          label: "Run it without --json or --format json.",
-        },
-      ],
-    },
-  );
 }
 
 function declaredCapabilities(def: AnyCommand): CommandCapabilities {

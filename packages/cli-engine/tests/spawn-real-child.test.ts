@@ -140,7 +140,7 @@ describe.skipIf(process.platform === "win32")(
         spawn: realSpawn,
       });
 
-      const result = await cli.run(["converge"]);
+      const result = await cli.run(["converge", "--format", "human"]);
 
       expect(result.exitCode).toBe(2);
       expect(result.stderr).toContain("CLI.SPAWN_FAILED");
@@ -297,19 +297,22 @@ function startHost(
 describe.skipIf(process.platform === "win32")(
   "ctx.spawn, real child through a real engine host",
   () => {
-    test("child stdio is inherited and unframed; buffered commentary flushes after it", async () => {
+    test("structured mode routes child output to diagnostics and keeps stdout framed", async () => {
       const dir = scratch();
 
       const host = startHost("unframed-stdout", dir);
       const run = await host.done;
 
       expect(run.exitCode).toBe(0);
-      expect(run.stdout).toBe("child-said-hello\n");
+      const frames = run.stdout
+        .trim()
+        .split("\n")
+        .map((line) => JSON.parse(line) as { kind: string; text?: string });
+      expect(frames.map((frame) => frame.kind)).toEqual(["message", "result"]);
+      expect(frames[0]?.text).toBe("during-child");
+      expect(run.stdout).not.toContain("child-said-hello");
+      expect(run.stderr).toContain("child-said-hello");
       expect(run.stderr).toContain("child-said-stderr");
-      expect(run.stderr).toContain("during-child");
-      expect(run.stderr.indexOf("during-child")).toBeGreaterThan(
-        run.stderr.indexOf("child-said-stderr"),
-      );
     });
 
     test("native Ctrl-C reaches the child through the shared process group", async () => {

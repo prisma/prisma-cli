@@ -181,11 +181,6 @@ export function resolveExample(example: string, cliName: string): string {
     : `${cliName} ${example}`;
 }
 
-/** The --json refusal is stated in help, so a machine consumer learns
- *  it without running the command. */
-export const NO_JSON_NOTE =
-  "This command hands the terminal to another program and does not support --json.";
-
 function commandDocs(
   def: AnyCommand,
   cliName: string,
@@ -193,15 +188,13 @@ function commandDocs(
   const examples = def.help.examples.map((example) =>
     resolveExample(example, cliName),
   );
-  const notes = def.maySpawn ? ["", NO_JSON_NOTE] : [];
-  if (examples.length === 0 && notes.length === 0) {
+  if (examples.length === 0) {
     return { brief: def.help.summary, fullDescription: def.help.description };
   }
   return {
     brief: def.help.summary,
     fullDescription: [
       def.help.description ?? def.help.summary,
-      ...notes,
       ...(examples.length === 0
         ? []
         : ["", "Examples:", ...examples.map((example) => `  ${example}`)]),

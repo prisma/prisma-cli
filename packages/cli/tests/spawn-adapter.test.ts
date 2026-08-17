@@ -4,13 +4,13 @@
  * about test-local copies, so this is the test that pins the adapter
  * production actually wires — exit passthrough, ENOENT rejection, kill
  * delivery, and the spawn options the whole design rests on (inherited
- * stdio, no `detached`, no new console). Runs on the Windows CI leg
+ * human stdio, piped structured output, no `detached`, no new console). Runs on the Windows CI leg
  * too, which is where the options assertion earns its keep.
  */
 import { existsSync, mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { describe, expect, test, vi } from "vitest";
+import { beforeEach, describe, expect, test, vi } from "vitest";
 
 const spawnOptionsSeen = vi.hoisted(() => [] as Array<Record<string, unknown>>);
 
@@ -29,9 +29,19 @@ vi.mock("node:child_process", async (importOriginal) => {
   };
 });
 
-import { spawnChild } from "../src/spawn";
+import { makeSpawnChild } from "../src/spawn";
 
 const NODE = process.execPath;
+let diagnosticText = "";
+const spawnChild = makeSpawnChild({
+  write: (text) => {
+    diagnosticText += text;
+  },
+});
+
+beforeEach(() => {
+  diagnosticText = "";
+});
 
 async function waitForFile(path: string, timeoutMs = 10_000): Promise<void> {
   const deadline = Date.now() + timeoutMs;
@@ -51,6 +61,7 @@ describe("the shipped spawn adapter", () => {
       args: ["-e", "process.exit(0)"],
       cwd: process.cwd(),
       env: process.env,
+      output: "inherit",
     });
     await child.ended;
 
@@ -68,6 +79,7 @@ describe("the shipped spawn adapter", () => {
       args: ["-e", "process.exit(3)"],
       cwd: process.cwd(),
       env: process.env,
+      output: "inherit",
     });
 
     await expect(child.ended).resolves.toEqual({ exitCode: 3, signal: null });
@@ -79,6 +91,7 @@ describe("the shipped spawn adapter", () => {
       args: [],
       cwd: process.cwd(),
       env: process.env,
+      output: "inherit",
     });
 
     await expect(child.ended).rejects.toMatchObject({ code: "ENOENT" });
@@ -100,6 +113,7 @@ describe("the shipped spawn adapter", () => {
         ],
         cwd: process.cwd(),
         env: process.env,
+        output: "inherit",
       });
       await waitForFile(ready);
 
@@ -114,4 +128,191 @@ describe("the shipped spawn adapter", () => {
     },
     20_000,
   );
+
+  test("routes both child streams to diagnostics in structured mode", async () => {
+    const child = spawnChild({
+      command: NODE,
+      args: [
+        "-e",
+        "process.stdout.write('child-out'); process.stderr.write('child-err')",
+      ],
+      cwd: process.cwd(),
+      env: process.env,
+      output: "diagnostic",
+    });
+
+    await expect(child.ended).resolves.toEqual({ exitCode: 0, signal: null });
+    expect(spawnOptionsSeen.at(-1)?.stdio).toEqual(["inherit", "pipe", "pipe"]);
+    expect(diagnosticText).toContain("child-out");
+    expect(diagnosticText).toContain("child-err");
+  });
+
+  test("preserves a UTF-8 character split across child output chunks", async () => {
+    const child = spawnChild({
+      command: NODE,
+      args: [
+        "-e",
+        "process.stdout.write(Buffer.from([0xf0, 0x9f])); setTimeout(() => process.stdout.write(Buffer.from([0x98, 0x80])), 50)",
+      ],
+      cwd: process.cwd(),
+      env: process.env,
+      output: "diagnostic",
+    });
+
+    await expect(child.ended).resolves.toEqual({ exitCode: 0, signal: null });
+    expect(diagnosticText).toBe("😀");
+  });
+
+  test("waits for diagnostic backpressure to drain before settling", async () => {
+    const listeners: Record<string, ((cause?: unknown) => void) | undefined> =
+      {};
+    let firstWrite = true;
+    let forwarded = "";
+    const backpressuredSpawn = makeSpawnChild({
+      write: (text) => {
+        forwarded += text;
+        if (!firstWrite) return true;
+        firstWrite = false;
+        return false;
+      },
+      once: (event, listener) => {
+        listeners[event] = listener;
+      },
+    });
+    const child = backpressuredSpawn({
+      command: NODE,
+      args: ["-e", "process.stdout.write('held-output')"],
+      cwd: process.cwd(),
+      env: process.env,
+      output: "diagnostic",
+    });
+    let settled = false;
+    const ended = child.ended.then((result) => {
+      settled = true;
+      return result;
+    });
+
+    await vi.waitFor(() => expect(listeners.drain).toBeDefined());
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    expect(settled).toBe(false);
+    listeners.drain?.();
+
+    await expect(ended).resolves.toEqual({ exitCode: 0, signal: null });
+    expect(forwarded).toBe("held-output");
+  });
+
+  test("a diagnostic sink that errors instead of draining still settles with the child's status", async () => {
+    const listeners: Record<string, Array<(cause?: unknown) => void>> = {};
+    const failingSpawn = makeSpawnChild({
+      write: () => false,
+      once: (event, listener) => {
+        listeners[event] ??= [];
+        listeners[event].push(listener);
+      },
+    });
+    const child = failingSpawn({
+      command: NODE,
+      args: ["-e", "process.stdout.write('doomed-output'); process.exit(7)"],
+      cwd: process.cwd(),
+      env: process.env,
+      output: "diagnostic",
+    });
+
+    await vi.waitFor(() =>
+      expect(listeners.drain?.length ?? 0).toBeGreaterThan(0),
+    );
+    for (const listener of listeners.error ?? []) {
+      listener(new Error("EPIPE"));
+    }
+
+    await expect(child.ended).resolves.toEqual({ exitCode: 7, signal: null });
+  });
+
+  test("a throwing diagnostic sink does not reject the child's status", async () => {
+    const throwingSpawn = makeSpawnChild({
+      write: () => {
+        throw new Error("sink is gone");
+      },
+    });
+    const child = throwingSpawn({
+      command: NODE,
+      args: ["-e", "process.stdout.write('lost'); process.exit(3)"],
+      cwd: process.cwd(),
+      env: process.env,
+      output: "diagnostic",
+    });
+
+    await expect(child.ended).resolves.toEqual({ exitCode: 3, signal: null });
+  });
+
+  test.skipIf(process.platform === "win32")(
+    "a grandchild holding the pipes does not block settlement past the drain grace",
+    async () => {
+      const gracedSpawn = makeSpawnChild(
+        {
+          write: (text) => {
+            diagnosticText += text;
+          },
+        },
+        { drainGraceMs: 200 },
+      );
+      const startedAt = Date.now();
+      const child = gracedSpawn({
+        command: NODE,
+        args: [
+          "-e",
+          `require("node:child_process").spawn(process.execPath, ["-e", "setTimeout(() => {}, 10000)"], { detached: true, stdio: ["ignore", "inherit", "ignore"] }).unref();`,
+        ],
+        cwd: process.cwd(),
+        env: process.env,
+        output: "diagnostic",
+      });
+
+      await expect(child.ended).resolves.toEqual({ exitCode: 0, signal: null });
+      // Materially below the 5s default grace: proves the configured
+      // 200ms grace was honored, not merely eventual completion.
+      expect(Date.now() - startedAt).toBeLessThan(3_000);
+    },
+    20_000,
+  );
+
+  test("removes its diagnostic listeners once forwarding ends", async () => {
+    const registered: Array<{
+      event: string;
+      listener: (cause?: unknown) => void;
+    }> = [];
+    const removed: Array<{
+      event: string;
+      listener: (cause?: unknown) => void;
+    }> = [];
+    const trackingSpawn = makeSpawnChild({
+      write: () => true,
+      once: (event, listener) => {
+        registered.push({ event, listener });
+      },
+      off: (event, listener) => {
+        removed.push({ event, listener });
+      },
+    });
+    const child = trackingSpawn({
+      command: NODE,
+      args: ["-e", "process.stdout.write('bye')"],
+      cwd: process.cwd(),
+      env: process.env,
+      output: "diagnostic",
+    });
+
+    await expect(child.ended).resolves.toEqual({ exitCode: 0, signal: null });
+    expect(registered.length).toBeGreaterThan(0);
+    expect(removed.length).toBe(registered.length);
+    for (const entry of registered) {
+      expect(
+        removed.some(
+          (candidate) =>
+            candidate.event === entry.event &&
+            candidate.listener === entry.listener,
+        ),
+      ).toBe(true);
+    }
+  });
 });
