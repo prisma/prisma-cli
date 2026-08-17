@@ -114,7 +114,14 @@ jobs:
       # excluded from the sweep and ships at its own committed version.
       - name: Stamp dev version
         if: ${{ steps.version.outputs.publish == 'true' && steps.version.outputs.tag == 'dev' }}
-        run: node scripts/set-version.ts "${{ steps.version.outputs.version }}"
+        # The lockfile refresh is part of the stamp: pnpm verifies
+        # manifests against the lockfile before running any script, so a
+        # stamped workspace with an unstamped lockfile fails the next
+        # pnpm invocation (it did, publish run 48). Same pairing
+        # bump-version does for committed bumps; still ephemeral.
+        run: |
+          node scripts/set-version.ts "${{ steps.version.outputs.version }}"
+          pnpm install --lockfile-only --no-frozen-lockfile
 
       - name: Build packages
         if: ${{ steps.version.outputs.publish == 'true' }}
