@@ -5,6 +5,26 @@
  * This runs in the ordinary unit suite, with no credentials, so adding
  * a command without an end-to-end test fails the pull request that adds
  * it rather than being noticed a year later.
+ *
+ * Why this repo owes that, when the commands have owners of their own:
+ * the product repos test their commands exhaustively, and none of them
+ * can reproduce the configuration THIS binary assembles. The mount
+ * paths, the engine version actually linked, several families' config
+ * sections in one file, the credential wiring and the dependency tree
+ * inside the published tarball exist only here. A command can pass its
+ * owner's entire suite and be broken the moment it is mounted.
+ *
+ * #171 is the proof rather than the worry. Making the engine call every
+ * presentation a command declares turned `prisma migration list` into an
+ * exit 2, while orm-toolchain's own tests stayed green throughout —
+ * they know nothing about the engine version they will be mounted
+ * against. One in-process mount test caught it. Twenty-one other ORM
+ * commands had nothing that would have.
+ *
+ * A happy path here means the command ran and did its job. Not `--help`,
+ * not "it parsed its arguments", not "it failed honestly without
+ * credentials" — those prove a command is reachable, which is a
+ * different claim.
  */
 import { readdir, readFile } from "node:fs/promises";
 import path from "node:path";
@@ -77,14 +97,6 @@ const EXCLUSIONS: Readonly<Record<string, string>> = {
     "A session command: it runs until SIGINT or SIGTERM, redeploying on file change, so it has no happy path that terminates on its own.",
   "composer log":
     "A session command that streams until interrupted, against an app only `composer deploy` could have deployed.",
-  "service deployment start":
-    "Acts on a deployment, and the API only accepts a start once an artifact has been uploaded. Only `composer deploy` produces one, which this suite cannot run.",
-  "service deployment stop":
-    "Acts on a deployment, which only `composer deploy` can create here. Same reason as `service deployment start`.",
-  "service deployment delete":
-    "Deletes a deployment, which only `composer deploy` can create here. Same reason as `service deployment start`.",
-  "service logs":
-    "Reads a deployment's log output, so it needs a deployment that has run. Only `composer deploy` produces one, which this suite cannot run.",
 };
 
 /**
@@ -94,28 +106,37 @@ const EXCLUSIONS: Readonly<Record<string, string>> = {
  * here. A command added from today on needs a test or an EXCLUSIONS
  * entry saying why it cannot have one.
  *
- * These entries are owed for two different reasons, and the difference
- * matters to whoever picks one up.
+ * This list used to hold everything that needed a DEPLOYED service, on
+ * the grounds that only Composer can make one. It can now be made here:
+ * `e2e/deployed-service.ts` creates a deployment through the management
+ * API, uploads an artifact to the pre-signed URL it answers with, and
+ * starts and promotes it through the CLI. That covered seven commands,
+ * and what is left needs something the deployment alone does not give.
  *
- * `service open`, the four `service deployment *` commands and
- * `build logs` need a service that has been DEPLOYED, which Composer
- * does and this repo cannot; covering them needs a fixture service that
- * outlives a CI run.
+ * `service deployment rollback` needs a SECOND promoted deployment to
+ * roll back from. The fixture makes one; making two and promoting them
+ * in order is more run time and more teardown, and is the next thing to
+ * write.
  *
- * `service show` and the five `service domain *` commands need no such
- * thing — they act on a service that merely exists, and `service create`
- * makes one without deploying. They are simply unwritten. `service show`
- * is the easiest of them: D1's unit tests already cover it against a
- * service that was never promoted, so a real happy path in
- * `e2e/service.e2e.ts` has no remaining obstacle.
+ * The five `service domain *` commands need a hostname whose DNS we
+ * control. With a promoted deployment in place, `service domain add`
+ * gets all the way to `SERVICE.DOMAIN_DNS_NOT_CONFIGURED` — "DNS
+ * verification failed: ensure the hostname CNAMEs to
+ * switchboard.ewr.prisma.build." No fixture inside this repo can satisfy
+ * that; it needs a domain the test account owns and a DNS record.
+ *
+ * `build logs` needs a build, which comes from a git push or a Console
+ * action, not from anything the CLI can do.
+ *
+ * `service logs` arrived while this was being written, excluded because
+ * "only `composer deploy` produces" a deployment to read logs from. That
+ * is no longer true, so it is owed rather than excused — it needs a
+ * deployment that has actually served traffic, which is a little more
+ * than the fixture does today.
  */
 const AWAITING_COVERAGE: readonly string[] = [
-  "service show",
-  "service open",
-  "service deployment list",
-  "service deployment show",
-  "service deployment promote",
   "service deployment rollback",
+  "service logs",
   "service domain add",
   "service domain show",
   "service domain remove",
