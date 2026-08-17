@@ -1,10 +1,10 @@
 #!/usr/bin/env node
 
-// Repins the shell's exact dependencies on the product CLI packages to
+// Updates the shell's exact dependencies on the product CLI packages to
 // what their repos last published (operator ruling 2026-08-13: family
 // publishes flow into this repo automatically and deploy as dev
 // versions; only a real CLI release needs a human). Run by
-// `.github/workflows/auto-repin.yml` on a repository_dispatch from a
+// `.github/workflows/update-product-versions.yml` on a repository_dispatch from a
 // product repo's publish workflow, on a daily schedule as the backstop
 // for missed dispatches, and by hand via workflow_dispatch.
 //
@@ -34,14 +34,14 @@ const rootDir = dirname(dirname(fileURLToPath(import.meta.url)));
 const manifestPath = join(rootDir, "packages", "cli", "package.json");
 
 /**
- * Computes the repin edits for a manifest given the registry's current
+ * Computes the version-update edits for a manifest given the registry's current
  * versions. Pure; exported for tests.
  *
  * @param {{ dependencies?: Record<string, string> }} manifest
  * @param {ReadonlyMap<string, string | undefined>} published name → version at its watched tag
  * @returns {Array<{ name: string; from: string; to: string }>}
  */
-export function computeRepins(manifest, published) {
+export function computeVersionUpdates(manifest, published) {
   const changes = [];
   const deps = manifest.dependencies ?? {};
   for (const { name } of WATCHED) {
@@ -61,7 +61,7 @@ function publishedVersion(name, tag) {
     }).trim();
     return out.length > 0 ? out : undefined;
   } catch {
-    // Not published yet (or the tag does not exist) — nothing to repin to.
+    // Not published yet (or the tag does not exist) — nothing to update to.
     return undefined;
   }
 }
@@ -71,7 +71,7 @@ function main() {
   const published = new Map(
     WATCHED.map(({ name, tag }) => [name, publishedVersion(name, tag)]),
   );
-  const changes = computeRepins(manifest, published);
+  const changes = computeVersionUpdates(manifest, published);
 
   for (const { name, from, to } of changes) {
     manifest.dependencies[name] = to;

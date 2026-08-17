@@ -1,7 +1,7 @@
-name: Auto-repin product CLI packages
+name: Update product CLI versions
 
 # When composer or prisma/prisma publish a family package, this repo
-# repins automatically and the merged repin ships as a dev version of
+# updates its pinned version automatically, and the merged update ships as a dev version of
 # the CLI (operator ruling 2026-08-13; docs/oss/versioning.md). Only a
 # real CLI release needs a human.
 #
@@ -9,11 +9,11 @@ name: Auto-repin product CLI packages
 #   - repository_dispatch `family-published`: sent by the product
 #     repos' publish workflows the moment they ship.
 #   - schedule (daily): the backstop for a missed dispatch — the same
-#     comparison against the registry, so a lost event delays a repin
+#     comparison against the registry, so a lost event delays an update
 #     by at most a day.
 #   - workflow_dispatch: run it by hand.
 #
-# The PR is opened with REPIN_PAT, not GITHUB_TOKEN, for two reasons:
+# The PR is opened with BOT_GITHUB_TOKEN, not GITHUB_TOKEN, for two reasons:
 # pull requests created with the workflow token never trigger CI, and
 # without CI the required checks never report, so auto-merge would hang
 # forever. The PAT is the wmadden-electric bot's.
@@ -26,12 +26,12 @@ on:
   workflow_dispatch:
 
 concurrency:
-  group: auto-repin
+  group: update-product-versions
   cancel-in-progress: false
 
 jobs:
-  repin:
-    name: Repin against the registry
+  update:
+    name: Update pinned versions against the registry
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -52,40 +52,40 @@ jobs:
           node-version-file: .node-version
 
       - name: Compare pins against the registry
-        id: repin
-        run: node scripts/auto-repin.mjs
+        id: compare
+        run: node scripts/update-product-versions.mjs
 
       # `pnpm install --no-frozen-lockfile` scoped to the lockfile
-      # refresh: the repin edits one manifest, and the PR must carry the
+      # refresh: the version update edits one manifest, and the PR must carry the
       # matching lockfile or every CI job fails on --frozen-lockfile.
       - name: Refresh the lockfile
-        if: ${{ steps.repin.outputs.changed == 'true' }}
+        if: ${{ steps.compare.outputs.changed == 'true' }}
         run: |
           corepack enable
           pnpm install --lockfile-only --no-frozen-lockfile
 
-      - name: Open the repin PR with auto-merge
-        if: ${{ steps.repin.outputs.changed == 'true' }}
+      - name: Open the version-update PR with auto-merge
+        if: ${{ steps.compare.outputs.changed == 'true' }}
         env:
-          GH_TOKEN: ${{ secrets.REPIN_PAT }}
-          SUMMARY: ${{ steps.repin.outputs.summary }}
+          GH_TOKEN: ${{ secrets.BOT_GITHUB_TOKEN }}
+          SUMMARY: ${{ steps.compare.outputs.summary }}
         run: |
           if [ -z "$GH_TOKEN" ]; then
-            echo "::error::REPIN_PAT is not configured; cannot open a CI-triggering PR. Add the bot PAT as the REPIN_PAT repository secret."
+            echo "::error::BOT_GITHUB_TOKEN is not configured; cannot open a CI-triggering PR. Add the bot PAT as the BOT_GITHUB_TOKEN repository secret."
             exit 1
           fi
-          BRANCH="auto/repin-$(date -u +%Y%m%d%H%M%S)"
+          BRANCH="auto/update-product-versions-$(date -u +%Y%m%d%H%M%S)"
           git config user.name "willbot"
           git config user.email "w.a.madden+machine@gmail.com"
           git checkout -b "$BRANCH"
           git add packages/cli/package.json pnpm-lock.yaml
           git commit -s --trailer "Signed-off-by: Will Madden <madden@prisma.io>" \
-            -m "Repin product CLI packages to the registry: $SUMMARY" \
-            -m "Opened automatically (auto-repin.yml); merging ships a dev version of the CLI. A real release stays a human act."
+            -m "Update product CLI packages to their latest published versions: $SUMMARY" \
+            -m "Opened automatically (update-product-versions.yml); merging ships a dev version of the CLI. A real release stays a human act."
           git push "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" "$BRANCH"
           PR_URL=$(gh pr create \
-            --title "Repin product CLI packages: $SUMMARY" \
-            --body "Automated repin from the registry ($SUMMARY). Merging publishes a \`dev\` version of the CLI automatically; the conformance checks on this PR are what stand between a family publish and that dev build. Opened by auto-repin.yml." \
+            --title "Update product CLI packages: $SUMMARY" \
+            --body "Automated version update from the registry ($SUMMARY). Merging publishes a \`dev\` version of the CLI automatically; the conformance checks on this PR are what stand between a family publish and that dev build. Opened by update-product-versions.yml." \
             --base main --head "$BRANCH")
           gh pr merge --auto --squash "$PR_URL"
           echo "Opened $PR_URL with auto-merge armed."

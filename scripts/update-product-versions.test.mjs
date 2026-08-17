@@ -1,10 +1,10 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { computeRepins } from "./auto-repin.mjs";
+import { computeVersionUpdates } from "./update-product-versions.mjs";
 
-describe("computeRepins", () => {
-  it("repins a watched dependency whose registry version moved", () => {
-    const changes = computeRepins(
+describe("computeVersionUpdates", () => {
+  it("updates a watched dependency whose registry version moved", () => {
+    const changes = computeVersionUpdates(
       { dependencies: { "@prisma/composer": "0.6.0-dev.16", left: "1.0.0" } },
       new Map([["@prisma/composer", "0.7.0"]]),
     );
@@ -14,7 +14,7 @@ describe("computeRepins", () => {
   });
 
   it("skips watched packages the shell does not depend on — candidates, not requirements", () => {
-    const changes = computeRepins(
+    const changes = computeVersionUpdates(
       { dependencies: { "@prisma/composer": "0.6.0-dev.16" } },
       new Map([
         ["@prisma/composer", "0.6.0-dev.16"],
@@ -25,7 +25,7 @@ describe("computeRepins", () => {
   });
 
   it("skips a package the registry has never seen at its watched tag", () => {
-    const changes = computeRepins(
+    const changes = computeVersionUpdates(
       { dependencies: { "@prisma/orm-toolchain": "8.0.0-rc.1-dev.40" } },
       new Map([["@prisma/orm-toolchain", undefined]]),
     );
@@ -33,7 +33,7 @@ describe("computeRepins", () => {
   });
 
   it("reports every drifted pin in one run", () => {
-    const changes = computeRepins(
+    const changes = computeVersionUpdates(
       {
         dependencies: {
           "@prisma/composer": "0.6.0",
