@@ -900,7 +900,7 @@ describe("credential injection", () => {
       },
     });
 
-    const result = await cli.run(["converge"], {
+    const result = await cli.run(["converge", "--format", "human"], {
       onEvent: (event) => {
         if (event.kind === "status") {
           cli.credentialManager.overwriteStoredState({
@@ -1031,7 +1031,7 @@ describe("credential injection", () => {
       },
     });
 
-    const result = await cli.run(["converge"]);
+    const result = await cli.run(["converge", "--format", "human"]);
 
     expect(result.exitCode).toBe(2);
     expect(result.stderr).toContain("expires too soon");
@@ -1134,7 +1134,7 @@ describe("credential injection", () => {
       refreshCredential: async () => ({ kind: "invalid" }),
     });
 
-    const result = await cli.run(["converge"]);
+    const result = await cli.run(["converge", "--format", "human"]);
 
     expect(result.exitCode).toBe(2);
     expect(result.stderr).toContain("Your session has expired");
@@ -1157,7 +1157,7 @@ describe("credential injection", () => {
       },
     });
 
-    const result = await cli.run(["converge"]);
+    const result = await cli.run(["converge", "--format", "human"]);
 
     expect(result.exitCode).toBe(2);
     expect(result.stderr).toContain("CLI.AUTH_SERVICE_ERROR");
