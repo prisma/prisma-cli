@@ -36,7 +36,10 @@ describe("selectTag", () => {
     );
   });
 
-  /** The ORM today: the RC line is moving to `next`, which does not exist yet. */
+  /**
+   * The case that makes this a list: a product that has not created the
+   * preferred tag must still be followed, not silently skipped.
+   */
   it("falls through to a later candidate when the preferred tag does not exist", () => {
     assert.deepEqual(
       selectTag({ latest: "8.0.0-rc.1", dev: "8.0.0-rc.1-dev.46" }, [

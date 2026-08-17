@@ -34,23 +34,23 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 // Where each product publishes its releases, most-preferred tag first:
-// the first tag that exists wins. A list rather than one name because
-// the two products differ and the ORM is mid-move — asking for a single
-// tag is what made the previous version of this script silently never
-// update the ORM (it asked for `next`, which did not exist).
+// the first tag that exists wins. Every one of these is a NEW package
+// with no pre-8 audience to protect, so its releases go to `latest`,
+// pre-release versions and all (operator, 2026-08-17). Holding `latest`
+// back behind `next` matters only for the bare `prisma` name, which THIS
+// repo publishes and which still serves Prisma 7 there.
+//
+// A list rather than a single tag name because asking for one tag is
+// what made the previous version of this script silently never update
+// the ORM: it asked for `next`, which no prisma/prisma package has ever
+// had, and a missing tag was indistinguishable from a missing package.
 const WATCHED = /** @type {const} */ ([
   { name: "@prisma/composer-cli", release: ["latest"] },
   // The library, a devDependency here: the startup probe imports it to
   // prove the eager-loading detector works. It must move with the CLI
   // package it ships beside, or the fixture resolves a second copy.
   { name: "@prisma/composer", release: ["latest"] },
-  // The v8 RC line publishes under `next` (operator, 2026-08-17).
-  // prisma/prisma's own versioning doc still describes the RC line
-  // moving `latest`, and `latest` points at 8.0.0-rc.1 today, so both
-  // are listed: `next` once it exists, `latest` until then. The one case
-  // this list cannot see is a `next` left behind after the line goes
-  // stable — reorder it then.
-  { name: "@prisma/orm-toolchain", release: ["next", "latest"] },
+  { name: "@prisma/orm-toolchain", release: ["latest"] },
 ]);
 
 const MANIFEST_PATHS = [
