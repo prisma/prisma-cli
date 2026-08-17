@@ -5,6 +5,7 @@ import {
   computeNextMinor,
   computeNextReleaseVersion,
   devVersion,
+  isReleasePublish,
   parseVersion,
   releaseDistTag,
 } from "./determine-version-utils.ts";
@@ -168,5 +169,21 @@ describe("devVersion", () => {
 
   it("refuses a non-canonical base, same as every other publish path", () => {
     assert.throws(() => devVersion("8.0.0-rc.2-dev.1", "4"));
+  });
+});
+
+describe("isReleasePublish", () => {
+  it("a dev publish is never a release, and its suffixed version never reaches the canonical check", () => {
+    assert.equal(isReleasePublish("8.0.0-rc.2", "dev"), false);
+  });
+
+  it("a publish under the base's canonical tag is a release", () => {
+    assert.equal(isReleasePublish("8.0.0-rc.2", "next"), true);
+    assert.equal(isReleasePublish("8.1.0", "latest"), true);
+  });
+
+  it("a beta or off-tag publish is not a release", () => {
+    assert.equal(isReleasePublish("8.0.0-rc.2", "beta"), false);
+    assert.equal(isReleasePublish("8.0.0-rc.2", "latest"), false);
   });
 });
