@@ -13,8 +13,13 @@ export interface SpawnRequest {
   readonly args: readonly string[];
   readonly cwd: string;
   readonly env: Readonly<Record<string, string | undefined>>;
-  /** Human mode hands the terminal over unchanged. Structured mode keeps
-   * stdout framed and routes the child's human output to diagnostics. */
+  /** "inherit" hands the terminal over unchanged. "diagnostic" MUST
+   * route the child's stdout and stderr away from this process's
+   * stdout (to the host's diagnostic stream): the engine emits framed
+   * NDJSON on stdout in that mode and cannot detect an adapter that
+   * ignores this field — inherited child stdout would silently corrupt
+   * the stream. Adapters written before this field existed must be
+   * updated. */
   readonly output: "inherit" | "diagnostic";
 }
 

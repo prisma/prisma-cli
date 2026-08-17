@@ -164,7 +164,8 @@ describe("the shipped spawn adapter", () => {
   });
 
   test("waits for diagnostic backpressure to drain before settling", async () => {
-    let drainListener: (() => void) | undefined;
+    const listeners: Record<string, ((cause?: unknown) => void) | undefined> =
+      {};
     let firstWrite = true;
     let forwarded = "";
     const backpressuredSpawn = makeSpawnChild({
@@ -175,8 +176,7 @@ describe("the shipped spawn adapter", () => {
         return false;
       },
       once: (event, listener) => {
-        expect(event).toBe("drain");
-        drainListener = listener;
+        listeners[event] = listener;
       },
     });
     const child = backpressuredSpawn({
@@ -192,12 +192,83 @@ describe("the shipped spawn adapter", () => {
       return result;
     });
 
-    await vi.waitFor(() => expect(drainListener).toBeDefined());
+    await vi.waitFor(() => expect(listeners.drain).toBeDefined());
     await new Promise((resolve) => setTimeout(resolve, 10));
     expect(settled).toBe(false);
-    drainListener?.();
+    listeners.drain?.();
 
     await expect(ended).resolves.toEqual({ exitCode: 0, signal: null });
     expect(forwarded).toBe("held-output");
   });
+
+  test("a diagnostic sink that errors instead of draining still settles with the child's status", async () => {
+    const listeners: Record<string, Array<(cause?: unknown) => void>> = {};
+    const failingSpawn = makeSpawnChild({
+      write: () => false,
+      once: (event, listener) => {
+        listeners[event] ??= [];
+        listeners[event].push(listener);
+      },
+    });
+    const child = failingSpawn({
+      command: NODE,
+      args: ["-e", "process.stdout.write('doomed-output'); process.exit(7)"],
+      cwd: process.cwd(),
+      env: process.env,
+      output: "diagnostic",
+    });
+
+    await vi.waitFor(() =>
+      expect(listeners.drain?.length ?? 0).toBeGreaterThan(0),
+    );
+    for (const listener of listeners.error ?? []) {
+      listener(new Error("EPIPE"));
+    }
+
+    await expect(child.ended).resolves.toEqual({ exitCode: 7, signal: null });
+  });
+
+  test("a throwing diagnostic sink does not reject the child's status", async () => {
+    const throwingSpawn = makeSpawnChild({
+      write: () => {
+        throw new Error("sink is gone");
+      },
+    });
+    const child = throwingSpawn({
+      command: NODE,
+      args: ["-e", "process.stdout.write('lost'); process.exit(3)"],
+      cwd: process.cwd(),
+      env: process.env,
+      output: "diagnostic",
+    });
+
+    await expect(child.ended).resolves.toEqual({ exitCode: 3, signal: null });
+  });
+
+  test.skipIf(process.platform === "win32")(
+    "a grandchild holding the pipes does not block settlement past the drain grace",
+    async () => {
+      const gracedSpawn = makeSpawnChild(
+        {
+          write: (text) => {
+            diagnosticText += text;
+          },
+        },
+        { drainGraceMs: 200 },
+      );
+      const child = gracedSpawn({
+        command: NODE,
+        args: [
+          "-e",
+          `require("node:child_process").spawn(process.execPath, ["-e", "setTimeout(() => {}, 10000)"], { detached: true, stdio: ["ignore", "inherit", "ignore"] }).unref();`,
+        ],
+        cwd: process.cwd(),
+        env: process.env,
+        output: "diagnostic",
+      });
+
+      await expect(child.ended).resolves.toEqual({ exitCode: 0, signal: null });
+    },
+    20_000,
+  );
 });

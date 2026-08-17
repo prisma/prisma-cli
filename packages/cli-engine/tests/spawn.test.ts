@@ -554,7 +554,7 @@ describe("output while a child owns the terminal", () => {
       },
     });
 
-    await cli.run(["chatty"], {
+    await cli.run(["chatty", "--format", "human"], {
       onEvent: (event) => {
         if (event.kind === "message") {
           events.push(event.text);
@@ -564,6 +564,52 @@ describe("output while a child owns the terminal", () => {
 
     expect(eventsAtChildExit).toBe(0);
     expect(events).toEqual(["during-1", "during-2", "after"]);
+  });
+
+  test("json frames stream live while the child runs", async () => {
+    let eventsAtChildExit = -1;
+    const events: string[] = [];
+    const chatty = defineCommand({
+      help: { summary: "Reports while the child runs" },
+      maySpawn: true,
+      handler: async (_args, ctx) => {
+        const child = ctx.spawn({ command: "alchemy" });
+        ctx.report({ kind: "message", severity: "info", text: "during-1" });
+        ctx.report({ kind: "message", severity: "info", text: "during-2" });
+        await child;
+        return ok(
+          ctx.present(
+            { data: null },
+            {
+              human: () => [],
+              stdout: () => [],
+              json: () => null,
+              next: () => [],
+            },
+          ),
+        );
+      },
+    });
+    const cli = createTestCli({
+      commands: { chatty },
+      now: CLOCK,
+      spawnScript: () => {
+        eventsAtChildExit = events.length;
+        return { exitCode: 0, signal: null };
+      },
+    });
+
+    const result = await cli.run(["chatty", "--json"], {
+      onEvent: (event) => {
+        if (event.kind === "message") {
+          events.push(event.text);
+        }
+      },
+    });
+
+    expect(result.exitCode).toBe(0);
+    expect(eventsAtChildExit).toBe(2);
+    expect(events).toEqual(["during-1", "during-2"]);
   });
 
   test("ctx.present while a child is live is a construction error", async () => {
@@ -1138,7 +1184,18 @@ describe("unknown terminations are never success", () => {
       spawnScript: () => ({ exitCode: null, signal: null }),
     });
 
-    expect((await cli.run(["converge"])).exitCode).toBe(1);
+    const result = await cli.run(["converge"]);
+
+    expect(result.exitCode).toBe(1);
+    expect(result.json.at(-1)).toMatchObject({
+      envelope: {
+        ok: false,
+        error: {
+          code: "CLI.CHILD_PROCESS_FAILED",
+          summary: "The delegated process exited with code unknown.",
+        },
+      },
+    });
   });
 
   test("a signal outside the portable table settles 1, not 128", async () => {
@@ -1345,7 +1402,7 @@ describe("the commentary buffer is bounded", () => {
     const messages: string[] = [];
     const cli = createTestCli({ commands: { chatty }, now: CLOCK });
 
-    const result = await cli.run(["chatty"], {
+    const result = await cli.run(["chatty", "--format", "human"], {
       onEvent: (event) => {
         if (event.kind === "message") {
           messages.push(event.text);

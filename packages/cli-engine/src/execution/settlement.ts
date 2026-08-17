@@ -255,7 +255,7 @@ function settleStructuredChildStatus(
   child: { readonly exitCode: number | null; readonly signal: string | null },
   exitCode: number,
 ): void {
-  invocation.state.settledExitCode = exitCode;
+  settleVerbatimExitCode(invocation, exitCode);
   const nextActions = child.signal === null ? settlement.nextActions : [];
   if (exitCode === 0) {
     const envelope: CompletedEnvelope = {
@@ -276,7 +276,7 @@ function settleStructuredChildStatus(
   }
   const how =
     child.signal === null
-      ? `exited with code ${String(child.exitCode)}`
+      ? `exited with code ${String(child.exitCode ?? "unknown")}`
       : `was terminated by ${child.signal}`;
   emitErrored(invocation, {
     ok: false,
