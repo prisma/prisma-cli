@@ -12,6 +12,7 @@
     "./findings": "./src/findings.ts",
     "./package.json": "./package.json",
     "./tarball": "./src/checks/tarball.ts",
+    "./release-pins": "./src/checks/release-pins.ts",
     "./tarball-io": "./src/tarball-io.ts"
   },
   "engines": {

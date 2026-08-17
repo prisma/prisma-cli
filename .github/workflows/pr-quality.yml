@@ -119,5 +119,13 @@ jobs:
       # Finds a broken tarball on the pull request instead of at publish
       # time. The turbo task builds its own dependencies, so no explicit
       # build step is needed here.
+      #
+      # PUBLISH_CHANNEL=dev because merging a pull request publishes a dev
+      # version of the CLI, and a dev CLI is allowed to depend on the
+      # products' dev builds. A release publish sets `release` instead and
+      # is refused if any dependency is a dev build; that is checked in
+      # publish.yml, which is the only place a release can happen.
       - name: Conformance checks
+        env:
+          PUBLISH_CHANNEL: dev
         run: pnpm check:conformance

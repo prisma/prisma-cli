@@ -34,7 +34,7 @@ writeFileSync(
   JSON.stringify({
     exitCode,
     familyEvaluated: evaluated.some((url) =>
-      url.includes("@prisma/composer/dist/family.mjs"),
+      url.includes("@prisma/composer-cli/dist/family.mjs"),
     ),
     constellation: evaluated
       .filter((url) => CONSTELLATION.test(url))

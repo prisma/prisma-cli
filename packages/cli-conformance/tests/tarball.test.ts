@@ -98,6 +98,9 @@ function input(overrides: Partial<TarballInput> = {}): TarballInput {
     familyPackages: ["@prisma/composer"],
     exceptions: [],
     sandboxDir: "sandbox",
+    // Check 4 has its own suite; the fixtures here carry dev pins, so
+    // these tests declare the channel that tolerates them.
+    channel: "dev",
     ...overrides,
   };
 }
@@ -405,6 +408,85 @@ describe("checkTarball", () => {
   test("no packages at all is a finding, not a pass", async () => {
     const findings = await checkTarball(input({ packages: [] }), fakeIo());
     expect(kinds(findings)).toEqual(["no-subjects"]);
+  });
+
+  /**
+   * Check 4 measures the packed manifests, not the workspace ones: what
+   * ships is what is measured. No exception covers it, so the release
+   * fails.
+   */
+  test("on the release channel a dev build in a packed manifest fails, uncovered by any exception", async () => {
+    const findings = await checkTarball(
+      input({
+        channel: "release",
+        exceptions: [
+          {
+            familyPackage: "@prisma/composer",
+            familyPin: "0.0.9",
+            shellPin: "8.0.0-rc.1",
+            reason: "covers the engine pin, and must not reach check 4",
+            removeWhen: "the families publish against the shipped engine",
+          },
+        ],
+      }),
+      fakeIo(),
+    );
+    const dev = findings.filter((f) => f.kind === "dev-build-in-release");
+    expect(dev).toHaveLength(1);
+    expect(dev[0]?.subject).toBe("@prisma/composer");
+    expect(dev[0]?.suppressedBy).toBeUndefined();
+  });
+
+  test("a family that declares the engine as a peer is measured, not skipped", async () => {
+    const io = fakeIo({
+      readInstalledManifest: (_s, name) =>
+        Promise.resolve(
+          name === "@prisma/composer"
+            ? {
+                version: "0.6.0-dev.16",
+                peerDependencies: { "@prisma/cli-engine": "0.0.9" },
+              }
+            : undefined,
+        ),
+    });
+    const findings = await checkTarball(input(), io);
+    expect(
+      findings.some(
+        (f) =>
+          f.kind === "engine-pin-mismatch" &&
+          f.subject === "@prisma/composer" &&
+          f.summary.includes("peers"),
+      ),
+    ).toBe(true);
+  });
+
+  test("a family whose engine peer equals the shell's pin reports nothing", async () => {
+    const io = fakeIo({
+      readInstalledManifest: (_s, name) =>
+        Promise.resolve(
+          name === "@prisma/composer"
+            ? {
+                version: "0.6.0-dev.16",
+                peerDependencies: { "@prisma/cli-engine": "8.0.0-rc.1" },
+              }
+            : undefined,
+        ),
+      listInstalledCopies: (_s, name) =>
+        Promise.resolve(
+          name === "@prisma/cli-engine"
+            ? [
+                {
+                  version: "8.0.0-rc.1",
+                  path: "node_modules/@prisma/cli-engine",
+                },
+              ]
+            : [],
+        ),
+    });
+    const findings = await checkTarball(input(), io);
+    expect(findings.filter((f) => f.kind === "engine-pin-mismatch")).toEqual(
+      [],
+    );
   });
 
   test("a family package missing from the shell's packed dependencies is a finding", async () => {

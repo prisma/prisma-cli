@@ -4,7 +4,11 @@
  * one-line summary, and bulky evidence kept separate from it.
  */
 
-export type CheckName = "import-purity" | "validator-no-throw" | "tarball";
+export type CheckName =
+  | "import-purity"
+  | "validator-no-throw"
+  | "tarball"
+  | "release-pins";
 
 export type FindingKind =
   /** Built output imports a package the manifest does not declare. */
@@ -25,7 +29,9 @@ export type FindingKind =
   | "install-failed"
   | "bin-failed"
   /** The shell and a family it mounts disagree about the engine version. */
-  | "engine-pin-mismatch";
+  | "engine-pin-mismatch"
+  /** A release depends on a dev build. */
+  | "dev-build-in-release";
 
 /**
  * A recorded reason a finding does not fail the run. Suppressed findings

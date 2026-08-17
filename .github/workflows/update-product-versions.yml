@@ -1,0 +1,110 @@
+name: Update product versions
+
+# When composer or prisma/prisma publish a release of a package this repo
+# depends on, this workflow moves the dependency and opens a pull
+# request; merging it ships a dev version of the CLI (operator rulings
+# 2026-08-13 and 2026-08-17; docs/oss/release-automation.md). Only a real
+# CLI release needs a human.
+#
+# It follows each product's RELEASE tag, never `dev`. The dev channel
+# gets its dev builds from publish.yml's stamp instead, so what this
+# workflow commits is always releasable.
+#
+# Triggers:
+#   - repository_dispatch `product-published`: sent by the product repos'
+#     publish workflows the moment they ship.
+#   - schedule (daily): the backstop for a missed dispatch — the same
+#     comparison against the registry, so a lost event delays an update
+#     by at most a day.
+#   - workflow_dispatch: run it by hand.
+#
+# The pull request is opened with DEPLOY_GITHUB_TOKEN, not GITHUB_TOKEN:
+# pull requests created with the workflow token never trigger CI, and
+# without CI the required checks never report, so auto-merge would wait
+# forever. See docs/oss/release-automation.md for what the token is and
+# how to replace it.
+
+on:
+  repository_dispatch:
+    types: [product-published]
+  schedule:
+    - cron: "17 6 * * *"
+  workflow_dispatch:
+
+concurrency:
+  group: update-product-versions
+  cancel-in-progress: false
+
+jobs:
+  update:
+    name: Compare versions against the registry
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with:
+          persist-credentials: false
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@0e279bb959325dab635dd2c09392533439d90093 # v6.0.8
+
+      - name: Set up Node.js
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
+        with:
+          node-version-file: .node-version
+
+      - name: Compare versions against the registry
+        id: compare
+        run: node scripts/update-product-versions.mjs --channel release
+
+      # `pnpm install --no-frozen-lockfile` scoped to the lockfile
+      # refresh: the edit touches two manifests, and the pull request must
+      # carry the matching lockfile or every CI job fails on
+      # --frozen-lockfile.
+      - name: Refresh the lockfile
+        if: ${{ steps.compare.outputs.changed == 'true' }}
+        run: |
+          corepack enable
+          pnpm install --lockfile-only --no-frozen-lockfile
+
+      - name: Open the pull request with auto-merge
+        if: ${{ steps.compare.outputs.changed == 'true' }}
+        env:
+          GH_TOKEN: ${{ secrets.DEPLOY_GITHUB_TOKEN }}
+          SUMMARY: ${{ steps.compare.outputs.summary }}
+        run: |
+          if [ -z "$GH_TOKEN" ]; then
+            echo "::error::DEPLOY_GITHUB_TOKEN is not configured, so this workflow cannot open a pull request that triggers CI. See docs/oss/release-automation.md."
+            exit 1
+          fi
+          # An open pull request from an earlier run already carries these
+          # versions or is about to be superseded by this one. Close it
+          # rather than stacking a second: two open version updates race
+          # each other's auto-merge and one lands on a stale lockfile.
+          gh pr list --state open --json number,headRefName \
+            --jq '.[] | select(.headRefName | startswith("product-versions/")) | .number' \
+            | while read -r number; do
+            [ -n "$number" ] || continue
+            gh pr close "$number" \
+              --comment "Superseded by a newer product version update." \
+              --delete-branch
+          done
+          BRANCH="product-versions/$(date -u +%Y%m%d%H%M%S)"
+          git config user.name "willbot"
+          git config user.email "w.a.madden+machine@gmail.com"
+          git checkout -b "$BRANCH"
+          git add packages/cli/package.json packages/prisma/package.json pnpm-lock.yaml
+          git commit -s --trailer "Signed-off-by: Will Madden <madden@prisma.io>" \
+            -m "Follow the products' released versions: $SUMMARY" \
+            -m "Opened automatically (update-product-versions.yml); merging ships a dev version of the CLI. A real release stays a human act."
+          git push "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" "$BRANCH"
+          PR_URL=$(gh pr create \
+            --title "Follow the products' released versions: $SUMMARY" \
+            --body "Opened automatically by update-product-versions.yml, following the products' release dist-tags ($SUMMARY). Merging publishes a \`dev\` version of the CLI; the conformance checks on this pull request are what stand between a product release and that dev build." \
+            --base main --head "$BRANCH")
+          gh pr merge --auto --squash "$PR_URL"
+          echo "Opened $PR_URL with auto-merge armed."

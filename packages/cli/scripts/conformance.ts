@@ -1,11 +1,16 @@
 /**
- * The conformance entry for this repo's publish path: all three checks
+ * The conformance entry for this repo's publish path: every check
  * against what would ship. Run as `pnpm check:conformance` (a turbo
  * task, so both dists are built first).
  *
  * Ordering is deliberate: check 1 reads dist/, and packing REBUILDS
  * dist/ (prepack runs the build, tsdown cleans), so the tarball check
  * goes last and reads only the extracted tarballs.
+ *
+ * PUBLISH_CHANNEL says which channel the run is for, and check 4 turns
+ * on it: a dev publish may depend on the products' dev builds, a
+ * release may not. Unset means `release`, so a workflow that forgets to
+ * say blocks a release rather than waving it through.
  */
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
@@ -20,6 +25,7 @@ import {
   type PackageManifest,
 } from "@repo/cli-conformance/import-purity";
 import { sweepBuiltOutput } from "@repo/cli-conformance/module-graph";
+import type { PublishChannel } from "@repo/cli-conformance/release-pins";
 import { sectionsFrom } from "@repo/cli-conformance/subjects";
 import { checkTarball } from "@repo/cli-conformance/tarball";
 import { realTarballIo } from "@repo/cli-conformance/tarball-io";
@@ -39,6 +45,9 @@ const PRISMA_DIR = join(CLI_DIR, "..", "prisma");
 // time out unrelated tests.
 const WORK_DIR = join(CLI_DIR, "..", "..", ".conformance", "cli");
 
+const CHANNEL: PublishChannel =
+  process.env.PUBLISH_CHANNEL === "dev" ? "dev" : "release";
+
 async function manifest(dir: string): Promise<PackageManifest> {
   return JSON.parse(
     await readFile(join(dir, "package.json"), "utf8"),
@@ -50,13 +59,13 @@ async function importPurity(): Promise<readonly Finding[]> {
     label: "@prisma/cli",
     output: await sweepBuiltOutput(join(CLI_DIR, "dist")),
     manifest: await manifest(CLI_DIR),
-    requiredSpecifiers: ["@prisma/cli-engine", "@prisma/composer/family"],
+    requiredSpecifiers: ["@prisma/cli-engine", "@prisma/composer-cli/family"],
   });
   const unscoped = checkImportPurity({
     label: "prisma",
     output: await sweepBuiltOutput(join(PRISMA_DIR, "dist")),
     manifest: await manifest(PRISMA_DIR),
-    requiredSpecifiers: ["@prisma/cli-engine", "@prisma/composer/family"],
+    requiredSpecifiers: ["@prisma/cli-engine", "@prisma/composer-cli/family"],
   });
   const engine = checkImportPurity({
     label: "@prisma/cli-engine",
@@ -90,27 +99,22 @@ async function tarball(): Promise<readonly Finding[]> {
       ],
       shellPackage: "@prisma/cli",
       enginePackage: "@prisma/cli-engine",
-      familyPackages: ["@prisma/composer", "@prisma/orm-toolchain"],
+      familyPackages: ["@prisma/composer-cli", "@prisma/orm-toolchain"],
+      // composer's exception is gone: @prisma/composer-cli declares the
+      // engine as an exact peer at the version this repo ships, which is
+      // what ADR 0004 asks for.
       exceptions: [
-        {
-          familyPackage: "@prisma/composer",
-          familyPin: "0.0.9",
-          shellPin: "0.1.1",
-          reason:
-            "operator ruling 2026-08-12: ignore for now — composer cannot pin an engine version that is not published yet",
-          removeWhen:
-            "composer republishes pinning the engine version prisma-cli ships (tandem order engine → composer → prisma-cli, R-S3-6)",
-        },
         {
           familyPackage: "@prisma/orm-toolchain",
           familyPin: "0.0.9",
           shellPin: "0.1.1",
           reason:
-            "same class, same ruling: the ORM toolchain cannot pin an engine version that is not published yet",
+            "the ORM toolchain still depends on @prisma/cli-engine@0.0.9 rather than peering the version this repo ships, so an install resolves two engines",
           removeWhen:
-            "prisma/prisma republishes @prisma/orm-toolchain pinning the engine version prisma-cli ships",
+            "prisma/prisma publishes @prisma/orm-toolchain declaring @prisma/cli-engine as an exact peer at the version prisma-cli ships (ADR 0004)",
         },
       ],
+      channel: CHANNEL,
       sandboxDir: join(WORK_DIR, "sandbox"),
     },
     realTarballIo(WORK_DIR, {
@@ -129,5 +133,6 @@ const findings: Finding[] = [
   ...(await tarball()),
 ];
 const report = { findings, subjectsChecked: 2 + 1 + 2 };
+process.stdout.write(`conformance: publishing as a ${CHANNEL}\n`);
 process.stdout.write(renderHuman(report));
 process.exitCode = exitCodeFor(report);

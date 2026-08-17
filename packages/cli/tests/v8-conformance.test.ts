@@ -64,7 +64,10 @@ describe("conformance: import purity", () => {
         // Anti-vacuity, and more: these two are the engine boundary this
         // package exists to compose, so a build that stopped importing
         // either one is a broken shell rather than a tidy one.
-        requiredSpecifiers: ["@prisma/cli-engine", "@prisma/composer/family"],
+        requiredSpecifiers: [
+          "@prisma/cli-engine",
+          "@prisma/composer-cli/family",
+        ],
       }),
     ).toEqual([]);
   });

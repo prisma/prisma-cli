@@ -1,6 +1,7 @@
 import type { Finding, Suppression } from "../findings";
 import { bareImportRoots } from "../module-graph";
 import { checkImportPurity, type PackageManifest } from "./import-purity";
+import { checkReleasePins, type PublishChannel } from "./release-pins";
 
 /** A packed manifest also names its bins. */
 export interface PackedManifest extends PackageManifest {
@@ -86,6 +87,11 @@ export interface TarballInput {
   readonly exceptions: readonly PinException[];
   readonly sandboxDir: string;
   readonly binTimeoutMs?: number;
+  /**
+   * Which channel these tarballs are for. Check 4 measures the packed
+   * manifests against it; a dev publish is allowed its dev builds.
+   */
+  readonly channel: PublishChannel;
 }
 
 const EXACT_VERSION = /^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/;
@@ -95,7 +101,8 @@ const EXACT_VERSION = /^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/;
  * imports only what the packed manifest declares. 3b — the root tarball
  * installs into a clean tree and its bins start. 3c — the shell and
  * every family it mounts agree about the engine, measured on manifests
- * and again as copies in the installed tree.
+ * and again as copies in the installed tree. Check 4 rides along on the
+ * same packed manifests: a release depends on no dev build.
  */
 export async function checkTarball(
   input: TarballInput,
@@ -127,6 +134,13 @@ export async function checkTarball(
       ...(await packedImportPurity(pkg.name, result.tarball, manifest, io)),
     );
   }
+
+  findings.push(
+    ...checkReleasePins({
+      manifests: [...packed.values()].map((entry) => entry.manifest),
+      channel: input.channel,
+    }),
+  );
 
   const shell = packed.get(input.shellPackage);
   if (shell === undefined) return findings;
@@ -268,6 +282,51 @@ async function binFindings(
   return findings;
 }
 
+/** 3c for one mounted family, once its installed manifest is in hand. */
+function familyPinFindings(
+  input: TarballInput,
+  family: string,
+  declared: string | undefined,
+  installed: PackedManifest,
+  shellPin: string | undefined,
+): readonly Finding[] {
+  const findings: Finding[] = [];
+  if (declared !== undefined && installed.version !== declared) {
+    findings.push(
+      finding(
+        "engine-pin-mismatch",
+        family,
+        `the shell declares ${family}@${declared} but ${installed.version ?? "an unknown version"} is installed`,
+      ),
+    );
+  }
+  // A family declares the engine as an exact peer (ADR 0004); the older
+  // shape, a regular dependency, is read too so a family that has not
+  // moved yet is still measured rather than skipped.
+  const peer = installed.peerDependencies?.[input.enginePackage];
+  const familyPin = peer ?? installed.dependencies?.[input.enginePackage];
+  if (
+    familyPin === undefined ||
+    shellPin === undefined ||
+    familyPin === shellPin
+  ) {
+    return findings;
+  }
+  const verb = peer === undefined ? "pins" : "peers";
+  const consequence =
+    peer === undefined
+      ? "an install resolves two engines"
+      : "the family did not build against the engine it will be given";
+  findings.push(
+    finding(
+      "engine-pin-mismatch",
+      family,
+      `${family} ${verb} ${input.enginePackage}@${familyPin} while the shell ships ${shellPin} — ${consequence}`,
+    ),
+  );
+  return findings;
+}
+
 async function installedPinFindings(
   input: TarballInput,
   shellManifest: PackedManifest,
@@ -277,33 +336,18 @@ async function installedPinFindings(
   const shellPin = shellManifest.dependencies?.[input.enginePackage];
 
   for (const family of input.familyPackages) {
-    const declared = shellManifest.dependencies?.[family];
-    // biome-ignore lint/performance/noAwaitInLoops: one manifest read per mounted family — one today — keeps findings ordered with the family list
+    // biome-ignore lint/performance/noAwaitInLoops: one manifest read per mounted family — two today — keeps findings ordered with the family list
     const installed = await io.readInstalledManifest(input.sandboxDir, family);
     if (installed === undefined) continue;
-    if (declared !== undefined && installed.version !== declared) {
-      findings.push(
-        finding(
-          "engine-pin-mismatch",
-          family,
-          `the shell declares ${family}@${declared} but ${installed.version ?? "an unknown version"} is installed`,
-        ),
-      );
-    }
-    const familyPin = installed.dependencies?.[input.enginePackage];
-    if (
-      familyPin !== undefined &&
-      shellPin !== undefined &&
-      familyPin !== shellPin
-    ) {
-      findings.push(
-        finding(
-          "engine-pin-mismatch",
-          family,
-          `${family} pins ${input.enginePackage}@${familyPin} while the shell ships ${shellPin} — an install resolves two engines`,
-        ),
-      );
-    }
+    findings.push(
+      ...familyPinFindings(
+        input,
+        family,
+        shellManifest.dependencies?.[family],
+        installed,
+        shellPin,
+      ),
+    );
   }
 
   const copies = await io.listInstalledCopies(
