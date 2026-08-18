@@ -29,6 +29,23 @@ function isNotFoundError(error) {
 
 const rootDir = dirname(dirname(fileURLToPath(import.meta.url)));
 
+const ENGINE_MANIFEST = "packages/cli-engine/package.json";
+
+/**
+ * Whether a manifest change alters what npm publishes. devDependencies
+ * never ship in the tarball — the release version sweep rewrites the
+ * engine's `@repo/*` devDependencies on every bump, and that must not
+ * read as "the engine changed".
+ *
+ * @param {Record<string, unknown>} base
+ * @param {Record<string, unknown>} head
+ * @returns {boolean}
+ */
+export function manifestChangeShips(base, head) {
+  const shipped = ({ devDependencies: _dev, ...rest }) => rest;
+  return JSON.stringify(shipped(base)) !== JSON.stringify(shipped(head));
+}
+
 /**
  * @param {{ changedFiles: readonly string[], engineVersion: string, versionOnRegistry: boolean }} input
  * @returns {string | null} the failure message, or null when the change is fine
@@ -66,7 +83,21 @@ async function main() {
     ["diff", "--name-only", mergeBase.trim(), "HEAD"],
     { cwd: rootDir },
   );
-  const changedFiles = diff.split("\n").filter(Boolean);
+  let changedFiles = diff.split("\n").filter(Boolean);
+
+  if (changedFiles.includes(ENGINE_MANIFEST)) {
+    const { stdout: baseManifest } = await execFileAsync(
+      "git",
+      ["show", `${mergeBase.trim()}:${ENGINE_MANIFEST}`],
+      { cwd: rootDir },
+    );
+    const headManifest = readFileSync(join(rootDir, ENGINE_MANIFEST), "utf-8");
+    if (
+      !manifestChangeShips(JSON.parse(baseManifest), JSON.parse(headManifest))
+    ) {
+      changedFiles = changedFiles.filter((file) => file !== ENGINE_MANIFEST);
+    }
+  }
 
   const manifest = JSON.parse(
     readFileSync(join(rootDir, "packages/cli-engine/package.json"), "utf-8"),

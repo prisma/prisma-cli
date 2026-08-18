@@ -1,6 +1,9 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { engineBumpVerdict } from "./check-engine-version.mjs";
+import {
+  engineBumpVerdict,
+  manifestChangeShips,
+} from "./check-engine-version.mjs";
 
 const NAMES_THE_STALE_VERSION = /0\.1\.1/;
 const NAMES_THE_BUMP_COMMAND = /bump-cli-engine-version/;
@@ -44,5 +47,41 @@ describe("engineBumpVerdict", () => {
       versionOnRegistry: true,
     });
     assert.equal(verdict, null);
+  });
+});
+
+describe("manifestChangeShips", () => {
+  const base = {
+    name: "@prisma/cli-engine",
+    version: "0.2.0",
+    dependencies: { colorette: "^2.0.20" },
+    devDependencies: { "@repo/tsconfig": "workspace:8.0.0-rc.4" },
+  };
+
+  it("a devDependencies-only change does not ship", () => {
+    const head = {
+      ...base,
+      devDependencies: { "@repo/tsconfig": "workspace:8.0.0-rc.5" },
+    };
+    assert.equal(manifestChangeShips(base, head), false);
+  });
+
+  it("a version change ships", () => {
+    assert.equal(
+      manifestChangeShips(base, { ...base, version: "0.2.1" }),
+      true,
+    );
+  });
+
+  it("a dependencies change ships", () => {
+    const head = { ...base, dependencies: { colorette: "^2.1.0" } };
+    assert.equal(manifestChangeShips(base, head), true);
+  });
+
+  it("an added field ships", () => {
+    assert.equal(
+      manifestChangeShips(base, { ...base, sideEffects: false }),
+      true,
+    );
   });
 });
