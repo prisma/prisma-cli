@@ -26,7 +26,7 @@ output, and implementation.
 | Structured output | Explicit `--json` output intended for automation. | [Output conventions](../product/output-conventions.md) |
 | Human output | Status, prompts, summaries, and decoration intended for terminal users. | [Output conventions](../product/output-conventions.md) |
 | Error code | Stable machine-readable failure code. | [Error conventions](../product/error-conventions.md) |
-| Beta package | Public prerelease package line for `@prisma/cli` on the `latest` dist-tag. | [ADR 0001](../architecture/adrs/0001-preview-package-and-publishing.md) |
+| Beta package | Public prerelease package line for `@prisma/cli`; the RC line publishes on the `next` dist-tag (see [versioning](../oss/versioning.md)). | [ADR 0001](../architecture/adrs/0001-preview-package-and-publishing.md) |
 | Dev package | Latest successful `main` build of `@prisma/cli` on the `dev` dist-tag. | [ADR 0001](../architecture/adrs/0001-preview-package-and-publishing.md) |
 | PR preview package | Installable pkg.pr.new package for a trusted same-repo pull request commit. | [ADR 0001](../architecture/adrs/0001-preview-package-and-publishing.md) |
 

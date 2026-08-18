@@ -1,5 +1,11 @@
 # Prisma CLI Resource Model
 
+> **Staleness notice (2026-08-18).** This document predates the S8 surface:
+> the CLI now presents apps as **services** (`service` group), `app deploy`
+> is removed (deploys come from pushing a connected repository, the Console,
+> or `composer deploy`), and `database` commands are mounted as `postgres`.
+> The resource hierarchy below still holds; command spellings do not.
+
 ## Purpose
 
 This document defines the nouns and boundaries used by the Prisma CLI. It is the

@@ -371,7 +371,7 @@ async function resolveOrCreateBranch(
       why: "Creating the first branch would make it the project default, but branch overrides are preview-only.",
       fix: "Create or deploy the default branch first, then add the branch override.",
       exitCode: 1,
-      nextSteps: ["prisma-cli app deploy --branch main"],
+      nextSteps: ["prisma-cli git connect <repository-url>"],
     });
   }
 

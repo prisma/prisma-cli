@@ -1,5 +1,17 @@
 # Prisma CLI Beta Command Spec
 
+> **Staleness notice (2026-08-18).** This spec predates the S8 surface and
+> has not caught up with it. In the shipped RC line: the `app` group is
+> removed (apps are inspected as `service`; deployments start from pushing a
+> connected repository, the Console, or `composer deploy` — there is no
+> standalone deploy command, and `app build`/`app run` have no successor);
+> `database` is now `postgres`; the `service`, `composer`, and ORM groups
+> (`contract`, `db`, `migrate`, `migration`, `format`, `orm init`, `lsp`)
+> are mounted but not yet specified here. Until this document is rewritten,
+> the mounted command tree in `packages/cli/src/cli.ts` is the accurate
+> surface; sections below describing `app` or `database` commands are
+> historical.
+
 ## Purpose
 
 This document defines the public beta command surface. It is the source of

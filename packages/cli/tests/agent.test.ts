@@ -183,7 +183,7 @@ describe("prisma-cli agent install", () => {
       {
         kind: "run-command",
         label: "Verify the installed Prisma skills",
-        command: "npx -y @prisma/cli@latest agent status",
+        command: "npx -y @prisma/cli@next agent status",
       },
     ]);
   });
@@ -202,7 +202,7 @@ describe("prisma-cli agent install", () => {
       {
         kind: "run-command",
         label: "Verify the installed Prisma skills",
-        command: "npx -y @prisma/cli@latest agent status --global",
+        command: "npx -y @prisma/cli@next agent status --global",
       },
     ]);
   });
@@ -494,7 +494,7 @@ describe("prisma-cli agent status", () => {
       {
         kind: "run-command",
         label: "Install or refresh Prisma skills",
-        command: "npx -y @prisma/cli@latest agent install --global",
+        command: "npx -y @prisma/cli@next agent install --global",
       },
     ]);
   });
@@ -514,7 +514,7 @@ describe("prisma-cli agent status", () => {
       {
         kind: "run-command",
         label: "Install or refresh Prisma skills",
-        command: "npx -y @prisma/cli@latest agent install",
+        command: "npx -y @prisma/cli@next agent install",
       },
     ]);
   });

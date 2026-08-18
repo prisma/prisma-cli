@@ -85,10 +85,7 @@ function localStateWriteFailedError(
     debug: formatDebugDetails(error.cause),
     meta: options.meta,
     exitCode: 1,
-    nextSteps: [
-      "prisma-cli project link <id-or-name>",
-      "prisma-cli app deploy --project <id-or-name>",
-    ],
+    nextSteps: ["prisma-cli project link <id-or-name>"],
   });
 }
 

@@ -2,19 +2,18 @@
 
 Beta of the unified Prisma CLI.
 
-This repository contains the unified Prisma command-line experience. The current
-implementation focuses on app deployment workflows while preserving the
-long-term command model for Prisma projects, branches, schemas, databases, and
-apps.
+This repository contains the unified Prisma command-line experience: one
+binary for the ORM, Composer, and the Prisma Developer Platform — projects,
+branches, services, deployments, environment variables, and the Prisma ORM
+schema and migration workflow.
 
-Official beta releases use the primary `@prisma/cli` package line. The package
-exposes a `prisma-cli` binary so it can coexist with the existing `prisma`
-executable.
+The 8.0.0 release candidates publish as `prisma` (binary `prisma`) and
+`@prisma/cli` (binary `prisma-cli`) on the `next` dist-tag.
 
 ## Install
 
 ```bash
-pnpm add -D @prisma/cli
+pnpm add -D @prisma/cli@next
 pnpm prisma-cli --help
 ```
 
@@ -22,26 +21,14 @@ Example workflow:
 
 ```bash
 pnpm prisma-cli auth login
-pnpm prisma-cli app deploy --env DATABASE_URL=postgresql://example
+pnpm prisma-cli project create my-app
+pnpm prisma-cli git connect git@github.com:owner/repo.git
 pnpm prisma-cli project env add --file .env --role preview
 pnpm prisma-cli project env list --role preview
 ```
 
-If you want local project scripts that look like the future command shape, add:
-
-```json
-{
-  "scripts": {
-    "prisma": "prisma-cli"
-  }
-}
-```
-
-Then run:
-
-```bash
-pnpm prisma app deploy
-```
+Deployments start from pushing the connected repository, the Console, or
+`prisma-cli composer deploy` — there is no standalone deploy command.
 
 ## Local Development
 
@@ -98,8 +85,9 @@ The canonical command shape is:
 prisma <group> <action>
 ```
 
-The beta package includes app build, run, deploy, environment-variable,
-deployment inspection, promotion, rollback, and removal commands. The product
+The package includes project, environment-variable, service and deployment
+inspection, promotion, rollback, and removal commands, plus the Prisma ORM
+and Composer workflows. The product
 model intentionally keeps room for future schema, database, and migration
 workflows without introducing product-specific namespaces.
 

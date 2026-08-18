@@ -91,7 +91,7 @@ export function initPresentations(
       ...(typesMissing(result) && result.types.installCommand
         ? [runCommand(result.types.installCommand)]
         : []),
-      runCommand(formatCommand(["app", "deploy"])),
+      runCommand(formatCommand(["git", "connect"])),
       ...(isLinked(result)
         ? []
         : [runCommand(formatCommand(["project", "link"]))]),
