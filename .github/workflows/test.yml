@@ -58,3 +58,26 @@ jobs:
 
       - name: Run CLI tests
         run: pnpm --filter @prisma/cli test
+
+  # A changed engine must claim a version the registry does not have
+  # yet, or the release ships a CLI built against exports the published
+  # engine lacks (how prisma@8.0.0-rc.4 broke `npx prisma@next`).
+  engine-version:
+    if: ${{ github.event_name == 'pull_request' }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+
+      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
+        with:
+          node-version: 24
+
+      - name: The engine version must be new if the engine changed
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: node scripts/check-engine-version.mjs "$BASE_SHA"
