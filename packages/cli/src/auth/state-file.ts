@@ -4,7 +4,11 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { CliStructuredError } from "@prisma/cli-engine/protocol";
 import { defaultAuthFilePath } from "./client";
-import { adoptLegacyState } from "./legacy-state";
+import {
+  adoptLegacyState,
+  legacyTokensMirror,
+  syncLegacyContext,
+} from "./legacy-state";
 
 export const STATE_FILE_ENV_VAR = "PRISMA_AUTH_FILE";
 export const DEPRECATED_STATE_FILE_ENV_VAR = "PRISMA_COMPUTE_AUTH_FILE";
@@ -188,13 +192,18 @@ function normalizeSession(session: StoredSession): StoredSession {
 }
 
 /** Temp file in the same directory, fsync, rename, mode 0600 — a reader
- *  only ever sees a complete state. */
+ *  only ever sees a complete state. The written file also carries the
+ *  legacy `tokens` mirror and the auth.context.json pointer stays in
+ *  step, so the 3.x CLI sharing this store keeps seeing the sessions
+ *  (#204). Our own reader branches on `sessions` before it ever looks
+ *  at `tokens`, so the mirror is invisible to this CLI. */
 export async function writeCredentialState(
   filePath: string,
   state: CredentialState,
 ): Promise<void> {
   await fs.mkdir(path.dirname(filePath), { recursive: true });
   const tempPath = `${filePath}.${randomUUID()}.tmp`;
+  const payload = { ...state, tokens: legacyTokensMirror(state.sessions) };
   // The temp file holds the whole state, tokens included, so no path
   // out of here may leave one behind: a write that fails after the
   // handle is open would otherwise strand a working credential copy
@@ -202,7 +211,7 @@ export async function writeCredentialState(
   try {
     const handle = await fs.open(tempPath, "wx", FILE_MODE);
     try {
-      await handle.writeFile(`${JSON.stringify(state, null, 2)}\n`, "utf8");
+      await handle.writeFile(`${JSON.stringify(payload, null, 2)}\n`, "utf8");
       await handle.sync();
     } finally {
       await handle.close();
@@ -213,6 +222,7 @@ export async function writeCredentialState(
     throw error;
   }
   await fs.chmod(filePath, FILE_MODE).catch(() => {});
+  await syncLegacyContext(filePath, state.currentWorkspaceId);
 }
 
 class StateLockTimeoutError extends CliStructuredError {

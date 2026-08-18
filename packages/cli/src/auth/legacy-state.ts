@@ -1,9 +1,81 @@
+import { randomUUID } from "node:crypto";
 import fs from "node:fs/promises";
 import { claimedExpiresAt, credentialWorkspaceId } from "@prisma/cli-engine";
 import type { CredentialState, StoredSession } from "./state-file";
 import { getAuthContextFilePath } from "./token-storage";
 
 const LEGACY_PLACEHOLDER_NAME = "Unknown workspace";
+
+/**
+ * The sessions re-serialized in the legacy store's record shape. The
+ * 3.x CLI reads `tokens` from auth.json (`data.tokens || []`, silently
+ * empty for any other shape), so a write that dropped the key made
+ * every session invisible to `@prisma/cli@latest` on the same machine
+ * the moment this CLI first mutated the file (#204). Sessions without
+ * a refresh token still mirror; the legacy reader skips them, exactly
+ * as it skips its own unrefreshable records.
+ */
+export function legacyTokensMirror(
+  sessions: readonly StoredSession[],
+): readonly { workspaceId: string; token: string; refreshToken?: string }[] {
+  return sessions.map((session) => ({
+    workspaceId: session.workspaceId,
+    token: session.token,
+    ...(session.refreshToken === undefined
+      ? {}
+      : { refreshToken: session.refreshToken }),
+  }));
+}
+
+/**
+ * Keeps auth.context.json's `activeWorkspaceId` — the pointer the 3.x
+ * CLI selects its session with — in step with `currentWorkspaceId`.
+ * The rest of the context file (the remembered-workspace name map) is
+ * preserved verbatim; only the pointer moves.
+ */
+export async function syncLegacyContext(
+  authFilePath: string,
+  currentWorkspaceId: string | null,
+): Promise<void> {
+  const contextFilePath = getAuthContextFilePath(authFilePath);
+  const context = await readLegacyContext(contextFilePath);
+  if (context.exists && context.activeWorkspaceId === currentWorkspaceId) {
+    return;
+  }
+  // No file and nothing selected stays no file: an existing context
+  // with a null pointer reads as "explicitly signed out" to the 3.x
+  // CLI, where an absent one lets it self-activate its latest session.
+  if (!context.exists && currentWorkspaceId === null) {
+    return;
+  }
+  const raw = await fs.readFile(contextFilePath, "utf8").catch(() => null);
+  let workspaces: unknown = {};
+  if (raw !== null) {
+    try {
+      const parsed = JSON.parse(raw) as { workspaces?: unknown };
+      if (
+        typeof parsed.workspaces === "object" &&
+        parsed.workspaces !== null &&
+        !Array.isArray(parsed.workspaces)
+      ) {
+        workspaces = parsed.workspaces;
+      }
+    } catch {
+      // A corrupt context file is replaced with a fresh one.
+    }
+  }
+  // Temp + rename like the auth file itself: a torn context file makes
+  // the 3.x CLI silently self-activate its latest session.
+  const tempPath = `${contextFilePath}.${randomUUID()}.tmp`;
+  const payload = `${JSON.stringify({ activeWorkspaceId: currentWorkspaceId, workspaces }, null, 2)}\n`;
+  try {
+    await fs.writeFile(tempPath, payload, "utf8");
+    await fs.rename(tempPath, contextFilePath);
+  } catch (error) {
+    await fs.unlink(tempPath).catch(() => {});
+    throw error;
+  }
+}
 
 interface LegacyContext {
   readonly exists: boolean;
