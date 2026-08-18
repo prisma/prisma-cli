@@ -9,7 +9,11 @@ import { mintTestJwt } from "@prisma/cli-engine/testing";
 import { beforeEach, describe, expect, it } from "vitest";
 
 import { FileCredentialManager } from "../src/auth/credential-manager";
-import { readCredentialState } from "../src/auth/state-file";
+import {
+  EMPTY_STATE,
+  readCredentialState,
+  writeCredentialState,
+} from "../src/auth/state-file";
 import { getAuthContextFilePath } from "../src/auth/token-storage";
 
 const WORKSPACE_A = "wksp_a";
@@ -391,5 +395,39 @@ describe("the legacy mirror", () => {
       "currentWorkspaceId",
     ]);
     expect(state.sessions).toHaveLength(1);
+  });
+});
+
+describe("the legacy mirror's context sync", () => {
+  it("a pointer move preserves the remembered-workspace name map", async () => {
+    await writeLegacyStore([
+      legacyEntry(WORKSPACE_A, "ra"),
+      legacyEntry(WORKSPACE_B, "rb"),
+    ]);
+    await writeLegacyContext({
+      activeWorkspaceId: WORKSPACE_A,
+      workspaces: {
+        [WORKSPACE_A]: { name: "Alpha" },
+        [WORKSPACE_B]: { name: "Bravo" },
+      },
+    });
+
+    await makeManager().selectSession(WORKSPACE_B);
+
+    const context = JSON.parse(await readFile(contextFilePath, "utf8")) as {
+      activeWorkspaceId: string | null;
+      workspaces: Record<string, { name?: string }>;
+    };
+    expect(context.activeWorkspaceId).toBe(WORKSPACE_B);
+    expect(context.workspaces[WORKSPACE_A]?.name).toBe("Alpha");
+    expect(context.workspaces[WORKSPACE_B]?.name).toBe("Bravo");
+  });
+
+  it("writes no context file when none exists and nothing is selected", async () => {
+    await writeCredentialState(authFilePath, EMPTY_STATE);
+
+    await expect(readFile(contextFilePath, "utf8")).rejects.toMatchObject({
+      code: "ENOENT",
+    });
   });
 });

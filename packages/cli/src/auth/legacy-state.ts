@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import fs from "node:fs/promises";
 import { claimedExpiresAt, credentialWorkspaceId } from "@prisma/cli-engine";
 import type { CredentialState, StoredSession } from "./state-file";
@@ -41,6 +42,12 @@ export async function syncLegacyContext(
   if (context.exists && context.activeWorkspaceId === currentWorkspaceId) {
     return;
   }
+  // No file and nothing selected stays no file: an existing context
+  // with a null pointer reads as "explicitly signed out" to the 3.x
+  // CLI, where an absent one lets it self-activate its latest session.
+  if (!context.exists && currentWorkspaceId === null) {
+    return;
+  }
   const raw = await fs.readFile(contextFilePath, "utf8").catch(() => null);
   let workspaces: unknown = {};
   if (raw !== null) {
@@ -57,11 +64,17 @@ export async function syncLegacyContext(
       // A corrupt context file is replaced with a fresh one.
     }
   }
-  await fs.writeFile(
-    contextFilePath,
-    `${JSON.stringify({ activeWorkspaceId: currentWorkspaceId, workspaces }, null, 2)}\n`,
-    "utf8",
-  );
+  // Temp + rename like the auth file itself: a torn context file makes
+  // the 3.x CLI silently self-activate its latest session.
+  const tempPath = `${contextFilePath}.${randomUUID()}.tmp`;
+  const payload = `${JSON.stringify({ activeWorkspaceId: currentWorkspaceId, workspaces }, null, 2)}\n`;
+  try {
+    await fs.writeFile(tempPath, payload, "utf8");
+    await fs.rename(tempPath, contextFilePath);
+  } catch (error) {
+    await fs.unlink(tempPath).catch(() => {});
+    throw error;
+  }
 }
 
 interface LegacyContext {
