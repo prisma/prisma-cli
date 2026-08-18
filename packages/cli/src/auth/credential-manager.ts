@@ -204,7 +204,7 @@ export class FileCredentialManager implements CredentialManager {
     });
 
     if (!environmentInForce) {
-      this.#repin({ kind: "session", workspaceId });
+      this.#movePin({ kind: "session", workspaceId });
     }
 
     const name = await this.#lookUpWorkspaceName(credential, workspaceId);
@@ -238,7 +238,7 @@ export class FileCredentialManager implements CredentialManager {
       return { state: next, result: toSession(record) };
     });
     if (!environmentInForce) {
-      this.#repin({ kind: "session", workspaceId });
+      this.#movePin({ kind: "session", workspaceId });
     }
     return selected;
   }
@@ -255,7 +255,7 @@ export class FileCredentialManager implements CredentialManager {
     );
 
     if (this.#pin.kind === "session" && this.#pin.workspaceId === workspaceId) {
-      this.#repin({ kind: "none" });
+      this.#movePin({ kind: "none" });
     }
   }
 
@@ -270,7 +270,7 @@ export class FileCredentialManager implements CredentialManager {
     await this.#reapLegacyContextFile();
     await this.#reapOrphanedWrites();
     if (!environmentInForce) {
-      this.#repin({ kind: "none" });
+      this.#movePin({ kind: "none" });
     }
   }
 
@@ -458,7 +458,7 @@ export class FileCredentialManager implements CredentialManager {
 
   /** Moves the pin after a mutation, discarding storage built for the
    *  credential this process was acting as before. */
-  #repin(pin: ResolvedPin): void {
+  #movePin(pin: ResolvedPin): void {
     this.#pin = pin;
     this.#activeStorage = undefined;
   }
