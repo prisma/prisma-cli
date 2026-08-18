@@ -8,12 +8,14 @@
 // Usage: node scripts/verify-published.mjs <spec>...
 
 import { execFile } from "node:child_process";
+import { pathToFileURL } from "node:url";
 import { promisify } from "node:util";
 
 const execFileAsync = promisify(execFile);
 
 const ATTEMPTS = 20;
 const DELAY_MS = 15_000;
+const NPM_NOT_FOUND_PATTERN = /\bE404\b/;
 
 /**
  * Polls until every spec resolves, or reports the first that never does.
@@ -32,19 +34,36 @@ export async function waitForAll(specs, io) {
         resolved = true;
         break;
       }
-      await io.sleep(DELAY_MS);
+      if (attempt < attempts) await io.sleep(DELAY_MS);
     }
     if (!resolved) return { ok: false, spec };
   }
   return { ok: true };
 }
 
+/**
+ * Whether a failed `npm view` means the version is absent (E404), as
+ * opposed to npm itself failing — no binary, no network, no auth. Only
+ * the absence is worth polling through; everything else must stop the
+ * run and name the real cause.
+ *
+ * @param {unknown} error
+ * @returns {boolean}
+ */
+export function isNotFoundError(error) {
+  if (typeof error !== "object" || error === null) return false;
+  const { stderr, stdout } =
+    /** @type {{ stderr?: string, stdout?: string }} */ (error);
+  return NPM_NOT_FOUND_PATTERN.test(`${stderr ?? ""}\n${stdout ?? ""}`);
+}
+
 async function resolvesOnRegistry(spec) {
   try {
     await execFileAsync("npm", ["view", spec, "version", "--prefer-online"]);
     return true;
-  } catch {
-    return false;
+  } catch (error) {
+    if (isNotFoundError(error)) return false;
+    throw error;
   }
 }
 
@@ -73,5 +92,5 @@ async function main() {
 
 const isDirectRun =
   process.argv[1] !== undefined &&
-  import.meta.url === new URL(`file://${process.argv[1]}`).href;
+  import.meta.url === pathToFileURL(process.argv[1]).href;
 if (isDirectRun) await main();

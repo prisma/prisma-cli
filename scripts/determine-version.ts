@@ -16,6 +16,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
   assertCanonicalBase,
+  assertValidDistTag,
   devVersion,
   isReleasePublish,
   releaseDistTag,
@@ -105,6 +106,7 @@ switch (eventName) {
   case "workflow_dispatch":
     // `||`, not `??`: an empty INPUT_DIST_TAG must fall through to the
     // canonical tag, not become `pnpm publish --tag ""`.
+    if (inputDistTag) assertValidDistTag(inputDistTag);
     release = {
       version: baseVersion,
       tag: inputDistTag || releaseDistTag(baseVersion),

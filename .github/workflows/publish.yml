@@ -78,8 +78,10 @@ jobs:
       # The lockfile refresh is part of the stamp: pnpm verifies
       # manifests against the lockfile before running any script.
       - name: Stamp the dev version
+        env:
+          DEV_VERSION: ${{ steps.version.outputs.devVersion }}
         run: |
-          node scripts/set-version.ts "${{ steps.version.outputs.devVersion }}"
+          node scripts/set-version.ts "$DEV_VERSION"
           node scripts/update-product-versions.mjs --channel dev
           pnpm install --lockfile-only --no-frozen-lockfile
 
@@ -98,10 +100,7 @@ jobs:
         if: ${{ github.event_name != 'workflow_dispatch' || github.event.inputs.dry-run != 'true' }}
         env:
           NPM_CONFIG_PROVENANCE: "true"
-        run: |
-          for pkg in @prisma/cli-engine @prisma/cli prisma; do
-            pnpm --filter "$pkg" publish --tag dev --access public --no-git-checks
-          done
+        run: bash scripts/publish-packages.sh dev @prisma/cli-engine @prisma/cli prisma
 
       - name: Verify the dev version resolves
         if: ${{ github.event_name != 'workflow_dispatch' || github.event.inputs.dry-run != 'true' }}
@@ -144,25 +143,7 @@ jobs:
         env:
           NPM_CONFIG_PROVENANCE: "true"
           DIST_TAG: ${{ steps.version.outputs.releaseTag }}
-        run: |
-          # An already-published version is treated as done, so a rerun
-          # reaches the Release step; every other failure fails the run.
-          publish_one() {
-            local out
-            if out=$(pnpm --filter "$1" publish --tag "$DIST_TAG" --access public --no-git-checks 2>&1); then
-              printf '%s\n' "$out"
-            else
-              printf '%s\n' "$out"
-              if grep -qiE 'E409|EPUBLISHCONFLICT|cannot publish over|previously published' <<<"$out"; then
-                echo "$1: this version is already on the registry — continuing so the Release step can run."
-              else
-                return 1
-              fi
-            fi
-          }
-          publish_one @prisma/cli-engine
-          publish_one @prisma/cli
-          publish_one prisma
+        run: bash scripts/publish-packages.sh "$DIST_TAG" @prisma/cli-engine @prisma/cli prisma
 
       - name: Verify the release resolves
         if: ${{ steps.version.outputs.release == 'true' && (github.event_name != 'workflow_dispatch' || github.event.inputs.dry-run != 'true') }}
@@ -185,9 +166,16 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           VERSION: ${{ steps.version.outputs.releaseVersion }}
         run: |
-          if gh release view "v$VERSION" >/dev/null 2>&1; then
-            echo "Release v$VERSION already exists and releases are immutable — nothing to repair."
-            exit 0
+          # The by-tag endpoints do not see drafts, so search the listing.
+          existing=$(gh api --paginate "repos/$GITHUB_REPOSITORY/releases" \
+            | jq -c --arg tag "v$VERSION" '.[] | select(.tag_name == $tag)' | head -n 1)
+          if [ -n "$existing" ]; then
+            if [ "$(jq -r .draft <<<"$existing")" = "false" ]; then
+              echo "Release v$VERSION is already published and releases are immutable — nothing to repair."
+              exit 0
+            fi
+            # A draft from a failed attempt never reached anyone; replace it.
+            gh api -X DELETE "repos/$GITHUB_REPOSITORY/releases/$(jq -r .id <<<"$existing")"
           fi
           PRERELEASE=false
           case "$VERSION" in
@@ -205,9 +193,13 @@ jobs:
             echo "Creating the draft release for v$VERSION returned no id" >&2
             exit 1
           fi
+          # By id, not tag: uploads to a fresh draft race the by-tag lookup.
           for tarball in artifacts/tarballs/*.tgz; do
-            gh release upload "v$VERSION" "$tarball" --clobber
+            gh api -X POST \
+              -H "Content-Type: application/gzip" \
+              "https://uploads.github.com/repos/$GITHUB_REPOSITORY/releases/$release_id/assets?name=$(basename "$tarball")" \
+              --input "$tarball" >/dev/null
           done
           gh api -X PATCH "repos/$GITHUB_REPOSITORY/releases/$release_id" \
             -F draft=false >/dev/null
-          echo "Published release v$VERSION with $(ls artifacts/tarballs/*.tgz | wc -l | tr -d ' ') asset(s)."
+          echo "Published release v$VERSION with $(find artifacts/tarballs -name '*.tgz' | wc -l | tr -d ' ') asset(s)."
