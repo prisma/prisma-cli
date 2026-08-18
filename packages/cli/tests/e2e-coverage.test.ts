@@ -113,11 +113,6 @@ const EXCLUSIONS: Readonly<Record<string, string>> = {
  * starts and promotes it through the CLI. That covered seven commands,
  * and what is left needs something the deployment alone does not give.
  *
- * `service deployment rollback` needs a SECOND promoted deployment to
- * roll back from. The fixture makes one; making two and promoting them
- * in order is more run time and more teardown, and is the next thing to
- * write.
- *
  * The five `service domain *` commands need a hostname whose DNS we
  * control. With a promoted deployment in place, `service domain add`
  * gets all the way to `SERVICE.DOMAIN_DNS_NOT_CONFIGURED` — "DNS
@@ -135,7 +130,6 @@ const EXCLUSIONS: Readonly<Record<string, string>> = {
  * than the fixture does today.
  */
 const AWAITING_COVERAGE: readonly string[] = [
-  "service deployment rollback",
   "service logs",
   "service domain add",
   "service domain show",

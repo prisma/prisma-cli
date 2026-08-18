@@ -8,11 +8,18 @@
  *
  * The blocks run in file order and share one service: it is deployed
  * once, read by the middle blocks, then stopped and deleted at the end.
- * Teardown must delete the deployment before the scratch project can go.
+ * The rollback block adds a second deployment, promotes it, and rolls
+ * back to the first, so the later blocks still act on a live first
+ * deployment. Teardown must delete every deployment before the scratch
+ * project can go.
  */
 import { afterAll, expect, it } from "vitest";
 
-import { deleteDeployment, deployService } from "./deployed-service";
+import {
+  createDeployment,
+  deleteDeployment,
+  deployService,
+} from "./deployed-service";
 import { scratchName } from "./harness";
 import { useScratchProject } from "./scratch";
 import { describeCommand } from "./suite";
@@ -24,6 +31,8 @@ const scratch = useScratchProject("service-deployment");
 let deployed:
   | { serviceId: string; serviceName: string; deploymentId: string }
   | undefined;
+
+let secondDeployment: { id: string; serviceName: string } | undefined;
 
 function requireDeployed(): {
   serviceId: string;
@@ -45,6 +54,9 @@ interface DeploymentRow {
 }
 
 afterAll(async () => {
+  if (secondDeployment !== undefined) {
+    await deleteDeployment(scratch, secondDeployment);
+  }
   if (deployed !== undefined) {
     await deleteDeployment(scratch, {
       id: deployed.deploymentId,
@@ -142,6 +154,65 @@ describeCommand("service deployment show", () => {
     expect(shown.service.name).toBe(existing.serviceName);
     expect(shown.deployment.id).toBe(existing.deploymentId);
     expect(Date.parse(shown.deployment.createdAt)).not.toBeNaN();
+  });
+});
+
+describeCommand("service deployment rollback", () => {
+  it("rolls production back to the previously live deployment", async () => {
+    const existing = requireDeployed();
+    // Rolling back needs somewhere to roll back from: a second
+    // deployment, promoted over the first. It is tracked for teardown
+    // before anything can throw, because `project remove` refuses while
+    // it exists.
+    const secondId = await createDeployment(existing.serviceId);
+    secondDeployment = { id: secondId, serviceName: existing.serviceName };
+    await scratch.run([
+      "service",
+      "deployment",
+      "start",
+      secondId,
+      "--service",
+      existing.serviceName,
+    ]);
+    await scratch.run([
+      "service",
+      "deployment",
+      "promote",
+      secondId,
+      "--service",
+      existing.serviceName,
+    ]);
+
+    // No --to: the default target is the deployment before the live
+    // one, which is the first. --confirm must name that target.
+    const run = await scratch.run([
+      "service",
+      "deployment",
+      "rollback",
+      "--service",
+      existing.serviceName,
+      "--confirm",
+      existing.deploymentId,
+    ]);
+    const rolledBack = run.envelope.result as {
+      readonly service: { readonly id: string };
+      readonly deployment: DeploymentRow;
+      readonly previousLiveDeploymentId: string | null;
+    };
+
+    expect(rolledBack.service.id).toBe(existing.serviceId);
+    expect(rolledBack.deployment.id).toBe(existing.deploymentId);
+    expect(rolledBack.deployment.live).toBe(true);
+    expect(rolledBack.previousLiveDeploymentId).toBe(secondId);
+
+    const shown = await scratch.run([
+      "service",
+      "deployment",
+      "show",
+      existing.deploymentId,
+    ]);
+    const after = shown.envelope.result as { deployment: DeploymentRow };
+    expect(after.deployment.live).toBe(true);
   });
 });
 
