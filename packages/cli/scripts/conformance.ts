@@ -115,8 +115,7 @@ async function tarball(): Promise<readonly Finding[]> {
           familyPackage: "@prisma/composer-cli",
           familyPin: "0.1.1",
           shellPin: "0.2.0",
-          reason:
-            "engine 0.2.0 must publish before composer-cli can peer it",
+          reason: "engine 0.2.0 must publish before composer-cli can peer it",
           removeWhen:
             "composer-cli releases peering 0.2.0 and the 8.0.0-rc.5 bump PR pins that release",
         },
@@ -124,8 +123,7 @@ async function tarball(): Promise<readonly Finding[]> {
           familyPackage: "@prisma/orm-toolchain",
           familyPin: "0.1.1",
           shellPin: "0.2.0",
-          reason:
-            "engine 0.2.0 must publish before orm-toolchain can peer it",
+          reason: "engine 0.2.0 must publish before orm-toolchain can peer it",
           removeWhen:
             "orm-toolchain releases peering 0.2.0 and the 8.0.0-rc.5 bump PR pins that release",
         },
