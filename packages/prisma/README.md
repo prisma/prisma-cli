@@ -113,9 +113,7 @@ npx prisma service deployment promote DEPLOYMENT_ID
 ## Documentation
 
 - [CLI docs index](https://github.com/prisma/prisma-cli/blob/main/docs/README.md)
-- [Resource model](https://github.com/prisma/prisma-cli/blob/main/docs/product/resource-model.md)
 - [Command principles](https://github.com/prisma/prisma-cli/blob/main/docs/product/command-principles.md)
-- [Command spec](https://github.com/prisma/prisma-cli/blob/main/docs/product/command-spec.md)
 - [Output conventions](https://github.com/prisma/prisma-cli/blob/main/docs/product/output-conventions.md)
 - [Error conventions](https://github.com/prisma/prisma-cli/blob/main/docs/product/error-conventions.md)
 

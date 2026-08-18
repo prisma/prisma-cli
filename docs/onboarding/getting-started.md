@@ -27,12 +27,10 @@ The root `prisma-cli` script runs the TypeScript source entrypoint through `tsx`
 
 Before changing behavior, read:
 
-1. [Resource model](../product/resource-model.md)
-2. [Command principles](../product/command-principles.md)
-3. [Command spec](../product/command-spec.md)
-4. [CLI style guide](../product/cli-style-guide.md)
-5. [Output conventions](../product/output-conventions.md)
-6. [Error conventions](../product/error-conventions.md)
+1. [Command principles](../product/command-principles.md)
+2. [CLI style guide](../product/cli-style-guide.md)
+3. [Output conventions](../product/output-conventions.md)
+4. [Error conventions](../product/error-conventions.md)
 
 ## Test And Build
 

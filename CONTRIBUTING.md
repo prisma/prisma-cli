@@ -49,12 +49,10 @@ The architecture entrypoint lives at `ARCHITECTURE.md`.
 
 Read these before changing CLI behavior:
 
-1. `docs/product/resource-model.md`
-2. `docs/product/command-principles.md`
-3. `docs/product/command-spec.md`
-4. `docs/product/cli-style-guide.md`
-5. `docs/product/output-conventions.md`
-6. `docs/product/error-conventions.md`
+1. `docs/product/command-principles.md`
+2. `docs/product/cli-style-guide.md`
+3. `docs/product/output-conventions.md`
+4. `docs/product/error-conventions.md`
 
 The CLI must preserve the unified command model:
 

@@ -15,12 +15,10 @@ The docs in `docs/product` are the source of truth. Do not invent product behavi
 
 Start with `docs/README.md` for the public docs index.
 
-1. `docs/product/resource-model.md`
-2. `docs/product/command-principles.md`
-3. `docs/product/command-spec.md`
-4. `docs/product/cli-style-guide.md`
-5. `docs/product/output-conventions.md`
-6. `docs/product/error-conventions.md`
+1. `docs/product/command-principles.md`
+2. `docs/product/cli-style-guide.md`
+3. `docs/product/output-conventions.md`
+4. `docs/product/error-conventions.md`
 
 Architecture and contributor workflow references:
 
@@ -38,7 +36,7 @@ Architecture and contributor workflow references:
 - The shipped groups are `auth`, `project`, `git`, `branch`, `postgres`, `bucket`, `service`, `build`, `composer`, and the ORM family (`contract`, `db`, `migrate`, `migration`, `format`, `orm init`, `lsp`).
 - Preserve the long-term resource model: `workspace -> project -> branch -> { service, database, bucket }`.
 
-For exact definitions and resolution rules, see `resource-model.md` and `command-spec.md`.
+The mounted tree in `packages/cli/src/cli.ts` is the authoritative command surface.
 
 ## Branch Model
 
@@ -52,11 +50,6 @@ Do not redefine this casually:
 - non-production branches can become durable later
 - first remote deploy defaults to preview
 - production is reached by `service deployment promote` or explicit user targeting
-
-See:
-
-- `docs/product/resource-model.md`
-- `docs/product/command-spec.md`
 
 ## Output and Error Behavior
 

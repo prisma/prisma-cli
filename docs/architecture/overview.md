@@ -65,5 +65,5 @@ The beta package should remain small and predictable:
 - `production` is a protected durable branch and requires explicit intent.
 - Every other named branch is preview by default.
 
-See [resource model](../product/resource-model.md) and
-[command spec](../product/command-spec.md) for the authoritative rules.
+The mounted command tree in `packages/cli/src/cli.ts` is the
+authoritative command surface.

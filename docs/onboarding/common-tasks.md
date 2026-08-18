@@ -5,11 +5,9 @@ Use this playbook when making common changes to the CLI.
 ## Add Or Change A Command
 
 1. Update the source-of-truth product docs first:
-   - [command spec](../product/command-spec.md)
    - [command principles](../product/command-principles.md)
-   - [resource model](../product/resource-model.md), when resources or resolution rules change
 2. Add or update the command in `packages/cli/src/commands/<group>/` and mount it in
-   `packages/cli/src/cli.ts`.
+   `packages/cli/src/cli.ts` (the mounted tree is the authoritative command surface).
 3. Put product rules and resource resolution in the operation layer
    (`packages/cli/src/controllers`, `packages/cli/src/lib`).
 4. Update the handler's presentation blocks when output shape changes.
@@ -33,11 +31,9 @@ Use this playbook when making common changes to the CLI.
 
 ## Change Resource Resolution
 
-1. Update [resource model](../product/resource-model.md).
-2. Update [command spec](../product/command-spec.md).
-3. Keep `local` local-only.
-4. Keep `production` protected and durable.
-5. Preserve `workspace -> project -> branch -> { app, database }`.
+1. Keep `local` local-only.
+2. Keep `production` protected and durable.
+3. Preserve `workspace -> project -> branch -> { service, database, bucket }`.
 
 ## Update Publish Preparation
 
