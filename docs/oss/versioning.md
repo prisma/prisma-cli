@@ -45,6 +45,8 @@ The npm registry exposes the CLI packages under these dist-tags:
 
 - **`dev`** — every routine push to `main` publishes `<base>-dev.<run>` here automatically (operator ruling 2026-08-13, superseding the earlier "no dev channel" ruling). The suffix derives from the workflow run number and is stamped ephemerally in CI, never committed, so release versions remain exactly what a commit says. The channel exists so a product's new version reaches a working CLI without a human: an auto-merging pull request moves the version, runs the full quality and conformance checks, and its merge ships the dev build. Today a daily scheduled run is what notices a product release; the immediate path needs a notification step in each product repository, which neither has yet. See [release automation](./release-automation.md). Only a real release — an `rc.N` bump under `next`, or moving `latest` — is a human act.
 
+  A **release** commit publishes a dev build as well as the release. It is a build of `main` like any other, and without this the `dev` tag would keep naming the last routine push — an older version than the release just published — until someone landed an unrelated commit. That dev build is a real one: the product pins move to their dev builds and the conformance checks run against the result. It is published as a second version rather than by moving the `dev` tag, because OIDC trusted publishing authorises `npm publish` and nothing else.
+
 PR previews go through [`pkg.pr.new`](https://pkg.pr.new) ([`preview-cli-package.yml`](../../.github/workflows/preview-cli-package.yml)); they carry the committed base version and install via per-commit URLs, not dist-tags.
 
 ## Who can publish

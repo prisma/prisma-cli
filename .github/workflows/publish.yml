@@ -234,6 +234,36 @@ jobs:
           publish_one @prisma/cli
           publish_one prisma
 
+      # What the registry actually serves, not what the publisher said.
+      # `pnpm publish` prints its own success line, and on run 32104368661
+      # it printed one for `prisma@8.0.0-rc.4` while the version stayed
+      # unresolvable for several minutes — leaving nobody able to say
+      # whether the release had shipped. The registry is eventually
+      # consistent, so this polls rather than asking once, and fails the
+      # run if a version never appears.
+      - name: Verify the published versions resolve
+        if: ${{ steps.version.outputs.publish == 'true' && (github.event_name != 'workflow_dispatch' || github.event.inputs.dry-run != 'true') }}
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          engine_version=$(node -p "require('./packages/cli-engine/package.json').version")
+          verify_one() {
+            local spec="$1"
+            for attempt in $(seq 1 20); do
+              if npm view "$spec" version --prefer-online >/dev/null 2>&1; then
+                echo "$spec resolves."
+                return 0
+              fi
+              echo "$spec not resolvable yet (attempt $attempt), waiting..."
+              sleep 15
+            done
+            echo "::error::$spec never became resolvable. It may still be propagating, but this run cannot say it shipped."
+            return 1
+          }
+          verify_one "@prisma/cli-engine@$engine_version"
+          verify_one "@prisma/cli@$VERSION"
+          verify_one "prisma@$VERSION"
+
       # Emit a GitHub Release for releases only — runs whose dist-tag is
       # the canonical one for their version (`next` on the RC line,
       # `latest` for stable; `release` from determine-version.ts). Marked
@@ -259,26 +289,75 @@ jobs:
             echo "Release v$VERSION already exists and releases are immutable — nothing to repair."
             exit 0
           fi
-          PRERELEASE_FLAG=""
+          # Created through the API rather than `gh release create`, for
+          # the id in the response. The previous version created the
+          # draft with the CLI and then searched the releases listing for
+          # it by tag; the listing is eventually consistent and had not
+          # caught up a second later, so the step failed and left v8.0.0-rc.4
+          # sitting as a draft (run 32104368661). Addressing the release
+          # by the id its own creation returned cannot race.
+          PRERELEASE=false
           case "$VERSION" in
-            *-rc.*) PRERELEASE_FLAG="--prerelease" ;;
+            *-rc.*) PRERELEASE=true ;;
           esac
-          gh release create "v$VERSION" \
-            --draft \
-            --target "$GITHUB_SHA" \
-            --title "v$VERSION" \
-            --generate-notes \
-            $PRERELEASE_FLAG \
-            artifacts/tarballs/*.tgz
-          # A draft's tag does not exist yet, so `gh release edit
-          # <tag> --draft=false` cannot address it; publish through the
-          # API by the draft's id.
           release_id=$(gh api "repos/$GITHUB_REPOSITORY/releases" \
-            --jq ".[] | select(.draft and .tag_name == \"v$VERSION\") | .id" | head -1)
+            -f tag_name="v$VERSION" \
+            -f target_commitish="$GITHUB_SHA" \
+            -f name="v$VERSION" \
+            -F draft=true \
+            -F prerelease=$PRERELEASE \
+            -F generate_release_notes=true \
+            --jq .id)
           if [ -z "$release_id" ]; then
-            echo "Could not find the draft release for v$VERSION" >&2
+            echo "Creating the draft release for v$VERSION returned no id" >&2
             exit 1
           fi
+          # Assets first, publish second: a published release is
+          # immutable, so uploading afterwards answers HTTP 422.
+          for tarball in artifacts/tarballs/*.tgz; do
+            gh release upload "v$VERSION" "$tarball" --clobber
+          done
           gh api -X PATCH "repos/$GITHUB_REPOSITORY/releases/$release_id" \
             -F draft=false >/dev/null
           echo "Published release v$VERSION with $(ls artifacts/tarballs/*.tgz | wc -l | tr -d ' ') asset(s)."
+
+      # A release commit is a build of `main` too, so the `dev` channel
+      # gets one. `determine-version.ts` treats the two as alternatives —
+      # version changed means release, unchanged means dev — so the
+      # release commit is the ONE merge to `main` that never reaches the
+      # dev channel. Left alone, `dev` keeps naming the last routine push,
+      # an older version than the release, until someone lands an
+      # unrelated commit. Anything following `dev` then tests older code
+      # than the release carries. This repo reads the products' `dev` tags
+      # for exactly that purpose, so it holds itself to the same rule
+      # (operator ruling 2026-08-17; docs/oss/release-automation.md).
+      #
+      # This is a second `npm publish`, not `npm dist-tag add`: OIDC
+      # trusted publishing authorises `npm publish` and nothing else, so
+      # moving a tag would need a long-lived npm token — and not having
+      # one is the property that makes trusted publishing worth having.
+      #
+      # It is a real dev build, not a relabelled release: the product
+      # pins move to their dev builds and the conformance checks run
+      # against the result, exactly as on the dev path. Nothing is
+      # committed. The version sorts above the release
+      # (8.0.0-rc.4-dev.55 > 8.0.0-rc.4), which is correct — a later
+      # build of the same commit.
+      - name: Publish a dev build of the release commit
+        if: ${{ steps.version.outputs.publish == 'true' && steps.version.outputs.release == 'true' && (github.event_name != 'workflow_dispatch' || github.event.inputs.dry-run != 'true') }}
+        env:
+          NPM_CONFIG_PROVENANCE: "true"
+          RELEASE_VERSION: ${{ steps.version.outputs.version }}
+          PUBLISH_CHANNEL: dev
+        run: |
+          DEV_VERSION="${RELEASE_VERSION}-dev.${GITHUB_RUN_NUMBER}"
+          echo "Publishing $DEV_VERSION under the dev tag, from the same commit as $RELEASE_VERSION."
+          node scripts/set-version.ts "$DEV_VERSION"
+          node scripts/update-product-versions.mjs --channel dev
+          pnpm install --lockfile-only --no-frozen-lockfile
+          pnpm build
+          pnpm check:grammar
+          pnpm check:conformance
+          for pkg in @prisma/cli prisma; do
+            pnpm --filter "$pkg" publish --tag dev --access public --no-git-checks
+          done
