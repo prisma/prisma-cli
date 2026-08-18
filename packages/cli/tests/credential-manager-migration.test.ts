@@ -431,3 +431,64 @@ describe("the legacy mirror's context sync", () => {
     });
   });
 });
+
+describe("ending sessions and the legacy mirror", () => {
+  async function readLegacyView() {
+    const data = JSON.parse(await readFile(authFilePath, "utf8")) as {
+      tokens?: { workspaceId: string }[];
+    };
+    const context = JSON.parse(await readFile(contextFilePath, "utf8")) as {
+      activeWorkspaceId?: string | null;
+    };
+    return {
+      tokenWorkspaces: (data.tokens ?? []).map((entry) => entry.workspaceId),
+      activeWorkspaceId: context.activeWorkspaceId ?? null,
+    };
+  }
+
+  it("ending a non-active session keeps the active one visible to the 3.x reader", async () => {
+    const manager = makeManager();
+    await manager.createSession(
+      {
+        token: mintToken(WORKSPACE_A),
+        refreshToken: "ra",
+        expiresAt: undefined,
+      },
+      WORKSPACE_A,
+    );
+    await manager.createSession(
+      {
+        token: mintToken(WORKSPACE_B),
+        refreshToken: "rb",
+        expiresAt: undefined,
+      },
+      WORKSPACE_B,
+    );
+
+    await manager.endSession(WORKSPACE_A);
+
+    expect(await readLegacyView()).toEqual({
+      tokenWorkspaces: [WORKSPACE_B],
+      activeWorkspaceId: WORKSPACE_B,
+    });
+  });
+
+  it("ending the active session clears the 3.x pointer with it", async () => {
+    const manager = makeManager();
+    await manager.createSession(
+      {
+        token: mintToken(WORKSPACE_A),
+        refreshToken: "ra",
+        expiresAt: undefined,
+      },
+      WORKSPACE_A,
+    );
+
+    await manager.endSession(WORKSPACE_A);
+
+    expect(await readLegacyView()).toEqual({
+      tokenWorkspaces: [],
+      activeWorkspaceId: null,
+    });
+  });
+});
