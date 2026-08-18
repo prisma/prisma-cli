@@ -1,49 +1,22 @@
 #!/usr/bin/env node
 
 /**
- * Composes the version + dist-tag the publish workflow will use.
+ * The versions the publish workflow will use, from the root
+ * `package.json` at this ref: always a dev version, and a release
+ * version when this push changed it. Not either/or — see
+ * docs/oss/versioning.md for why.
  *
- * The base version comes from the root `package.json` (the workspace-wide
- * lockstep source of truth — see docs/oss/versioning.md). This script is
- * responsible only for the suffix and dist-tag appropriate to the GitHub
- * event:
- *
- * - `push`              → if the root `version` changed in this push,
- *                          `<base>`, dist-tag from `releaseDistTag`:
- *                          `next` on the RC line, `latest` for stable.
- *                          This is how a merged `chore(release): ...`
- *                          PR ships a release automatically — `latest`
- *                          keeps serving the pre-8 CLI until the
- *                          operator deliberately moves it.
- *                          Otherwise `<base>-dev.<run>` under the `dev`
- *                          dist-tag: every routine main push — above
- *                          all one that follows a product's new version
- *                          — ships an installable dev build
- *                          automatically (operator ruling 2026-08-13).
- * - `workflow_dispatch` → `<base>` (no suffix), dist-tag from
- *                          `INPUT_DIST_TAG`; empty means the version's
- *                          canonical tag (`releaseDistTag`). Useful as a
- *                          manual escape hatch (re-publish after a
- *                          transient failure, cut a beta) — and passing
- *                          `latest` explicitly for an RC version is the
- *                          deliberate cutover act.
- *
- * Outputs `publish`, `version`, `tag` and `release` to `$GITHUB_OUTPUT`
- * for downstream workflow steps to consume.
- *
- * This script never rewrites a manifest. Release versions are the ones
- * committed at this ref, always; a dev version derives its suffix from
- * the run number, and the workflow stamps it ephemerally in CI without
- * committing it (docs/oss/versioning.md).
+ * Outputs `devVersion`, `release`, `releaseVersion`, `releaseTag` and
+ * `githubRelease`. Never rewrites a manifest.
  */
 
 import { execFileSync } from "node:child_process";
 import { appendFileSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import type { VersionResult } from "./determine-version-utils.ts";
 import {
   assertCanonicalBase,
+  assertValidDistTag,
   devVersion,
   isReleasePublish,
   releaseDistTag,
@@ -72,13 +45,7 @@ type PreviousVersionLookup =
   | { available: true; version: string | undefined }
   | { available: false };
 
-/**
- * Reads the root `package.json` `version` at `PUSH_BEFORE_SHA` (the ref
- * that `main` pointed at *before* the push). Distinguishes "we
- * successfully read the previous file" (so the comparison is meaningful)
- * from "we couldn't" (shallow clone, missing SHA, etc.) so the caller
- * can fall back to the safe `dev` path on any I/O hiccup.
- */
+/** The root `version` at `PUSH_BEFORE_SHA`, if it can be read at all. */
 function readPreviousRootVersion(): PreviousVersionLookup {
   const beforeSha = process.env.PUSH_BEFORE_SHA;
   if (!beforeSha || ALL_ZERO_SHA_PATTERN.test(beforeSha)) {
@@ -101,27 +68,29 @@ function readPreviousRootVersion(): PreviousVersionLookup {
 }
 
 function writeGitHubOutput(
-  base: string,
-  result: VersionResult | undefined,
-  publish: boolean,
+  devVersion: string,
+  release: { version: string; tag: string } | undefined,
 ): void {
   const outputFile = process.env.GITHUB_OUTPUT;
   if (!outputFile) return;
-  appendFileSync(outputFile, `publish<<EOF\n${String(publish)}\nEOF\n`);
-  if (result === undefined) return;
-  appendFileSync(outputFile, `version<<EOF\n${result.version}\nEOF\n`);
-  appendFileSync(outputFile, `tag<<EOF\n${result.tag}\nEOF\n`);
-  // A run is a release — and gets the GitHub Release + tag — when it
-  // publishes under the canonical tag for its BASE version. Push bumps
-  // always do; a dispatch counts only when the chosen tag matches
-  // (re-publishing a release); dev publishes never do, and their
-  // suffixed version must not reach releaseDistTag's canonical check.
-  const release = isReleasePublish(base, result.tag);
-  appendFileSync(outputFile, `release<<EOF\n${String(release)}\nEOF\n`);
+  appendFileSync(outputFile, `devVersion<<EOF\n${devVersion}\nEOF\n`);
+  appendFileSync(
+    outputFile,
+    `release<<EOF\n${String(release !== undefined)}\nEOF\n`,
+  );
+  if (release === undefined) return;
+  appendFileSync(outputFile, `releaseVersion<<EOF\n${release.version}\nEOF\n`);
+  appendFileSync(outputFile, `releaseTag<<EOF\n${release.tag}\nEOF\n`);
+  // A beta cut publishes to npm but gets no GitHub Release.
+  appendFileSync(
+    outputFile,
+    `githubRelease<<EOF\n${String(isReleasePublish(release.version, release.tag))}\nEOF\n`,
+  );
 }
 
 const eventName = process.env.GITHUB_EVENT_NAME;
 const inputDistTag = process.env.INPUT_DIST_TAG;
+const runNumber = process.env.GITHUB_RUN_NUMBER ?? "";
 
 const baseVersion = readRootVersion();
 assertCanonicalBase(baseVersion);
@@ -129,54 +98,36 @@ assertCanonicalBase(baseVersion);
 console.log(`Event:                 ${eventName}`);
 console.log(`Base version (root):   ${baseVersion}`);
 
-let result: VersionResult | undefined;
+const dev = devVersion(baseVersion, runNumber);
+
+let release: { version: string; tag: string } | undefined;
 
 switch (eventName) {
   case "workflow_dispatch":
-    // `??` is wrong here: an empty INPUT_DIST_TAG must fall through to
-    // the canonical tag, not become `pnpm publish --tag ""` downstream.
-    // Empty (the input's default) means "this version's canonical tag",
-    // so a routine re-publish dispatch can never move `latest` onto the
-    // RC line by accident; moving it takes an explicit `latest` input.
-    result = {
+    // `||`, not `??`: an empty INPUT_DIST_TAG must fall through to the
+    // canonical tag, not become `pnpm publish --tag ""`.
+    if (inputDistTag) assertValidDistTag(inputDistTag);
+    release = {
       version: baseVersion,
       tag: inputDistTag || releaseDistTag(baseVersion),
     };
     break;
 
   case "push": {
-    // A push publishes exactly when it changes the committed version.
-    // Every other push has nothing to ship: the version at this ref is
-    // already on the registry, and inventing a different one would mean
-    // publishing something no commit describes.
-    //
-    // `available: false` (shallow clone, missing SHA) deliberately means
-    // "do not publish": a transient git error must never promote to
-    // `latest`, and skipping is recoverable by dispatching the workflow.
+    // An unreadable previous version means no release: a transient git
+    // error must never promote to `latest`.
     const previous = readPreviousRootVersion();
-    const isReleaseBump =
-      previous.available && previous.version !== baseVersion;
-    if (isReleaseBump) {
+    if (!previous.available) {
+      console.log(
+        "Could not read the previous root version — publishing the dev build only.",
+      );
+    } else if (previous.version !== baseVersion) {
       console.log(
         `Previous root version: ${previous.version ?? "(unset)"} → release bump detected.`,
       );
-      result = { version: baseVersion, tag: releaseDistTag(baseVersion) };
-    } else if (previous.available) {
-      // Routine push: publish `<base>-dev.<run>` under `dev` (operator
-      // ruling 2026-08-13 — a product's new version reaches the CLI and
-      // deploys without a human; only a real release needs one). The
-      // suffix is derived here and stamped ephemerally in CI; it is
-      // never committed, so releases remain committed-at-HEAD.
-      const runNumber = process.env.GITHUB_RUN_NUMBER ?? "";
-      console.log(
-        `Root version unchanged by this push → dev publish (run ${runNumber}).`,
-      );
-      result = { version: devVersion(baseVersion, runNumber), tag: "dev" };
+      release = { version: baseVersion, tag: releaseDistTag(baseVersion) };
     } else {
-      // A transient git error must never publish anything; skipping is
-      // recoverable by dispatching the workflow.
-      console.log("Could not read the previous root version — not publishing.");
-      result = undefined;
+      console.log("Root version unchanged by this push → dev build only.");
     }
     break;
   }
@@ -185,10 +136,14 @@ switch (eventName) {
     throw new Error(`don't know how to handle event ${eventName}`);
 }
 
-if (result === undefined) {
-  writeGitHubOutput(baseVersion, undefined, false);
-} else {
-  console.log(`Resolved version:      ${result.version}`);
-  console.log(`Resolved dist-tag:     ${result.tag}`);
-  writeGitHubOutput(baseVersion, result, true);
+if (release !== undefined && !isReleasePublish(baseVersion, release.tag)) {
+  console.log(
+    `Dist-tag ${release.tag} is not ${baseVersion}'s canonical tag — publishing it, but not as a release.`,
+  );
 }
+
+console.log(`Dev version:           ${dev}`);
+console.log(
+  `Release:               ${release === undefined ? "no" : `${release.version} under ${release.tag}`}`,
+);
+writeGitHubOutput(dev, release);

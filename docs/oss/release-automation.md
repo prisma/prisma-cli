@@ -70,6 +70,7 @@ The payload is informational — this repository always re-reads the registry ra
 | The workflow fails with "DEPLOY_GITHUB_TOKEN is not configured" | The secret is absent from this repository | Add it (see above) |
 | A pull request opens but never merges | Required checks failing | Read the checks — this is the automation working; a product release broke something |
 | Two open version-update pull requests | The close-the-previous step failed | Close the older one by hand; they race each other's lockfile |
+| A published version never appears on the registry | npm accepted the publish but the version is not resolvable | The publish run polls for it and fails if it never appears; if that fails, re-dispatch the workflow — an already-published version is treated as done, so only the missing one publishes |
 | A release publish fails on the dev-build check | The committed pins are dev builds — a dev stamp was committed by mistake, or a product has no usable release | Run `node scripts/update-product-versions.mjs --channel release`; if that changes nothing, the product must publish a real release |
 
 ## The state this replaced
