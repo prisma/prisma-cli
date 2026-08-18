@@ -141,6 +141,7 @@ export async function checkTarball(
       channel: input.channel,
     }),
   );
+  findings.push(...enginePinAgreementFindings(input, packed));
 
   const shell = packed.get(input.shellPackage);
   if (shell === undefined) return findings;
@@ -148,6 +149,35 @@ export async function checkTarball(
   findings.push(...manifestPinFindings(input, shell.manifest));
   findings.push(...(await sandboxFindings(input, shell, packed, io)));
   return applyExceptions(findings, input.exceptions);
+}
+
+/**
+ * 3c, sibling leg: every packed manifest that depends on the engine
+ * must pin exactly the engine version packed beside it. This is how
+ * `prisma@8.0.0-rc.4` crashed on import: the engine moved to 0.2.0
+ * while `packages/prisma` kept pinning 0.1.1, so the published package
+ * resolved a registry engine missing the exports it was built against.
+ */
+function enginePinAgreementFindings(
+  input: TarballInput,
+  packed: ReadonlyMap<string, { tarball: string; manifest: PackedManifest }>,
+): readonly Finding[] {
+  const engineVersion = packed.get(input.enginePackage)?.manifest.version;
+  if (engineVersion === undefined) return [];
+  const findings: Finding[] = [];
+  for (const [name, entry] of packed) {
+    if (name === input.enginePackage) continue;
+    const pin = entry.manifest.dependencies?.[input.enginePackage];
+    if (pin === undefined || pin === engineVersion) continue;
+    findings.push(
+      finding(
+        "engine-pin-mismatch",
+        name,
+        `${name} pins ${input.enginePackage}@${pin} while this release packs ${input.enginePackage}@${engineVersion} — the published package would resolve a different engine than the one shipping`,
+      ),
+    );
+  }
+  return findings;
 }
 
 /** 3a: check 1 over the tarball's own files and manifest. */
