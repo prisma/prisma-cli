@@ -9,7 +9,7 @@ The docs in `docs/product` are the source of truth. Do not invent product behavi
 ## What This CLI Is
 
 - This is the future unified Prisma CLI.
-- The first implementation slice is app deployment workflows, but the command model must preserve the long-term CLI for ORM, Postgres, and app workflows.
+- The command model must preserve the long-term CLI for ORM, Postgres, and service workflows; deployments start from a pushed connected repository, the Console, or `composer deploy`.
 
 ## Read These First
 

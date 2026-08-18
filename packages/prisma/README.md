@@ -44,7 +44,7 @@ Deployments start from pushing the connected repository, the Console, or
 With `pnpm`:
 
 ```bash
-pnpm add -D prisma
+pnpm add -D prisma@next
 pnpm prisma auth login
 pnpm prisma git connect
 ```

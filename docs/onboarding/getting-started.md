@@ -18,7 +18,7 @@ pnpm install
 ```bash
 pnpm prisma-cli --help
 pnpm prisma-cli auth whoami
-pnpm prisma-cli app deploy --help
+pnpm prisma-cli service --help
 ```
 
 The root `prisma-cli` script runs the TypeScript source entrypoint through `tsx`.
