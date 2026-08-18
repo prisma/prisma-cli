@@ -1,16 +1,9 @@
 #!/usr/bin/env node
 
-// Confirms that versions the publish workflow just pushed are actually
-// served by the registry.
-//
-// `pnpm publish` printing a success line is not the same as the version
-// being resolvable: on publish run 32104368661 it reported
-// `✅ Published package prisma@8.0.0-rc.4` while `npm view` answered 404
-// for several minutes, and nothing in the run could say whether the
-// release had shipped.
-//
-// The registry is eventually consistent, so a miss is not a failure —
-// this polls. Never appearing is a failure.
+// Confirms the registry actually serves versions the workflow just
+// published: `pnpm publish` reporting success is not the same as the
+// version being resolvable. The registry is eventually consistent, so a
+// miss is not a failure — never appearing is.
 //
 // Usage: node scripts/verify-published.mjs <spec>...
 
@@ -24,8 +17,6 @@ const DELAY_MS = 15_000;
 
 /**
  * Polls until every spec resolves, or reports the first that never does.
- * The registry lookup and the clock are injected so the tests need
- * neither.
  *
  * @param {readonly string[]} specs
  * @param {{ check: (spec: string) => Promise<boolean>, sleep: (ms: number) => Promise<void>, attempts?: number }} io
@@ -36,7 +27,7 @@ export async function waitForAll(specs, io) {
   for (const spec of specs) {
     let resolved = false;
     for (let attempt = 1; attempt <= attempts; attempt++) {
-      // biome-ignore lint/performance/noAwaitInLoops: polling is sequential by nature — each attempt exists only because the previous one failed
+      // biome-ignore lint/performance/noAwaitInLoops: each attempt exists only because the previous one failed
       if (await io.check(spec)) {
         resolved = true;
         break;

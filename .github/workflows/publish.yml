@@ -1,43 +1,13 @@
 name: Publish to npm
 
-# Source-of-truth model (ported from prisma/prisma; see
-# docs/oss/versioning.md):
-#   The version comes from the root `package.json` `version` field.
-#   Maintainers advance it via `pnpm bump-version`, which writes it
-#   across the workspace and is committed. This workflow can never
-#   publish a version other than what is committed at HEAD, and never
-#   rewrites a manifest to get there.
+# Every run publishes a dev build. A run also publishes a release when
+# the push changed the root `version`, or a dispatch asked for one. The
+# two are not alternatives: when they were, the release commit never
+# reached the dev channel and `dev` sat on an older version than the
+# release. See docs/oss/versioning.md.
 #
-# Publish model:
-#   EVERY run publishes a dev build — `<base>-dev.<run>` under the `dev`
-#   dist-tag, stamped ephemerally and never committed, with the product
-#   CLI packages moved to their own dev builds.
-#
-#   A run ALSO publishes a release when the push changed the root
-#   `version` (or a `workflow_dispatch` asked for one): `<base>` under its
-#   canonical dist-tag — `next` on the RC line, `latest` for stable — from
-#   the committed tree, plus a GitHub Release. This is how a merged
-#   `chore(release): ...` PR auto-ships. `latest` keeps serving the pre-8
-#   CLI until the operator deliberately moves it (operator ruling
-#   2026-08-12).
-#
-#   The two halves are not alternatives. When they were, the release
-#   commit was the one merge to `main` that never reached the dev
-#   channel, so `dev` sat on an older version than the release until an
-#   unrelated commit landed — and anything following `dev` (this repo
-#   follows the products' `dev` tags) silently tested older code than the
-#   release carried. Operator ruling 2026-08-18: dev is unconditional,
-#   release is the conditional half.
-#
-# Scope: `@prisma/cli-engine`, then `@prisma/cli`, then `prisma` — the
-# unscoped name is the same shell under the `prisma` bin, and it goes
-# last because it carries the whole tree. The engine versions
-# INDEPENDENTLY of the lockstep (ADR 0004): it publishes at whatever
-# version its own manifest carries, and because an already-published
-# version is treated as done, an unbumped engine is a no-op while a
-# bumped one ships in the same run. `@prisma/compute` is excluded from
-# the lockstep by operator ruling (2026-08-10) and keeps its own
-# workflow (`publish-compute.yml`).
+# The version is always what the root `package.json` says at this ref.
+# Dev suffixes are stamped in CI and never committed.
 
 on:
   push:
@@ -64,11 +34,8 @@ jobs:
   publish:
     name: Publish packages to npm
     runs-on: ubuntu-latest
-    # Only `main` may produce a real publish. A dry-run dispatch is permitted
-    # from any branch so maintainers can validate the pipeline before merging
-    # changes that touch publishing. The dry-run path performs no registry
-    # writes and skips the GitHub Release step, so non-main runs cannot
-    # affect production state.
+    # Only `main` publishes; a dry-run dispatch may validate the pipeline
+    # from any branch.
     if: ${{ github.ref == 'refs/heads/main' || (github.event_name == 'workflow_dispatch' && github.event.inputs.dry-run == 'true') }}
     permissions:
       contents: write # Required to create the GitHub Release + tag for latest publishes
@@ -79,11 +46,8 @@ jobs:
         uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
         with:
           persist-credentials: false
-          # Need history reaching `github.event.before` so `determine-version.ts`
-          # can compare the root `package.json` version at that ref to HEAD and
-          # decide whether this push is a release bump (publish `latest`) or a
-          # routine commit (publish `dev`). A multi-commit push can place
-          # `before` arbitrarily far back, so fetch the full history.
+          # determine-version.ts reads package.json at `before`, which a
+          # multi-commit push can place arbitrarily far back.
           fetch-depth: 0
 
       - name: Set up pnpm
@@ -106,26 +70,13 @@ jobs:
         env:
           GITHUB_EVENT_NAME: ${{ github.event_name }}
           INPUT_DIST_TAG: ${{ github.event.inputs.dist-tag }}
-          # `before` is the ref `main` pointed at before this push.
-          # `determine-version.ts` reads the root `package.json` at that
-          # ref to detect release bumps. Empty for `workflow_dispatch`,
-          # which the script also handles.
           PUSH_BEFORE_SHA: ${{ github.event.before }}
         run: node scripts/determine-version.ts
 
-      # ----------------------------------------------------------------
-      # The dev build. No conditions: every run of this workflow ships
-      # one. That is what keeps the `dev` dist-tag from ever naming an
-      # older version than the release tag.
-      # ----------------------------------------------------------------
+      # --- The dev build: every run, no conditions. ---
 
-      # Ephemeral, never committed: the version, and the product CLI
-      # packages moved to their own dev builds. A dev CLI depends on the
-      # products' dev builds; a release depends only on their releases
-      # (operator ruling 2026-08-17). The lockfile refresh is part of the
-      # stamp — pnpm verifies manifests against the lockfile before
-      # running any script, so a stamped workspace with an unstamped
-      # lockfile fails the next pnpm invocation.
+      # The lockfile refresh is part of the stamp: pnpm verifies
+      # manifests against the lockfile before running any script.
       - name: Stamp the dev version
         run: |
           node scripts/set-version.ts "${{ steps.version.outputs.devVersion }}"
@@ -135,12 +86,6 @@ jobs:
       - name: Build the dev version
         run: pnpm build
 
-      # Everything that stands between a build and the registry: the
-      # assembled command tree still complete, the version helpers still
-      # correct, and the conformance checks — built output importing only
-      # declared dependencies, every config-section validator surviving
-      # hostile input, and the packed tarballs installing into a clean
-      # sandbox with every declared bin starting on plain Node.
       - name: Check the dev version
         env:
           PUBLISH_CHANNEL: dev
@@ -165,11 +110,7 @@ jobs:
         run: |
           node scripts/verify-published.mjs "@prisma/cli@$DEV_VERSION" "prisma@$DEV_VERSION"
 
-      # ----------------------------------------------------------------
-      # The release. Only when the committed version changed (or a
-      # dispatch asked for one). Runs from the committed tree, so a
-      # release publishes exactly what its commit says.
-      # ----------------------------------------------------------------
+      # --- The release: only when the committed version changed. ---
 
       - name: Restore the committed versions
         if: ${{ steps.version.outputs.release == 'true' }}
@@ -186,8 +127,6 @@ jobs:
           pnpm check:grammar
           pnpm check:conformance
 
-      # The tarballs these checks packed are the ones attached to the
-      # GitHub Release below: what was verified is what ships.
       - name: Upload tarball artifacts
         if: ${{ steps.version.outputs.release == 'true' }}
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
@@ -196,26 +135,18 @@ jobs:
           path: artifacts/tarballs/*.tgz
           if-no-files-found: error
 
-      # NODE_AUTH_TOKEN is intentionally NOT set. npm detects the OIDC
-      # environment (id-token: write) and authenticates via Trusted
-      # Publishing automatically; setting NODE_AUTH_TOKEN to any value —
-      # even empty string — would block OIDC.
-      #
-      # `pnpm publish` (not `npm publish`) so `workspace:` specifiers are
-      # rewritten to exact versions in the published manifest.
-      # `--no-git-checks` because the packing step touches the tree.
-      #
-      # A rerun meets versions already on the registry. npm refuses to
-      # publish over them — correctly — but that refusal must not stop
-      # the run before the Release step can repair a missing Release. An
-      # already-published version is treated as done; every other publish
-      # failure still fails the run.
+      # NODE_AUTH_TOKEN is intentionally NOT set: npm authenticates over
+      # OIDC, and setting it to any value — even empty — blocks that.
+      # `pnpm publish`, not `npm publish`, or `workspace:` specifiers
+      # survive into the published manifest.
       - name: Publish the release
         if: ${{ steps.version.outputs.release == 'true' && (github.event_name != 'workflow_dispatch' || github.event.inputs.dry-run != 'true') }}
         env:
           NPM_CONFIG_PROVENANCE: "true"
           DIST_TAG: ${{ steps.version.outputs.releaseTag }}
         run: |
+          # An already-published version is treated as done, so a rerun
+          # reaches the Release step; every other failure fails the run.
           publish_one() {
             local out
             if out=$(pnpm --filter "$1" publish --tag "$DIST_TAG" --access public --no-git-checks 2>&1); then
@@ -233,10 +164,6 @@ jobs:
           publish_one @prisma/cli
           publish_one prisma
 
-      # What the registry serves, not what the publisher said. `pnpm
-      # publish` printed a success line for prisma@8.0.0-rc.4 while the
-      # version stayed unresolvable for minutes, and nobody could tell
-      # from the run whether the release had shipped (run 32104368661).
       - name: Verify the release resolves
         if: ${{ steps.version.outputs.release == 'true' && (github.event_name != 'workflow_dispatch' || github.event.inputs.dry-run != 'true') }}
         env:
@@ -248,16 +175,10 @@ jobs:
             "@prisma/cli@$RELEASE_VERSION" \
             "prisma@$RELEASE_VERSION"
 
-      # Releases here are immutable: once published, neither the assets
-      # nor the tag can change. So the Release is created as a draft, the
-      # verified tarballs are attached, and only then is it published.
-      #
-      # Created through the API rather than `gh release create`, for the
-      # id in the response: the previous version searched the releases
-      # listing for the draft by tag a second after creating it, that
-      # listing is eventually consistent, and when it had not caught up
-      # the step failed and left v8.0.0-rc.4 sitting as a draft
-      # (run 32104368661).
+      # Draft first, assets, then publish: a published release is
+      # immutable, so a later upload answers 422. Created through the API
+      # for the id — searching the releases listing for a draft races its
+      # eventual consistency.
       - name: Create GitHub Release
         if: ${{ steps.version.outputs.githubRelease == 'true' && (github.event_name != 'workflow_dispatch' || github.event.inputs.dry-run != 'true') }}
         env:
