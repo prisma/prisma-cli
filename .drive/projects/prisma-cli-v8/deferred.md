@@ -351,21 +351,17 @@ CLI does not do, and each restarts as engine work if wanted:
   that later date, not deleted** — R-S8-5's "provided live streaming can
   be added at a later date" is still the standing commitment, and this
   slice is what it was traded against.
-- **The e2e suite should assert the real service-id prefix.** D2 wrote
-  `e2e/service.e2e.ts` without credentials to run it, so it asserts only
-  that `service create` reports a non-empty id. The sibling suites assert
-  real prefixes (`bkt_`, `db_`) because their authors could see one.
-  Whoever first runs this suite green should read the id the API actually
-  returns and tighten the assertion to match, as `bucket.e2e.ts` does.
-- **`service show` can have a real e2e now, and should.** It sat on the
-  `AWAITING_COVERAGE` backlog because the whole `service` family was
-  assumed to need a deployed service. `service create` falsified that:
-  `service show` works against a service that has never been promoted —
-  D1's own unit test asserts that case. Adding it to `e2e/service.e2e.ts`
-  alongside `create`/`list`/`remove` is a small job and removes the entry
-  rather than re-explaining it. The `service domain *` entries look like
-  the same case (they attach a domain to a service, not to a deployment)
-  and are worth checking at the same time.
+- **The e2e suite should assert the real service-id prefix.** DONE
+  (2026-08-18): the API returns `cps_`-prefixed ids, and
+  `e2e/service.e2e.ts` now asserts `/^cps_/` the way `bucket.e2e.ts`
+  asserts `bkt_`.
+- **`service show` can have a real e2e now, and should.** DONE: it runs
+  in `e2e/service.e2e.ts` alongside `create`/`list`/`remove` and is off
+  the `AWAITING_COVERAGE` backlog. The `service domain *` prediction in
+  this entry turned out wrong twice over: the domain commands DO need a
+  promoted deployment (`SERVICE.NO_DEPLOYMENTS` without one), and their
+  DNS check needs a hostname the test account controls, which is why
+  they remain on the backlog.
 
 ## Composer's public surface — ruled, closed
 
