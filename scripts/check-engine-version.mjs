@@ -7,7 +7,7 @@
 // `npx prisma@next` crashed on import. The registry is immutable, so a
 // changed engine must claim a new version (`pnpm bump-cli-engine-version`).
 //
-// Usage: node scripts/check-engine-version.mjs <base-sha>
+// Usage: node scripts/check-engine-version.mjs <base-ref>
 
 import { execFile } from "node:child_process";
 import { readFileSync } from "node:fs";
@@ -52,7 +52,7 @@ export function engineBumpVerdict({
 async function main() {
   const baseSha = process.argv[2];
   if (!baseSha) {
-    console.error("Usage: node scripts/check-engine-version.mjs <base-sha>");
+    console.error("Usage: node scripts/check-engine-version.mjs <base-ref>");
     process.exit(1);
   }
 
