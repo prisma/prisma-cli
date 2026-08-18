@@ -291,3 +291,105 @@ describe("adopting the legacy store", () => {
     await unlink(authFilePath);
   });
 });
+
+describe("the legacy mirror", () => {
+  /** Reads the store exactly as the 3.x CLI does (#204): sessions come
+   *  from auth.json's `tokens` array (`data.tokens || []`), selected by
+   *  auth.context.json's `activeWorkspaceId`, and a record without a
+   *  workspaceId, token, and refreshToken is skipped. */
+  async function readAsLegacyCli() {
+    const data = JSON.parse(await readFile(authFilePath, "utf8")) as {
+      tokens?: unknown[];
+    };
+    const tokens = data.tokens || [];
+    const context = JSON.parse(await readFile(contextFilePath, "utf8")) as {
+      activeWorkspaceId?: string | null;
+      workspaces?: Record<string, { name?: string }>;
+    };
+    const active = context.activeWorkspaceId;
+    if (!active) return null;
+    const credential = tokens.find(
+      (entry) => (entry as { workspaceId?: string })?.workspaceId === active,
+    ) as
+      | { workspaceId: string; token?: string; refreshToken?: string }
+      | undefined;
+    if (!credential?.token || !credential.refreshToken) return null;
+    return {
+      workspaceId: credential.workspaceId,
+      accessToken: credential.token,
+      refreshToken: credential.refreshToken,
+    };
+  }
+
+  it("a token refresh keeps the session visible to the 3.x reader", async () => {
+    await writeLegacyStore([legacyEntry(WORKSPACE_A, "legacy-refresh")]);
+    await writeLegacyContext({
+      activeWorkspaceId: WORKSPACE_A,
+      workspaces: { [WORKSPACE_A]: { name: "Alpha" } },
+    });
+
+    const manager = makeManager();
+    await manager.activeCredential();
+    const storage = await manager.activeCredentialStorage();
+    const rotatedToken = mintToken(WORKSPACE_A);
+    await storage.setTokens({
+      workspaceId: WORKSPACE_A,
+      accessToken: rotatedToken,
+      refreshToken: "rotated-refresh",
+    });
+
+    expect(await readAsLegacyCli()).toEqual({
+      workspaceId: WORKSPACE_A,
+      accessToken: rotatedToken,
+      refreshToken: "rotated-refresh",
+    });
+
+    const context = JSON.parse(await readFile(contextFilePath, "utf8")) as {
+      workspaces: Record<string, { name?: string }>;
+    };
+    expect(context.workspaces[WORKSPACE_A]?.name).toBe("Alpha");
+  });
+
+  it("creating and selecting sessions moves the 3.x active pointer with them", async () => {
+    const manager = makeManager();
+    const tokenA = mintToken(WORKSPACE_A);
+    const tokenB = mintToken(WORKSPACE_B);
+    await manager.createSession(
+      { token: tokenA, refreshToken: "ra", expiresAt: undefined },
+      WORKSPACE_A,
+    );
+    await manager.createSession(
+      { token: tokenB, refreshToken: "rb", expiresAt: undefined },
+      WORKSPACE_B,
+    );
+
+    expect((await readAsLegacyCli())?.workspaceId).toBe(WORKSPACE_B);
+
+    await manager.selectSession(WORKSPACE_A);
+    expect(await readAsLegacyCli()).toEqual({
+      workspaceId: WORKSPACE_A,
+      accessToken: tokenA,
+      refreshToken: "ra",
+    });
+  });
+
+  it("the mirror is invisible to this CLI's own reader", async () => {
+    const manager = makeManager();
+    await manager.createSession(
+      {
+        token: mintToken(WORKSPACE_A),
+        refreshToken: "r",
+        expiresAt: undefined,
+      },
+      WORKSPACE_A,
+    );
+
+    const state = await readCredentialState(authFilePath);
+    expect(Object.keys(state)).toEqual([
+      "version",
+      "sessions",
+      "currentWorkspaceId",
+    ]);
+    expect(state.sessions).toHaveLength(1);
+  });
+});
