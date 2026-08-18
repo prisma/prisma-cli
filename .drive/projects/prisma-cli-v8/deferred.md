@@ -429,6 +429,16 @@ CLI does not do, and each restarts as engine work if wanted:
   for exactly this kind of consumer, or cut the cloud extension's use
   of it. Spans both product repos; Will decides which.
 
+## The rc.4 engine mismatch (2026-08-18) — the repair chain
+
+`prisma@8.0.0-rc.4` on `next` crashes on import: #183 and #184 changed the engine without bumping its version, so the registry's `@prisma/cli-engine@0.1.1` (published ten minutes before #183 merged) lacks exports the CLI imports. The registry is immutable and both products peer the engine exactly, so npm fails with ERESOLVE on any mismatch; the repair is a chain, in order:
+
+1. **prisma-cli #200**: engine → 0.2.0, plus the CI job that fails any PR changing `packages/cli-engine/` while its version is already on the registry (the check whose absence let rc.4 ship). Merging it publishes engine 0.2.0.
+2. **Both product repos**: re-declare the exact engine peer at 0.2.0 and release (`composer-cli` 0.7.1, `orm-toolchain` 8.0.0-rc.3). Their lockfiles cannot resolve 0.2.0 before step 1 publishes.
+3. **prisma-cli**: pick up those product versions and cut `8.0.0-rc.5` — the first version on `next` that works again. rc.4 itself cannot be repaired.
+
+The cost the incident exposes: every engine API change forces this three-repo, three-release sequence, because the exact peer is what guarantees one engine per install (ADR 0004). Making the chain cheaper — automation that opens the product peer-bump PRs when a new engine publishes, riding the same `DEPLOY_GITHUB_TOKEN` as the notification step below — is a design question for Will.
+
 ## Left open by the dev-build fix (2026-08-17)
 
 The release channel is green as of 2026-08-17: `@prisma/composer-cli@0.7.0` and `@prisma/orm-toolchain@8.0.0-rc.2` are both released and both peer `@prisma/cli-engine@0.1.1`, so the conformance run reports nothing and `packages/cli/scripts/conformance.ts` carries no exceptions. What closed, for the record: composer's `0.6.0` was uninstallable (published out-of-band with `npm publish`, leaving `workspace:0.6.0` in its manifest) and the ORM had no released version carrying the command family.
