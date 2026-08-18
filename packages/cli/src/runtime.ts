@@ -83,15 +83,17 @@ function warnOnDeprecatedStateFileEnvVar(proc: HostProcess): void {
 
 /** Whether fd 1 and fd 2 are the same open device. Distinguishes one
  *  terminal (mirror suppressed) from a harness that allocated separate
- *  PTYs for the two streams (mirror kept). Undefined when the fds
- *  cannot be inspected — the engine then assumes one terminal. */
-function outputStreamsShareDevice(): boolean | undefined {
+ *  PTYs for the two streams (mirror kept). */
+function outputStreamsShareDevice(): boolean {
   try {
     const out = fstatSync(1);
     const err = fstatSync(2);
     return out.dev === err.dev && out.ino === err.ino && out.rdev === err.rdev;
   } catch {
-    return undefined;
+    // Cannot tell: answer "one terminal", which two TTYs are far more
+    // often than not. Same behaviour the engine used to apply to an
+    // absent field, now stated here rather than defaulted out of sight.
+    return true;
   }
 }
 

@@ -864,6 +864,7 @@ describe("needs.config", { timeout: 60_000 }, () => {
       cwd,
       env: {},
       isTty: { stdin: false, stdout: false, stderr: false },
+      outputStreamsShareDevice: true,
       exit: (code: number): never => {
         throw new Error(`runtime.exit(${code})`);
       },

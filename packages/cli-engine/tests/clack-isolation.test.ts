@@ -115,6 +115,7 @@ describe("scripted and non-TTY paths are clack-free", () => {
       cwd: "/",
       env: {},
       isTty: { stdin: true, stdout: true, stderr: true },
+      outputStreamsShareDevice: true,
       exit: (code: number): never => {
         throw new Error(`runtime.exit(${code})`);
       },
