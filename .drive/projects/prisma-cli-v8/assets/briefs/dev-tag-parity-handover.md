@@ -25,20 +25,13 @@ We are deliberately not working around it in prisma-cli by comparing versions an
 
 ## The fix
 
-After a release publish succeeds, point `dev` at the released version:
+Publish a dev build of the release commit too. A release commit is a build of `main`, so it gets a dev version like any other build of `main`: after the release publish succeeds, publish the same tree again as `<version>-dev.<run>` under the `dev` tag.
 
-```bash
-npm dist-tag add "<package>@<version>" dev
-```
+**Do not try to move the tag with `npm dist-tag add`.** If you publish over npm OIDC trusted publishing, that will not work: npm's documentation states that OIDC authentication supports `npm publish` and `npm stage publish` only, and that other commands still require traditional authentication. A dist-tag change is one of those. Reaching for a long-lived npm token to work around it would give up the property that makes trusted publishing worth having — that no credential exists which could publish out-of-band if leaked. Publishing a second version needs no new credential, because it goes through the same `npm publish` path that already works.
 
-For every package the release publishes, at the version each one actually shipped — packages excluded from your lockstep ship at their own version, so do not assume one version string covers them all.
+The version this produces sorts above the release under semver (`8.0.0-rc.4-dev.55` > `8.0.0-rc.4`), which is correct: it is a later build of the same code.
 
-Placement: after the publish step and after whatever creates the GitHub Release, keyed on the publish having succeeded. If the release publish did not happen, the tag must not move.
-
-## Two things to check while implementing
-
-1. **Whether your publish credentials can write a dist-tag.** If the workflow publishes over npm OIDC trusted publishing, the short-lived token is issued for publishing; confirm it also authorises `PUT /-/package/{pkg}/dist-tags/{tag}` before relying on it. If it does not, the alternative is a granular token with write access to those packages, and that is worth knowing rather than discovering during a release.
-2. **Idempotence on a rerun.** `npm dist-tag add` on a tag that already points at that version is a no-op and should not fail the run. A rerun of a release publish is a normal event.
+The cost is one extra published version per release. That is the price of the `dev` tag meaning what it says.
 
 ## How to know it worked
 
