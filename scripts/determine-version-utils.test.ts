@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import {
   assertCanonicalBase,
+  assertValidDistTag,
   computeNextMinor,
   computeNextReleaseVersion,
   devVersion,
@@ -11,6 +12,7 @@ import {
 } from "./determine-version-utils.ts";
 
 const NOT_CANONICAL = /not canonical/;
+const NOT_A_DIST_TAG = /not a valid dist-tag/;
 
 describe("parseVersion", () => {
   it("parses a clean release", () => {
@@ -185,5 +187,26 @@ describe("isReleasePublish", () => {
   it("a beta or off-tag publish is not a release", () => {
     assert.equal(isReleasePublish("8.0.0-rc.2", "beta"), false);
     assert.equal(isReleasePublish("8.0.0-rc.2", "latest"), false);
+  });
+});
+
+describe("assertValidDistTag", () => {
+  it("accepts the tags the contract uses", () => {
+    for (const tag of ["latest", "next", "beta", "dev"]) {
+      assert.doesNotThrow(() => assertValidDistTag(tag));
+    }
+  });
+
+  it("refuses anything that is not a plain lowercase word", () => {
+    for (const tag of ["", "Latest", "--tag", "8.0.0", "a tag"]) {
+      assert.throws(() => assertValidDistTag(tag), NOT_A_DIST_TAG);
+    }
+  });
+
+  it("refuses a value with a newline, which could smuggle extra workflow outputs", () => {
+    assert.throws(
+      () => assertValidDistTag("next\nEOF\ngithubRelease<<EOF\ntrue"),
+      NOT_A_DIST_TAG,
+    );
   });
 });

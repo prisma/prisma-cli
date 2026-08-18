@@ -100,15 +100,34 @@ async function tarball(): Promise<readonly Finding[]> {
       shellPackage: "@prisma/cli",
       enginePackage: "@prisma/cli-engine",
       familyPackages: ["@prisma/composer-cli", "@prisma/orm-toolchain"],
-      // No exceptions. Both families declare @prisma/cli-engine as an
-      // exact peer at the version this repo ships, so one engine
-      // resolves in an install — what ADR 0004 asks for, reached
-      // 2026-08-17 by @prisma/composer-cli@0.7.0 and
-      // @prisma/orm-toolchain@8.0.0-rc.2. Anything that reopens the
-      // two-engine defect now fails the publish instead of being
-      // excused, and adding an entry here is a decision to be argued
-      // for, not a way to get green.
-      exceptions: [],
+      // The empty list is the goal state: both families peering the
+      // exact engine version this repo ships, one engine per install
+      // (ADR 0004). The two entries below are an engine version
+      // transition in flight — a family cannot peer an engine version
+      // that is not on the registry, so the engine publishes first and
+      // the mismatch is real until both families release against it.
+      // The entries expire with the versions they name, and the rc.5
+      // bump PR removes them; while they stand, a release could ship
+      // the two-engine install they describe, which is why they must
+      // not outlive the transition.
+      exceptions: [
+        {
+          familyPackage: "@prisma/composer-cli",
+          familyPin: "0.1.1",
+          shellPin: "0.2.0",
+          reason: "engine 0.2.0 must publish before composer-cli can peer it",
+          removeWhen:
+            "composer-cli releases peering 0.2.0 and the 8.0.0-rc.5 bump PR pins that release",
+        },
+        {
+          familyPackage: "@prisma/orm-toolchain",
+          familyPin: "0.1.1",
+          shellPin: "0.2.0",
+          reason: "engine 0.2.0 must publish before orm-toolchain can peer it",
+          removeWhen:
+            "orm-toolchain releases peering 0.2.0 and the 8.0.0-rc.5 bump PR pins that release",
+        },
+      ],
       channel: CHANNEL,
       sandboxDir: join(WORK_DIR, "sandbox"),
     },

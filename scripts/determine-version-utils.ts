@@ -101,6 +101,22 @@ export function assertCanonicalBase(base: string): void {
   }
 }
 
+const DIST_TAG_PATTERN = /^[a-z][a-z0-9-]*$/;
+
+/**
+ * Asserts that a dispatch-supplied dist-tag is a plain lowercase word.
+ * The value ends up in `pnpm publish --tag` and in a GITHUB_OUTPUT
+ * heredoc, so anything with whitespace, a newline, or a leading `-`
+ * must be refused, not passed through.
+ */
+export function assertValidDistTag(tag: string): void {
+  if (!DIST_TAG_PATTERN.test(tag)) {
+    throw new Error(
+      `"${tag}" is not a valid dist-tag: expected a plain lowercase word like "latest", "next", "beta" or "dev".`,
+    );
+  }
+}
+
 /**
  * The dist-tag a release-bump push publishes under. RC-line versions go
  * to `next`: `latest` keeps serving the pre-8 CLI until the operator

@@ -48,7 +48,7 @@
     "conformance": "tsx scripts/conformance.ts"
   },
   "dependencies": {
-    "@prisma/cli-engine": "workspace:0.1.1",
+    "@prisma/cli-engine": "workspace:0.2.0",
     "@prisma/composer-cli": "0.7.0",
     "@prisma/compute-sdk": "0.39.0",
     "@prisma/credentials-store": "^7.8.0",
