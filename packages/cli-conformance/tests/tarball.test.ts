@@ -240,6 +240,59 @@ describe("checkTarball", () => {
     ).toBe(true);
   });
 
+  /**
+   * How `prisma@8.0.0-rc.4` shipped crashing: the engine packed at
+   * 0.2.0 while a sibling package still pinned 0.1.1, so the publish
+   * resolved a registry engine missing the exports it was built
+   * against. Every packed sibling must pin the engine version packed
+   * beside it.
+   */
+  test("a packed sibling pinning a different engine version than the packed engine is a finding", async () => {
+    const io = fakeIo({
+      readPackedManifest: (tarball) => {
+        if (tarball.includes("cli-engine")) {
+          return Promise.resolve({ ...ENGINE_MANIFEST, version: "0.2.0" });
+        }
+        if (tarball.includes("prisma-wrapper")) {
+          return Promise.resolve({
+            dependencies: { "@prisma/cli-engine": "0.1.1" },
+          });
+        }
+        return Promise.resolve({
+          ...SHELL_MANIFEST,
+          dependencies: {
+            ...SHELL_MANIFEST.dependencies,
+            "@prisma/cli-engine": "0.2.0",
+          },
+        });
+      },
+      readPackedFiles: () => Promise.resolve(new Map()),
+    });
+    const findings = await checkTarball(
+      input({
+        packages: [
+          { name: "@prisma/cli", dir: "packages/cli" },
+          { name: "prisma", dir: "packages/prisma-wrapper" },
+          { name: "@prisma/cli-engine", dir: "packages/cli-engine" },
+        ],
+      }),
+      io,
+    );
+    const stale = findings.filter(
+      (f) => f.kind === "engine-pin-mismatch" && f.subject === "prisma",
+    );
+    expect(stale).toHaveLength(1);
+    expect(stale[0]?.summary).toContain("0.1.1");
+    expect(stale[0]?.summary).toContain("0.2.0");
+    expect(stale[0]?.suppressedBy).toBeUndefined();
+    // The shell, pinning the packed engine's exact version, is clean.
+    expect(
+      findings.some(
+        (f) => f.kind === "engine-pin-mismatch" && f.subject === "@prisma/cli",
+      ),
+    ).toBe(false);
+  });
+
   test("3a: the packed output's imports are held to the packed manifest", async () => {
     const io = fakeIo({
       readPackedFiles: (tarball) =>
