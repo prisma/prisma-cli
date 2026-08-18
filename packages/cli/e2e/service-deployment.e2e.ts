@@ -20,6 +20,7 @@ import {
   deleteDeployment,
   deployService,
 } from "./deployed-service";
+import type { CliRun } from "./harness";
 import { scratchName } from "./harness";
 import { useScratchProject } from "./scratch";
 import { describeCommand } from "./suite";
@@ -237,6 +238,109 @@ describeCommand("service open", () => {
     expect(opened.service.id).toBe(existing.serviceId);
     expect(opened.url).toMatch(HTTPS_URL);
     expect(opened.opened).toBe(false);
+  });
+});
+
+/** The log lines of a `--json` run: `output` frames on the `logs`
+ *  source's data channel, which is where the command reports each line
+ *  the platform captured from the app. */
+function logLines(run: CliRun): string[] {
+  return run.stdout
+    .split("\n")
+    .map((line) => line.trim())
+    .filter((line) => line.startsWith("{"))
+    .flatMap((line) => {
+      try {
+        return [
+          JSON.parse(line) as {
+            kind?: string;
+            source?: string;
+            channel?: string;
+            line?: string;
+          },
+        ];
+      } catch {
+        return [];
+      }
+    })
+    .filter(
+      (frame) =>
+        frame.kind === "output" &&
+        frame.source === "logs" &&
+        frame.channel === "data" &&
+        typeof frame.line === "string",
+    )
+    .map((frame) => frame.line as string);
+}
+
+describeCommand("service logs", () => {
+  it("reads back what the deployment wrote while serving a request", async () => {
+    const existing = requireDeployed();
+    // Rollback made the first deployment live again, so it is what
+    // `service logs` reads by default. Serve one request against it so
+    // there is a line whose ingestion this run can be pinned to.
+    const shown = await scratch.run([
+      "service",
+      "deployment",
+      "show",
+      existing.deploymentId,
+    ]);
+    const url = (shown.envelope.result as { deployment: DeploymentRow })
+      .deployment.url;
+    expect(url).toMatch(HTTPS_URL);
+    // A fresh hostname does not serve on the first try — the edge is
+    // still setting up routing and TLS for it — so the request retries
+    // until the app answers.
+    const serveDeadline = Date.now() + 60_000;
+    let servedStatus: number | string = "never reached";
+    for (;;) {
+      try {
+        const served = await fetch(`${url}/e2e-logs-probe`);
+        servedStatus = served.status;
+        if (served.ok) {
+          break;
+        }
+      } catch (failure) {
+        servedStatus = failure instanceof Error ? failure.message : "error";
+      }
+      if (Date.now() > serveDeadline) {
+        throw new Error(
+          `the deployment at ${url} never served the probe request; ` +
+            `last answer: ${servedStatus}`,
+        );
+      }
+      await new Promise((resolve) => setTimeout(resolve, 3000));
+    }
+
+    // Ingestion lags the request by some unspecified amount, so poll
+    // until the probe's line arrives rather than asserting on one read.
+    const deadline = Date.now() + 90_000;
+    let lines: string[] = [];
+    for (;;) {
+      const run = await scratch.run([
+        "service",
+        "logs",
+        "--service",
+        existing.serviceName,
+      ]);
+      lines = logLines(run);
+      if (
+        lines.some((line) => line.includes("e2e-fixture served /e2e-logs-probe"))
+      ) {
+        break;
+      }
+      if (Date.now() > deadline) {
+        break;
+      }
+      await new Promise((resolve) => setTimeout(resolve, 5000));
+    }
+
+    expect(
+      lines.some((line) => line.includes("e2e-fixture listening")),
+    ).toBe(true);
+    expect(
+      lines.some((line) => line.includes("e2e-fixture served /e2e-logs-probe")),
+    ).toBe(true);
   });
 });
 

@@ -122,15 +122,8 @@ const EXCLUSIONS: Readonly<Record<string, string>> = {
  *
  * `build logs` needs a build, which comes from a git push or a Console
  * action, not from anything the CLI can do.
- *
- * `service logs` arrived while this was being written, excluded because
- * "only `composer deploy` produces" a deployment to read logs from. That
- * is no longer true, so it is owed rather than excused — it needs a
- * deployment that has actually served traffic, which is a little more
- * than the fixture does today.
  */
 const AWAITING_COVERAGE: readonly string[] = [
-  "service logs",
   "service domain add",
   "service domain show",
   "service domain remove",
