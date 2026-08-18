@@ -15,7 +15,7 @@ pnpm prisma auth login
 pnpm prisma project create hello-world
 pnpm prisma project env add DATABASE_URL=postgresql://example --role preview
 pnpm prisma project env list
-pnpm prisma git connect git@github.com:<owner>/<repo>.git
+pnpm prisma git connect git@github.com:OWNER/REPO.git
 pnpm prisma service list
 pnpm prisma service deployment list
 ```
@@ -40,7 +40,7 @@ Then replace `index.ts` with a `Bun.serve(...)` server and run:
 ```bash
 pnpm prisma-cli auth login
 pnpm prisma-cli project create my-bun-app
-pnpm prisma-cli git connect git@github.com:<owner>/<repo>.git
+pnpm prisma-cli git connect git@github.com:OWNER/REPO.git
 ```
 
 What this validates:

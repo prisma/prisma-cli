@@ -76,7 +76,7 @@ npx prisma project env list --role preview
 | `build` | Stream platform build logs. |
 | `composer` | Deploy, destroy, and develop Composer apps. |
 | `contract`, `db`, `migrate`, `migration`, `format`, `orm init`, `lsp` | The Prisma ORM workflow. |
-| `init` | Write a committed compute config for this app. |
+| `init` | Write a committed compute config for the project. |
 
 Common examples:
 
@@ -86,7 +86,7 @@ npx prisma auth whoami
 npx prisma project show
 npx prisma branch list
 npx prisma service list
-npx prisma service deployment promote <deployment-id>
+npx prisma service deployment promote DEPLOYMENT_ID
 ```
 
 ### Built for humans, CI, and agents

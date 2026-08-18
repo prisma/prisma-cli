@@ -79,7 +79,7 @@ The beta package exposes `prisma-cli` so it can coexist with the existing
 | `build` | Stream platform build logs. |
 | `composer` | Deploy, destroy, and develop Composer apps. |
 | `contract`, `db`, `migrate`, `migration`, `format`, `orm init`, `lsp` | The Prisma ORM workflow. |
-| `init` | Write a committed compute config for this app. |
+| `init` | Write a committed compute config for the project. |
 
 Common examples:
 
@@ -89,7 +89,7 @@ npx prisma-cli auth whoami
 npx prisma-cli project show
 npx prisma-cli branch list
 npx prisma-cli service list
-npx prisma-cli service deployment promote <deployment-id>
+npx prisma-cli service deployment promote DEPLOYMENT_ID
 ```
 
 ### Built for humans, CI, and agents

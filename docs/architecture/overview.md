@@ -51,7 +51,7 @@ implementation.
 
 Local state boundaries are also explicit:
 
-- `.prisma/local.json` stores the linked project id (a gitignored local pin, not a committed config file).
+- `.prisma/local.json` stores the linked project ID (a gitignored local pin, not a committed config file).
 - Active branch and app selection are local CLI state.
 - Secret values must not be printed in human output or structured output.
 

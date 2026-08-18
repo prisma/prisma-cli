@@ -35,8 +35,8 @@ Architecture and contributor workflow references:
 - Group commands by developer workflow, not product ownership.
 - No `orm`, `postgres`, or `compute` namespaces in the command surface.
 - Canonical command shape is `prisma <group> <action>`.
-- The current preview uses only `auth`, `project`, `branch`, and `app`.
-- Preserve the long-term resource model: `workspace -> project -> branch -> { app, database }`.
+- The shipped groups are `auth`, `project`, `git`, `branch`, `postgres`, `bucket`, `service`, `build`, `composer`, and the ORM family (`contract`, `db`, `migrate`, `migration`, `format`, `orm init`, `lsp`).
+- Preserve the long-term resource model: `workspace -> project -> branch -> { service, database, bucket }`.
 
 For exact definitions and resolution rules, see `resource-model.md` and `command-spec.md`.
 
@@ -51,7 +51,7 @@ Do not redefine this casually:
 - preview branches are disposable by default
 - non-production branches can become durable later
 - first remote deploy defaults to preview
-- production is reached by `app promote` or explicit user targeting
+- production is reached by `service deployment promote` or explicit user targeting
 
 See:
 

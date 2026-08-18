@@ -20,25 +20,28 @@ This file is authoritative for command group scope during beta.
 
 ## Scope
 
-The beta package includes these command groups:
+The shipped package includes these command groups (see the staleness
+notice above — the sections in this file have not caught up with every
+rename):
 
 - `agent`
 - `auth`
 - `project` (includes `project env` subgroup)
 - `git`
 - `branch`
-- `database` (includes `database connection` subgroup)
+- `postgres` (formerly `database`; includes `postgres connection` and `postgres backup` subgroups)
 - `bucket` (includes `bucket key` subgroup)
-- `app`
+- `service` (formerly `app`; includes `service deployment` and `service domain` subgroups)
 - `build` (includes `build logs`)
+- `composer`
+- the ORM family: `contract`, `db`, `migrate`, `migration`, `format`, `orm init`, `lsp`
 
-The beta package also includes three top-level commands:
+The package also includes these top-level commands:
 
-- `version`
 - `init`
 - `feedback`
 
-`version` is intentionally outside the workflow groups: it reports CLI build and environment state, requires no auth, no project context, and no network, and is the canonical answer to "is this CLI installed and on the build I expect?"
+`--version` (an engine flag, formerly the `version` command) reports CLI build and environment state, requires no auth, no project context, and no network, and is the canonical answer to "is this CLI installed and on the build I expect?"
 
 `feedback` is also outside the workflow groups: it sends a message to the
 Prisma CLI team's feedback service and touches no platform resource, so it

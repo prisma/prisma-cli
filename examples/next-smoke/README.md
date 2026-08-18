@@ -13,10 +13,10 @@ cd examples/next-smoke
 pnpm install
 pnpm prisma auth login
 pnpm prisma project create next-smoke
-pnpm prisma git connect git@github.com:<owner>/<repo>.git
+pnpm prisma git connect git@github.com:OWNER/REPO.git
 pnpm prisma service list
 pnpm prisma service deployment list
-pnpm prisma service deployment show <deployment-id>
+pnpm prisma service deployment show DEPLOYMENT_ID
 ```
 
 Deployments start from pushing the connected repository, the Console, or `composer deploy` — there is no standalone deploy command.

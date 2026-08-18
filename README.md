@@ -87,9 +87,9 @@ prisma <group> <action>
 
 The package includes project, environment-variable, service and deployment
 inspection, promotion, rollback, and removal commands, plus the Prisma ORM
-and Composer workflows. The product
-model intentionally keeps room for future schema, database, and migration
-workflows without introducing product-specific namespaces.
+(`contract`, `db`, `migrate`, `migration`, `orm init`) and Composer
+workflows, and the `postgres` and `bucket` resource groups. The product
+model intentionally avoids product-specific namespaces.
 
 ## Documentation
 
