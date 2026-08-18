@@ -58,15 +58,15 @@ export interface FileCredentialManagerOptions {
 }
 
 /** Which credential this process acts as, decided at the first
- *  activeCredential() read. The decision is what is pinned; the
+ *  activeCredential() read. The decision is what is held; the
  *  material behind it is re-read on every call. */
-type Pin =
+type ActingAs =
   | { readonly kind: "unresolved" }
   | { readonly kind: "environment" }
   | { readonly kind: "session"; readonly workspaceId: string }
   | { readonly kind: "none" };
 
-type ResolvedPin = Exclude<Pin, { readonly kind: "unresolved" }>;
+type ResolvedActingAs = Exclude<ActingAs, { readonly kind: "unresolved" }>;
 
 /**
  * The memory-backed storage, for a credential with no home record: a
@@ -106,7 +106,7 @@ function memoryBackedStorage(
 
 /**
  * The credential manager over one state file. Sessions are keyed by
- * workspace id; which credential this process acts as is pinned once;
+ * workspace id; which credential this process acts as is decided once;
  * every mutation takes a short file lock, re-reads, applies its slice,
  * and writes atomically. Reads never write and take no lock.
  */
@@ -116,11 +116,11 @@ export class FileCredentialManager implements CredentialManager {
   readonly #debug: DebugLog;
   readonly #fetchWorkspaceName: FetchWorkspaceName | undefined;
   readonly #refreshCredential: CredentialRefresher | undefined;
-  #pin: Pin = { kind: "unresolved" };
-  /** Built for one pinned credential. Every mutation that moves the
-   *  pin discards it, so a command that mutates and then reaches for
-   *  ctx.api cannot be handed storage for the credential it used to be
-   *  acting as. */
+  #actingAs: ActingAs = { kind: "unresolved" };
+  /** Built for the credential the process acts as. Every mutation that
+   *  changes that discards it, so a command that mutates and then
+   *  reaches for ctx.api cannot be handed storage for the credential it
+   *  used to be acting as. */
   #activeStorage: TokenStorage | undefined;
   #refreshLock: Promise<unknown> = Promise.resolve();
 
@@ -138,20 +138,20 @@ export class FileCredentialManager implements CredentialManager {
   }
 
   async activeCredential(): Promise<ActiveCredential | null> {
-    const pin = await this.#resolvePin();
+    const actingAs = await this.#resolveActingAs();
 
-    if (pin.kind === "environment") {
+    if (actingAs.kind === "environment") {
       return environmentCredential(this.#requireEnvironmentToken());
     }
     const state = await readCredentialState(this.#filePath);
-    if (pin.kind === "none") {
+    if (actingAs.kind === "none") {
       if (state.sessions.length > 0) {
         throw credentialsRequiredError("sessions-held-none-selected");
       }
       return null;
     }
     const record = state.sessions.find(
-      (session) => session.workspaceId === pin.workspaceId,
+      (session) => session.workspaceId === actingAs.workspaceId,
     );
     if (record === undefined) {
       throw credentialsRequiredError("session-ended");
@@ -204,7 +204,7 @@ export class FileCredentialManager implements CredentialManager {
     });
 
     if (!environmentInForce) {
-      this.#repin({ kind: "session", workspaceId });
+      this.#actAs({ kind: "session", workspaceId });
     }
 
     const name = await this.#lookUpWorkspaceName(credential, workspaceId);
@@ -238,7 +238,7 @@ export class FileCredentialManager implements CredentialManager {
       return { state: next, result: toSession(record) };
     });
     if (!environmentInForce) {
-      this.#repin({ kind: "session", workspaceId });
+      this.#actAs({ kind: "session", workspaceId });
     }
     return selected;
   }
@@ -254,8 +254,11 @@ export class FileCredentialManager implements CredentialManager {
         : { result: undefined },
     );
 
-    if (this.#pin.kind === "session" && this.#pin.workspaceId === workspaceId) {
-      this.#repin({ kind: "none" });
+    if (
+      this.#actingAs.kind === "session" &&
+      this.#actingAs.workspaceId === workspaceId
+    ) {
+      this.#actAs({ kind: "none" });
     }
   }
 
@@ -270,7 +273,7 @@ export class FileCredentialManager implements CredentialManager {
     await this.#reapLegacyContextFile();
     await this.#reapOrphanedWrites();
     if (!environmentInForce) {
-      this.#repin({ kind: "none" });
+      this.#actAs({ kind: "none" });
     }
   }
 
@@ -294,11 +297,12 @@ export class FileCredentialManager implements CredentialManager {
     return readActiveAccessToken(storage, this.#refreshCredential, options);
   }
 
-  /** §11.2: which storage is chosen once, when the pin resolves. Each
+  /** §11.2: which storage is chosen once, when the acting-as decision
+   *  resolves. Each
    *  has exactly one source of truth — the file, or process memory. */
   #buildActiveStorage(): TokenStorage {
-    const pin = this.#pin;
-    if (pin.kind === "environment") {
+    const actingAs = this.#actingAs;
+    if (actingAs.kind === "environment") {
       return memoryBackedStorage(
         {
           token: this.#requireEnvironmentToken(),
@@ -308,8 +312,8 @@ export class FileCredentialManager implements CredentialManager {
         (fn) => this.#withRefreshLock(fn),
       );
     }
-    if (pin.kind === "session") {
-      return this.#fileBackedStorage(pin.workspaceId);
+    if (actingAs.kind === "session") {
+      return this.#fileBackedStorage(actingAs.workspaceId);
     }
     throw new Error(
       "@prisma/cli: activeCredentialStorage() is only valid once activeCredential() has returned non-null",
@@ -433,33 +437,30 @@ export class FileCredentialManager implements CredentialManager {
     return run;
   }
 
-  async #resolvePin(): Promise<ResolvedPin> {
-    const pinned = this.#pin;
-    if (pinned.kind !== "unresolved") return pinned;
+  async #resolveActingAs(): Promise<ResolvedActingAs> {
+    const decided = this.#actingAs;
+    if (decided.kind !== "unresolved") return decided;
 
     if (this.#environmentToken() !== undefined) {
-      this.#debug("pinned to the environment credential");
-      return this.#pinTo({ kind: "environment" });
+      this.#debug("acting as the environment credential");
+      this.#actingAs = { kind: "environment" };
+      return { kind: "environment" };
     }
     const state = await readCredentialState(this.#filePath);
     const selected = resolvedMarker(state);
-    this.#debug(`pinned to session ${selected ?? "(none)"}`);
-    return this.#pinTo(
+    this.#debug(`acting as session ${selected ?? "(none)"}`);
+    const resolved: ResolvedActingAs =
       selected === null
         ? { kind: "none" }
-        : { kind: "session", workspaceId: selected },
-    );
+        : { kind: "session", workspaceId: selected };
+    this.#actingAs = resolved;
+    return resolved;
   }
 
-  #pinTo(pin: ResolvedPin): ResolvedPin {
-    this.#pin = pin;
-    return pin;
-  }
-
-  /** Moves the pin after a mutation, discarding storage built for the
-   *  credential this process was acting as before. */
-  #repin(pin: ResolvedPin): void {
-    this.#pin = pin;
+  /** Changes which credential the process acts as after a mutation,
+   *  discarding storage built for the previous one. */
+  #actAs(next: ResolvedActingAs): void {
+    this.#actingAs = next;
     this.#activeStorage = undefined;
   }
 

@@ -1,6 +1,6 @@
 /**
  * The credential manager over its state file: the file format and its
- * atomicity, process pinning, idempotent removal, what an environment
+ * atomicity, the acting-as decision, idempotent removal, what an environment
  * credential can and cannot reach, and the two token storages.
  */
 import nodeFs from "node:fs";
@@ -453,14 +453,14 @@ describe("the state file", () => {
   });
 });
 
-describe("process pinning", () => {
-  it("pins the credential at the first read and keeps it when another process moves the selection", async () => {
+describe("which credential the process acts as", () => {
+  it("decides at the first read and keeps acting as that credential when another process moves the selection", async () => {
     await seedTwoSessions();
     const manager = makeManager();
     await makeManager().selectSession(WORKSPACE_A);
 
-    const pinned = await manager.activeCredential();
-    expect(pinned?.workspaceId).toBe(WORKSPACE_A);
+    const first = await manager.activeCredential();
+    expect(first?.workspaceId).toBe(WORKSPACE_A);
 
     await makeManager().selectSession(WORKSPACE_B);
 
@@ -470,7 +470,7 @@ describe("process pinning", () => {
     );
   });
 
-  it("moves the pin on this process's own mutations", async () => {
+  it("acts as the new credential after this process's own mutations", async () => {
     await seedTwoSessions();
     const manager = makeManager();
     expect((await manager.activeCredential())?.workspaceId).toBe(WORKSPACE_B);
@@ -503,7 +503,7 @@ describe("process pinning", () => {
     );
   });
 
-  it("fails with the session-ended error when another process ends the pinned session", async () => {
+  it("fails with the session-ended error when another process ends the session this one acts as", async () => {
     await seedTwoSessions();
     const manager = makeManager();
     await manager.activeCredential();
@@ -578,7 +578,7 @@ describe("mutations while an environment credential is in force", () => {
   /** Design §11.7 and §11.10 test 8: the refusals are gone. Selecting or
    *  ending a stored session changes stored state; this process keeps
    *  authenticating as the environment credential either way. */
-  it("lets every mutation through and leaves the pin on the environment credential", async () => {
+  it("lets every mutation through and keeps acting as the environment credential", async () => {
     await seedTwoSessions();
     const manager = makeManager({
       env: { PRISMA_SERVICE_TOKEN: mintToken(WORKSPACE_C) },
@@ -609,7 +609,7 @@ describe("mutations while an environment credential is in force", () => {
     expect((await manager.activeCredential())?.workspaceId).toBe(WORKSPACE_C);
   });
 
-  it("moves the stored selection without moving the pin", async () => {
+  it("moves the stored selection without changing what this process acts as", async () => {
     await seedTwoSessions();
     const manager = makeManager({
       env: { PRISMA_SERVICE_TOKEN: mintToken(WORKSPACE_C) },
@@ -971,7 +971,7 @@ describe("the file-backed TokenStorage", () => {
     expect(state.currentWorkspaceId).toBeNull();
   });
 
-  it("clearTokens removes only the pinned record", async () => {
+  it("clearTokens removes only the record this process acts as", async () => {
     const manager = makeManager();
     await manager.createSession(credentialFor(WORKSPACE_A), WORKSPACE_A);
     await makeManager().createSession(credentialFor(WORKSPACE_B), WORKSPACE_B);

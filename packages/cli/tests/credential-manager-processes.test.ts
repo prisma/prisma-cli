@@ -1,7 +1,7 @@
 /**
  * The credential manager across real processes on a real filesystem:
  * the short lock prevents lost updates, a crashed holder's lock is
- * taken over, and a new process picks up the marker this one pinned
+ * taken over, and a new process picks up the marker this one moved
  * away from.
  */
 import { spawn } from "node:child_process";
@@ -291,7 +291,7 @@ describe("across processes", () => {
     expect((await readCredentialState(stateFilePath)).sessions).toHaveLength(2);
   }, 30_000);
 
-  it("gives a new process the marker this process pinned away from", async () => {
+  it("gives a new process the marker this process moved away from", async () => {
     await runWorker("create", WORKSPACE_A, mintToken(WORKSPACE_A), "refresh-a");
     await runWorker("create", WORKSPACE_B, mintToken(WORKSPACE_B), "refresh-b");
 
