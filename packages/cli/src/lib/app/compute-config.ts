@@ -4,10 +4,6 @@ import {
   COMPUTE_CONFIG_FILENAME,
   type ComputeConfigError,
   type ComputeConfigTargetError,
-  type ComputeDeployTarget,
-  type ComputeFramework,
-  type FrameworkBuildType,
-  frameworkByKey,
   type LoadedComputeConfig,
   loadComputeConfig as loadComputeConfigFromSdk,
 } from "@prisma/compute-sdk/config";
@@ -40,170 +36,14 @@ export async function loadComputeConfig(
   return loadComputeConfigFromSdk(cwd, { signal });
 }
 
-/** Local build/run strategy implied by a configured framework. */
-export function computeFrameworkToBuildType(
-  framework: ComputeFramework,
-): FrameworkBuildType {
-  return frameworkByKey(framework).buildType;
-}
-
-export interface MergedDeployInput {
-  value: string;
-  annotation: string;
-}
-
-export interface MergedComputeDeployInputs {
-  framework: MergedDeployInput | undefined;
-  entrypoint: MergedDeployInput | undefined;
-  httpPort: MergedDeployInput | undefined;
-  /** Region from config, applied only when the deploy creates a new app. */
-  region: MergedDeployInput | undefined;
-  /** `--env` flags replace config env inputs entirely; they never merge. */
-  envInputs: string[] | undefined;
-  /** True when env inputs came from the config; their file paths then resolve from the config directory. */
-  envInputsFromConfig: boolean;
-  /** Config-provided app name; ranks below --app and PRISMA_APP_ID. */
-  configAppName: MergedDeployInput | undefined;
-  /** App directory relative to the config directory, or undefined for the config directory. */
-  appRoot: string | undefined;
-}
-
-export function mergeComputeDeployInputs(options: {
-  cli: {
-    framework?: string;
-    entrypoint?: string;
-    httpPort?: string;
-    region?: string;
-    envInputs?: string[];
-  };
-  target: ComputeDeployTarget | null;
-  configFilename: string;
-}): MergedComputeDeployInputs {
-  const { cli, target, configFilename } = options;
-  const configAnnotation = `set by ${configFilename}`;
-
-  const framework = mergeStringInput(
-    cli.framework,
-    "set by --framework",
-    target?.framework ?? undefined,
-    configAnnotation,
-  );
-  const entrypoint = mergeStringInput(
-    cli.entrypoint,
-    "set by --entry",
-    target?.entry ?? undefined,
-    configAnnotation,
-  );
-  const httpPort = mergeStringInput(
-    cli.httpPort,
-    "set by --http-port",
-    target?.httpPort ? String(target.httpPort) : undefined,
-    configAnnotation,
-  );
-
-  const region = mergeStringInput(
-    cli.region,
-    "set by --region",
-    target?.region ?? undefined,
-    configAnnotation,
-  );
-
-  const cliEnvInputs =
-    cli.envInputs && cli.envInputs.length > 0 ? cli.envInputs : undefined;
-  const configEnvInputs =
-    target && target.envInputs.length > 0 ? target.envInputs : undefined;
-  const envInputs = cliEnvInputs ?? configEnvInputs;
-
-  const configAppName = readConfigAppName(target, configAnnotation);
-
-  return {
-    framework,
-    entrypoint,
-    httpPort,
-    region,
-    envInputs,
-    envInputsFromConfig: !cliEnvInputs && configEnvInputs !== undefined,
-    configAppName,
-    appRoot: target?.root ?? undefined,
-  };
-}
-
-function mergeStringInput(
-  cliValue: string | undefined,
-  cliAnnotation: string,
-  configValue: string | undefined,
-  configAnnotation: string,
-): MergedDeployInput | undefined {
-  if (cliValue !== undefined) {
-    return { value: cliValue, annotation: cliAnnotation };
-  }
-  if (configValue) {
-    return { value: configValue, annotation: configAnnotation };
-  }
-  return undefined;
-}
-
-function readConfigAppName(
-  target: ComputeDeployTarget | null,
-  configAnnotation: string,
-): MergedDeployInput | undefined {
-  if (target?.name) {
-    return { value: target.name, annotation: configAnnotation };
-  }
-  if (target?.key) {
-    return { value: target.key, annotation: configAnnotation };
-  }
-  return undefined;
-}
-
-export interface MergedComputeLocalInputs {
-  entrypoint: string | undefined;
-  /** Resolved build type, or undefined for auto detection. */
-  buildType: string | undefined;
-  /** True when the build type came from the config framework, not a flag. */
-  buildTypeFromConfig: boolean;
-  port: string | undefined;
-  /** App directory relative to the invocation directory, or undefined for the invocation directory. */
-  appRoot: string | undefined;
-}
-
-/**
- * Merges CLI inputs for the local `app build` and `app run` commands with a
- * selected config target. Explicit flags win; `--build-type auto` is the
- * flag default and defers to the configured framework.
- */
-export function mergeComputeLocalInputs(options: {
-  cli: {
-    entrypoint?: string;
-    buildType?: string;
-    port?: string;
-  };
-  target: ComputeDeployTarget | null;
-}): MergedComputeLocalInputs {
-  const { cli, target } = options;
-  const cliBuildType =
-    cli.buildType && cli.buildType !== "auto" ? cli.buildType : undefined;
-  const configBuildType = target?.framework
-    ? computeFrameworkToBuildType(target.framework)
-    : undefined;
-
-  return {
-    entrypoint: cli.entrypoint ?? target?.entry ?? undefined,
-    buildType: cliBuildType ?? configBuildType,
-    buildTypeFromConfig: !cliBuildType && configBuildType !== undefined,
-    port: cli.port ?? (target?.httpPort ? String(target.httpPort) : undefined),
-    appRoot: target?.root ?? undefined,
-  };
-}
-
-/** The `app` subcommand used in error guidance text, e.g. "deploy" or "domain add". */
+/** The `service` subcommand used in error guidance text, e.g. "create" or "domain add". */
 export type ComputeConfigCommandName = string;
 
 export function computeConfigErrorToCliError(
   error: ComputeConfigError | ComputeConfigTargetError,
-  commandName: ComputeConfigCommandName = "deploy",
+  commandName: ComputeConfigCommandName,
 ): CliError {
-  const command = `prisma-cli app ${commandName}`;
+  const command = `prisma-cli service ${commandName}`;
   return matchError(error, {
     ComputeConfigAmbiguousError: (ambiguous) =>
       new CliError({

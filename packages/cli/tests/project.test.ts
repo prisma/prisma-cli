@@ -558,8 +558,8 @@ describe("prisma-cli project create", () => {
     expect(result.presented?.presentation.next).toEqual([
       {
         kind: "run-command",
-        label: "prisma-cli app deploy",
-        command: "prisma-cli app deploy",
+        label: "prisma-cli git connect",
+        command: "prisma-cli git connect",
       },
     ]);
   });
@@ -684,8 +684,8 @@ describe("prisma-cli project create", () => {
       nextActions: [
         {
           kind: "run-command",
-          label: "prisma-cli app deploy",
-          command: "prisma-cli app deploy",
+          label: "prisma-cli git connect",
+          command: "prisma-cli git connect",
         },
       ],
     });

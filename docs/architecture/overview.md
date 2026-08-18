@@ -51,7 +51,7 @@ implementation.
 
 Local state boundaries are also explicit:
 
-- `prisma.config.ts` stores the linked project id.
+- `.prisma/local.json` stores the linked project ID (a gitignored local pin, not a committed config file).
 - Active branch and app selection are local CLI state.
 - Secret values must not be printed in human output or structured output.
 
@@ -65,5 +65,5 @@ The beta package should remain small and predictable:
 - `production` is a protected durable branch and requires explicit intent.
 - Every other named branch is preview by default.
 
-See [resource model](../product/resource-model.md) and
-[command spec](../product/command-spec.md) for the authoritative rules.
+The mounted command tree in `packages/cli/src/cli.ts` is the
+authoritative command surface.

@@ -386,10 +386,10 @@ describe("init writes the config", () => {
         command: "npm install -D @prisma/compute-sdk",
       }),
       expect.objectContaining({
-        command: "npx -y @prisma/cli@latest app deploy",
+        command: "npx -y @prisma/cli@next git connect",
       }),
       expect.objectContaining({
-        command: "npx -y @prisma/cli@latest project link",
+        command: "npx -y @prisma/cli@next project link",
       }),
     ]);
   });
@@ -823,7 +823,7 @@ describe("init link step", () => {
     ).toEqual({ workspaceId: WORKSPACE_ID, projectId: "proj_123" });
     expect(envelopeOf(result).nextActions).not.toContainEqual(
       expect.objectContaining({
-        command: "npx -y @prisma/cli@latest project link",
+        command: "npx -y @prisma/cli@next project link",
       }),
     );
   });

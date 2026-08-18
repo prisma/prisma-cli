@@ -271,9 +271,9 @@ function projectAmbiguousCliError(
   const firstMatch = matches[0];
   const nextSteps = ["prisma-cli project list"];
   if (firstMatch) {
-    // Surface the matched id verbatim so the user can see the exact
-    // shape of the disambiguation flag instead of guessing.
-    nextSteps.push(`prisma-cli app deploy --project ${firstMatch.id}`);
+    // Surface the matched id verbatim so the user can copy the exact
+    // shape of a disambiguating reference instead of guessing.
+    nextSteps.push(`prisma-cli project link ${firstMatch.id}`);
   }
 
   return new CliError({

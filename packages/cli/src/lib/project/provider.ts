@@ -140,9 +140,9 @@ export function projectRemoveBlockedError(
     why:
       error?.error?.message ??
       `Project "${projectId}" still has active deployments.`,
-    fix: "Remove the project's apps first, then retry the removal.",
+    fix: "Remove the project's services first, then retry the removal.",
     exitCode: 1,
-    nextSteps: [formatPrismaCliCommand(["app", "remove", "--app", "<name>"])],
+    nextSteps: [formatPrismaCliCommand(["service", "remove", "<name>"])],
   });
 }
 

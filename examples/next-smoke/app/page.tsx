@@ -13,7 +13,7 @@ export default function Home() {
             Run <code>pnpm prisma auth login</code>
           </li>
           <li>
-            Run <code>pnpm prisma app deploy --app next-smoke</code>
+            Run <code>pnpm prisma git connect</code> and push to deploy
           </li>
         </ol>
       </section>

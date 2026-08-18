@@ -142,7 +142,7 @@ export async function readAuthState(
   // so behavior is independent of any OAuth session that happens to be stored
   // on the runner. This matches the precedence already documented on
   // `authenticatedManagementApiClient` and keeps `auth whoami` and downstream commands
-  // (e.g. `app deploy`) reading the same source of truth.
+  // (e.g. `service list`) reading the same source of truth.
   const rawServiceToken = env[SERVICE_TOKEN_ENV_VAR];
   if (rawServiceToken !== undefined) {
     const serviceToken = rawServiceToken.trim();

@@ -16,13 +16,9 @@ import {
 import { afterEach, describe, expect, it } from "vitest";
 import { CliError } from "../src/errors";
 import {
-  type ComputeDeployTarget,
   computeConfigErrorToCliError,
-  computeFrameworkToBuildType,
   type LoadedComputeConfig,
   loadComputeConfig,
-  mergeComputeDeployInputs,
-  mergeComputeLocalInputs,
 } from "../src/lib/app/compute-config";
 
 const CONFIG_PATH = "/repo/prisma.compute.ts";
@@ -342,177 +338,6 @@ describe("selectComputeDeployTarget", () => {
     expect(result.isErr() && result.error).toBeInstanceOf(
       ComputeConfigTargetUnknownError,
     );
-  });
-});
-
-describe("mergeComputeDeployInputs", () => {
-  const target = {
-    key: "web",
-    name: null,
-    region: "us-west-1",
-    root: "apps/web",
-    framework: "nextjs",
-    entry: null,
-    httpPort: 8080,
-    envInputs: [".env", "LOG_LEVEL=debug"],
-    build: null,
-  } as ComputeDeployTarget;
-
-  it("uses config values when flags are absent", () => {
-    const merged = mergeComputeDeployInputs({
-      cli: {},
-      target,
-      configFilename: COMPUTE_CONFIG_FILENAME,
-    });
-
-    expect(merged.framework).toEqual({
-      value: "nextjs",
-      annotation: "set by prisma.compute.ts",
-    });
-    expect(merged.httpPort).toEqual({
-      value: "8080",
-      annotation: "set by prisma.compute.ts",
-    });
-    expect(merged.region).toEqual({
-      value: "us-west-1",
-      annotation: "set by prisma.compute.ts",
-    });
-    expect(merged.envInputs).toEqual([".env", "LOG_LEVEL=debug"]);
-    expect(merged.configAppName).toEqual({
-      value: "web",
-      annotation: "set by prisma.compute.ts",
-    });
-    expect(merged.appRoot).toBe("apps/web");
-  });
-
-  it("prefers explicit flags over config values", () => {
-    const merged = mergeComputeDeployInputs({
-      cli: {
-        framework: "bun",
-        entrypoint: "server.ts",
-        httpPort: "3000",
-        region: "eu-west-3",
-        envInputs: ["DATABASE_URL=postgresql://example"],
-      },
-      target,
-      configFilename: COMPUTE_CONFIG_FILENAME,
-    });
-
-    expect(merged.framework).toEqual({
-      value: "bun",
-      annotation: "set by --framework",
-    });
-    expect(merged.entrypoint).toEqual({
-      value: "server.ts",
-      annotation: "set by --entry",
-    });
-    expect(merged.httpPort).toEqual({
-      value: "3000",
-      annotation: "set by --http-port",
-    });
-    expect(merged.region).toEqual({
-      value: "eu-west-3",
-      annotation: "set by --region",
-    });
-    // --env replaces config env inputs entirely; they never merge.
-    expect(merged.envInputs).toEqual(["DATABASE_URL=postgresql://example"]);
-  });
-
-  it("prefers the config name over the apps key", () => {
-    const merged = mergeComputeDeployInputs({
-      cli: {},
-      target: { ...target, name: "storefront" },
-      configFilename: COMPUTE_CONFIG_FILENAME,
-    });
-
-    expect(merged.configAppName?.value).toBe("storefront");
-  });
-
-  it("passes CLI values through without a config file", () => {
-    const merged = mergeComputeDeployInputs({
-      cli: { framework: "hono" },
-      target: null,
-      configFilename: COMPUTE_CONFIG_FILENAME,
-    });
-
-    expect(merged.framework).toEqual({
-      value: "hono",
-      annotation: "set by --framework",
-    });
-    expect(merged.entrypoint).toBeUndefined();
-    expect(merged.region).toBeUndefined();
-    expect(merged.envInputs).toBeUndefined();
-    expect(merged.configAppName).toBeUndefined();
-    expect(merged.appRoot).toBeUndefined();
-  });
-});
-
-describe("mergeComputeLocalInputs", () => {
-  const target = {
-    key: "api",
-    name: null,
-    region: null,
-    root: "apps/api",
-    framework: "hono",
-    entry: "src/index.ts",
-    httpPort: 8080,
-    envInputs: [],
-    build: null,
-  } as ComputeDeployTarget;
-
-  it("maps the configured framework to a local build type", () => {
-    expect(computeFrameworkToBuildType("nextjs")).toBe("nextjs");
-    expect(computeFrameworkToBuildType("hono")).toBe("bun");
-    expect(computeFrameworkToBuildType("bun")).toBe("bun");
-    expect(computeFrameworkToBuildType("tanstack-start")).toBe(
-      "tanstack-start",
-    );
-    expect(computeFrameworkToBuildType("custom")).toBe("custom");
-  });
-
-  it("uses config values when flags are absent or default", () => {
-    const merged = mergeComputeLocalInputs({
-      cli: { buildType: "auto" },
-      target,
-    });
-
-    expect(merged).toEqual({
-      entrypoint: "src/index.ts",
-      buildType: "bun",
-      buildTypeFromConfig: true,
-      port: "8080",
-      appRoot: "apps/api",
-    });
-  });
-
-  it("prefers explicit flags over config values", () => {
-    const merged = mergeComputeLocalInputs({
-      cli: { entrypoint: "server.ts", buildType: "nextjs", port: "4000" },
-      target,
-    });
-
-    expect(merged).toEqual({
-      entrypoint: "server.ts",
-      buildType: "nextjs",
-      buildTypeFromConfig: false,
-      port: "4000",
-      appRoot: "apps/api",
-    });
-  });
-
-  it("falls back to auto detection without a config target", () => {
-    const merged = mergeComputeLocalInputs({
-      cli: { buildType: "auto" },
-      target: null,
-    });
-
-    expect(merged).toEqual({
-      entrypoint: undefined,
-      buildType: undefined,
-      buildTypeFromConfig: false,
-      port: undefined,
-      appRoot: undefined,
-    });
   });
 });
 
@@ -890,6 +715,7 @@ describe("computeConfigErrorToCliError", () => {
   it("maps config errors to structured CliErrors", () => {
     const invalid = computeConfigErrorToCliError(
       new ComputeConfigInvalidError(CONFIG_PATH, ["bad"]),
+      "create",
     );
     expect(invalid).toBeInstanceOf(CliError);
     expect(invalid.code).toBe("COMPUTE_CONFIG_INVALID");
@@ -897,15 +723,17 @@ describe("computeConfigErrorToCliError", () => {
 
     const required = computeConfigErrorToCliError(
       new ComputeConfigTargetRequiredError(CONFIG_PATH, ["web", "worker"]),
+      "create",
     );
     expect(required.code).toBe("COMPUTE_CONFIG_TARGET_REQUIRED");
     expect(required.nextSteps).toEqual([
-      "prisma-cli app deploy web",
-      "prisma-cli app deploy worker",
+      "prisma-cli service create web",
+      "prisma-cli service create worker",
     ]);
 
     const unknown = computeConfigErrorToCliError(
       new ComputeConfigTargetUnknownError(CONFIG_PATH, "docs", ["web"]),
+      "create",
     );
     expect(unknown.code).toBe("COMPUTE_CONFIG_TARGET_UNKNOWN");
     expect(unknown.summary).toContain('"docs"');

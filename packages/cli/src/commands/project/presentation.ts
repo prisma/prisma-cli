@@ -7,10 +7,12 @@ import { serializeProjectSetup } from "../../presenters/project";
 import type { ProjectSetupResult } from "../../types/project";
 import { portCommandString } from "./errors";
 
-export const DEPLOY_NEXT_ACTION: NextAction = {
+/** Deploys come from pushing a connected repository, so the step after
+ *  creating or linking a Project is connecting one. */
+export const CONNECT_REPO_NEXT_ACTION: NextAction = {
   kind: "run-command",
-  label: `${CLI_NAME} app deploy`,
-  command: `${CLI_NAME} app deploy`,
+  label: `${CLI_NAME} git connect`,
+  command: `${CLI_NAME} git connect`,
 };
 
 /** The legacy local-pin warnings of `project remove` / `project
@@ -66,6 +68,6 @@ export function setupPresentations(result: ProjectSetupResult): Presentations {
       },
     ],
     json: () => serializeProjectSetup(result),
-    next: () => [DEPLOY_NEXT_ACTION],
+    next: () => [CONNECT_REPO_NEXT_ACTION],
   };
 }

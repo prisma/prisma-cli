@@ -9,18 +9,16 @@ The docs in `docs/product` are the source of truth. Do not invent product behavi
 ## What This CLI Is
 
 - This is the future unified Prisma CLI.
-- The first implementation slice is app deployment workflows, but the command model must preserve the long-term CLI for ORM, Postgres, and app workflows.
+- The command model must preserve the long-term CLI for ORM, Postgres, and service workflows; deployments start from a pushed connected repository, the Console, or `composer deploy`.
 
 ## Read These First
 
 Start with `docs/README.md` for the public docs index.
 
-1. `docs/product/resource-model.md`
-2. `docs/product/command-principles.md`
-3. `docs/product/command-spec.md`
-4. `docs/product/cli-style-guide.md`
-5. `docs/product/output-conventions.md`
-6. `docs/product/error-conventions.md`
+1. `docs/product/command-principles.md`
+2. `docs/product/cli-style-guide.md`
+3. `docs/product/output-conventions.md`
+4. `docs/product/error-conventions.md`
 
 Architecture and contributor workflow references:
 
@@ -35,10 +33,10 @@ Architecture and contributor workflow references:
 - Group commands by developer workflow, not product ownership.
 - No `orm`, `postgres`, or `compute` namespaces in the command surface.
 - Canonical command shape is `prisma <group> <action>`.
-- The current preview uses only `auth`, `project`, `branch`, and `app`.
-- Preserve the long-term resource model: `workspace -> project -> branch -> { app, database }`.
+- The shipped groups are `auth`, `project`, `git`, `branch`, `postgres`, `bucket`, `service`, `build`, `composer`, and the ORM family (`contract`, `db`, `migrate`, `migration`, `format`, `orm init`, `lsp`).
+- Preserve the long-term resource model: `workspace -> project -> branch -> { service, database, bucket }`.
 
-For exact definitions and resolution rules, see `resource-model.md` and `command-spec.md`.
+The mounted tree in `packages/cli/src/cli.ts` is the authoritative command surface.
 
 ## Branch Model
 
@@ -51,12 +49,7 @@ Do not redefine this casually:
 - preview branches are disposable by default
 - non-production branches can become durable later
 - first remote deploy defaults to preview
-- production is reached by `app promote` or explicit user targeting
-
-See:
-
-- `docs/product/resource-model.md`
-- `docs/product/command-spec.md`
+- production is reached by `service deployment promote` or explicit user targeting
 
 ## Output and Error Behavior
 
