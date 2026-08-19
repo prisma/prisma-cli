@@ -15,6 +15,37 @@ export type SessionRefResolution =
   | { readonly kind: "no-match" }
   | { readonly kind: "ambiguous"; readonly matches: readonly Session[] };
 
+export interface SessionUser {
+  readonly id: string | null;
+  readonly email: string | null;
+  readonly name: string | null;
+}
+
+/** The safe identity fields a command may expose for a stored session. */
+export function sessionUser(session: Session): SessionUser | null {
+  const identity = session.identity;
+  if (identity === undefined) return null;
+  return {
+    id: identity.userId ?? null,
+    email: identity.email ?? null,
+    name: identity.name ?? null,
+  };
+}
+
+/** The shortest useful human identity for a workspace session. */
+export function sessionUserLabel(session: Session): string | undefined {
+  const identity = session.identity;
+  return identity?.email ?? identity?.name ?? identity?.userId;
+}
+
+/** Workspace first, account second: suitable for interactive choices. */
+export function sessionChoiceLabel(session: Session): string {
+  const user = sessionUserLabel(session);
+  return user === undefined
+    ? sessionLabel(session)
+    : `${sessionLabel(session)} — ${user}`;
+}
+
 /** Exact workspace id first, then case-insensitive workspace name. */
 export function resolveSessionRef(
   sessions: readonly Session[],
@@ -47,8 +78,21 @@ export function ambiguousSessionRefError(
     "AUTH.WORKSPACE_AMBIGUOUS",
     `More than one workspace session is named '${ref}'.`,
     {
-      why: `Matching workspaces: ${matches.map((match) => match.workspaceId).join(", ")}.`,
-      meta: { workspaceIds: matches.map((match) => match.workspaceId) },
+      why: `Matching sessions: ${matches
+        .map((match) => {
+          const user = sessionUserLabel(match);
+          return user === undefined
+            ? match.workspaceId
+            : `${match.workspaceId} (${user})`;
+        })
+        .join(", ")}.`,
+      meta: {
+        workspaceIds: matches.map((match) => match.workspaceId),
+        sessions: matches.map((match) => ({
+          workspaceId: match.workspaceId,
+          user: sessionUser(match),
+        })),
+      },
       nextActions: [
         {
           kind: "run-command",

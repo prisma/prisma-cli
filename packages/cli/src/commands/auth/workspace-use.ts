@@ -11,10 +11,18 @@ import { CliStructuredError, ok } from "@prisma/cli-engine/protocol";
 import { environmentCredentialInForce } from "../../auth/service-token";
 import { CLI_NAME } from "../../cli-name";
 import { ENVIRONMENT_CREDENTIAL_NOTICE } from "./credential-card";
-import { requireSession, sessionLabel } from "./session-ref";
+import {
+  requireSession,
+  type SessionUser,
+  sessionChoiceLabel,
+  sessionLabel,
+  sessionUser,
+  sessionUserLabel,
+} from "./session-ref";
 
 export interface WorkspaceUseResult {
   readonly workspace: { readonly id: string; readonly name: string | null };
+  readonly user: SessionUser | null;
   readonly previousWorkspaceId: string | null;
 }
 
@@ -42,11 +50,13 @@ function usePresentations(
   },
   result: WorkspaceUseResult,
 ): Presentations {
+  const user = sessionUserLabel(spec.session);
   const rows = [
     ...(spec.previous === undefined
       ? []
       : [{ label: "previous", value: sessionLabel(spec.previous) }]),
     { label: "workspace", value: sessionLabel(spec.session) },
+    ...(user === undefined ? [] : [{ label: "user", value: user }]),
   ];
   return {
     json: () => result,
@@ -103,7 +113,7 @@ export const authWorkspaceUseCommand = defineCommand({
     examples: ["auth workspace use", "auth workspace use my-workspace"],
   },
   handler: async (args, ctx) => {
-    const stored = await ctx.credentialManager.sessions();
+    const stored = await ctx.credentialManager.enrichSessions();
     if (stored.sessions.length === 0) {
       throw noWorkspaceSessionsError();
     }
@@ -123,6 +133,7 @@ export const authWorkspaceUseCommand = defineCommand({
         id: session.workspaceId,
         name: session.workspaceName ?? null,
       },
+      user: sessionUser(session),
       previousWorkspaceId: previous?.workspaceId ?? null,
     };
     return ok(
@@ -155,7 +166,7 @@ async function promptForSession(
     "Select a workspace",
     stored.sessions.map((session) => ({
       value: session.workspaceId,
-      label: `${sessionLabel(session)} (${session.workspaceId})${
+      label: `${sessionChoiceLabel(session)} (${session.workspaceId})${
         session.workspaceId === stored.selectedWorkspaceId ? " current" : ""
       }`,
     })),

@@ -4,6 +4,7 @@ import type {
   ActiveAccessTokenOptions,
   ActiveCredential,
   Credential,
+  CredentialIdentity,
   CredentialManager,
   CredentialRefresher,
   Session,
@@ -28,6 +29,7 @@ import {
   readCredentialState,
   resolveStateFilePath,
   type StoredSession,
+  type StoredSessionUser,
   withRefreshFileLock,
   withStateLock,
   writeCredentialState,
@@ -50,9 +52,17 @@ export type FetchWorkspaceName = (
   workspaceId: string,
 ) => Promise<string | undefined>;
 
+/** Looks up safe account metadata for the credential that was just minted.
+ *  Best-effort: a failed lookup never prevents the session from being saved. */
+export type FetchSessionIdentity = (
+  credential: Credential,
+  workspaceId: string,
+) => Promise<CredentialIdentity | undefined>;
+
 export interface FileCredentialManagerOptions {
   readonly env: Readonly<Record<string, string | undefined>>;
   readonly fetchWorkspaceName?: FetchWorkspaceName;
+  readonly fetchSessionIdentity?: FetchSessionIdentity;
   readonly refreshCredential?: CredentialRefresher;
   readonly debugWrite?: (text: string) => void;
 }
@@ -115,6 +125,7 @@ export class FileCredentialManager implements CredentialManager {
   readonly #filePath: string;
   readonly #debug: DebugLog;
   readonly #fetchWorkspaceName: FetchWorkspaceName | undefined;
+  readonly #fetchSessionIdentity: FetchSessionIdentity | undefined;
   readonly #refreshCredential: CredentialRefresher | undefined;
   #actingAs: ActingAs = { kind: "unresolved" };
   /** Built for the credential the process acts as. Every mutation that
@@ -129,6 +140,7 @@ export class FileCredentialManager implements CredentialManager {
     this.#filePath = resolveStateFilePath(options.env).filePath;
     this.#debug = makeDebugLog(options.env, options.debugWrite);
     this.#fetchWorkspaceName = options.fetchWorkspaceName;
+    this.#fetchSessionIdentity = options.fetchSessionIdentity;
     this.#refreshCredential = options.refreshCredential;
     this.#debug(`state file ${this.#filePath}`);
   }
@@ -161,10 +173,57 @@ export class FileCredentialManager implements CredentialManager {
 
   async sessions(): Promise<StoredSessions> {
     const state = await readCredentialState(this.#filePath);
-    return {
-      sessions: state.sessions.map((record) => toSession(record)),
-      selectedWorkspaceId: resolvedMarker(state) ?? undefined,
-    };
+    return storedSessions(state);
+  }
+
+  async enrichSessions(): Promise<StoredSessions> {
+    if (this.#fetchSessionIdentity === undefined) return this.sessions();
+    const state = await readCredentialState(this.#filePath);
+    const candidates = state.sessions.filter(
+      (session) => session.user === undefined,
+    );
+    if (candidates.length === 0) return storedSessions(state);
+
+    const fetched = await Promise.all(
+      candidates.map(async (session) => ({
+        workspaceId: session.workspaceId,
+        token: session.token,
+        identity: await this.#lookUpSessionIdentity(
+          storedSessionCredential(session),
+          session.workspaceId,
+        ),
+      })),
+    );
+    const byWorkspaceId = new Map(
+      fetched
+        .filter(
+          (
+            result,
+          ): result is typeof result & { identity: CredentialIdentity } =>
+            result.identity !== undefined,
+        )
+        .map((result) => [result.workspaceId, result] as const),
+    );
+    if (byWorkspaceId.size === 0) return this.sessions();
+
+    return this.#mutate((current) => {
+      let changed = false;
+      const sessions = current.sessions.map((session) => {
+        const fetchedSession = byWorkspaceId.get(session.workspaceId);
+        if (
+          session.user !== undefined ||
+          fetchedSession === undefined ||
+          fetchedSession.token !== session.token
+        ) {
+          return session;
+        }
+        changed = true;
+        return { ...session, user: storedUser(fetchedSession.identity) };
+      });
+      if (!changed) return { result: storedSessions(current) };
+      const next = { ...current, sessions };
+      return { state: next, result: storedSessions(next) };
+    });
   }
 
   async createSession(
@@ -207,22 +266,33 @@ export class FileCredentialManager implements CredentialManager {
       this.#actAs({ kind: "session", workspaceId });
     }
 
-    const name = await this.#lookUpWorkspaceName(credential, workspaceId);
-    if (name === undefined) return created;
+    const [name, identity] = await Promise.all([
+      this.#lookUpWorkspaceName(credential, workspaceId),
+      this.#lookUpSessionIdentity(credential, workspaceId),
+    ]);
+    if (name === undefined && identity === undefined) return created;
 
     return this.#mutate((state) => {
       const record = state.sessions.find(
         (session) => session.workspaceId === workspaceId,
       );
-      if (record === undefined) return { result: created };
-      const named: StoredSession = { ...record, name };
+      // Lookups happen outside the lock. Do not attach their result to a
+      // credential that another process saved for this workspace meanwhile.
+      if (record === undefined || record.token !== credential.token) {
+        return { result: created };
+      }
+      const enriched: StoredSession = {
+        ...record,
+        ...(name === undefined ? {} : { name }),
+        ...(identity === undefined ? {} : { user: storedUser(identity) }),
+      };
       const next: CredentialState = {
         ...state,
         sessions: state.sessions.map((session) =>
-          session.workspaceId === workspaceId ? named : session,
+          session.workspaceId === workspaceId ? enriched : session,
         ),
       };
-      return { state: next, result: toSession(named) };
+      return { state: next, result: toSession(enriched) };
     });
   }
 
@@ -362,6 +432,7 @@ export class FileCredentialManager implements CredentialManager {
           const rotated: StoredSession = {
             workspaceId: record.workspaceId,
             ...(record.name === undefined ? {} : { name: record.name }),
+            ...storedUserSlice(record.user),
             token: tokens.accessToken,
             ...(tokens.refreshToken === undefined
               ? {}
@@ -522,6 +593,20 @@ export class FileCredentialManager implements CredentialManager {
     }
   }
 
+  async #lookUpSessionIdentity(
+    credential: Credential,
+    workspaceId: string,
+  ): Promise<CredentialIdentity | undefined> {
+    if (this.#fetchSessionIdentity === undefined) return undefined;
+    try {
+      return normalizedIdentity(
+        await this.#fetchSessionIdentity(credential, workspaceId),
+      );
+    } catch {
+      return undefined;
+    }
+  }
+
   /** One mutation: the short lock, a fresh read, one slice, one atomic
    *  write. A slice that returns no state writes nothing. */
   async #mutate<T>(
@@ -578,6 +663,15 @@ function expiresAtSlice(
   return expiresAt === undefined ? {} : { expiresAt: expiresAt.toISOString() };
 }
 
+function storedSessionCredential(record: StoredSession): Credential {
+  return {
+    token: record.token,
+    refreshToken: record.refreshToken,
+    expiresAt:
+      record.expiresAt === undefined ? undefined : new Date(record.expiresAt),
+  };
+}
+
 /** The selection the manager will admit to: one that names a stored
  *  session, or none. A dangling selection never escapes. */
 function resolvedMarker(state: CredentialState): string | null {
@@ -591,10 +685,18 @@ function resolvedMarker(state: CredentialState): string | null {
   return null;
 }
 
+function storedSessions(state: CredentialState): StoredSessions {
+  return {
+    sessions: state.sessions.map((record) => toSession(record)),
+    selectedWorkspaceId: resolvedMarker(state) ?? undefined,
+  };
+}
+
 function toSession(record: StoredSession): Session {
   return {
     workspaceId: record.workspaceId,
     workspaceName: record.name,
+    identity: storedIdentity(record),
     expiresAt:
       record.expiresAt === undefined ? undefined : new Date(record.expiresAt),
   };
@@ -606,9 +708,48 @@ function storedCredential(record: StoredSession): ActiveCredential {
     workspaceName: record.name,
     expiresAt:
       record.expiresAt === undefined ? undefined : new Date(record.expiresAt),
-    identity: claimedIdentity(record.token),
+    identity: storedIdentity(record),
     origin: { source: "stored" },
   };
+}
+
+function storedIdentity(record: StoredSession): CredentialIdentity | undefined {
+  const user = record.user;
+  return user === undefined
+    ? claimedIdentity(record.token)
+    : { userId: user.id, email: user.email, name: user.name };
+}
+
+function storedUser(identity: CredentialIdentity): StoredSessionUser {
+  return {
+    ...(identity.userId === undefined ? {} : { id: identity.userId }),
+    ...(identity.email === undefined ? {} : { email: identity.email }),
+    ...(identity.name === undefined ? {} : { name: identity.name }),
+  };
+}
+
+function storedUserSlice(user: StoredSessionUser | undefined): {
+  user?: StoredSessionUser;
+} {
+  return user === undefined ? {} : { user };
+}
+
+function normalizedIdentity(
+  identity: CredentialIdentity | undefined,
+): CredentialIdentity | undefined {
+  if (identity === undefined) return undefined;
+  const userId = normalizedString(identity.userId);
+  const email = normalizedString(identity.email);
+  const name = normalizedString(identity.name);
+  if (userId === undefined && email === undefined && name === undefined) {
+    return undefined;
+  }
+  return { userId, email, name };
+}
+
+function normalizedString(value: string | undefined): string | undefined {
+  const trimmed = value?.trim();
+  return trimmed ? trimmed : undefined;
 }
 
 /** An environment token whose claims name no workspace reports no

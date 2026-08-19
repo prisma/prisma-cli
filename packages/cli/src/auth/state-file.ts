@@ -45,9 +45,18 @@ const REFRESH_LOCK_TIMINGS: LockTimings = {
 export interface StoredSession {
   readonly workspaceId: string;
   readonly name?: string;
+  /** Safe account metadata captured during login. Token material remains the
+   *  source of authentication; this is only for identifying local sessions. */
+  readonly user?: StoredSessionUser;
   readonly token: string;
   readonly refreshToken?: string;
   readonly expiresAt?: string;
+}
+
+export interface StoredSessionUser {
+  readonly id?: string;
+  readonly email?: string;
+  readonly name?: string;
 }
 
 export interface CredentialState {
@@ -175,11 +184,13 @@ function isStoredSession(value: unknown): value is StoredSession {
 }
 
 function normalizeSession(session: StoredSession): StoredSession {
+  const user = normalizeStoredSessionUser(session.user);
   return {
     workspaceId: session.workspaceId,
     ...(typeof session.name === "string" && session.name.length > 0
       ? { name: session.name }
       : {}),
+    ...(user === undefined ? {} : { user }),
     token: session.token,
     ...(typeof session.refreshToken === "string" &&
     session.refreshToken.length > 0
@@ -189,6 +200,32 @@ function normalizeSession(session: StoredSession): StoredSession {
       ? { expiresAt: session.expiresAt }
       : {}),
   };
+}
+
+function normalizeStoredSessionUser(
+  value: unknown,
+): StoredSessionUser | undefined {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    return undefined;
+  }
+  const candidate = value as Record<string, unknown>;
+  const id = normalizedString(candidate.id);
+  const email = normalizedString(candidate.email);
+  const name = normalizedString(candidate.name);
+  if (id === undefined && email === undefined && name === undefined) {
+    return undefined;
+  }
+  return {
+    ...(id === undefined ? {} : { id }),
+    ...(email === undefined ? {} : { email }),
+    ...(name === undefined ? {} : { name }),
+  };
+}
+
+function normalizedString(value: unknown): string | undefined {
+  if (typeof value !== "string") return undefined;
+  const trimmed = value.trim();
+  return trimmed.length === 0 ? undefined : trimmed;
 }
 
 /** Temp file in the same directory, fsync, rename, mode 0600 — a reader

@@ -442,6 +442,11 @@ describe("session mutations and state read-back", () => {
     expect(selected).toEqual({
       workspaceId: "workspace-2",
       workspaceName: undefined,
+      identity: {
+        userId: "user-1",
+        email: undefined,
+        name: undefined,
+      },
       expiresAt: undefined,
     });
     expect(manager.state().selectedWorkspaceId).toBe("workspace-2");
@@ -507,6 +512,11 @@ describe("session mutations and state read-back", () => {
         {
           workspaceId: "workspace-1",
           workspaceName: undefined,
+          identity: {
+            userId: "user-1",
+            email: undefined,
+            name: undefined,
+          },
           expiresAt: undefined,
         },
       ],

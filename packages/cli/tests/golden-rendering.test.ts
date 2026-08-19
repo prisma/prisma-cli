@@ -30,7 +30,11 @@ function record(workspaceId: string, workspaceName: string): SessionRecord {
     workspaceId,
     workspaceName,
     credential: {
-      token: mintTestJwt({ workspace_id: workspaceId }),
+      token: mintTestJwt({
+        workspace_id: workspaceId,
+        sub: `usr_${workspaceId}`,
+        email: `${workspaceId}@example.com`,
+      }),
       refreshToken: `refresh_${workspaceId}`,
       expiresAt: undefined,
     },
@@ -112,11 +116,16 @@ describe("golden rendering", () => {
     expect(result.stderr).toBe(
       "ℹ Listing your workspace sessions on this machine.\n" +
         "\n" +
-        "Name      Id    Status\n" +
-        "Acme Inc  ws_1  current\n" +
-        "Globex    ws_2  \u2014\n",
+        "Workspace  User              Id    Status\n" +
+        "Acme Inc   ws_1@example.com  ws_1  current\n" +
+        "Globex     ws_2@example.com  ws_2  \u2014\n" +
+        "\n" +
+        "→ Authorize another workspace: prisma-cli auth login\n",
     );
-    expect(result.stdout).toBe("Acme Inc  ws_1  current\nGlobex  ws_2\n");
+    expect(result.stdout).toBe(
+      "Acme Inc  ws_1@example.com  ws_1  current\n" +
+        "Globex  ws_2@example.com  ws_2\n",
+    );
   });
 
   /**
@@ -163,7 +172,7 @@ describe("golden rendering", () => {
     expect(result.exitCode).toBe(2);
     expect(result.stderr).toBe(
       "✘ [AUTH.WORKSPACE_AMBIGUOUS] More than one workspace session is named 'Acme Inc'.\n" +
-        "  why: Matching workspaces: ws_1, ws_9.\n" +
+        "  why: Matching sessions: ws_1 (ws_1@example.com), ws_9 (ws_9@example.com).\n" +
         "→ List your workspace sessions and pass a workspace id: prisma-cli auth workspace list\n",
     );
     expect(result.stdout).toBe("");
@@ -207,9 +216,11 @@ describe("golden rendering", () => {
     expect(result.stderr).toBe(
       "\u001b[34m\u2139\u001b[39m Listing your workspace sessions on this machine.\n" +
         "\n" +
-        "\u001b[36mName    \u001b[39m  \u001b[36mId  \u001b[39m  \u001b[36mStatus\u001b[39m\n" +
-        "Acme Inc  ws_1  current\n" +
-        "Globex    ws_2  [2m\u2014[22m\n",
+        "\u001b[36mWorkspace\u001b[39m  \u001b[36mUser            \u001b[39m  \u001b[36mId  \u001b[39m  \u001b[36mStatus\u001b[39m\n" +
+        "Acme Inc   ws_1@example.com  ws_1  current\n" +
+        "Globex     ws_2@example.com  ws_2  [2m\u2014[22m\n" +
+        "\n" +
+        "\u001b[36m→\u001b[39m Authorize another workspace: \u001b[36mprisma-cli auth login\u001b[39m\n",
     );
   });
 });

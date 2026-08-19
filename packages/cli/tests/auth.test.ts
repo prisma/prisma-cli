@@ -56,11 +56,17 @@ function tokenFor(
   return mintTestJwt({ workspace_id: workspaceId, ...claims });
 }
 
-function credentialFor(workspaceId: string) {
+function credentialFor(
+  workspaceId: string,
+  user: { readonly id: string; readonly email: string } = {
+    id: "usr_456",
+    email: "bob@example.com",
+  },
+) {
   return {
     token: tokenFor(workspaceId, {
-      sub: "usr_456",
-      email: "bob@example.com",
+      sub: user.id,
+      email: user.email,
     }),
     refreshToken: `refresh_${workspaceId}`,
     expiresAt: undefined,
@@ -70,11 +76,12 @@ function credentialFor(workspaceId: string) {
 function record(
   workspaceId: string,
   workspaceName: string | undefined,
+  user?: { readonly id: string; readonly email: string },
 ): SessionRecord {
   return {
     workspaceId,
     workspaceName,
-    credential: credentialFor(workspaceId),
+    credential: credentialFor(workspaceId, user),
   };
 }
 
@@ -172,6 +179,11 @@ describe("auth login", () => {
     expect(result.exitCode).toBe(0);
     expect(resultOf(result)).toEqual({
       workspace: { id: "ws_1", name: null },
+      user: {
+        id: "usr_456",
+        email: "bob@example.com",
+        name: null,
+      },
       environmentCredentialInForce: false,
     });
     const state = cli.credentialManager?.state();
@@ -202,6 +214,7 @@ describe("auth login", () => {
     });
 
     expect(result.exitCode).toBe(0);
+    expect(result.stderr).toContain("user:       bob@example.com");
     expect(result.stderr).toContain(
       "PRISMA_SERVICE_TOKEN supplies the credential in force",
     );
@@ -443,7 +456,10 @@ describe("auth workspace list", () => {
     });
 
     expect(result.exitCode).toBe(0);
-    expect(result.stdout).toBe("Acme Inc  ws_1\nws_2  ws_2  current\n");
+    expect(result.stdout).toBe(
+      "Acme Inc  bob@example.com  ws_1\n" +
+        "ws_2  bob@example.com  ws_2  current\n",
+    );
   });
 
   it("serializes the sessions and the current marker for json", async () => {
@@ -456,6 +472,7 @@ describe("auth workspace list", () => {
 
     expect(resultOf(result)).toEqual({
       context: {
+        scope: "local-sessions",
         environmentCredentialInForce: false,
         currentWorkspaceId: "ws_1",
       },
@@ -463,12 +480,41 @@ describe("auth workspace list", () => {
         {
           workspaceId: "ws_1",
           workspaceName: "Acme Inc",
+          user: {
+            id: "usr_456",
+            email: "bob@example.com",
+            name: null,
+          },
           current: true,
           expiresAt: null,
         },
       ],
       count: 1,
     });
+  });
+
+  it("uses null when a legacy session token carries no user identity", async () => {
+    const cli = makeCli({
+      sessions: [
+        {
+          workspaceId: "ws_legacy",
+          workspaceName: "Legacy workspace",
+          credential: {
+            token: tokenFor("ws_legacy"),
+            refreshToken: "refresh_legacy",
+            expiresAt: undefined,
+          },
+        },
+      ],
+      selectedWorkspaceId: "ws_legacy",
+    });
+
+    const result = await cli.run(["auth", "workspace", "list", "--json"]);
+
+    expect(resultOf(result)).toMatchObject({
+      items: [{ workspaceId: "ws_legacy", user: null }],
+    });
+    expect(result.stdout).not.toContain("undefined");
   });
 
   it("states that the environment credential is in force", async () => {
@@ -488,14 +534,55 @@ describe("auth workspace list", () => {
     });
   });
 
-  it("offers sign-in when there are no sessions", async () => {
+  it("offers workspace authorization when there are no sessions", async () => {
     const result = await makeCli().run(["auth", "workspace", "list", "--json"]);
 
     expect(result.exitCode).toBe(0);
     expect(result.presented?.presentation.next).toEqual([
       {
         kind: "run-command",
-        label: "Sign in",
+        label: "Authorize a workspace",
+        command: "prisma-cli auth login",
+      },
+    ]);
+  });
+
+  it("distinguishes sessions from different users and offers another authorization", async () => {
+    const cli = makeCli({
+      sessions: [
+        record("ws_personal", "Personal workspace", {
+          id: "usr_personal",
+          email: "personal@example.com",
+        }),
+        record("ws_work", "Prisma DevRel", {
+          id: "usr_work",
+          email: "developer@prisma.io",
+        }),
+      ],
+      selectedWorkspaceId: "ws_work",
+    });
+
+    const result = await cli.run(["auth", "workspace", "list", "--json"]);
+
+    expect(resultOf(result)).toMatchObject({
+      context: { scope: "local-sessions", currentWorkspaceId: "ws_work" },
+      items: [
+        {
+          workspaceId: "ws_personal",
+          user: { id: "usr_personal", email: "personal@example.com" },
+          current: false,
+        },
+        {
+          workspaceId: "ws_work",
+          user: { id: "usr_work", email: "developer@prisma.io" },
+          current: true,
+        },
+      ],
+    });
+    expect(result.presented?.presentation.next).toEqual([
+      {
+        kind: "run-command",
+        label: "Authorize another workspace",
         command: "prisma-cli auth login",
       },
     ]);
@@ -519,6 +606,11 @@ describe("auth workspace use", () => {
     expect(result.exitCode).toBe(0);
     expect(resultOf(result)).toEqual({
       workspace: { id: "ws_2", name: "Globex" },
+      user: {
+        id: "usr_456",
+        email: "bob@example.com",
+        name: null,
+      },
       previousWorkspaceId: "ws_1",
     });
     expect(cli.credentialManager?.state().selectedWorkspaceId).toBe("ws_2");
@@ -639,6 +731,11 @@ describe("auth workspace logout", () => {
     expect(result.exitCode).toBe(0);
     expect(resultOf(result)).toEqual({
       workspace: { id: "ws_1", name: "Acme Inc" },
+      user: {
+        id: "usr_456",
+        email: "bob@example.com",
+        name: null,
+      },
       wasSelected: false,
     });
     expect(
@@ -729,6 +826,11 @@ describe("auth workspace logout", () => {
     expect(result.exitCode).toBe(0);
     expect(resultOf(result)).toEqual({
       workspace: { id: "ws_1", name: "Acme Inc" },
+      user: {
+        id: "usr_456",
+        email: "bob@example.com",
+        name: null,
+      },
       wasSelected: true,
     });
     expect(manager.state().sessions).toEqual([]);
@@ -924,6 +1026,11 @@ describe("the shapes the commands hand back", () => {
     const session: Session = {
       workspaceId: "ws_1",
       workspaceName: "Acme Inc",
+      identity: {
+        userId: "usr_456",
+        email: "bob@example.com",
+        name: undefined,
+      },
       expiresAt: undefined,
     };
     const active: ActiveCredential = {
