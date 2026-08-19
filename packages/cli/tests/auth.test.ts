@@ -11,7 +11,6 @@ import {
   type Credential,
   defineCommand,
   type ManagementApiClient,
-  type Session,
 } from "@prisma/cli-engine";
 import { ok } from "@prisma/cli-engine/protocol";
 import {
@@ -20,7 +19,7 @@ import {
   type SessionRecord,
 } from "@prisma/cli-engine/testing";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-
+import type { AccountSession } from "../src/auth/credential-manager";
 import { performLogin, storeLegacyCredential } from "../src/auth/operations";
 import { authLoginCommand } from "../src/commands/auth/login";
 import { authLogoutCommand } from "../src/commands/auth/logout";
@@ -28,6 +27,7 @@ import { authWhoamiCommand } from "../src/commands/auth/whoami";
 import { authWorkspaceListCommand } from "../src/commands/auth/workspace-list";
 import { authWorkspaceLogoutCommand } from "../src/commands/auth/workspace-logout";
 import { authWorkspaceUseCommand } from "../src/commands/auth/workspace-use";
+import { attachAccountMetadata } from "./helpers/account-aware-credential-manager";
 
 vi.mock("../src/auth/operations", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../src/auth/operations")>()),
@@ -113,10 +113,11 @@ function makeCli(spec?: {
   readonly client?: ManagementApiClient;
   readonly openUrl?: (url: string) => void;
 }) {
-  return createTestCli({
+  const sessions = spec?.sessions ?? [];
+  const cli = createTestCli({
     commands: COMMANDS,
     groups: GROUPS,
-    sessions: spec?.sessions ?? [],
+    sessions,
     selectedWorkspaceId: spec?.selectedWorkspaceId,
     environmentCredential:
       spec?.environmentToken === undefined
@@ -126,6 +127,10 @@ function makeCli(spec?: {
     openUrl: spec?.openUrl,
     now: () => new Date(0),
   });
+  if (cli.credentialManager !== undefined) {
+    attachAccountMetadata(cli.credentialManager, sessions);
+  }
+  return cli;
 }
 
 type ResultFrame = {
@@ -1023,7 +1028,7 @@ describe("the shapes the commands hand back", () => {
   });
 
   it("exposes no token on the shapes the commands see", () => {
-    const session: Session = {
+    const session: AccountSession = {
       workspaceId: "ws_1",
       workspaceName: "Acme Inc",
       identity: {

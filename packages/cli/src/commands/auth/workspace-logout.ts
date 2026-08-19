@@ -5,6 +5,7 @@ import {
   positional,
 } from "@prisma/cli-engine";
 import { ok } from "@prisma/cli-engine/protocol";
+import { sessionsForDisplay } from "../../auth/credential-manager";
 import { environmentCredentialInForce } from "../../auth/service-token";
 import { CLI_NAME } from "../../cli-name";
 import { ENVIRONMENT_CREDENTIAL_NOTICE } from "./credential-card";
@@ -96,7 +97,7 @@ export const authWorkspaceLogoutCommand = defineCommand({
     examples: ["auth workspace logout my-workspace"],
   },
   handler: async (args, ctx) => {
-    const stored = await ctx.credentialManager.enrichSessions();
+    const stored = await sessionsForDisplay(ctx.credentialManager);
     const session = requireSession(stored.sessions, args.positionals.workspace);
     const wasSelected = session.workspaceId === stored.selectedWorkspaceId;
     await ctx.credentialManager.endSession(session.workspaceId);

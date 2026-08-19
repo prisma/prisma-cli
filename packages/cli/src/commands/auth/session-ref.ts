@@ -8,6 +8,7 @@
  */
 import { noSessionForWorkspaceError, type Session } from "@prisma/cli-engine";
 import { CliStructuredError } from "@prisma/cli-engine/protocol";
+import { sessionIdentity } from "../../auth/credential-manager";
 import { CLI_NAME } from "../../cli-name";
 
 export type SessionRefResolution =
@@ -23,7 +24,7 @@ export interface SessionUser {
 
 /** The safe identity fields a command may expose for a stored session. */
 export function sessionUser(session: Session): SessionUser | null {
-  const identity = session.identity;
+  const identity = sessionIdentity(session);
   if (identity === undefined) return null;
   return {
     id: identity.userId ?? null,
@@ -34,7 +35,7 @@ export function sessionUser(session: Session): SessionUser | null {
 
 /** The shortest useful human identity for a workspace session. */
 export function sessionUserLabel(session: Session): string | undefined {
-  const identity = session.identity;
+  const identity = sessionIdentity(session);
   return identity?.email ?? identity?.name ?? identity?.userId;
 }
 

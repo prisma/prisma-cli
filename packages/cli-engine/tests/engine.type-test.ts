@@ -571,7 +571,6 @@ export const unmanagedIsUndeclared: false = unmanagedCommand.managesCredentials;
 export const sessionHasNoTokenMaterial:
   | "workspaceId"
   | "workspaceName"
-  | "identity"
   | "expiresAt" = undefined as unknown as keyof Session;
 
 export const activeCredentialHasNoTokenMaterial:
