@@ -1,15 +1,24 @@
 import fs from "node:fs";
 
-const DEFAULT_CONTROL_FILE_PATH = "/uk/libukp/scale_to_zero_disable";
+/**
+ * Possible locations of the control file.
+ *
+ * The location of these files and the protocol are an internal implementation detail
+ * subject to change. Only the high level TypeScript wrapper is a public API.
+ */
+const DEFAULT_CONTROL_FILE_PATHS: readonly string[] = [
+  "/run/prisma/compute/keep-awake",
+  "/uk/libukp/scale_to_zero_disable",
+];
 
 type ControlFileState =
-  | { kind: "uninitialized"; path: string }
-  | { kind: "unavailable"; path: string }
+  | { kind: "uninitialized"; paths: readonly string[] }
+  | { kind: "unavailable"; paths: readonly string[] }
   | { kind: "open"; fd: number; path: string };
 
 let controlFileState: ControlFileState = {
   kind: "uninitialized",
-  path: DEFAULT_CONTROL_FILE_PATH,
+  paths: DEFAULT_CONTROL_FILE_PATHS,
 };
 
 export type ScaleToZeroSignal = "acquire" | "release";
@@ -34,28 +43,40 @@ function getControlFileState(): ControlFileState {
     return controlFileState;
   }
 
-  try {
-    controlFileState = {
-      kind: "open",
-      fd: fs.openSync(controlFileState.path, fs.constants.O_WRONLY),
-      path: controlFileState.path,
-    };
-  } catch {
-    controlFileState = { kind: "unavailable", path: controlFileState.path };
+  const paths = controlFileState.paths;
+
+  for (const path of paths) {
+    try {
+      controlFileState = {
+        kind: "open",
+        fd: fs.openSync(path, fs.constants.O_WRONLY),
+        path,
+      };
+      return controlFileState;
+    } catch {
+      // Try the next candidate path.
+    }
   }
 
+  controlFileState = { kind: "unavailable", paths };
   return controlFileState;
 }
 
 export function configureScaleToZeroControlFileForTests(
-  path: string | undefined,
+  paths: string | readonly string[] | undefined,
 ): void {
   if (controlFileState.kind === "open") {
     fs.closeSync(controlFileState.fd);
   }
 
-  controlFileState = {
-    kind: "uninitialized",
-    path: path ?? DEFAULT_CONTROL_FILE_PATH,
-  };
+  let candidatePaths: readonly string[];
+  if (paths === undefined) {
+    candidatePaths = DEFAULT_CONTROL_FILE_PATHS;
+  } else if (typeof paths === "string") {
+    candidatePaths = [paths];
+  } else {
+    candidatePaths = paths;
+  }
+
+  controlFileState = { kind: "uninitialized", paths: candidatePaths };
 }
