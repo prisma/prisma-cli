@@ -1,6 +1,6 @@
 # Prisma CLI v8 — divergences from the spec
 
-Where the shipped CLI (8.0.0-rc.6, 2026-08-20) departs from the unified-CLI spec (the consolidate-clis grammar, Layers 1–5), for discussion. Changes the spec *asked for* are not discussion material and are summarized at the end. Sources: the five parity-divergence records, the operator rulings, and the spec itself; the per-slice records hold the fine detail.
+Where the shipped CLI (8.0.0-rc.6, 2026-08-20) departs from the unified-CLI spec (the CLI consolidation plan's command surface), for discussion. Changes the spec *asked for* are not discussion material and are summarized at the end. Compiled from the project's divergence records, which hold the fine detail.
 
 ## The headline: the proposal on the table
 
@@ -22,11 +22,11 @@ This deliberately reverses the spec's Layer 3 (resolution: git mapping, prompts,
 | Area | Spec says | Shipped | Ruling |
 | --- | --- | --- | --- |
 | `service build` / `run` / `deploy` | flat service verbs exist | dropped, no successor — Composer supersedes; deploy's build-locally-and-upload shape judged wrong | 2026-08-10 |
-| `composer` root | no product names in the tree ("there is no `prisma composer`") | `composer dev/deploy/destroy/log` mounted | interim parking 2026-08-10; final grammar open as TML-3189 |
+| `composer` root | no product names in the tree ("there is no `prisma composer`") | `composer dev/deploy/destroy/log` mounted | 2026-08-10, as interim parking; the final grammar is still an open ticket (Linear TML-3189) |
 | `init` | the single guided entry point into everything | the platform compute-config wizard; ORM scaffold moved to `orm init` (not in spec) | 2026-08-12 |
 | `version` | listed as a utility command | removed; `--version` answers | 2026-08-11 |
-| `service promote` / `rollback` | flat — Service-level traffic actions | moved under `service deployment` | S8, R-S8-1 |
-| `service logs` | live streaming (deployment logs) | a page read; `--follow` polls every 2 s; WebSocket transport not built | 2026-08-10 shelve, later shipped in page shape |
+| `service promote` / `rollback` | flat — Service-level traffic actions | moved under `service deployment` | mid-2026-08, when the deployment subgroup was built; old spellings deleted with no aliases (pre-rc, no compatibility debt) |
+| `service logs` | live streaming (deployment logs) | a page read; `--follow` polls every 2 s; WebSocket transport not built | 2026-08-10: postponed until the engine can carry a socket; later shipped as a page read instead |
 
 ### B. Never ruled — drifted from the spec without a decision
 
@@ -45,7 +45,7 @@ This deliberately reverses the spec's Layer 3 (resolution: git mapping, prompts,
 | Command | Why it exists |
 | --- | --- |
 | `service create` | a service no longer exists only as a deploy side effect. **Open:** name-taken returns the existing service (`existing: true`) — hard-fail instead? |
-| `service deployment start` / `stop` / `delete` | direct lifecycle over the API (S8). Stop unguarded (reversible), delete requires the id typed back |
+| `service deployment start` / `stop` / `delete` | direct lifecycle over the API. Stop unguarded (reversible), delete requires the id typed back |
 | `service domain retry` / `wait` | operational conveniences from the legacy CLI |
 
 ### D. In the spec, not shipped
@@ -69,7 +69,7 @@ Orchestration (`project check/dev/plan/deploy/status`, `adopt/detach`, `unlink`)
 Spec- or design-mandated changes users of the old CLIs will feel. Not discussion material; kept for completeness.
 
 - **Renames:** `database` → `postgres`, `app` → `service` (including flags, env vars, error copy; no aliases). Nested nouns per the spec: `service deployment list` replaces `list-deploys` etc., ids moved with paths.
-- **One output model (engine design R1–R14):** JSON is an event stream with typed diagnostics and next actions; format auto-selects (piped = JSON); human mode writes presentation to stderr and raw data rows to stdout; exit codes unified (2 expected error, 3 cancelled prompt, 1 bugs only, 130/143 signals); dotted error codes with per-code docs links.
+- **One output model (from the settled engine design):** JSON is an event stream with typed diagnostics and next actions; format auto-selects (piped = JSON); human mode writes presentation to stderr and raw data rows to stdout; exit codes unified (2 expected error, 3 cancelled prompt, 1 bugs only, 130/143 signals); dotted error codes with per-code docs links.
 - **Consent per the spec's guarded-deletion invariant:** destructive commands require the exact id/name typed back or `--confirm <value>`; `--yes` never grants consent.
 - **Auth on the session model:** per-workspace sessions plus one selection; `PRISMA_SERVICE_TOKEN` is a credential, not a session; mutations work while it is set; `whoami` describes the credential; no auto-login anywhere.
 - **Retired:** fixture/mock mode, `--trace`, verbose-context blocks, per-error exit codes, the local live-deployment cache (live derives from the platform record alone; rollback refuses to guess and asks consent on the target deployment id).
