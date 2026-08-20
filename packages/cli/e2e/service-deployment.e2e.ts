@@ -273,6 +273,64 @@ function logLines(run: CliRun): string[] {
     .map((frame) => frame.line as string);
 }
 
+function sleep(milliseconds: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, milliseconds));
+}
+
+/** A fresh hostname does not serve on the first try — the edge is
+ *  still setting up routing and TLS for it — so the request retries
+ *  until the app answers. */
+async function serveProbeRequest(url: string, path: string): Promise<void> {
+  const deadline = Date.now() + 60_000;
+  let lastAnswer: number | string = "never reached";
+  for (;;) {
+    try {
+      // biome-ignore lint/performance/noAwaitInLoops: each retry decides from the previous answer; waiting between requests is the point.
+      const served = await fetch(`${url}${path}`);
+      lastAnswer = served.status;
+      if (served.ok) {
+        return;
+      }
+    } catch (failure) {
+      lastAnswer = failure instanceof Error ? failure.message : "error";
+    }
+    if (Date.now() > deadline) {
+      throw new Error(
+        `the deployment at ${url} never served the probe request; ` +
+          `last answer: ${lastAnswer}`,
+      );
+    }
+    await sleep(3000);
+  }
+}
+
+/** Ingestion lags a request by some unspecified amount, so `service
+ *  logs` is polled until `wantedLine` arrives (or the deadline passes,
+ *  leaving the assertions to report what the last read held). */
+async function pollLogsForLine(
+  serviceName: string,
+  wantedLine: string,
+): Promise<string[]> {
+  const deadline = Date.now() + 90_000;
+  for (;;) {
+    // biome-ignore lint/performance/noAwaitInLoops: polling one page at a time is the point, as in the command's own --follow loop.
+    const run = await scratch.run([
+      "service",
+      "logs",
+      "--service",
+      serviceName,
+    ]);
+    const lines = logLines(run);
+    if (
+      lines.some((line) => line.includes(wantedLine)) ||
+      Date.now() > deadline
+    ) {
+      return lines;
+    }
+    await sleep(5000);
+  }
+}
+
 describeCommand("service logs", () => {
   it("reads back what the deployment wrote while serving a request", async () => {
     const existing = requireDeployed();
@@ -288,56 +346,15 @@ describeCommand("service logs", () => {
     const url = (shown.envelope.result as { deployment: DeploymentRow })
       .deployment.url;
     expect(url).toMatch(HTTPS_URL);
-    // A fresh hostname does not serve on the first try — the edge is
-    // still setting up routing and TLS for it — so the request retries
-    // until the app answers.
-    const serveDeadline = Date.now() + 60_000;
-    let servedStatus: number | string = "never reached";
-    for (;;) {
-      try {
-        const served = await fetch(`${url}/e2e-logs-probe`);
-        servedStatus = served.status;
-        if (served.ok) {
-          break;
-        }
-      } catch (failure) {
-        servedStatus = failure instanceof Error ? failure.message : "error";
-      }
-      if (Date.now() > serveDeadline) {
-        throw new Error(
-          `the deployment at ${url} never served the probe request; ` +
-            `last answer: ${servedStatus}`,
-        );
-      }
-      await new Promise((resolve) => setTimeout(resolve, 3000));
-    }
+    await serveProbeRequest(url as string, "/e2e-logs-probe");
 
-    // Ingestion lags the request by some unspecified amount, so poll
-    // until the probe's line arrives rather than asserting on one read.
-    const deadline = Date.now() + 90_000;
-    let lines: string[] = [];
-    for (;;) {
-      const run = await scratch.run([
-        "service",
-        "logs",
-        "--service",
-        existing.serviceName,
-      ]);
-      lines = logLines(run);
-      if (
-        lines.some((line) => line.includes("e2e-fixture served /e2e-logs-probe"))
-      ) {
-        break;
-      }
-      if (Date.now() > deadline) {
-        break;
-      }
-      await new Promise((resolve) => setTimeout(resolve, 5000));
-    }
-
-    expect(
-      lines.some((line) => line.includes("e2e-fixture listening")),
-    ).toBe(true);
+    const lines = await pollLogsForLine(
+      existing.serviceName,
+      "e2e-fixture served /e2e-logs-probe",
+    );
+    expect(lines.some((line) => line.includes("e2e-fixture listening"))).toBe(
+      true,
+    );
     expect(
       lines.some((line) => line.includes("e2e-fixture served /e2e-logs-probe")),
     ).toBe(true);
