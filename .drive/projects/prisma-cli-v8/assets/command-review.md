@@ -4,7 +4,7 @@ Every command the CLI mounts, for a semantic review of what each command means a
 
 The tree has five sources: the platform family (this repo), the Composer family (`@prisma/composer-cli`), the ORM family (`@prisma/orm-toolchain`), the engine's telemetry group, and a few local utilities with no owning package.
 
-**The Spec column** compares each command against the original unified-CLI grammar (the consolidate-clis command surface, Layer 4). That document calls its tree "directional, not a launch checklist", so treat mismatches as discussion points, not defects:
+**The Spec column** compares each command against the command surface in the original CLI consolidation plan. That document calls its tree "directional, not a launch checklist", so treat mismatches as discussion points, not defects:
 
 - ✅ — matches the spec's path and meaning
 - ⚠️ — in the spec, but renamed, moved, or reshaped
