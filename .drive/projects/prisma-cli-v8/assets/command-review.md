@@ -12,11 +12,13 @@ The tree has five sources: the platform family (this repo), the Composer family 
 
 A recurring ⚠️ theme: the spec's deletion verb is `delete` everywhere (it explicitly avoids `remove` as ambiguous), but the platform groups shipped `remove` where the legacy CLI used it — except `bucket delete`, which followed the spec. Worth one ruling.
 
+**Pending proposal (2026-08-20): platform commands take parameters only.** `prisma.compute.ts` turned out to be deprecated, and the proposed response is to strip the platform commands' ambient resolution down to one thing: parameters (flags and env vars), plus the directory's project link, which the product team keeps. The compute-config read, the remembered service selection, the interactive service picker, and the git-branch inference would all go, and `init` — whose sole output is the deprecated file — shrinks to its link step pending a new meaning. Detailed in the divergence catalog. Affects the meaning of `init` and the resolution behaviour of every `service`, `postgres`, `bucket`, `branch`, and `git` command below, but no command paths.
+
 ## Top-level commands
 
 | Command | Meaning | Spec |
 | --- | --- | --- |
-| `init` | Write a committed compute config for this app | ⚠️ spec's `init` is the single guided entry point; shipped as the compute-config wizard, with the ORM initializer split to `orm init` |
+| `init` | Write a committed compute config for this app — **but `prisma.compute.ts` is deprecated; under the pending proposal, `init` shrinks to its project-link step pending a new meaning** | ⚠️ spec's `init` is the single guided entry point; shipped as the compute-config wizard, with the ORM initializer split to `orm init` |
 | `format` | Format your PSL contract source | ⚠️ spec: `contract format` |
 | `lsp` | Start the Prisma Next language server | ❌ not in the spec tree |
 | `migrate` | Apply planned migrations to advance the database | ⚠️ spec: `db migrate` |

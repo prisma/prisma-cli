@@ -4,6 +4,17 @@ Everything the v8 CLI deliberately does differently from the CLIs it replaces, i
 
 Three baselines apply, because v8 absorbs three CLIs: the platform CLI (`prisma-cli`), Composer's own CLI (`prisma-composer`), and the ORM CLI (`prisma-next`). Each section says which baseline it compares against. The cumulative record was ratified by the operator on 2026-08-12; entries marked **open** still need a ruling.
 
+## Proposed ruling (2026-08-20, for discussion): platform commands take parameters only
+
+Prompted by the discovery that `prisma.compute.ts` — the file `init` writes and the service commands read — is deprecated and no longer supported. The proposal: **platform commands operate on their parameters; the only ambient context is the directory's project link.** Concretely:
+
+- **Project** resolves from `--project`, else the env override, else the local project link (`.prisma/local.json`). The link stays — the product team wants it — so `project link`, `project create`'s auto-link, and `project show`'s binding keep their meaning.
+- **Service** resolves from `--service` or `PRISMA_SERVICE_ID` only. The compute-config default, the remembered selection in local state, and the interactive picker are removed.
+- **Branch** resolves from `--branch` only. The current-git-branch inference is removed.
+- **The compute config is dead everywhere:** `init`'s write, the service commands' read, the config-target positional, the `SERVICE.COMPUTE_CONFIG_*` error codes, and the agent setup-status read. `init` shrinks to its link step (the one part of today's command that survives) plus whatever new meaning the product gives it.
+
+This is a deliberate reversal of the original spec's resolution layer (Layer 3: git mapping, prompts, auto-creating projects), not a refinement of it. Ergonomics move above the platform commands — into orchestration or a future config section — and the platform commands become plain plumbing over the API.
+
 ## 1. Global changes — every command, versus the legacy platform CLI
 
 These hold for every ported command and are the largest single source of visible difference.
@@ -135,3 +146,4 @@ For the discussion — everything above that still needs a decision:
 6. Composer help examples under the prisma bin: needs a mount-aware placeholder, coordinated across repos (§8.10).
 7. `bucket key delete` asks no consent while `bucket delete` does — ported inconsistency, review whether to keep (§4.1).
 8. One unswept `--trace` mention survives in service-reachable legacy error prose; every other group rewrites it. Small fix.
+9. The parameters-only proposal at the top of this document: ratify the rule, decide `init`'s new meaning, and schedule the removal of the deprecated `prisma.compute.*` machinery.
