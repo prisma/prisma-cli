@@ -43,8 +43,6 @@ import type {
   ServiceSummary,
 } from "./results";
 
-const PRISMA_PROJECT_ID_ENV_VAR = "PRISMA_PROJECT_ID";
-
 /** A hostname's optional root dot, and one DNS label. */
 const TRAILING_DOT = /\.$/;
 const DNS_LABEL = /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/;
@@ -178,7 +176,6 @@ export async function resolveServiceProjectContext(
   options: {
     commandName: string;
     branchName?: string;
-    envProjectId?: string;
   },
 ): Promise<ResolvedServiceProjectContext> {
   requireBranchFlagValue(options.branchName);
@@ -192,9 +189,6 @@ export async function resolveServiceProjectContext(
     context: resolutionContext(ctx),
     workspace,
     ...(explicitProject !== undefined ? { explicitProject } : {}),
-    ...(options.envProjectId !== undefined
-      ? { envProjectId: options.envProjectId }
-      : {}),
     listProjects: () => Promise.resolve(projects),
     commandName: options.commandName,
   });
@@ -582,13 +576,10 @@ export async function resolveServiceDomainTarget(
     options.commandName,
   );
 
-  const envProjectId = readServiceEnvOverride(ctx, PRISMA_PROJECT_ID_ENV_VAR);
-
   const provider = serviceProvider(ctx);
   const target = await resolveServiceProjectContext(ctx, options.projectRef, {
     commandName: options.commandName,
     branchName,
-    ...(envProjectId !== undefined ? { envProjectId } : {}),
   });
   const projectId = target.project.id;
   const services = await listServices(

@@ -115,43 +115,6 @@ describe("project resolution", () => {
     expect(listProjects).toHaveBeenCalledTimes(1);
   });
 
-  it("lets PRISMA_PROJECT_ID bypass a mismatched local pin", async () => {
-    const cwd = await createTempCwd();
-    await writeLocalPin(cwd, {
-      workspaceId: "ws_other",
-      projectId: "proj_123",
-    });
-    const { context } = await createTestCommandContext({ cwd });
-    const listProjects = vi.fn(
-      async (): Promise<ProjectCandidate[]> => [
-        {
-          id: "proj_env",
-          name: "Env Project",
-          workspace: {
-            id: "ws_123",
-            name: "Acme Inc",
-          },
-        },
-      ],
-    );
-
-    const result = await resolveProjectTarget({
-      context,
-      workspace: {
-        id: "ws_123",
-        name: "Acme Inc",
-      },
-      envProjectId: "proj_env",
-      listProjects,
-      commandName: "app deploy",
-    });
-
-    const resolved = expectOk(result);
-    expect(resolved.resolution.projectSource).toBe("env");
-    expect(resolved.project.id).toBe("proj_env");
-    expect(listProjects).toHaveBeenCalledTimes(1);
-  });
-
   it("returns LOCAL_STATE_STALE for invalid local pin JSON before listing projects", async () => {
     const cwd = await createTempCwd();
     await writeLocalPinContent(cwd, "{ nope");

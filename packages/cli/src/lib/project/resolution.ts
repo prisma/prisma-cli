@@ -156,7 +156,6 @@ export interface ResolveProjectOptions {
   context: ProjectResolutionContext;
   workspace: AuthWorkspace;
   explicitProject?: string;
-  envProjectId?: string;
   commandName?: string;
   listProjects(): Promise<ProjectCandidate[]>;
 }
@@ -165,15 +164,10 @@ export async function resolveProjectTarget(
   options: ResolveProjectOptions,
 ): Promise<Result<ResolvedProjectTarget, ProjectResolutionError>> {
   return Result.gen(async function* () {
-    const localPin = yield* Result.await(
-      readImplicitLocalPin(options, { allowEnvProjectId: true }),
-    );
+    const localPin = yield* Result.await(readImplicitLocalPin(options));
     const projects = await options.listProjects();
     const target = yield* Result.await(
-      resolveBoundProjectTarget(options, projects, {
-        allowEnvProjectId: true,
-        localPin,
-      }),
+      resolveBoundProjectTarget(options, projects, { localPin }),
     );
 
     if (target) {
@@ -195,15 +189,10 @@ export async function inspectProjectBinding(
   options: ResolveProjectOptions,
 ): Promise<Result<ProjectShowResult, ProjectResolutionError>> {
   return Result.gen(async function* () {
-    const localPin = yield* Result.await(
-      readImplicitLocalPin(options, { allowEnvProjectId: false }),
-    );
+    const localPin = yield* Result.await(readImplicitLocalPin(options));
     const projects = await options.listProjects();
     const target = yield* Result.await(
-      resolveBoundProjectTarget(options, projects, {
-        allowEnvProjectId: false,
-        localPin,
-      }),
+      resolveBoundProjectTarget(options, projects, { localPin }),
     );
 
     if (target) {
@@ -595,7 +584,6 @@ async function resolveBoundProjectTarget(
   options: ResolveProjectOptions,
   projects: ProjectCandidate[],
   settings: {
-    allowEnvProjectId: boolean;
     localPin: LocalResolutionPinReadResult | null;
   },
 ): Promise<Result<BoundProjectShowResult | null, ProjectResolutionError>> {
@@ -612,23 +600,6 @@ async function resolveBoundProjectTarget(
       resolvedTarget(options.workspace, projectResult.value, "explicit", {
         targetName: options.explicitProject,
         targetNameSource: "explicit",
-      }),
-    );
-  }
-
-  if (settings.allowEnvProjectId && options.envProjectId) {
-    const project = projects.find(
-      (candidate) => candidate.id === options.envProjectId,
-    );
-    if (!project) {
-      return Result.err(
-        new ProjectNotFoundError(options.envProjectId, options.workspace),
-      );
-    }
-    return Result.ok(
-      resolvedTarget(options.workspace, project, "env", {
-        targetName: options.envProjectId,
-        targetNameSource: "env",
       }),
     );
   }
@@ -681,16 +652,10 @@ async function resolveBoundProjectTarget(
 
 async function readImplicitLocalPin(
   options: ResolveProjectOptions,
-  settings: {
-    allowEnvProjectId: boolean;
-  },
 ): Promise<
   Result<LocalResolutionPinReadResult | null, ProjectResolutionError>
 > {
-  if (
-    options.explicitProject ||
-    (settings.allowEnvProjectId && options.envProjectId)
-  ) {
+  if (options.explicitProject) {
     return Result.ok(null);
   }
 
