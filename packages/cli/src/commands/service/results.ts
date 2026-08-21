@@ -45,7 +45,7 @@ export interface ServiceCreateResult {
 
 export interface ServiceShowResult {
   projectId: string;
-  service: ServiceSummary | null;
+  service: ServiceSummary;
   liveDeployment: ServiceDeploymentSummary | null;
   liveUrl: string | null;
   recentDeployments: ServiceDeploymentSummary[];
@@ -53,7 +53,7 @@ export interface ServiceShowResult {
 
 export interface ServiceDeploymentListResult {
   projectId: string;
-  service: ServiceSummary | null;
+  service: ServiceSummary;
   deployments: ServiceDeploymentSummary[];
 }
 

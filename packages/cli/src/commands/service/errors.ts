@@ -115,7 +115,7 @@ export function serviceSelectionInvalidError(
 ): CliStructuredError {
   return new CliStructuredError(
     "SERVICE.SELECTION_INVALID",
-    "Selected service does not exist in the resolved project",
+    "The requested service does not exist in the resolved project",
     {
       why: `The service "${serviceName}" could not be found in resolved project "${projectId}".`,
       nextActions: [
@@ -279,9 +279,10 @@ export function serviceTargetRequiredError(
     "SERVICE.TARGET_REQUIRED",
     `Command "${commandName}" requires --service`,
     {
-      why: "Service commands act only on an explicitly named service: pass --service <name>, or set PRISMA_SERVICE_ID to a service id.",
+      why: "Service commands act only on an explicitly named service, and this run named none.",
       nextActions: [
         adviceAction("Pass --service <name>."),
+        adviceAction("Or set PRISMA_SERVICE_ID to a service id."),
         // Not `service deployment list`: it resolves a service first, so
         // it cannot help a run that could not resolve one.
         runCommandAction("List services", "service list"),
@@ -295,7 +296,7 @@ export function noPreviousDeploymentError(): CliStructuredError {
     "SERVICE.NO_PREVIOUS_DEPLOYMENT",
     "No previous deployment available for rollback",
     {
-      why: "The selected service does not have an earlier deployment to switch back to.",
+      why: "The service does not have an earlier deployment to switch back to.",
       nextActions: [
         adviceAction(
           "Deploy a second version first, or pass --to <deployment-id> for a specific earlier deployment.",
@@ -363,7 +364,7 @@ export function branchValueEmptyError(): CliStructuredError {
 export function liveUrlUnavailableError(): CliStructuredError {
   return new CliStructuredError(
     "SERVICE.FEATURE_UNAVAILABLE",
-    "Live URL is not available for the selected service",
+    "Live URL is not available for this service",
     {
       why: "Deployments exist, but the provider does not expose a stable live service URL for this service yet.",
       nextActions: [
@@ -418,10 +419,10 @@ export function domainNotFoundError(hostname: string): CliStructuredError {
     "SERVICE.DOMAIN_NOT_FOUND",
     `Custom domain "${hostname}" not found`,
     {
-      why: "The hostname is not attached to the selected service.",
+      why: "The hostname is not attached to the service.",
       nextActions: [
         adviceAction(
-          "Check the hostname and selected service, or add the domain first.",
+          "Check the hostname and the service, or add the domain first.",
         ),
         runCommandAction("Add the domain", `service domain add ${hostname}`),
       ],
@@ -436,7 +437,7 @@ export function selectedServiceMissingError(
 ): CliStructuredError {
   return new CliStructuredError(
     "SERVICE.SELECTION_INVALID",
-    "Selected service does not exist in the resolved project",
+    "The requested service does not exist in the resolved project",
     {
       why: `The service "${serviceId}" from ${envVarName} could not be found in resolved project "${projectId}".`,
       nextActions: [

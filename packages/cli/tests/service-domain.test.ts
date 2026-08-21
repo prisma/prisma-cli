@@ -115,7 +115,7 @@ describe("prisma-cli service domain add", () => {
     expect(presentedSummary(result.presented)).toEqual({
       kind: "summary",
       status: "info",
-      text: "Showing the existing custom domain for the selected service.",
+      text: "Showing the existing custom domain on hello-world.",
     });
   });
 

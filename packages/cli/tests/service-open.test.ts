@@ -28,7 +28,7 @@ describe("prisma-cli service open", () => {
     expect(presentedSummary(result.presented)).toEqual({
       kind: "summary",
       status: "info",
-      text: "Resolved the live URL for the selected service.",
+      text: "Resolved the live URL for service hello-world.",
     });
     expect(result.events).toContainEqual({
       kind: "endpoint",
@@ -70,7 +70,7 @@ describe("prisma-cli service open", () => {
     expect(presentedSummary(result.presented)).toEqual({
       kind: "summary",
       status: "ok",
-      text: "Opened the live URL for the selected service.",
+      text: "Opened the live URL for service hello-world.",
     });
     expect(result.events).toContainEqual({
       kind: "endpoint",

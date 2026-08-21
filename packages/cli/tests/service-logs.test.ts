@@ -209,6 +209,98 @@ describe("prisma-cli service logs", () => {
     expect(dataLines(result.events)).toEqual(["from dep_1"]);
   });
 
+  it("refuses without --service or PRISMA_SERVICE_ID as SERVICE.TARGET_REQUIRED", async () => {
+    const harness = await makeServiceCli({
+      routes: logRoutes([[end(null)]], []),
+    });
+
+    const result = await harness.cli.run(
+      ["service", "logs", "--project", "acme-app", "--json"],
+      { cwd: harness.cwd, env: harness.env },
+    );
+
+    expect(result.exitCode).toBe(2);
+    const frame = result.json[result.json.length - 1];
+    if (frame?.kind !== "result" || frame.envelope.ok) {
+      throw new Error("expected an errored envelope");
+    }
+    expect(frame.envelope.error.code).toBe("SERVICE.TARGET_REQUIRED");
+    expect(frame.envelope.error.summary).toContain("--service");
+  });
+
+  it("resolves --deployment within the named service", async () => {
+    const queries: Array<Record<string, unknown> | undefined> = [];
+    const harness = await makeServiceCli({
+      routes: logRoutes([[log("from dep_1"), end("7")]], queries),
+    });
+
+    const result = await harness.cli.run(
+      ["service", "logs", "--deployment", "dep_1", ...TARGET],
+      { cwd: harness.cwd, env: harness.env },
+    );
+
+    expect(result.exitCode).toBe(0);
+    expect(outputs(result.events)).toContainEqual({
+      channel: "diagnostic",
+      line: "service: hello-world",
+    });
+    expect(outputs(result.events)).toContainEqual({
+      channel: "diagnostic",
+      line: "deployment: dep_1",
+    });
+    expect(dataLines(result.events)).toEqual(["from dep_1"]);
+  });
+
+  it("refuses a --deployment the named service does not own", async () => {
+    const harness = await makeServiceCli({
+      routes: logRoutes([[end(null)]], []),
+    });
+
+    const result = await harness.cli.run(
+      ["service", "logs", "--deployment", "dep_missing", ...TARGET, "--json"],
+      { cwd: harness.cwd, env: harness.env },
+    );
+
+    expect(result.exitCode).toBe(2);
+    const frame = result.json[result.json.length - 1];
+    if (frame?.kind !== "result" || frame.envelope.ok) {
+      throw new Error("expected an errored envelope");
+    }
+    expect(frame.envelope.error.code).toBe("SERVICE.DEPLOYMENT_NOT_FOUND");
+    // The service-scoped refusal, not the global lookup's 404.
+    expect(frame.envelope.error.summary).toContain('for service "hello-world"');
+  });
+
+  it("scopes --deployment to the PRISMA_SERVICE_ID service like --service", async () => {
+    const harness = await makeServiceCli({
+      routes: logRoutes([[end(null)]], []),
+    });
+
+    const result = await harness.cli.run(
+      [
+        "service",
+        "logs",
+        "--deployment",
+        "dep_missing",
+        "--project",
+        "acme-app",
+        "--json",
+      ],
+      {
+        cwd: harness.cwd,
+        env: { ...harness.env, PRISMA_SERVICE_ID: "svc_1" },
+      },
+    );
+
+    expect(result.exitCode).toBe(2);
+    const frame = result.json[result.json.length - 1];
+    if (frame?.kind !== "result" || frame.envelope.ok) {
+      throw new Error("expected an errored envelope");
+    }
+    expect(frame.envelope.error.code).toBe("SERVICE.DEPLOYMENT_NOT_FOUND");
+    expect(frame.envelope.error.summary).toContain('for service "hello-world"');
+  });
+
   it("settles an unknown --deployment as SERVICE.DEPLOYMENT_NOT_FOUND", async () => {
     const harness = await makeServiceCli({
       routes: logRoutes([[end(null)]], []),

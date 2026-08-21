@@ -411,6 +411,10 @@ describe("prisma-cli service delete", () => {
         kind: "user-choice",
         label: "Pass --service <name>.",
       },
+      {
+        kind: "user-choice",
+        label: "Or set PRISMA_SERVICE_ID to a service id.",
+      },
       // Not `service deployment list`: that command resolves a service
       // before it lists anything, so it fails the same way this did.
       {

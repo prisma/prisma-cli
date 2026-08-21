@@ -67,7 +67,7 @@ export const serviceOpenCommand = defineCommand({
     if (!liveDeployment) {
       throw noDeploymentsError(
         "No deployments available to open",
-        `The selected service "${deploymentsResult.app.name}" does not have any deployments yet.`,
+        `The service "${deploymentsResult.app.name}" does not have any deployments yet.`,
       );
     }
     if (!deploymentsResult.app.liveUrl) {

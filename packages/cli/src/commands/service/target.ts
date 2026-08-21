@@ -266,14 +266,12 @@ export interface RequestedServiceTarget {
   value: string;
 }
 
-/** The service target the run was given: `--service <name>` wins, then
- *  PRISMA_SERVICE_ID (a service id). Neither present refuses — service
- *  commands never infer, remember, or prompt for a target. */
-export function requireRequestedServiceTarget(
+/** The service target the run was given, if any: `--service <name>`
+ *  wins, then PRISMA_SERVICE_ID (a service id). */
+export function requestedServiceTarget(
   ctx: ServiceContext,
   explicitServiceName: string | undefined,
-  commandName: string,
-): RequestedServiceTarget {
+): RequestedServiceTarget | null {
   if (explicitServiceName) {
     return { kind: "name", value: explicitServiceName };
   }
@@ -281,7 +279,21 @@ export function requireRequestedServiceTarget(
   if (envServiceId) {
     return { kind: "id", value: envServiceId };
   }
-  throw serviceTargetRequiredError(commandName);
+  return null;
+}
+
+/** As `requestedServiceTarget`, but no target refuses — service
+ *  commands never infer, remember, or prompt for one. */
+export function requireRequestedServiceTarget(
+  ctx: ServiceContext,
+  explicitServiceName: string | undefined,
+  commandName: string,
+): RequestedServiceTarget {
+  const requested = requestedServiceTarget(ctx, explicitServiceName);
+  if (!requested) {
+    throw serviceTargetRequiredError(commandName);
+  }
+  return requested;
 }
 
 export function matchRequestedService(

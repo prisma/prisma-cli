@@ -201,10 +201,10 @@ export function showPresentations(result: ServiceShowResult): Presentations {
     stdout: () => [],
     json: () => result,
     human: () => [
-      title("Showing the selected service state."),
+      title(`Showing the state of service ${result.service.name}.`),
       fields([
         { label: "project", value: result.projectId },
-        { label: "service", value: result.service?.name ?? "not selected" },
+        { label: "service", value: result.service.name },
         {
           label: "live deployment",
           value: result.liveDeployment?.id ?? "",
@@ -227,18 +227,16 @@ export function deploymentListPresentations(
     stdout: () => [],
     json: () => result,
     human: () => [
-      title("Listing deployments for the selected service."),
+      title(`Listing deployments for service ${result.service.name}.`),
       fields([
         { label: "project", value: result.projectId },
-        { label: "service", value: result.service?.name ?? "not selected" },
+        { label: "service", value: result.service.name },
       ]),
       result.deployments.length === 0
         ? {
             kind: "summary",
             status: "info",
-            text: result.service
-              ? "No deployments found."
-              : "No services found.",
+            text: "No deployments found.",
           }
         : {
             kind: "table",
@@ -300,8 +298,8 @@ export function openPresentations(
     json: () => result,
     human: () => [
       result.opened
-        ? completed("Opened the live URL for the selected service.")
-        : title("Resolved the live URL for the selected service."),
+        ? completed(`Opened the live URL for service ${result.service.name}.`)
+        : title(`Resolved the live URL for service ${result.service.name}.`),
       fields([
         { label: "project", value: result.projectId },
         { label: "service", value: result.service.name },
@@ -488,7 +486,7 @@ export function domainAddPresentations(
     json: () => result,
     human: () => [
       result.existing
-        ? title("Showing the existing custom domain for the selected service.")
+        ? title(`Showing the existing custom domain on ${result.service.name}.`)
         : completed(
             `Added ${result.domain.hostname} to ${result.service.name}.`,
           ),

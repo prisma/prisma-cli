@@ -23,6 +23,7 @@ import type {
 import {
   applyLiveDeploymentHint,
   listServices,
+  requestedServiceTarget,
   resolveCurrentLiveDeploymentId,
   resolveServiceProjectState,
   resolveServiceReadState,
@@ -255,7 +256,7 @@ async function resolveLiveDeployment(
   if (!deployment) {
     throw noDeploymentsError(
       "No deployments available to read logs from",
-      `The selected service "${deploymentsResult.app.name}" does not have a live deployment.`,
+      `The service "${deploymentsResult.app.name}" does not have a live deployment.`,
     );
   }
   return { service: deploymentsResult.app, deployment };
@@ -420,9 +421,13 @@ export const serviceLogsCommand = defineSessionCommand({
     }
 
     // A globally-unique deployment id is a complete target on its own,
-    // so `--deployment` without `--service` skips service resolution
-    // and checks the deployment against the resolved project instead.
+    // so `--deployment` with no service target (neither --service nor
+    // PRISMA_SERVICE_ID) skips service resolution and checks the
+    // deployment against the resolved project instead. A named service
+    // scopes the lookup to that service.
     const explicitDeploymentId = args.flags.deployment;
+    const serviceRequested =
+      requestedServiceTarget(ctx, args.flags.service) !== null;
     const projectOptions = {
       ...(args.flags.project !== undefined
         ? { projectRef: args.flags.project }
@@ -432,10 +437,7 @@ export const serviceLogsCommand = defineSessionCommand({
 
     let state: ServiceProjectState;
     let target: LogTarget;
-    if (
-      explicitDeploymentId !== undefined &&
-      args.flags.service === undefined
-    ) {
+    if (explicitDeploymentId !== undefined && !serviceRequested) {
       state = await resolveServiceProjectState(ctx, projectOptions);
       target = await resolveGlobalDeployment(ctx, state, explicitDeploymentId);
     } else {
