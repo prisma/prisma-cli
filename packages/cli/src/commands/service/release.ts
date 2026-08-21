@@ -20,20 +20,16 @@ export interface ServiceReleaseState {
 
 /** The read flow for the commands that act on a service which must
  *  already exist: every `service deployment` verb, plus `service
- *  remove`, which is the one that does not sit under that group. */
+ *  delete`, which is the one that does not sit under that group. */
 export async function resolveServiceReleaseState(
   ctx: ServiceContext,
   options: {
     serviceName?: string;
     projectRef?: string;
     branchName?: string;
-    command: "promote" | "rollback" | "remove" | "start" | "stop" | "delete";
+    commandName: string;
   },
 ): Promise<ServiceReleaseState> {
-  const commandName =
-    options.command === "remove"
-      ? "service remove"
-      : `service deployment ${options.command}`;
   const state = await resolveServiceReadState(ctx, {
     ...(options.serviceName !== undefined
       ? { serviceName: options.serviceName }
@@ -44,7 +40,7 @@ export async function resolveServiceReleaseState(
     ...(options.branchName !== undefined
       ? { branchName: options.branchName }
       : {}),
-    commandName,
+    commandName: options.commandName,
   });
   return {
     provider: state.provider,
@@ -197,7 +193,7 @@ export function destroyProgressReporter(
         kind: "status",
         subject: serviceName,
         status: "deleted",
-        from: "removing",
+        from: "deleting",
       });
     },
   };

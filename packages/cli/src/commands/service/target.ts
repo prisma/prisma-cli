@@ -435,7 +435,7 @@ export async function resolveDomainByHostname(
   provider: AppProvider,
   serviceId: string,
   hostname: string,
-  command: "add" | "show" | "remove" | "retry" | "wait",
+  command: "add" | "show" | "delete" | "retry" | "wait",
   signal: AbortSignal,
 ): Promise<DomainRecord> {
   const domains = await provider

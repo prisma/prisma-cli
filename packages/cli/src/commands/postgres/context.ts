@@ -64,7 +64,7 @@ export async function resolvePostgresContext(
   };
 }
 
-/** `connection rotate` and `connection remove` address a connection
+/** `connection rotate` and `connection delete` address a connection
  *  directly: no workspace requirement and no project resolution, so
  *  the workspace is only a plan-limit lookup hint. */
 export async function resolvePostgresProviderOnly(

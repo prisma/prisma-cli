@@ -161,13 +161,6 @@ export interface AppRollbackResult {
   previousLiveDeploymentId: string | null;
 }
 
-export interface AppRemoveResult {
-  projectId: string;
-  verboseContext?: AppResolvedContext;
-  app: AppSummary;
-  removed: true;
-}
-
 export type AppDomainStatus =
   | "pending_dns"
   | "verifying"
@@ -224,11 +217,6 @@ export interface AppDomainAddResult extends AppDomainTarget {
 
 export interface AppDomainShowResult extends AppDomainTarget {
   domain: AppDomainSummary;
-}
-
-export interface AppDomainRemoveResult extends AppDomainTarget {
-  hostname: string;
-  removed: true;
 }
 
 export interface AppDomainRetryResult extends AppDomainTarget {

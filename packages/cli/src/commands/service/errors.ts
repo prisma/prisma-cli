@@ -6,7 +6,7 @@ import { DomainApiError, type DomainRecord } from "../../lib/app/app-provider";
 import { formatDomainFailureFix } from "../../lib/app/domain-guidance";
 import type { NextAction as LegacyNextAction } from "../../next-actions";
 
-type DomainCommand = "add" | "show" | "remove" | "retry" | "wait";
+type DomainCommand = "add" | "show" | "delete" | "retry" | "wait";
 
 export function runCommandAction(label: string, command: string): NextAction {
   return { kind: "run-command", label, command: `${CLI_NAME} ${command}` };
@@ -325,11 +325,11 @@ export function liveDeploymentUnknownError(): CliStructuredError {
   );
 }
 
-export function removeFailedError(
+export function deleteFailedError(
   summary: string,
   cause: unknown,
 ): CliStructuredError {
-  return new CliStructuredError("SERVICE.REMOVE_FAILED", summary, {
+  return new CliStructuredError("SERVICE.DELETE_FAILED", summary, {
     why: cause instanceof Error ? cause.message : String(cause),
     nextActions: [
       runCommandAction("Inspect the service", "service show"),
@@ -346,14 +346,14 @@ export function branchValueEmptyError(): CliStructuredError {
     "SERVICE.BRANCH_INVALID",
     "The --branch value cannot be empty",
     {
-      why: "service remove scopes the removal to the given branch; an empty --branch would silently fall back to the inferred (possibly production) branch.",
+      why: "service delete scopes the deletion to the given branch; an empty --branch would silently fall back to the inferred (possibly production) branch.",
       nextActions: [
         adviceAction(
           "Pass a non-empty branch name, or omit --branch to use the inferred branch.",
         ),
         runCommandAction(
-          "Remove on a branch",
-          "service remove --service <name> --branch <branch>",
+          "Delete on a branch",
+          "service delete --service <name> --branch <branch>",
         ),
       ],
     },
@@ -617,9 +617,9 @@ function domainQuotaExceededError(error: DomainApiError): CliStructuredError {
       meta: debugMeta(error),
       nextActions: [
         adviceAction(
-          "Remove an existing custom domain before adding another one.",
+          "Delete an existing custom domain before adding another one.",
         ),
-        runCommandAction("Remove a domain", "service domain remove <hostname>"),
+        runCommandAction("Delete a domain", "service domain delete <hostname>"),
       ],
     },
   );
@@ -637,7 +637,7 @@ function domainAlreadyRegisteredError(
       meta: debugMeta(error),
       nextActions: [
         adviceAction(
-          "Select the service that owns this hostname and remove it there, or contact Prisma support if you cannot access it.",
+          "Select the service that owns this hostname and delete it there, or contact Prisma support if you cannot access it.",
         ),
       ],
     },

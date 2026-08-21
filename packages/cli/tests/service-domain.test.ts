@@ -524,12 +524,12 @@ describe("prisma-cli service domain retry", () => {
   });
 });
 
-describe("prisma-cli service domain remove", () => {
-  /** `removed` collects the id of every domain the run deleted. */
-  function removeRoutes(removed: string[] = []): Routes {
+describe("prisma-cli service domain delete", () => {
+  /** `deletedIds` collects the id of every domain the run deleted. */
+  function deleteRoutes(deletedIds: string[] = []): Routes {
     return domainRoutes({
       "DELETE /v1/domains/{domainId}": (init) => {
-        removed.push(String(init.params?.path?.domainId));
+        deletedIds.push(String(init.params?.path?.domainId));
         return { data: { data: null } };
       },
     });
@@ -539,15 +539,15 @@ describe("prisma-cli service domain remove", () => {
     isTty: { stdin: true, stdout: true, stderr: true },
   };
 
-  it("removes the domain when --confirm carries the hostname non-interactively", async () => {
-    const removed: string[] = [];
-    const harness = await makeServiceCli({ routes: removeRoutes(removed) });
+  it("deletes the domain when --confirm carries the hostname non-interactively", async () => {
+    const deletedIds: string[] = [];
+    const harness = await makeServiceCli({ routes: deleteRoutes(deletedIds) });
 
     const result = await harness.cli.run(
       [
         "service",
         "domain",
-        "remove",
+        "delete",
         "shop.acme.com",
         ...TARGET_ARGS,
         "--confirm",
@@ -560,27 +560,27 @@ describe("prisma-cli service domain remove", () => {
     expect(result.presented?.data).toMatchObject({
       ...EXPECTED_TARGET,
       hostname: "shop.acme.com",
-      removed: true,
+      deleted: true,
     });
     expect(presentedSummary(result.presented)).toEqual({
       kind: "summary",
       status: "ok",
-      text: "Removed shop.acme.com from hello-world.",
+      text: "Deleted shop.acme.com from hello-world.",
     });
-    expect(removed).toEqual(["dom_1"]);
+    expect(deletedIds).toEqual(["dom_1"]);
   });
 
   it("grants under --yes when --confirm carries the hostname", async () => {
     // --yes alone can never grant; --yes plus the matching token takes the
     // engine's non-interactive branch and grants without asking, so the run
     // completes with no scripted answer available.
-    const harness = await makeServiceCli({ routes: removeRoutes() });
+    const harness = await makeServiceCli({ routes: deleteRoutes() });
 
     const result = await harness.cli.run(
       [
         "service",
         "domain",
-        "remove",
+        "delete",
         "shop.acme.com",
         ...TARGET_ARGS,
         "--yes",
@@ -591,17 +591,17 @@ describe("prisma-cli service domain remove", () => {
     );
 
     expect(result.exitCode).toBe(0);
-    expect(result.presented?.data).toMatchObject({ removed: true });
+    expect(result.presented?.data).toMatchObject({ deleted: true });
   });
 
-  it("emits the completed json envelope for a non-interactive --confirm removal", async () => {
-    const harness = await makeServiceCli({ routes: removeRoutes() });
+  it("emits the completed json envelope for a non-interactive --confirm deletion", async () => {
+    const harness = await makeServiceCli({ routes: deleteRoutes() });
 
     const result = await harness.cli.run(
       [
         "service",
         "domain",
-        "remove",
+        "delete",
         "shop.acme.com",
         ...TARGET_ARGS,
         "--confirm",
@@ -616,23 +616,23 @@ describe("prisma-cli service domain remove", () => {
     if (frame?.kind !== "result" || !frame.envelope.ok) {
       throw new Error("expected a completed envelope");
     }
-    expect(frame.envelope.commandId).toBe("service.domain.remove");
+    expect(frame.envelope.commandId).toBe("service.domain.delete");
     expect(frame.envelope.result).toMatchObject({
       hostname: "shop.acme.com",
-      removed: true,
+      deleted: true,
     });
   });
 
   it("still asks interactively when --confirm is present, and takes the typed token", async () => {
     // The grant is a non-interactive affordance: an interactive session
     // type-to-confirms regardless of --confirm.
-    const harness = await makeServiceCli({ routes: removeRoutes() });
+    const harness = await makeServiceCli({ routes: deleteRoutes() });
 
     const result = await harness.cli.run(
       [
         "service",
         "domain",
-        "remove",
+        "delete",
         "shop.acme.com",
         ...TARGET_ARGS,
         "--confirm",
@@ -652,15 +652,15 @@ describe("prisma-cli service domain remove", () => {
     if (frame?.kind !== "result" || !frame.envelope.ok) {
       throw new Error("expected a completed envelope");
     }
-    expect(frame.envelope.commandId).toBe("service.domain.remove");
-    expect(frame.envelope.result).toMatchObject({ removed: true });
+    expect(frame.envelope.commandId).toBe("service.domain.delete");
+    expect(frame.envelope.result).toMatchObject({ deleted: true });
   });
 
-  it("removes the domain after interactive consent", async () => {
-    const harness = await makeServiceCli({ routes: removeRoutes() });
+  it("deletes the domain after interactive consent", async () => {
+    const harness = await makeServiceCli({ routes: deleteRoutes() });
 
     const result = await harness.cli.run(
-      ["service", "domain", "remove", "shop.acme.com", ...TARGET_ARGS],
+      ["service", "domain", "delete", "shop.acme.com", ...TARGET_ARGS],
       {
         cwd: harness.cwd,
         env: harness.env,
@@ -673,20 +673,20 @@ describe("prisma-cli service domain remove", () => {
     expect(result.presented?.data).toMatchObject({
       ...EXPECTED_TARGET,
       hostname: "shop.acme.com",
-      removed: true,
+      deleted: true,
     });
   });
 
-  it("emits the completed json envelope with commandId service.domain.remove", async () => {
+  it("emits the completed json envelope with commandId service.domain.delete", async () => {
     // An interactive json run still prompts (the prompt UI writes to
     // stderr); consent is granted through the scripted answer.
-    const harness = await makeServiceCli({ routes: removeRoutes() });
+    const harness = await makeServiceCli({ routes: deleteRoutes() });
 
     const result = await harness.cli.run(
       [
         "service",
         "domain",
-        "remove",
+        "delete",
         "shop.acme.com",
         ...TARGET_ARGS,
         "--json",
@@ -704,22 +704,22 @@ describe("prisma-cli service domain remove", () => {
     if (frame?.kind !== "result" || !frame.envelope.ok) {
       throw new Error("expected a completed envelope");
     }
-    expect(frame.envelope.commandId).toBe("service.domain.remove");
+    expect(frame.envelope.commandId).toBe("service.domain.delete");
     expect(frame.envelope.result).toMatchObject({
       ...EXPECTED_TARGET,
       hostname: "shop.acme.com",
-      removed: true,
+      deleted: true,
     });
   });
 
   it("fails early with the engine sign-in error when unauthenticated", async () => {
     const harness = await makeServiceCli({
-      routes: removeRoutes(),
+      routes: deleteRoutes(),
       authenticated: false,
     });
 
     const result = await harness.cli.run(
-      ["service", "domain", "remove", "shop.acme.com", ...TARGET_ARGS],
+      ["service", "domain", "delete", "shop.acme.com", ...TARGET_ARGS],
       { cwd: harness.cwd, env: harness.env, isTty: { stdout: true } },
     );
 
@@ -728,10 +728,10 @@ describe("prisma-cli service domain remove", () => {
   });
 
   it("settles a mistyped consent token as the engine mismatch error", async () => {
-    const harness = await makeServiceCli({ routes: removeRoutes() });
+    const harness = await makeServiceCli({ routes: deleteRoutes() });
 
     const result = await harness.cli.run(
-      ["service", "domain", "remove", "shop.acme.com", ...TARGET_ARGS],
+      ["service", "domain", "delete", "shop.acme.com", ...TARGET_ARGS],
       {
         cwd: harness.cwd,
         env: harness.env,
@@ -744,13 +744,13 @@ describe("prisma-cli service domain remove", () => {
   });
 
   it("settles a non-interactive run as the engine consent-required error with exit 2", async () => {
-    const harness = await makeServiceCli({ routes: removeRoutes() });
+    const harness = await makeServiceCli({ routes: deleteRoutes() });
 
     const result = await harness.cli.run(
       [
         "service",
         "domain",
-        "remove",
+        "delete",
         "shop.acme.com",
         ...TARGET_ARGS,
         "--json",
@@ -767,13 +767,13 @@ describe("prisma-cli service domain remove", () => {
   });
 
   it("refuses a --confirm value that is not the hostname, naming the expected value", async () => {
-    const harness = await makeServiceCli({ routes: removeRoutes() });
+    const harness = await makeServiceCli({ routes: deleteRoutes() });
 
     const result = await harness.cli.run(
       [
         "service",
         "domain",
-        "remove",
+        "delete",
         "shop.acme.com",
         ...TARGET_ARGS,
         "--confirm",
@@ -799,13 +799,13 @@ describe("prisma-cli service domain remove", () => {
     // Divergence from legacy: `--yes` used to skip the confirmation. The
     // engine rules consent structurally ungrantable by --yes; recorded in
     // parity-divergences-s2c.md and raised to the operator.
-    const harness = await makeServiceCli({ routes: removeRoutes() });
+    const harness = await makeServiceCli({ routes: deleteRoutes() });
 
     const result = await harness.cli.run(
       [
         "service",
         "domain",
-        "remove",
+        "delete",
         "shop.acme.com",
         ...TARGET_ARGS,
         "--yes",

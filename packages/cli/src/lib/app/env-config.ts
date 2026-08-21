@@ -13,14 +13,14 @@ export interface ScopeFlagInput {
 
 export interface ScopeOptions {
   requireExplicit: boolean;
-  command: "add" | "update" | "remove" | "list";
+  command: "add" | "update" | "delete" | "list";
 }
 
 const VALID_ROLES: ReadonlySet<string> = new Set(["production", "preview"]);
 
 function positionalHint(command: ScopeOptions["command"]): string {
   if (command === "add" || command === "update") return "KEY=value ";
-  if (command === "remove") return "KEY ";
+  if (command === "delete") return "KEY ";
   return "";
 }
 
@@ -138,7 +138,7 @@ export function parseKeyValuePositional(
     throw usageError(
       `KEY=VALUE argument has an empty value`,
       `"${raw}" has an empty value after the = separator.`,
-      `Pass a non-empty value, or use prisma-cli project env remove to remove a variable.`,
+      `Pass a non-empty value, or use prisma-cli project env delete to delete a variable.`,
       [`prisma-cli project env ${command} ${key}=value --role production`],
       "app",
     );

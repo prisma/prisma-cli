@@ -139,7 +139,7 @@ const AWAITING_COVERAGE: readonly string[] = [
   "service logs",
   "service domain add",
   "service domain show",
-  "service domain remove",
+  "service domain delete",
   "service domain retry",
   "service domain wait",
   "build logs",

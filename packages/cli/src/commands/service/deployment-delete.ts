@@ -41,7 +41,7 @@ export const serviceDeploymentDeleteCommand = defineCommand({
     const state = await resolveServiceReleaseState(ctx, {
       serviceName: args.flags.service,
       projectRef: args.flags.project,
-      command: "delete",
+      commandName: "service deployment delete",
     });
 
     const deploymentsResult = await state.provider

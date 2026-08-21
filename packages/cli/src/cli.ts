@@ -31,27 +31,28 @@ import { gitConnectCommand } from "./commands/git/connect";
 import { gitDisconnectCommand } from "./commands/git/disconnect";
 import { postgresBackupListCommand } from "./commands/postgres/backup-list";
 import { postgresConnectionCreateCommand } from "./commands/postgres/connection-create";
+import { postgresConnectionDeleteCommand } from "./commands/postgres/connection-delete";
 import { postgresConnectionListCommand } from "./commands/postgres/connection-list";
-import { postgresConnectionRemoveCommand } from "./commands/postgres/connection-remove";
 import { postgresConnectionRotateCommand } from "./commands/postgres/connection-rotate";
 import { postgresCreateCommand } from "./commands/postgres/create";
+import { postgresDeleteCommand } from "./commands/postgres/delete";
 import { postgresListCommand } from "./commands/postgres/list";
-import { postgresRemoveCommand } from "./commands/postgres/remove";
 import { postgresRestoreCommand } from "./commands/postgres/restore";
 import { postgresShowCommand } from "./commands/postgres/show";
 import { postgresUsageCommand } from "./commands/postgres/usage";
 import { projectCreateCommand } from "./commands/project/create";
+import { projectDeleteCommand } from "./commands/project/delete";
 import { projectEnvAddCommand } from "./commands/project/env-add";
+import { projectEnvDeleteCommand } from "./commands/project/env-delete";
 import { projectEnvListCommand } from "./commands/project/env-list";
-import { projectEnvRemoveCommand } from "./commands/project/env-remove";
 import { projectEnvUpdateCommand } from "./commands/project/env-update";
 import { projectLinkCommand } from "./commands/project/link";
 import { projectListCommand } from "./commands/project/list";
-import { projectRemoveCommand } from "./commands/project/remove";
 import { projectRenameCommand } from "./commands/project/rename";
 import { projectShowCommand } from "./commands/project/show";
 import { projectTransferCommand } from "./commands/project/transfer";
 import { serviceCreateCommand } from "./commands/service/create";
+import { serviceDeleteCommand } from "./commands/service/delete";
 import { serviceDeploymentDeleteCommand } from "./commands/service/deployment-delete";
 import { serviceDeploymentListCommand } from "./commands/service/deployment-list";
 import { serviceDeploymentPromoteCommand } from "./commands/service/deployment-promote";
@@ -60,14 +61,13 @@ import { serviceDeploymentShowCommand } from "./commands/service/deployment-show
 import { serviceDeploymentStartCommand } from "./commands/service/deployment-start";
 import { serviceDeploymentStopCommand } from "./commands/service/deployment-stop";
 import { serviceDomainAddCommand } from "./commands/service/domain-add";
-import { serviceDomainRemoveCommand } from "./commands/service/domain-remove";
+import { serviceDomainDeleteCommand } from "./commands/service/domain-delete";
 import { serviceDomainRetryCommand } from "./commands/service/domain-retry";
 import { serviceDomainShowCommand } from "./commands/service/domain-show";
 import { serviceDomainWaitCommand } from "./commands/service/domain-wait";
 import { serviceListCommand } from "./commands/service/list";
 import { serviceLogsCommand } from "./commands/service/logs";
 import { serviceOpenCommand } from "./commands/service/open";
-import { serviceRemoveCommand } from "./commands/service/remove";
 import { serviceShowCommand } from "./commands/service/show";
 import { getCliVersion } from "./lib/version";
 
@@ -84,23 +84,23 @@ export const platformCommandFamily: CommandFamily = defineCommandFamily({
     projectCreate: projectCreateCommand,
     projectLink: projectLinkCommand,
     projectRename: projectRenameCommand,
-    projectRemove: projectRemoveCommand,
+    projectDelete: projectDeleteCommand,
     projectTransfer: projectTransferCommand,
     projectEnvAdd: projectEnvAddCommand,
     projectEnvUpdate: projectEnvUpdateCommand,
     projectEnvList: projectEnvListCommand,
-    projectEnvRemove: projectEnvRemoveCommand,
+    projectEnvDelete: projectEnvDeleteCommand,
     postgresList: postgresListCommand,
     postgresShow: postgresShowCommand,
     postgresCreate: postgresCreateCommand,
     postgresUsage: postgresUsageCommand,
     postgresRestore: postgresRestoreCommand,
-    postgresRemove: postgresRemoveCommand,
+    postgresDelete: postgresDeleteCommand,
     postgresBackupList: postgresBackupListCommand,
     postgresConnectionList: postgresConnectionListCommand,
     postgresConnectionCreate: postgresConnectionCreateCommand,
     postgresConnectionRotate: postgresConnectionRotateCommand,
-    postgresConnectionRemove: postgresConnectionRemoveCommand,
+    postgresConnectionDelete: postgresConnectionDeleteCommand,
     bucketList: bucketListCommand,
     bucketCreate: bucketCreateCommand,
     bucketDelete: bucketDeleteCommand,
@@ -122,10 +122,10 @@ export const platformCommandFamily: CommandFamily = defineCommandFamily({
     serviceDeploymentStart: serviceDeploymentStartCommand,
     serviceDeploymentStop: serviceDeploymentStopCommand,
     serviceDeploymentDelete: serviceDeploymentDeleteCommand,
-    serviceRemove: serviceRemoveCommand,
+    serviceDelete: serviceDeleteCommand,
     serviceDomainAdd: serviceDomainAddCommand,
     serviceDomainShow: serviceDomainShowCommand,
-    serviceDomainRemove: serviceDomainRemoveCommand,
+    serviceDomainDelete: serviceDomainDeleteCommand,
     serviceDomainRetry: serviceDomainRetryCommand,
     serviceDomainWait: serviceDomainWaitCommand,
     buildLogs: buildLogsCommand,
@@ -201,23 +201,23 @@ export const mountedCommands: Readonly<Record<string, AnyCommand>> = {
   "project create": projectCreateCommand,
   "project link": projectLinkCommand,
   "project rename": projectRenameCommand,
-  "project remove": projectRemoveCommand,
+  "project delete": projectDeleteCommand,
   "project transfer": projectTransferCommand,
   "project env add": projectEnvAddCommand,
   "project env update": projectEnvUpdateCommand,
   "project env list": projectEnvListCommand,
-  "project env remove": projectEnvRemoveCommand,
+  "project env delete": projectEnvDeleteCommand,
   "postgres list": postgresListCommand,
   "postgres show": postgresShowCommand,
   "postgres create": postgresCreateCommand,
   "postgres usage": postgresUsageCommand,
   "postgres restore": postgresRestoreCommand,
-  "postgres remove": postgresRemoveCommand,
+  "postgres delete": postgresDeleteCommand,
   "postgres backup list": postgresBackupListCommand,
   "postgres connection list": postgresConnectionListCommand,
   "postgres connection create": postgresConnectionCreateCommand,
   "postgres connection rotate": postgresConnectionRotateCommand,
-  "postgres connection remove": postgresConnectionRemoveCommand,
+  "postgres connection delete": postgresConnectionDeleteCommand,
   "bucket list": bucketListCommand,
   "bucket create": bucketCreateCommand,
   "bucket delete": bucketDeleteCommand,
@@ -239,10 +239,10 @@ export const mountedCommands: Readonly<Record<string, AnyCommand>> = {
   "service deployment start": serviceDeploymentStartCommand,
   "service deployment stop": serviceDeploymentStopCommand,
   "service deployment delete": serviceDeploymentDeleteCommand,
-  "service remove": serviceRemoveCommand,
+  "service delete": serviceDeleteCommand,
   "service domain add": serviceDomainAddCommand,
   "service domain show": serviceDomainShowCommand,
-  "service domain remove": serviceDomainRemoveCommand,
+  "service domain delete": serviceDomainDeleteCommand,
   "service domain retry": serviceDomainRetryCommand,
   "service domain wait": serviceDomainWaitCommand,
   // Platform builds are their own group; there is no local build verb.

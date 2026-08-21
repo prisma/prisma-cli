@@ -84,7 +84,7 @@ export interface ProjectRenameResult {
   previousName: string;
 }
 
-export interface ProjectRemoveResult {
+export interface ProjectDeleteResult {
   workspace: AuthWorkspace;
   project: ProjectSummary;
   localPin: {

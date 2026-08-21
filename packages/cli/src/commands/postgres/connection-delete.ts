@@ -1,16 +1,16 @@
-/** The `postgres connection remove` command. */
+/** The `postgres connection delete` command. */
 import { type Block, defineCommand, positional } from "@prisma/cli-engine";
 import { notOk, ok } from "@prisma/cli-engine/protocol";
 import { CLI_NAME } from "../../cli-name";
 import { usageError } from "../../errors";
-import type { DatabaseConnectionRemoveResult } from "../../types/database";
+import type { DatabaseConnectionDeleteResult } from "../../types/database";
 import { resolvePostgresProviderOnly } from "./context";
 import { mapPostgresOperationError } from "./errors";
 
 const CONSENT_QUESTION =
-  "Removing this database connection is destructive and requires the exact id.";
+  "Deleting this database connection is destructive and requires the exact id.";
 
-export const postgresConnectionRemoveCommand = defineCommand({
+export const postgresConnectionDeleteCommand = defineCommand({
   args: {
     positionals: {
       connection: positional.string({
@@ -20,8 +20,8 @@ export const postgresConnectionRemoveCommand = defineCommand({
     },
   },
   help: {
-    summary: "Remove a database connection after exact id confirmation",
-    examples: ["postgres connection remove conn_123 --confirm conn_123"],
+    summary: "Delete a database connection after exact id confirmation",
+    examples: ["postgres connection delete conn_123 --confirm conn_123"],
   },
   needs: { credentials: true },
   handler: async (args, ctx) => {
@@ -30,10 +30,10 @@ export const postgresConnectionRemoveCommand = defineCommand({
       if (!connectionId) {
         throw usageError(
           "Connection id required",
-          "Database connection removal needs a connection id.",
-          "Pass the connection id to remove.",
+          "Database connection deletion needs a connection id.",
+          "Pass the connection id to delete.",
           [
-            `${CLI_NAME} postgres connection remove <connection-id> --confirm <connection-id>`,
+            `${CLI_NAME} postgres connection delete <connection-id> --confirm <connection-id>`,
           ],
           "database",
         );
@@ -44,7 +44,7 @@ export const postgresConnectionRemoveCommand = defineCommand({
       const provider = await resolvePostgresProviderOnly(ctx);
       await provider.removeConnection(connectionId, { signal: ctx.signal });
 
-      const result: DatabaseConnectionRemoveResult = {
+      const result: DatabaseConnectionDeleteResult = {
         connection: { id: connectionId },
       };
       return ok(
@@ -55,7 +55,7 @@ export const postgresConnectionRemoveCommand = defineCommand({
               {
                 kind: "summary",
                 status: "ok",
-                text: "Removing database connection.",
+                text: "Deleting database connection.",
               },
               {
                 kind: "fields",
@@ -64,7 +64,7 @@ export const postgresConnectionRemoveCommand = defineCommand({
               {
                 kind: "list",
                 items: [
-                  "The connection metadata was removed. Existing one-time secrets were not shown.",
+                  "The connection metadata was deleted. Existing one-time secrets were not shown.",
                 ],
               },
             ],

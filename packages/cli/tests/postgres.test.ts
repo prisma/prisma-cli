@@ -7,12 +7,12 @@ import { describe, expect, it } from "vitest";
 
 import { postgresBackupListCommand } from "../src/commands/postgres/backup-list";
 import { postgresConnectionCreateCommand } from "../src/commands/postgres/connection-create";
+import { postgresConnectionDeleteCommand } from "../src/commands/postgres/connection-delete";
 import { postgresConnectionListCommand } from "../src/commands/postgres/connection-list";
-import { postgresConnectionRemoveCommand } from "../src/commands/postgres/connection-remove";
 import { postgresConnectionRotateCommand } from "../src/commands/postgres/connection-rotate";
 import { postgresCreateCommand } from "../src/commands/postgres/create";
+import { postgresDeleteCommand } from "../src/commands/postgres/delete";
 import { postgresListCommand } from "../src/commands/postgres/list";
-import { postgresRemoveCommand } from "../src/commands/postgres/remove";
 import { postgresRestoreCommand } from "../src/commands/postgres/restore";
 import { postgresShowCommand } from "../src/commands/postgres/show";
 import { postgresUsageCommand } from "../src/commands/postgres/usage";
@@ -142,12 +142,12 @@ function makeCli(client: ManagementApiClient, signedIn = true) {
       "postgres create": postgresCreateCommand,
       "postgres usage": postgresUsageCommand,
       "postgres restore": postgresRestoreCommand,
-      "postgres remove": postgresRemoveCommand,
+      "postgres delete": postgresDeleteCommand,
       "postgres backup list": postgresBackupListCommand,
       "postgres connection list": postgresConnectionListCommand,
       "postgres connection create": postgresConnectionCreateCommand,
       "postgres connection rotate": postgresConnectionRotateCommand,
-      "postgres connection remove": postgresConnectionRemoveCommand,
+      "postgres connection delete": postgresConnectionDeleteCommand,
     },
     groups: {
       postgres: { brief: "Manage Prisma Postgres databases for a project" },
@@ -530,7 +530,7 @@ describe("prisma-cli postgres show", () => {
   it("fails when the follow-up read says the database is gone", async () => {
     // The list call finds it and the read that follows returns 404,
     // which is the API saying it no longer exists. The command used to
-    // continue with the row from the list, so `postgres remove` could
+    // continue with the row from the list, so `postgres delete` could
     // name a database in its confirmation prompt that was already gone.
     const result = await makeCli(
       postgresClient({
@@ -1513,11 +1513,11 @@ describe("prisma-cli postgres restore", () => {
   });
 });
 
-describe("prisma-cli postgres remove", () => {
-  it("removes the database", async () => {
+describe("prisma-cli postgres delete", () => {
+  it("deletes the database", async () => {
     const calls: Call[] = [];
     const result = await makeCli(postgresClient({ calls })).run(
-      ["postgres", "remove", "db_1", "--confirm", "db_1"],
+      ["postgres", "delete", "db_1", "--confirm", "db_1"],
       { cwd: await pinnedCwd(), isTty: { stdout: true } },
     );
 
@@ -1530,7 +1530,7 @@ describe("prisma-cli postgres remove", () => {
       ),
     ).toBe(true);
     expect(blocks(result.presented)).toEqual([
-      { kind: "summary", status: "ok", text: "Removing database." },
+      { kind: "summary", status: "ok", text: "Deleting database." },
       {
         kind: "fields",
         rows: [
@@ -1541,14 +1541,14 @@ describe("prisma-cli postgres remove", () => {
       },
       {
         kind: "list",
-        items: ["Database and its connection metadata were removed."],
+        items: ["Database and its connection metadata were deleted."],
       },
     ]);
   });
 
-  it("refuses to remove without consent in a non-interactive run", async () => {
+  it("refuses to delete without consent in a non-interactive run", async () => {
     const result = await makeCli(postgresClient()).run(
-      ["postgres", "remove", "db_1", "--json"],
+      ["postgres", "delete", "db_1", "--json"],
       { cwd: await pinnedCwd() },
     );
 
@@ -1559,9 +1559,9 @@ describe("prisma-cli postgres remove", () => {
     });
   });
 
-  it("refuses to remove when --yes stands in for consent", async () => {
+  it("refuses to delete when --yes stands in for consent", async () => {
     const result = await makeCli(postgresClient()).run(
-      ["postgres", "remove", "db_1", "--yes", "--json"],
+      ["postgres", "delete", "db_1", "--yes", "--json"],
       { cwd: await pinnedCwd() },
     );
 
@@ -1573,9 +1573,9 @@ describe("prisma-cli postgres remove", () => {
     });
   });
 
-  it("removes when the typed answer is the database id", async () => {
+  it("deletes when the typed answer is the database id", async () => {
     const result = await makeCli(postgresClient()).run(
-      ["postgres", "remove", "db_1"],
+      ["postgres", "delete", "db_1"],
       {
         cwd: await pinnedCwd(),
         answers: ["db_1"],
@@ -1588,7 +1588,7 @@ describe("prisma-cli postgres remove", () => {
 
   it("fails when the typed answer is not the database id", async () => {
     const result = await makeCli(postgresClient()).run(
-      ["postgres", "remove", "db_1", "--json"],
+      ["postgres", "delete", "db_1", "--json"],
       {
         cwd: await pinnedCwd(),
         answers: ["nope"],
@@ -1605,7 +1605,7 @@ describe("prisma-cli postgres remove", () => {
 
   it("maps an unknown database to POSTGRES.NOT_FOUND", async () => {
     const result = await makeCli(postgresClient()).run(
-      ["postgres", "remove", "nope", "--confirm", "nope", "--json"],
+      ["postgres", "delete", "nope", "--confirm", "nope", "--json"],
       { cwd: await pinnedCwd() },
     );
 
@@ -1625,7 +1625,7 @@ describe("prisma-cli postgres remove", () => {
     ).run(
       [
         "postgres",
-        "remove",
+        "delete",
         "acme-production",
         "--confirm",
         "acme-production",
@@ -1642,9 +1642,9 @@ describe("prisma-cli postgres remove", () => {
     });
   });
 
-  it("returns the pre-removal summary in json mode", async () => {
+  it("returns the pre-deletion summary in json mode", async () => {
     const result = await makeCli(postgresClient()).run(
-      ["postgres", "remove", "db_1", "--confirm", "db_1", "--json"],
+      ["postgres", "delete", "db_1", "--confirm", "db_1", "--json"],
       { cwd: await pinnedCwd() },
     );
 
@@ -1652,7 +1652,7 @@ describe("prisma-cli postgres remove", () => {
 
     expect(resultFrame(result.json).envelope).toMatchObject({
       ok: true,
-      commandId: "postgres.remove",
+      commandId: "postgres.delete",
       result: {
         projectId: "proj_1",
         projectName: "Billing",
@@ -1665,7 +1665,7 @@ describe("prisma-cli postgres remove", () => {
   it("requires credentials", async () => {
     const result = await makeCli(postgresClient(), false).run([
       "postgres",
-      "remove",
+      "delete",
       "db_1",
       "--confirm",
       "db_1",
@@ -2421,11 +2421,11 @@ describe("prisma-cli postgres connection rotate", () => {
   });
 });
 
-describe("prisma-cli postgres connection remove", () => {
-  it("removes the connection", async () => {
+describe("prisma-cli postgres connection delete", () => {
+  it("deletes the connection", async () => {
     const calls: Call[] = [];
     const result = await makeCli(postgresClient({ calls })).run(
-      ["postgres", "connection", "remove", "conn_1", "--confirm", "conn_1"],
+      ["postgres", "connection", "delete", "conn_1", "--confirm", "conn_1"],
       { cwd: await pinnedCwd(), isTty: { stdout: true } },
     );
 
@@ -2437,7 +2437,7 @@ describe("prisma-cli postgres connection remove", () => {
       ),
     ).toBe(true);
     expect(blocks(result.presented)).toEqual([
-      { kind: "summary", status: "ok", text: "Removing database connection." },
+      { kind: "summary", status: "ok", text: "Deleting database connection." },
       {
         kind: "fields",
         rows: [{ label: "connection", value: "conn_1" }],
@@ -2445,7 +2445,7 @@ describe("prisma-cli postgres connection remove", () => {
       {
         kind: "list",
         items: [
-          "The connection metadata was removed. Existing one-time secrets were not shown.",
+          "The connection metadata was deleted. Existing one-time secrets were not shown.",
         ],
       },
     ]);
@@ -2453,7 +2453,7 @@ describe("prisma-cli postgres connection remove", () => {
 
   it("rejects a blank connection id", async () => {
     const result = await makeCli(postgresClient()).run(
-      ["postgres", "connection", "remove", "  ", "--json"],
+      ["postgres", "connection", "delete", "  ", "--json"],
       { cwd: await pinnedCwd() },
     );
 
@@ -2463,22 +2463,22 @@ describe("prisma-cli postgres connection remove", () => {
       error: {
         code: "POSTGRES.USAGE_ERROR",
         summary: "Connection id required",
-        why: "Database connection removal needs a connection id.",
+        why: "Database connection deletion needs a connection id.",
         nextActions: [
-          { kind: "user-choice", label: "Pass the connection id to remove." },
+          { kind: "user-choice", label: "Pass the connection id to delete." },
           {
             kind: "run-command",
             command:
-              "prisma-cli postgres connection remove <connection-id> --confirm <connection-id>",
+              "prisma-cli postgres connection delete <connection-id> --confirm <connection-id>",
           },
         ],
       },
     });
   });
 
-  it("refuses to remove without consent in a non-interactive run", async () => {
+  it("refuses to delete without consent in a non-interactive run", async () => {
     const result = await makeCli(postgresClient()).run(
-      ["postgres", "connection", "remove", "conn_1", "--json"],
+      ["postgres", "connection", "delete", "conn_1", "--json"],
       { cwd: await pinnedCwd() },
     );
 
@@ -2489,9 +2489,9 @@ describe("prisma-cli postgres connection remove", () => {
     });
   });
 
-  it("refuses to remove when --yes stands in for consent", async () => {
+  it("refuses to delete when --yes stands in for consent", async () => {
     const result = await makeCli(postgresClient()).run(
-      ["postgres", "connection", "remove", "conn_1", "--yes", "--json"],
+      ["postgres", "connection", "delete", "conn_1", "--yes", "--json"],
       { cwd: await pinnedCwd() },
     );
 
@@ -2503,9 +2503,9 @@ describe("prisma-cli postgres connection remove", () => {
     });
   });
 
-  it("removes when the typed answer is the connection id", async () => {
+  it("deletes when the typed answer is the connection id", async () => {
     const result = await makeCli(postgresClient()).run(
-      ["postgres", "connection", "remove", "conn_1"],
+      ["postgres", "connection", "delete", "conn_1"],
       {
         cwd: await pinnedCwd(),
         answers: ["conn_1"],
@@ -2518,7 +2518,7 @@ describe("prisma-cli postgres connection remove", () => {
 
   it("fails when the typed answer is not the connection id", async () => {
     const result = await makeCli(postgresClient()).run(
-      ["postgres", "connection", "remove", "conn_1", "--json"],
+      ["postgres", "connection", "delete", "conn_1", "--json"],
       {
         cwd: await pinnedCwd(),
         answers: ["nope"],
@@ -2533,12 +2533,12 @@ describe("prisma-cli postgres connection remove", () => {
     });
   });
 
-  it("returns the removed connection in json mode", async () => {
+  it("returns the deleted connection in json mode", async () => {
     const result = await makeCli(postgresClient()).run(
       [
         "postgres",
         "connection",
-        "remove",
+        "delete",
         "conn_1",
         "--confirm",
         "conn_1",
@@ -2551,7 +2551,7 @@ describe("prisma-cli postgres connection remove", () => {
 
     expect(resultFrame(result.json).envelope).toMatchObject({
       ok: true,
-      commandId: "postgres.connection.remove",
+      commandId: "postgres.connection.delete",
       result: { connection: { id: "conn_1" } },
       nextActions: [],
     });
@@ -2561,7 +2561,7 @@ describe("prisma-cli postgres connection remove", () => {
     const result = await makeCli(postgresClient(), false).run([
       "postgres",
       "connection",
-      "remove",
+      "delete",
       "conn_1",
       "--confirm",
       "conn_1",

@@ -4,12 +4,12 @@ import { ok } from "@prisma/cli-engine/protocol";
 import type { LocalStateStore } from "../../adapters/local-state";
 import {
   branchValueEmptyError,
-  removeFailedError,
+  deleteFailedError,
   userCancelledError,
 } from "./errors";
-import { removePresentations } from "./presentation";
+import { deletePresentations } from "./presentation";
 import { destroyProgressReporter, resolveServiceReleaseState } from "./release";
-import type { ServiceRemoveResult } from "./results";
+import type { ServiceDeleteResult } from "./results";
 import { openServiceStateStore, toServiceSummary } from "./target";
 
 function cleanupWarning(target: string, error: unknown): Diagnostic {
@@ -17,12 +17,12 @@ function cleanupWarning(target: string, error: unknown): Diagnostic {
   return {
     code: "SERVICE.LOCAL_STATE_CLEANUP_FAILED",
     severity: "warn",
-    summary: `The service was removed remotely, but the local ${target} state could not be cleared: ${cause}`,
+    summary: `The service was deleted remotely, but the local ${target} state could not be cleared: ${cause}`,
     nextActions: [],
   };
 }
 
-async function clearRemovedServiceState(
+async function clearDeletedServiceState(
   stateStore: LocalStateStore,
   projectId: string,
   serviceId: string,
@@ -36,12 +36,12 @@ async function clearRemovedServiceState(
   return warnings;
 }
 
-export const serviceRemoveCommand = defineCommand({
+export const serviceDeleteCommand = defineCommand({
   help: {
-    summary: "Remove the service from the resolved branch",
+    summary: "Delete the service from the resolved branch",
     examples: [
-      "service remove",
-      "service remove --service my-service --confirm my-service",
+      "service delete --service my-service",
+      "service delete --service my-service --confirm my-service",
     ],
   },
   args: {
@@ -52,7 +52,7 @@ export const serviceRemoveCommand = defineCommand({
         placeholder: "id-or-name",
       }),
       branch: flag.string({
-        brief: "Branch the removal is scoped to",
+        brief: "Branch the deletion is scoped to",
         placeholder: "name",
       }),
     },
@@ -67,11 +67,11 @@ export const serviceRemoveCommand = defineCommand({
       serviceName: args.flags.service,
       projectRef: args.flags.project,
       branchName: args.flags.branch,
-      command: "remove",
+      commandName: "service delete",
     });
 
     const granted = await ctx.prompt.consent(
-      `Remove Service "${state.service.name}" and every deployment it owns?`,
+      `Delete Service "${state.service.name}" and every deployment it owns?`,
       { token: state.service.name },
     );
     // A token consent resolves to true or throws (mismatch, or the
@@ -79,40 +79,40 @@ export const serviceRemoveCommand = defineCommand({
     // contract ever loosens — never proceed with a destructive call on a
     // falsy consent.
     if (!granted) {
-      throw userCancelledError("Service removal canceled");
+      throw userCancelledError("Service deletion canceled");
     }
 
-    ctx.report({ kind: "step-started", step: "remove" });
+    ctx.report({ kind: "step-started", step: "delete" });
     ctx.report({
       kind: "status",
       subject: state.service.name,
-      status: "removing",
+      status: "deleting",
     });
-    let removedService: { id: string; name: string };
+    let deletedService: { id: string; name: string };
     try {
-      removedService = await state.provider.removeApp(state.service.id, {
+      deletedService = await state.provider.removeApp(state.service.id, {
         signal: ctx.signal,
         progress: destroyProgressReporter(ctx, state.service.name),
       });
     } catch (error) {
-      ctx.report({ kind: "step-finished", step: "remove", outcome: "failed" });
-      throw removeFailedError("Failed to remove service", error);
+      ctx.report({ kind: "step-finished", step: "delete", outcome: "failed" });
+      throw deleteFailedError("Failed to delete service", error);
     }
-    ctx.report({ kind: "step-finished", step: "remove", outcome: "ok" });
+    ctx.report({ kind: "step-finished", step: "delete", outcome: "ok" });
 
-    const diagnostics = await clearRemovedServiceState(
+    const diagnostics = await clearDeletedServiceState(
       openServiceStateStore(ctx),
       state.projectId,
-      removedService.id,
+      deletedService.id,
     );
 
-    const result: ServiceRemoveResult = {
+    const result: ServiceDeleteResult = {
       projectId: state.projectId,
-      service: toServiceSummary(removedService),
-      removed: true,
+      service: toServiceSummary(deletedService),
+      deleted: true,
     };
     return ok(
-      ctx.present({ data: result, diagnostics }, removePresentations(result)),
+      ctx.present({ data: result, diagnostics }, deletePresentations(result)),
     );
   },
 });

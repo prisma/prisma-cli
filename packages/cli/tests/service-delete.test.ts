@@ -11,14 +11,14 @@ import {
 
 const INTERACTIVE = { stdin: true, stdout: true, stderr: true };
 
-describe("prisma-cli service remove", () => {
-  it("removes the selected service once consent is granted", async () => {
+describe("prisma-cli service delete", () => {
+  it("deletes the service once consent is granted", async () => {
     const harness = await makeServiceCli({ routes: releaseRoutes() });
 
     const result = await harness.cli.run(
       [
         "service",
-        "remove",
+        "delete",
         "--project",
         "acme-app",
         "--service",
@@ -36,14 +36,14 @@ describe("prisma-cli service remove", () => {
     expect(result.presented?.data).toEqual({
       projectId: "proj_1",
       service: { id: "svc_1", name: "hello-world" },
-      removed: true,
+      deleted: true,
     });
     expect(presentedSummary(result.presented)).toEqual({
       kind: "summary",
       status: "ok",
-      text: "Removed hello-world and every deployment it owned.",
+      text: "Deleted hello-world and every deployment it owned.",
     });
-    // A removal used to offer `service deploy`; the binary has no such
+    // A deletion used to offer `service deploy`; the binary has no such
     // command, so listing deployments is all that is left to suggest.
     expect(result.presented?.presentation.next).toEqual([
       {
@@ -54,13 +54,13 @@ describe("prisma-cli service remove", () => {
     ]);
   });
 
-  it("emits the remove step around the teardown progress and the deleted status", async () => {
+  it("emits the delete step around the teardown progress and the deleted status", async () => {
     const harness = await makeServiceCli({ routes: releaseRoutes() });
 
     const result = await harness.cli.run(
       [
         "service",
-        "remove",
+        "delete",
         "--project",
         "acme-app",
         "--service",
@@ -74,11 +74,11 @@ describe("prisma-cli service remove", () => {
       },
     );
 
-    expect(result.events[0]).toEqual({ kind: "step-started", step: "remove" });
+    expect(result.events[0]).toEqual({ kind: "step-started", step: "delete" });
     expect(result.events[1]).toEqual({
       kind: "status",
       subject: "hello-world",
-      status: "removing",
+      status: "deleting",
     });
     expect(result.events).toContainEqual({
       kind: "progress",
@@ -90,11 +90,11 @@ describe("prisma-cli service remove", () => {
       kind: "status",
       subject: "hello-world",
       status: "deleted",
-      from: "removing",
+      from: "deleting",
     });
     expect(result.events.at(-1)).toEqual({
       kind: "step-finished",
-      step: "remove",
+      step: "delete",
       outcome: "ok",
     });
   });
@@ -104,7 +104,7 @@ describe("prisma-cli service remove", () => {
 
     // Nothing in the service family writes this key any more, but the
     // legacy `app` family still does for the same project, so clearing
-    // it on removal has real effect until that family retires. Seeded
+    // it on deletion has real effect until that family retires. Seeded
     // here so the assertion below observes a key that was present.
     const statePath = path.join(harness.stateDir, "state.json");
     await mkdir(path.dirname(statePath), { recursive: true });
@@ -118,7 +118,7 @@ describe("prisma-cli service remove", () => {
     await harness.cli.run(
       [
         "service",
-        "remove",
+        "delete",
         "--project",
         "acme-app",
         "--service",
@@ -140,13 +140,13 @@ describe("prisma-cli service remove", () => {
     ).toBeUndefined();
   });
 
-  it("emits the completed json envelope with commandId service.remove", async () => {
+  it("emits the completed json envelope with commandId service.delete", async () => {
     const harness = await makeServiceCli({ routes: releaseRoutes() });
 
     const result = await harness.cli.run(
       [
         "service",
-        "remove",
+        "delete",
         "--project",
         "acme-app",
         "--service",
@@ -166,8 +166,8 @@ describe("prisma-cli service remove", () => {
     if (frame?.kind !== "result" || !frame.envelope.ok) {
       throw new Error("expected a completed envelope");
     }
-    expect(frame.envelope.commandId).toBe("service.remove");
-    expect(frame.envelope.result).toMatchObject({ removed: true });
+    expect(frame.envelope.commandId).toBe("service.delete");
+    expect(frame.envelope.result).toMatchObject({ deleted: true });
   });
 
   it("settles a mistyped consent token as the engine mismatch error", async () => {
@@ -176,7 +176,7 @@ describe("prisma-cli service remove", () => {
     const result = await harness.cli.run(
       [
         "service",
-        "remove",
+        "delete",
         "--project",
         "acme-app",
         "--service",
@@ -200,7 +200,7 @@ describe("prisma-cli service remove", () => {
     const result = await harness.cli.run(
       [
         "service",
-        "remove",
+        "delete",
         "--project",
         "acme-app",
         "--service",
@@ -224,7 +224,7 @@ describe("prisma-cli service remove", () => {
     const result = await harness.cli.run(
       [
         "service",
-        "remove",
+        "delete",
         "--project",
         "acme-app",
         "--service",
@@ -236,16 +236,16 @@ describe("prisma-cli service remove", () => {
     );
 
     expect(result.exitCode).toBe(0);
-    expect(result.presented?.data).toMatchObject({ removed: true });
+    expect(result.presented?.data).toMatchObject({ deleted: true });
   });
 
-  it("emits the completed json envelope for a --confirm removal", async () => {
+  it("emits the completed json envelope for a --confirm deletion", async () => {
     const harness = await makeServiceCli({ routes: releaseRoutes() });
 
     const result = await harness.cli.run(
       [
         "service",
-        "remove",
+        "delete",
         "--project",
         "acme-app",
         "--service",
@@ -262,8 +262,8 @@ describe("prisma-cli service remove", () => {
     if (frame?.kind !== "result" || !frame.envelope.ok) {
       throw new Error("expected a completed envelope");
     }
-    expect(frame.envelope.commandId).toBe("service.remove");
-    expect(frame.envelope.result).toMatchObject({ removed: true });
+    expect(frame.envelope.commandId).toBe("service.delete");
+    expect(frame.envelope.result).toMatchObject({ deleted: true });
   });
 
   it("refuses a --confirm value that is not the service name", async () => {
@@ -272,7 +272,7 @@ describe("prisma-cli service remove", () => {
     const result = await harness.cli.run(
       [
         "service",
-        "remove",
+        "delete",
         "--project",
         "acme-app",
         "--service",
@@ -295,13 +295,13 @@ describe("prisma-cli service remove", () => {
     });
   });
 
-  it("never lets --yes alone grant the removal", async () => {
+  it("never lets --yes alone grant the deletion", async () => {
     const harness = await makeServiceCli({ routes: releaseRoutes() });
 
     const result = await harness.cli.run(
       [
         "service",
-        "remove",
+        "delete",
         "--project",
         "acme-app",
         "--service",
@@ -326,7 +326,7 @@ describe("prisma-cli service remove", () => {
     const result = await harness.cli.run(
       [
         "service",
-        "remove",
+        "delete",
         "--project",
         "acme-app",
         "--service",
@@ -346,7 +346,7 @@ describe("prisma-cli service remove", () => {
     expect(frame.envelope.error.code).toBe("SERVICE.BRANCH_INVALID");
   });
 
-  it("settles a failing teardown as SERVICE.REMOVE_FAILED after a failed step", async () => {
+  it("settles a failing teardown as SERVICE.DELETE_FAILED after a failed step", async () => {
     const harness = await makeServiceCli({
       routes: releaseRoutes({
         "DELETE /v1/apps/{appId}": () => ({
@@ -359,7 +359,7 @@ describe("prisma-cli service remove", () => {
     const result = await harness.cli.run(
       [
         "service",
-        "remove",
+        "delete",
         "--project",
         "acme-app",
         "--service",
@@ -377,14 +377,14 @@ describe("prisma-cli service remove", () => {
     expect(result.exitCode).toBe(2);
     expect(result.events.at(-1)).toEqual({
       kind: "step-finished",
-      step: "remove",
+      step: "delete",
       outcome: "failed",
     });
     const frame = result.json[result.json.length - 1];
     if (frame?.kind !== "result" || frame.envelope.ok) {
       throw new Error("expected an errored envelope");
     }
-    expect(frame.envelope.error.code).toBe("SERVICE.REMOVE_FAILED");
+    expect(frame.envelope.error.code).toBe("SERVICE.DELETE_FAILED");
   });
 
   it("requires --service or PRISMA_SERVICE_ID, interactive terminals included", async () => {
@@ -393,7 +393,7 @@ describe("prisma-cli service remove", () => {
     });
 
     const result = await harness.cli.run(
-      ["service", "remove", "--project", "acme-app", "--json"],
+      ["service", "delete", "--project", "acme-app", "--json"],
       { cwd: harness.cwd, env: harness.env, isTty: INTERACTIVE },
     );
 
@@ -404,7 +404,7 @@ describe("prisma-cli service remove", () => {
     }
     expect(frame.envelope.error.code).toBe("SERVICE.TARGET_REQUIRED");
     expect(frame.envelope.error.summary).toBe(
-      'Command "service remove" requires --service',
+      'Command "service delete" requires --service',
     );
     expect(frame.envelope.nextActions).toEqual([
       {
@@ -428,7 +428,7 @@ describe("prisma-cli service remove", () => {
     });
 
     const result = await harness.cli.run(
-      ["service", "remove", "--project", "acme-app"],
+      ["service", "delete", "--project", "acme-app"],
       { cwd: harness.cwd, env: harness.env, isTty: INTERACTIVE },
     );
 

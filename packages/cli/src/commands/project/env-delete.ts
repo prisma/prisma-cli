@@ -1,4 +1,4 @@
-/** The `project env remove` command. */
+/** The `project env delete` command. */
 import {
   type Block,
   defineCommand,
@@ -24,9 +24,9 @@ import {
 } from "./env-shared";
 import { mapProjectOperationError } from "./errors";
 
-const TITLE = "Removing the environment variable from the scope.";
+const TITLE = "Deleting the environment variable from the scope.";
 
-function removePresentations(result: EnvRmResult): Presentations {
+function deletePresentations(result: EnvRmResult): Presentations {
   return {
     stdout: () => [],
     json: () => result,
@@ -45,11 +45,11 @@ function removePresentations(result: EnvRmResult): Presentations {
   };
 }
 
-export const projectEnvRemoveCommand = defineCommand({
+export const projectEnvDeleteCommand = defineCommand({
   args: {
     positionals: {
       key: positional.string({
-        brief: "Variable key to remove",
+        brief: "Variable key to delete",
         placeholder: "key",
       }),
     },
@@ -60,23 +60,23 @@ export const projectEnvRemoveCommand = defineCommand({
     },
   },
   help: {
-    summary: "Remove an environment variable from a scope.",
+    summary: "Delete an environment variable from a scope.",
     examples: [
-      "project env remove STRIPE_KEY --role production",
-      "project env remove STRIPE_KEY --role preview",
-      "project env remove DATABASE_URL --branch feature/foo",
+      "project env delete STRIPE_KEY --role production",
+      "project env delete STRIPE_KEY --role preview",
+      "project env delete DATABASE_URL --branch feature/foo",
     ],
   },
   needs: { credentials: true },
   handler: async (args, ctx) => {
     try {
       const key = args.positionals.key;
-      const scope = requireEnvScope(args.flags, "remove");
+      const scope = requireEnvScope(args.flags, "delete");
       const { projectId, resolved } = await resolveEnvTarget(
         ctx,
         args.flags,
         scope,
-        "project env remove",
+        "project env delete",
         false,
       );
 
@@ -92,7 +92,7 @@ export const projectEnvRemoveCommand = defineCommand({
           code: "ENV_VARIABLE_NOT_FOUND",
           domain: "app",
           summary: `Variable "${key}" not found in ${formatScopeLabel(scope)}`,
-          why: "No variable with this key exists in the targeted scope, so there is nothing to remove.",
+          why: "No variable with this key exists in the targeted scope, so there is nothing to delete.",
           fix: "Run prisma-cli project env list with the same scope to see the available variables.",
           exitCode: 1,
           nextSteps: [`prisma-cli project env list ${formatScopeFlag(scope)}`],
@@ -107,7 +107,7 @@ export const projectEnvRemoveCommand = defineCommand({
         },
       );
       if (error) {
-        throw apiCallError(`Failed to remove ${key}`, response, error);
+        throw apiCallError(`Failed to delete ${key}`, response, error);
       }
 
       const result: EnvRmResult = {
@@ -115,7 +115,7 @@ export const projectEnvRemoveCommand = defineCommand({
         scope: resolved.descriptor,
         key,
       };
-      return ok(ctx.present({ data: result }, removePresentations(result)));
+      return ok(ctx.present({ data: result }, deletePresentations(result)));
     } catch (error) {
       const mapped = mapProjectOperationError(error);
       if (mapped) {

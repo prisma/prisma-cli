@@ -59,7 +59,7 @@ export async function changeDeploymentRunState(
   const state = await resolveServiceReleaseState(ctx, {
     ...(args.service !== undefined ? { serviceName: args.service } : {}),
     ...(args.project !== undefined ? { projectRef: args.project } : {}),
-    command: verb,
+    commandName: `service deployment ${verb}`,
   });
 
   const deploymentsResult = await state.provider

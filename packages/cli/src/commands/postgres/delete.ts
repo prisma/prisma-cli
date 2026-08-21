@@ -1,4 +1,4 @@
-/** The `postgres remove` command. */
+/** The `postgres delete` command. */
 import {
   type Block,
   defineCommand,
@@ -6,7 +6,7 @@ import {
 } from "@prisma/cli-engine";
 import { notOk, ok } from "@prisma/cli-engine/protocol";
 import { resolveDatabase } from "../../controllers/database";
-import type { DatabaseRemoveResult } from "../../types/database";
+import type { DatabaseDeleteResult } from "../../types/database";
 import {
   branchFlag,
   databasePositional,
@@ -16,15 +16,15 @@ import {
 import { mapPostgresOperationError } from "./errors";
 
 const CONSENT_QUESTION =
-  "Removing this database is destructive and requires the exact id.";
+  "Deleting this database is destructive and requires the exact id.";
 
-function removePresentations(result: DatabaseRemoveResult): Presentations {
+function deletePresentations(result: DatabaseDeleteResult): Presentations {
   return {
     stdout: () => [],
     json: () => result,
     next: () => [],
     human: (): Block[] => [
-      { kind: "summary", status: "ok", text: "Removing database." },
+      { kind: "summary", status: "ok", text: "Deleting database." },
       {
         kind: "fields",
         rows: [
@@ -35,26 +35,26 @@ function removePresentations(result: DatabaseRemoveResult): Presentations {
       },
       {
         kind: "list",
-        items: ["Database and its connection metadata were removed."],
+        items: ["Database and its connection metadata were deleted."],
       },
     ],
   };
 }
 
-export const postgresRemoveCommand = defineCommand({
+export const postgresDeleteCommand = defineCommand({
   args: {
     positionals: { database: databasePositional },
     flags: { project: projectFlag, branch: branchFlag },
   },
   help: {
-    summary: "Remove a database after exact id confirmation",
-    examples: ["postgres remove db_123 --confirm db_123"],
+    summary: "Delete a database after exact id confirmation",
+    examples: ["postgres delete db_123 --confirm db_123"],
   },
   needs: { credentials: true },
   handler: async (args, ctx) => {
     try {
       const { provider, target, projectId, projectName } =
-        await resolvePostgresContext(ctx, args.flags, "postgres remove");
+        await resolvePostgresContext(ctx, args.flags, "postgres delete");
       const database = await resolveDatabase(
         provider,
         target,
@@ -67,12 +67,12 @@ export const postgresRemoveCommand = defineCommand({
 
       await provider.removeDatabase(database.id, { signal: ctx.signal });
 
-      const result: DatabaseRemoveResult = {
+      const result: DatabaseDeleteResult = {
         projectId,
         projectName,
         database,
       };
-      return ok(ctx.present({ data: result }, removePresentations(result)));
+      return ok(ctx.present({ data: result }, deletePresentations(result)));
     } catch (error) {
       const mapped = mapPostgresOperationError(error);
       if (mapped) {

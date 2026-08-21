@@ -144,7 +144,7 @@ export async function deployService(
   // Once the deployment exists it has to be deleted by someone, and
   // until this function returns the caller has no id to delete. A throw
   // from `start` or `promote` would otherwise leave a deployment nobody
-  // knows about, and `project remove` refuses while one exists — so the
+  // knows about, and `project delete` refuses while one exists — so the
   // failure would strand the whole scratch project, not just this
   // service.
   try {
@@ -175,7 +175,7 @@ export async function deployService(
 /**
  * Deletes a deployment, warning rather than throwing.
  *
- * The scratch project's own teardown cannot do this: `project remove`
+ * The scratch project's own teardown cannot do this: `project delete`
  * refuses while a deployment exists — "Cannot delete project: active
  * deployments exist. Please stop and delete all deployments first." — so
  * a file that deploys has to clean up in this order or it strands the
@@ -203,7 +203,7 @@ export async function deleteDeployment(
       console.warn(
         `e2e teardown could not delete deployment ${deployment.id}: ` +
           `${removal.envelope.error?.code ?? "(no code)"}. The scratch ` +
-          "project cannot be removed until it is gone.",
+          "project cannot be deleted until it is gone.",
       );
     }
   } catch (failure) {

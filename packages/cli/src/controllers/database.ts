@@ -140,7 +140,7 @@ export async function resolveDatabase(
   // `showDatabase` returns null for one condition only: a 404 that is not
   // a plan-limit error, which is the API saying the database is gone.
   // Falling back to the row from the list call taken moments earlier let
-  // `postgres remove` name a database in its confirmation prompt that no
+  // `postgres delete` name a database in its confirmation prompt that no
   // longer existed. A read the API refused is a failure, not a reason to
   // use an older copy.
   if (shown === null) {

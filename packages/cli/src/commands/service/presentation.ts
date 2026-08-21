@@ -3,13 +3,14 @@ import type { NextAction } from "@prisma/cli-engine/protocol";
 import { adviceAction, runCommandAction } from "./errors";
 import type {
   ServiceCreateResult,
+  ServiceDeleteResult,
   ServiceDeploymentDeleteResult,
   ServiceDeploymentListResult,
   ServiceDeploymentRunStateResult,
   ServiceDeploymentShowResult,
   ServiceDeploymentSummary,
   ServiceDomainAddResult,
-  ServiceDomainRemoveResult,
+  ServiceDomainDeleteResult,
   ServiceDomainRetryResult,
   ServiceDomainShowResult,
   ServiceDomainSummary,
@@ -18,7 +19,6 @@ import type {
   ServiceListResult,
   ServiceOpenResult,
   ServicePromoteResult,
-  ServiceRemoveResult,
   ServiceRollbackResult,
   ServiceShowResult,
 } from "./results";
@@ -458,20 +458,20 @@ export function deploymentDeletePresentations(
   };
 }
 
-export function removePresentations(
-  result: ServiceRemoveResult,
+export function deletePresentations(
+  result: ServiceDeleteResult,
 ): Presentations {
   return {
     stdout: () => [],
     json: () => result,
     human: () => [
       completed(
-        `Removed ${result.service.name} and every deployment it owned.`,
+        `Deleted ${result.service.name} and every deployment it owned.`,
       ),
       fields([
         { label: "project", value: result.projectId },
         { label: "service", value: result.service.name },
-        { label: "removed", value: "yes" },
+        { label: "deleted", value: "yes" },
       ]),
     ],
     next: () => [
@@ -555,19 +555,19 @@ export function domainShowPresentations(
   };
 }
 
-export function domainRemovePresentations(
-  result: ServiceDomainRemoveResult,
+export function domainDeletePresentations(
+  result: ServiceDomainDeleteResult,
 ): Presentations {
   return {
     stdout: () => [],
     json: () => result,
     next: () => [],
     human: () => [
-      completed(`Removed ${result.hostname} from ${result.service.name}.`),
+      completed(`Deleted ${result.hostname} from ${result.service.name}.`),
       fields([
         ...domainTargetRows(result),
         { label: "hostname", value: result.hostname },
-        { label: "removed", value: "yes" },
+        { label: "deleted", value: "yes" },
       ]),
     ],
   };

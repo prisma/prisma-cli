@@ -4,7 +4,7 @@
  * exist on its own, and `service list` is what proves it did.
  *
  * The blocks run in file order, so the service one creates is the one
- * the next two read and then remove. `service remove` asserts like any
+ * the next two read and then delete. `service delete` asserts like any
  * other case rather than swallowing failures: the scratch project's
  * teardown removes everything it contains regardless, so nothing here
  * has to double as cleanup.
@@ -124,26 +124,26 @@ describeCommand("service show", () => {
   });
 });
 
-describeCommand("service remove", () => {
-  it("removes the service, and the listing no longer reports it", async () => {
+describeCommand("service delete", () => {
+  it("deletes the service, and the listing no longer reports it", async () => {
     const existing = requireService();
-    const removal = await scratch.run([
+    const deletion = await scratch.run([
       "service",
-      "remove",
+      "delete",
       "--service",
       existing.name,
       "--confirm",
       existing.name,
     ]);
-    const removed = removal.envelope.result as {
+    const deleted = deletion.envelope.result as {
       readonly projectId: string;
       readonly service: { readonly id: string; readonly name: string };
-      readonly removed: boolean;
+      readonly deleted: boolean;
     };
 
-    expect(removed.projectId).toBe(scratch.project().id);
-    expect(removed.service.id).toBe(existing.id);
-    expect(removed.removed).toBe(true);
+    expect(deleted.projectId).toBe(scratch.project().id);
+    expect(deleted.service.id).toBe(existing.id);
+    expect(deleted.deleted).toBe(true);
 
     const after = await scratch.run(["service", "list"]);
     const remaining = after.envelope.result as {

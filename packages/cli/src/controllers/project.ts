@@ -138,7 +138,7 @@ export async function cleanupLocalPinForProject(
     return true;
   } catch {
     hooks.onError(
-      `The local pin ${LOCAL_RESOLUTION_PIN_RELATIVE_PATH} points at the removed project but could not be deleted.`,
+      `The local pin ${LOCAL_RESOLUTION_PIN_RELATIVE_PATH} points at the deleted project but could not be deleted.`,
     );
     return false;
   }

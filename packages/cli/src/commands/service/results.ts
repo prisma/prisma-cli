@@ -96,10 +96,10 @@ export interface ServiceDeploymentDeleteResult {
   deleted: true;
 }
 
-export interface ServiceRemoveResult {
+export interface ServiceDeleteResult {
   projectId: string;
   service: ServiceSummary;
-  removed: true;
+  deleted: true;
 }
 
 export interface ServiceDomainSummary {
@@ -137,9 +137,9 @@ export interface ServiceDomainShowResult extends ServiceDomainTarget {
   domain: ServiceDomainSummary;
 }
 
-export interface ServiceDomainRemoveResult extends ServiceDomainTarget {
+export interface ServiceDomainDeleteResult extends ServiceDomainTarget {
   hostname: string;
-  removed: true;
+  deleted: true;
 }
 
 export interface ServiceDomainRetryResult extends ServiceDomainTarget {

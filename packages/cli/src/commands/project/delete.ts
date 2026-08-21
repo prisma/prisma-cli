@@ -1,4 +1,4 @@
-/** The `project remove` command. */
+/** The `project delete` command. */
 import {
   type Block,
   defineCommand,
@@ -13,22 +13,22 @@ import {
   resolveProjectForSetup,
   toProjectSummary,
 } from "../../lib/project/setup";
-import type { ProjectRemoveResult } from "../../types/project";
+import type { ProjectDeleteResult } from "../../types/project";
 import { resolveActiveWorkspace } from "../resources-shared/workspace";
 import { legacyOperationContext, listWorkspaceProjects } from "./context";
 import { mapProjectOperationError } from "./errors";
 import { localPinDiagnostics } from "./presentation";
 
 const CONSENT_QUESTION =
-  "Removing a project is permanent, deletes its databases, and stops its apps, so it requires the exact project id.";
+  "Deleting a project is permanent, destroys its databases, and stops its apps, so it requires the exact project id.";
 
-function removePresentations(result: ProjectRemoveResult): Presentations {
+function deletePresentations(result: ProjectDeleteResult): Presentations {
   return {
     stdout: () => [],
     json: () => result,
     next: () => [],
     human: (): Block[] => [
-      { kind: "summary", status: "ok", text: "Removing project." },
+      { kind: "summary", status: "ok", text: "Deleting project." },
       {
         kind: "fields",
         rows: [
@@ -40,7 +40,7 @@ function removePresentations(result: ProjectRemoveResult): Presentations {
       {
         kind: "list",
         items: [
-          "The project, its databases, and its apps were removed.",
+          "The project, its databases, and its apps were deleted.",
           ...(result.localPin.cleared
             ? ["This directory's local project binding was cleared."]
             : []),
@@ -50,7 +50,7 @@ function removePresentations(result: ProjectRemoveResult): Presentations {
   };
 }
 
-export const projectRemoveCommand = defineCommand({
+export const projectDeleteCommand = defineCommand({
   args: {
     positionals: {
       project: positional.string({
@@ -60,8 +60,8 @@ export const projectRemoveCommand = defineCommand({
     },
   },
   help: {
-    summary: "Remove a Project permanently after exact id confirmation",
-    examples: ["project remove proj_123 --confirm proj_123"],
+    summary: "Delete a Project permanently after exact id confirmation",
+    examples: ["project delete proj_123 --confirm proj_123"],
   },
   needs: { credentials: true },
   handler: async (args, ctx) => {
@@ -90,14 +90,14 @@ export const projectRemoveCommand = defineCommand({
         { onError: (message) => warnings.push(message) },
       );
 
-      const result: ProjectRemoveResult = {
+      const result: ProjectDeleteResult = {
         workspace,
         project,
         localPin: { cleared },
       };
       const diagnostics: Diagnostic[] = localPinDiagnostics(warnings);
       return ok(
-        ctx.present({ data: result, diagnostics }, removePresentations(result)),
+        ctx.present({ data: result, diagnostics }, deletePresentations(result)),
       );
     } catch (error) {
       const mapped = mapProjectOperationError(error);

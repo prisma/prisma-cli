@@ -44,7 +44,7 @@ export const serviceDeploymentRollbackCommand = defineCommand({
     const state = await resolveServiceReleaseState(ctx, {
       serviceName: args.flags.service,
       projectRef: args.flags.project,
-      command: "rollback",
+      commandName: "service deployment rollback",
     });
 
     const deploymentsResult = await state.provider

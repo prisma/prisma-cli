@@ -40,7 +40,7 @@ export const serviceDeploymentPromoteCommand = defineCommand({
     const state = await resolveServiceReleaseState(ctx, {
       serviceName: args.flags.service,
       projectRef: args.flags.project,
-      command: "promote",
+      commandName: "service deployment promote",
     });
 
     const deploymentsResult = await state.provider
