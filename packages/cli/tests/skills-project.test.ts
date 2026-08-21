@@ -115,15 +115,16 @@ describe("enumerating workspace members", () => {
 });
 
 describe("reading a skill's version stamp", () => {
-  it("reads the library and library_version keys", () => {
+  it("reads library and library_version from the metadata map", () => {
     expect(
       parseSkillStamp(
         [
           "---",
           "name: prisma-8",
           "description: Use Prisma 8.",
-          "library: @prisma/orm-postgres",
-          'library_version: "8.1.0"',
+          "metadata:",
+          "  library: @prisma/orm-postgres",
+          '  library_version: "8.1.0"',
           "---",
           "# Prisma 8",
         ].join("\n"),
@@ -145,10 +146,22 @@ describe("reading a skill's version stamp", () => {
     });
   });
 
-  it("ignores keys nested under another key", () => {
+  it("ignores a library key written at the top level", () => {
+    // The spec has no top-level extension keys, and nothing has shipped
+    // one, so a file spelling the stamp there is unstamped.
     expect(
       parseSkillStamp(
-        ["---", "metadata:", "  library: @acme/spoof", "---"].join("\n"),
+        ["---", "name: prisma-8", "library: @prisma/orm-postgres", "---"].join(
+          "\n",
+        ),
+      ),
+    ).toEqual({ library: null, libraryVersion: null });
+  });
+
+  it("ignores library keys under some other map", () => {
+    expect(
+      parseSkillStamp(
+        ["---", "allowed-tools:", "  library: @acme/spoof", "---"].join("\n"),
       ).library,
     ).toBe(null);
   });

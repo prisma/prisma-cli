@@ -9,19 +9,24 @@ export interface SkillStamp {
 
 const LINE_BREAK = /\r?\n/;
 const QUOTED = /^(["'])(.*)\1$/;
+const INDENTED = /^[ \t]/;
 
 const EMPTY_STAMP: SkillStamp = { library: null, libraryVersion: null };
 
-const FRONTMATTER_KEYS = new Map<string, keyof SkillStamp>([
+const METADATA_KEY = "metadata";
+
+const STAMP_KEYS = new Map<string, keyof SkillStamp>([
   ["library", "library"],
   ["library_version", "libraryVersion"],
 ]);
 
 /**
- * The `library` / `library_version` keys of a SKILL.md's YAML
- * frontmatter. Only scalar `key: value` lines at the top level are
- * read, which is all the stamp ever is; a file without frontmatter, or
- * without those keys, reports nulls rather than failing.
+ * The `library` and `library_version` entries of a SKILL.md's
+ * `metadata` map. The Agent Skills spec defines no custom top-level
+ * frontmatter keys — extensions live under `metadata`, a map of strings
+ * — so the stamp is read there and nowhere else. A file without
+ * frontmatter, without a `metadata` map, or without those entries
+ * reports nulls rather than failing.
  */
 export function parseSkillStamp(source: string): SkillStamp {
   const lines = source.split(LINE_BREAK);
@@ -33,17 +38,24 @@ export function parseSkillStamp(source: string): SkillStamp {
     library: null,
     libraryVersion: null,
   };
+  let inMetadata = false;
   for (const line of lines.slice(1)) {
     if (line.trim() === "---") {
       break;
     }
-    const separator = line.indexOf(":");
-    if (separator === -1 || line.startsWith(" ") || line.startsWith("\t")) {
+    if (line.trim() === "") {
       continue;
     }
-    const field = FRONTMATTER_KEYS.get(line.slice(0, separator).trim());
+    if (!INDENTED.test(line)) {
+      inMetadata = keyOf(line) === METADATA_KEY;
+      continue;
+    }
+    if (!inMetadata) {
+      continue;
+    }
+    const field = STAMP_KEYS.get(keyOf(line) ?? "");
     if (field) {
-      stamp[field] = unquote(line.slice(separator + 1).trim());
+      stamp[field] = valueAfterKey(line);
     }
   }
   return stamp;
@@ -55,6 +67,16 @@ export async function readSkillStamp(path: string): Promise<SkillStamp | null> {
   } catch {
     return null;
   }
+}
+
+function keyOf(line: string): string | null {
+  const separator = line.indexOf(":");
+  return separator === -1 ? null : line.slice(0, separator).trim();
+}
+
+function valueAfterKey(line: string): string {
+  const separator = line.indexOf(":");
+  return unquote(line.slice(separator + 1).trim());
 }
 
 function unquote(value: string): string {
