@@ -192,6 +192,7 @@ export const composerCommandFamily: CommandFamily = wrapCommandFamily(
  *  respells them to the mounted path. */
 const ORM_MOUNT_RESPELLINGS: Readonly<Record<string, string>> = {
   format: "contract format",
+  init: "orm init",
   migrate: "db migrate",
   "ref list": "migration ref list",
   "ref set": "migration ref set",

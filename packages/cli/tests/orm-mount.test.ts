@@ -59,7 +59,7 @@ function descriptor(kind: string) {
 }
 
 /** The retired spellings the ORM family's own examples carry. */
-const RETIRED_ORM_SPELLING = /prisma-test (format|migrate|ref)(\s|$)/;
+const RETIRED_ORM_SPELLING = /prisma-test (format|migrate|ref|init)(\s|$)/;
 
 function shell(config?: Readonly<Record<string, unknown>>) {
   return createTestCli({
@@ -151,6 +151,7 @@ describe("the ORM family answers from the assembled tree", () => {
     [["migration", "ref", "list"], "migration ref list"],
     [["migration", "ref", "set"], "migration ref set"],
     [["migration", "ref", "delete"], "migration ref delete"],
+    [["orm", "init"], "orm init"],
   ])("renders %j help with the mounted spelling, not the family key", async (path, mounted) => {
     const result = await shell().run([...path, "--help"], {
       isTty: { stdout: true },

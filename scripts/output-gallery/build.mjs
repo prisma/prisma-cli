@@ -151,11 +151,6 @@ const SECTIONS = [
       ["branch-list", "prisma-cli branch list --project prisma-next-dev", ""],
       ["agent-status", "prisma-cli agent status", ""],
       ["telemetry-status", "prisma-cli telemetry status", ""],
-      [
-        "init",
-        "prisma-cli init --framework hono (fresh app)",
-        "Step runner + fields card.",
-      ],
     ],
   ],
   [
