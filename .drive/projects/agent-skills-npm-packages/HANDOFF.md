@@ -20,11 +20,15 @@ and the website hero repoint was deliberately reverted (deferred.md).
 https://github.com/prisma/prisma-cli/pull/219. Three review rounds done;
 the last commit (2c976bf) contains the round-4 fixes for S2-R3-1
 (dead branch + wrong comment in `packages/cli/src/commands/project/errors.ts`)
-and S2-R3-2 (e2e test name in `packages/cli/e2e/declared-bin.e2e.ts`) —
-committed at halt WITHOUT re-running suites. Next: run the
-`packages/cli` suite (plus that e2e) to verify, get a reviewer
-verification round, mark PR ready. Reviewer's residuals are already in
-the PR body.
+and S2-R3-2 (e2e test name in `packages/cli/e2e/declared-bin.e2e.ts`).
+The commit message says "suites not re-run" — that turned out to be
+wrong: the implementer HAD run them before the halt-commit landed (full
+packages/cli 1040/1041, the e2e vs a fresh build 2/2, tsc clean,
+isolated biome clean), so the branch is gate-green. The commit also
+mixes drive artifacts with the two source fixes (halt-time sweep) — a
+picky reviewer may want it split. Next: reviewer verification round
+(round 4), mark PR ready. Reviewer's residuals are already in the PR
+body.
 
 **Slice 1 — prisma/prisma packaging: rework done, awaiting reviewer
 verification.** Branch `skills-in-tarball-packaging` on origin, head
