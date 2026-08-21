@@ -4,7 +4,7 @@
  * writes into package.json, the in-process skills sync it runs, and the
  * diagnostics it answers with when either step has nothing safe to do.
  */
-import { chmod, readFile, rm, stat, writeFile } from "node:fs/promises";
+import { chmod, mkdir, readFile, rm, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { createTestCli } from "@prisma/cli-engine/testing";
 import { describe, expect, it } from "vitest";
@@ -286,6 +286,40 @@ describe("init", () => {
     expect(result.skills.outcome).toBe("up-to-date");
     expect(result.skills.sync?.synced).toEqual([]);
     expect(result.skills.sync?.pruned).toEqual([]);
+  });
+
+  it("surfaces a refused directory instead of claiming the skills are current", async () => {
+    const root = await makeProjectRoot("init-");
+    await installPackage(root, {
+      name: "@prisma/orm-postgres",
+      version: "8.1.0",
+      skills: ["prisma-8"],
+    });
+    const userSkill = path.join(root, ".claude/skills", "prisma-8");
+    await mkdir(userSkill, { recursive: true });
+    await writeFile(
+      path.join(userSkill, "SKILL.md"),
+      "---\nname: prisma-8\n---\n\nMy own notes.\n",
+      "utf8",
+    );
+
+    const run = await makeCli().run(["init"], {
+      cwd: root,
+      isTty: { stdout: true, stderr: true },
+    });
+    const result = run.presented?.data as InitResult;
+
+    expect(run.exitCode).toBe(0);
+    expect(result.skills.sync?.refused).toEqual([
+      { skill: "prisma-8", dirs: [".claude/skills"] },
+    ]);
+    expect(
+      (run.presented?.diagnostics ?? []).map((diagnostic) => diagnostic.code),
+    ).toContain("SKILLS.UNMANAGED_DIRECTORY");
+    expect(run.stderr).toContain(
+      ".claude/skills/prisma-8 is not managed by this CLI, so it was left untouched.",
+    );
+    expect(run.stderr).not.toContain("Agent skills are up to date.");
   });
 
   it("turns a sync failure into a diagnostic on a successful init", async () => {

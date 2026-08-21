@@ -10,7 +10,11 @@ import { syncSkills } from "../lib/skills/sync";
 import { skillsConfigSection } from "./skills/config";
 import { syncPresentations } from "./skills/presentation";
 import type { SkillsSyncResult } from "./skills/results";
-import { packageReports, versionConflictDiagnostics } from "./skills/sync";
+import {
+  packageReports,
+  unmanagedDirectoryDiagnostics,
+  versionConflictDiagnostics,
+} from "./skills/sync";
 
 export const POSTINSTALL_SCRIPT = "prisma skills sync || exit 0";
 
@@ -277,7 +281,10 @@ async function syncSkillsStep(
         sync: result,
       },
       line: null,
-      diagnostics: versionConflictDiagnostics(outcome.packages),
+      diagnostics: [
+        ...versionConflictDiagnostics(outcome.packages),
+        ...unmanagedDirectoryDiagnostics(outcome.refused),
+      ],
     };
   } catch (cause) {
     return {

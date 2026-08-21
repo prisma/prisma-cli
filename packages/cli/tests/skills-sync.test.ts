@@ -642,6 +642,46 @@ describe("harness directories that already exist", () => {
     });
   });
 
+  it("never claims to be up to date while a directory is refused", async () => {
+    const root = await makeProjectRoot();
+    await installPackage(root, {
+      name: "@prisma/orm-postgres",
+      version: "8.1.0",
+      skills: ["prisma-8"],
+    });
+    const userSkill = path.join(root, ".claude/skills", "prisma-8");
+    await mkdir(userSkill, { recursive: true });
+    await writeFile(
+      path.join(userSkill, "SKILL.md"),
+      "---\nname: prisma-8\n---\n\nMy own notes.\n",
+      "utf8",
+    );
+    await runSync(root);
+
+    const run = await makeCli().run(["skills", "sync"], {
+      cwd: root,
+      isTty: { stdout: true, stderr: true },
+    });
+    const result = run.presented?.data as SkillsSyncResult;
+
+    expect(result.synced).toEqual([]);
+    expect(result.refused).toEqual([
+      { skill: "prisma-8", dirs: [".claude/skills"] },
+    ]);
+    expect(run.stderr).toContain(
+      "Agent skills are up to date; 1 directory is not managed by this CLI.",
+    );
+    expect(run.stderr).toContain("Unmanaged skill");
+
+    const list = await makeCli().run(["skills", "list"], {
+      cwd: root,
+      isTty: { stdout: true, stderr: true },
+    });
+    expect(list.stderr).toContain(
+      "Agent skills are up to date; 1 directory is not managed by this CLI.",
+    );
+  });
+
   it("re-syncs after the copies are deleted by hand", async () => {
     const root = await makeProjectRoot();
     await installPackage(root, {

@@ -11,17 +11,35 @@ function projectFields(projectRoot: string, checkDisabled: boolean): Block {
   };
 }
 
+/** Decision B: "up to date" may not over-claim — when directories were
+ *  refused, the summary says so in the same line, for sync and list
+ *  alike. */
+function unmanagedClause(count: number): string {
+  if (count === 0) {
+    return "";
+  }
+  return count === 1
+    ? "; 1 directory is not managed by this CLI"
+    : `; ${count} directories are not managed by this CLI`;
+}
+
 function syncSummary(result: SkillsSyncResult): string {
   if (result.packages.length === 0) {
     return "No Prisma packages with agent skills are installed.";
   }
+  const refusedDirs = result.refused.reduce(
+    (count, skill) => count + skill.dirs.length,
+    0,
+  );
   if (result.synced.length === 0 && result.pruned.length === 0) {
-    return "Agent skills are up to date.";
+    return `Agent skills are up to date${unmanagedClause(refusedDirs)}.`;
   }
   const synced = `${result.synced.length} skill${result.synced.length === 1 ? "" : "s"}`;
-  return result.pruned.length === 0
-    ? `Synced ${synced}.`
-    : `Synced ${synced} and removed ${result.pruned.length}.`;
+  const base =
+    result.pruned.length === 0
+      ? `Synced ${synced}`
+      : `Synced ${synced} and removed ${result.pruned.length}`;
+  return `${base}${unmanagedClause(refusedDirs)}.`;
 }
 
 export function syncPresentations(result: SkillsSyncResult): Presentations {
@@ -32,6 +50,10 @@ export function syncPresentations(result: SkillsSyncResult): Presentations {
     skill.dirs.join(", "),
   ]);
   const prunedRows = result.pruned.map((skill) => [
+    skill.skill,
+    skill.dirs.join(", "),
+  ]);
+  const refusedRows = result.refused.map((skill) => [
     skill.skill,
     skill.dirs.join(", "),
   ]);
@@ -64,6 +86,15 @@ export function syncPresentations(result: SkillsSyncResult): Presentations {
               rows: prunedRows,
             },
           ]),
+      ...(refusedRows.length === 0
+        ? []
+        : [
+            {
+              kind: "table" as const,
+              columns: ["Unmanaged skill", "Left untouched in"],
+              rows: refusedRows,
+            },
+          ]),
     ],
     stdout: () => syncedRows.map((row) => row.join("\t")),
   };
@@ -73,9 +104,13 @@ function listSummary(result: SkillsListResult): string {
   if (result.skills.length === 0) {
     return "No Prisma agent skills are available to sync.";
   }
-  return result.upToDate
-    ? "Agent skills are up to date."
-    : "Agent skills are out of date.";
+  if (!result.upToDate) {
+    return "Agent skills are out of date.";
+  }
+  const unmanaged = result.skills
+    .flatMap((skill) => skill.targets)
+    .filter((target) => target.state === "unmanaged").length;
+  return `Agent skills are up to date${unmanagedClause(unmanaged)}.`;
 }
 
 export function listPresentations(result: SkillsListResult): Presentations {
