@@ -115,6 +115,7 @@ It is silent when:
 
 - the copies match the installed packages
 - `--quiet` or `--json` / `--format json` is active
+- `--version` is being invoked, matching the update notification
 - `PRISMA_SKILLS_CHECK=0` is set
 - CI is detected
 - `prisma.config.ts` sets `skills: { check: false }`

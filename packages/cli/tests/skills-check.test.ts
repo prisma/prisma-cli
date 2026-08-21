@@ -211,6 +211,7 @@ describe("the skills check off switches", () => {
     ["--json", { argv: ["auth", "whoami", "--json"] }],
     ["--format json", { argv: ["auth", "whoami", "--format", "json"] }],
     ["--format=json", { argv: ["auth", "whoami", "--format=json"] }],
+    ["--version", { argv: ["--version"] }],
     ["PRISMA_SKILLS_CHECK=0", { env: { PRISMA_SKILLS_CHECK: "0" } }],
     ["CI", { env: { CI: "1" } }],
     ["GITHUB_ACTIONS", { env: { GITHUB_ACTIONS: "true" } }],
@@ -234,6 +235,17 @@ describe("the skills check off switches", () => {
     await main(proc, stubCli());
 
     expect(proc.stderrText).toBe("");
+  });
+
+  it("ignores suppressing tokens after a bare --", async () => {
+    const proc = makeProcess({
+      cwd: await makeStaleProject(),
+      argv: ["auth", "whoami", "--", "--json"],
+    });
+
+    await main(proc, stubCli());
+
+    expect(proc.stderrText).toContain(NOTICE);
   });
 
   it("stays silent after skills sync --disable persisted the opt-out", async () => {
@@ -264,6 +276,29 @@ describe("the skills check off switches", () => {
 
     expect(proc.stderrText).toBe("");
   });
+
+  it.each([
+    ["--config <path>", ["--config", "elsewhere.config.ts"]],
+    ["--config=<path>", ["--config=elsewhere.config.ts"]],
+  ])(
+    "reads the config file an explicit %s names",
+    async (_name, configArgv) => {
+      const root = await makeStaleProject();
+      await writeFile(
+        path.join(root, "elsewhere.config.ts"),
+        configSource({ check: false }),
+        "utf8",
+      );
+      const proc = makeProcess({
+        cwd: root,
+        argv: ["auth", "whoami", ...configArgv],
+      });
+
+      await main(proc, stubCli());
+
+      expect(proc.stderrText).toBe("");
+    },
+  );
 
   it("still reports when prisma.config.ts leaves the check on", async () => {
     const root = await makeStaleProject();

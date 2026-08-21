@@ -9,6 +9,9 @@
  * conditioned on a TTY: agents run without one and are who this is for.
  */
 import { loadConfig } from "@prisma/cli-engine";
+import { skillsConfigSection } from "./commands/skills/config";
+import { readSkillsCheckDisabled } from "./lib/skills/opt-out";
+import { findProjectRoot } from "./lib/skills/project-root";
 import {
   firstOutdatedSkill,
   readSkillsStatus,
@@ -33,11 +36,18 @@ export async function maybeWriteSkillsStaleNotice(
   }
 
   try {
-    const status = await readSkillsStatus(runtime.cwd);
-    if (status.checkDisabled || status.upToDate) {
+    // The persisted opt-out is one small file; reading it first spares
+    // an opted-out project the package and directory scans, and the
+    // notice never reads the orphan list.
+    const projectRoot = await findProjectRoot(runtime.cwd);
+    if (await readSkillsCheckDisabled(projectRoot)) {
       return;
     }
-    if (await isDisabledInConfig(runtime.cwd)) {
+    const status = await readSkillsStatus(runtime.cwd, { orphans: false });
+    if (status.upToDate) {
+      return;
+    }
+    if (await isDisabledInConfig(runtime)) {
       return;
     }
     const notice = renderStaleNotice(status);
@@ -91,6 +101,13 @@ function invokedGroup(argv: readonly string[]): string | undefined {
   return undefined;
 }
 
+/** Tokens before a bare `--`; everything after it is positional data,
+ *  never a flag. */
+function flagTokens(argv: readonly string[]): readonly string[] {
+  const end = argv.indexOf("--");
+  return end === -1 ? argv : argv.slice(0, end);
+}
+
 /** The off switches that cost nothing to read. */
 function isSuppressedByInvocation(runtime: SkillsCheckRuntime): boolean {
   const env = runtime.env;
@@ -101,7 +118,7 @@ function isSuppressedByInvocation(runtime: SkillsCheckRuntime): boolean {
     return true;
   }
 
-  const argv = runtime.argv;
+  const argv = flagTokens(runtime.argv);
   // The command that fixes this must not also complain about it.
   if (invokedGroup(argv) === "skills") {
     return true;
@@ -113,11 +130,31 @@ function isSuppressedByInvocation(runtime: SkillsCheckRuntime): boolean {
   ) {
     return true;
   }
+  // The same exemption the update check applies.
+  if (argv.includes("--version")) {
+    return true;
+  }
   return argv.some(
     (token, index) =>
       token === "--format=json" ||
       (token === "--format" && argv[index + 1] === "json"),
   );
+}
+
+/** The file an explicit --config names, so the check reads the same
+ *  config the command did. Discovery is otherwise cwd-only. */
+function configPathFromArgv(argv: readonly string[]): string | undefined {
+  const tokens = flagTokens(argv);
+  for (let index = 0; index < tokens.length; index += 1) {
+    const token = tokens[index] as string;
+    if (token === "--config") {
+      return tokens[index + 1];
+    }
+    if (token.startsWith("--config=")) {
+      return token.slice("--config=".length);
+    }
+  }
+  return undefined;
 }
 
 /**
@@ -126,12 +163,15 @@ function isSuppressedByInvocation(runtime: SkillsCheckRuntime): boolean {
  * evaluating that file costs a TypeScript transpile — far more than
  * everything else the check does.
  */
-async function isDisabledInConfig(cwd: string): Promise<boolean> {
-  const loaded = await loadConfig(cwd);
-  const section = loaded.sections.skills;
-  return (
-    typeof section === "object" &&
-    section !== null &&
-    (section as { check?: unknown }).check === false
+async function isDisabledInConfig(
+  runtime: SkillsCheckRuntime,
+): Promise<boolean> {
+  const loaded = await loadConfig(
+    runtime.cwd,
+    configPathFromArgv(runtime.argv),
   );
+  const section = skillsConfigSection.validate(
+    loaded.sections[skillsConfigSection.name],
+  );
+  return section.ok && !section.value.check;
 }

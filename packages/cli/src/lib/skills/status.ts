@@ -67,8 +67,18 @@ export function firstOutdatedSkill(status: SkillsStatus): SkillStatus | null {
   return status.skills.find((skill) => !skill.upToDate) ?? null;
 }
 
-export async function readSkillsStatus(cwd: string): Promise<SkillsStatus> {
+export interface SkillsStatusOptions {
+  /** Set false to skip the orphan scan; the staleness notice never
+   *  reads it. */
+  readonly orphans?: boolean;
+}
+
+export async function readSkillsStatus(
+  cwd: string,
+  options?: SkillsStatusOptions,
+): Promise<SkillsStatus> {
   const projectRoot = await findProjectRoot(cwd);
+  const checkDisabled = await readSkillsCheckDisabled(projectRoot);
   const packages = await findInstalledSourcePackages(projectRoot);
   const sources = await collectSkillSources(packages);
   const skills: SkillStatus[] = [];
@@ -79,10 +89,13 @@ export async function readSkillsStatus(cwd: string): Promise<SkillsStatus> {
 
   return {
     projectRoot,
-    checkDisabled: await readSkillsCheckDisabled(projectRoot),
+    checkDisabled,
     packages,
     skills,
-    orphans: await findOrphanedSkills(projectRoot, new Set(sources.keys())),
+    orphans:
+      options?.orphans === false
+        ? []
+        : await findOrphanedSkills(projectRoot, new Set(sources.keys())),
     upToDate: skills.every((skill) => skill.upToDate),
   };
 }
