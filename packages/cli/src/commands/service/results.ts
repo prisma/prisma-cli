@@ -68,13 +68,16 @@ export interface ServiceOpenResult {
   opened: boolean;
 }
 
+/** Targeted by deployment id alone, so no project is resolved. */
 export interface ServicePromoteResult {
-  projectId: string;
   service: ServiceSummary;
   deployment: ServiceDeploymentSummary;
 }
 
-export interface ServiceRollbackResult extends ServicePromoteResult {
+export interface ServiceRollbackResult {
+  projectId: string;
+  service: ServiceSummary;
+  deployment: ServiceDeploymentSummary;
   previousLiveDeploymentId: string | null;
 }
 
@@ -82,14 +85,12 @@ export interface ServiceRollbackResult extends ServicePromoteResult {
  *  is true when the deployment already had the status the command asks
  *  for, so the run made no call. */
 export interface ServiceDeploymentRunStateResult {
-  projectId: string;
   service: ServiceSummary;
   deployment: ServiceDeploymentSummary;
   alreadyInState: boolean;
 }
 
 export interface ServiceDeploymentDeleteResult {
-  projectId: string;
   service: ServiceSummary;
   deploymentId: string;
   deleted: true;

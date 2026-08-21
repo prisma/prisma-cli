@@ -50,7 +50,6 @@ describe("prisma-cli service deployment rollback", () => {
         "rollback",
         "--project",
         "acme-app",
-        "--service",
         "hello-world",
         "--confirm",
         "dep_1",
@@ -83,7 +82,6 @@ describe("prisma-cli service deployment rollback", () => {
         "dep_2",
         "--project",
         "acme-app",
-        "--service",
         "hello-world",
         "--confirm",
         "dep_2",
@@ -120,7 +118,6 @@ describe("prisma-cli service deployment rollback", () => {
         "dep_1",
         "--project",
         "acme-app",
-        "--service",
         "hello-world",
         "--confirm",
         "dep_1",
@@ -144,7 +141,6 @@ describe("prisma-cli service deployment rollback", () => {
         "rollback",
         "--project",
         "acme-app",
-        "--service",
         "hello-world",
         "--confirm",
         "dep_1",
@@ -183,7 +179,6 @@ describe("prisma-cli service deployment rollback", () => {
         "rollback",
         "--project",
         "acme-app",
-        "--service",
         "hello-world",
         "--confirm",
         "dep_1",
@@ -214,7 +209,6 @@ describe("prisma-cli service deployment rollback", () => {
         "rollback",
         "--project",
         "acme-app",
-        "--service",
         "hello-world",
       ],
       {
@@ -244,7 +238,6 @@ describe("prisma-cli service deployment rollback", () => {
         "rollback",
         "--project",
         "acme-app",
-        "--service",
         "hello-world",
       ],
       {
@@ -272,7 +265,6 @@ describe("prisma-cli service deployment rollback", () => {
         "rollback",
         "--project",
         "acme-app",
-        "--service",
         "hello-world",
         "--json",
       ],
@@ -306,7 +298,6 @@ describe("prisma-cli service deployment rollback", () => {
         "rollback",
         "--project",
         "acme-app",
-        "--service",
         "hello-world",
         "--confirm",
         "hello-world",
@@ -337,7 +328,6 @@ describe("prisma-cli service deployment rollback", () => {
         "rollback",
         "--project",
         "acme-app",
-        "--service",
         "hello-world",
         "--yes",
         "--json",
@@ -367,7 +357,6 @@ describe("prisma-cli service deployment rollback", () => {
         "rollback",
         "--project",
         "acme-app",
-        "--service",
         "hello-world",
         "--json",
       ],
@@ -398,12 +387,12 @@ describe("prisma-cli service deployment rollback", () => {
         kind: "run-command",
         label: "Roll back to a named deployment",
         command:
-          "prisma-cli service deployment rollback --to <deployment> --service hello-world",
+          "prisma-cli service deployment rollback hello-world --to <deployment>",
       },
       {
         kind: "run-command",
         label: "List deployments",
-        command: "prisma-cli service deployment list --service hello-world",
+        command: "prisma-cli service deployment list hello-world",
       },
     ]);
   });
@@ -422,7 +411,6 @@ describe("prisma-cli service deployment rollback", () => {
         "dep_1",
         "--project",
         "acme-app",
-        "--service",
         "hello-world",
         "--confirm",
         "dep_1",
@@ -457,7 +445,6 @@ describe("prisma-cli service deployment rollback", () => {
         "rollback",
         "--project",
         "acme-app",
-        "--service",
         "hello-world",
         "--json",
       ],
@@ -480,7 +467,7 @@ describe("prisma-cli service deployment rollback", () => {
       {
         kind: "run-command",
         label: "List deployments",
-        command: "prisma-cli service deployment list --service hello-world",
+        command: "prisma-cli service deployment list hello-world",
       },
     ]);
   });
@@ -499,7 +486,6 @@ describe("prisma-cli service deployment rollback", () => {
         "rollback",
         "--project",
         "acme-app",
-        "--service",
         "hello-world",
         "--json",
       ],
@@ -533,7 +519,6 @@ describe("prisma-cli service deployment rollback", () => {
         "rollback",
         "--project",
         "acme-app",
-        "--service",
         "hello-world",
         "--confirm",
         "dep_1",
@@ -555,7 +540,7 @@ describe("prisma-cli service deployment rollback", () => {
     expect(frame.envelope.error.code).toBe("SERVICE.DEPLOY_FAILED");
   });
 
-  it("requires --service or PRISMA_SERVICE_ID", async () => {
+  it("requires a service or PRISMA_SERVICE_ID", async () => {
     const harness = await makeServiceCli({
       routes: releaseRoutes({ "GET /v1/apps": () => ({ data: page([]) }) }),
     });
@@ -572,7 +557,7 @@ describe("prisma-cli service deployment rollback", () => {
     }
     expect(frame.envelope.error.code).toBe("SERVICE.TARGET_REQUIRED");
     expect(frame.envelope.error.summary).toBe(
-      'Command "service deployment rollback" requires --service',
+      'Command "service deployment rollback" requires a service',
     );
   });
 

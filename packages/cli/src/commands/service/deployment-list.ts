@@ -1,4 +1,4 @@
-import { defineCommand, flag } from "@prisma/cli-engine";
+import { defineCommand, flag, positional } from "@prisma/cli-engine";
 import { ok } from "@prisma/cli-engine/protocol";
 import { deployFailedError } from "./errors";
 import { deploymentListPresentations } from "./presentation";
@@ -15,16 +15,12 @@ export const serviceDeploymentListCommand = defineCommand({
   help: {
     summary: "List deployments for the service",
     examples: [
-      "service deployment list --service my-service",
-      "service deployment list --service my-service --branch feature-x",
+      "service deployment list my-service",
+      "service deployment list my-service --branch feature-x",
     ],
   },
   args: {
     flags: {
-      service: flag.string({
-        brief: "Service name",
-        placeholder: "name",
-      }),
       project: flag.string({
         brief: "Project id or name",
         placeholder: "id-or-name",
@@ -34,11 +30,17 @@ export const serviceDeploymentListCommand = defineCommand({
         placeholder: "name",
       }),
     },
+    positionals: {
+      service: positional.optionalString({
+        brief: "Service name",
+        placeholder: "service",
+      }),
+    },
   },
   needs: { credentials: true },
   handler: async (args, ctx) => {
     const state = await resolveServiceReadState(ctx, {
-      serviceName: args.flags.service,
+      serviceName: args.positionals.service,
       projectRef: args.flags.project,
       branchName: args.flags.branch,
       commandName: "service deployment list",

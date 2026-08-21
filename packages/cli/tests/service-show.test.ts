@@ -14,7 +14,7 @@ describe("prisma-cli service show", () => {
     const harness = await makeServiceCli();
 
     const result = await harness.cli.run(
-      ["service", "show", "--project", "acme-app", "--service", "hello-world"],
+      ["service", "show", "--project", "acme-app", "hello-world"],
       { cwd: harness.cwd, env: harness.env, isTty: { stdout: true } },
     );
 
@@ -66,7 +66,6 @@ describe("prisma-cli service show", () => {
         "show",
         "--project",
         "acme-app",
-        "--service",
         "hello-world",
         "--branch",
         "staging",
@@ -97,7 +96,7 @@ describe("prisma-cli service show", () => {
     });
 
     const result = await harness.cli.run(
-      ["service", "show", "--project", "acme-app", "--service", "hello-world"],
+      ["service", "show", "--project", "acme-app", "hello-world"],
       { cwd: harness.cwd, env: harness.env, isTty: { stdout: true } },
     );
 
@@ -112,7 +111,7 @@ describe("prisma-cli service show", () => {
     const harness = await makeServiceCli();
 
     await harness.cli.run(
-      ["service", "show", "--project", "acme-app", "--service", "hello-world"],
+      ["service", "show", "--project", "acme-app", "hello-world"],
       { cwd: harness.cwd, env: harness.env },
     );
 
@@ -142,15 +141,7 @@ describe("prisma-cli service show", () => {
     const harness = await makeServiceCli();
 
     const result = await harness.cli.run(
-      [
-        "service",
-        "show",
-        "--project",
-        "acme-app",
-        "--service",
-        "hello-world",
-        "--json",
-      ],
+      ["service", "show", "--project", "acme-app", "hello-world", "--json"],
       { cwd: harness.cwd, env: harness.env },
     );
 
@@ -181,15 +172,7 @@ describe("prisma-cli service show", () => {
     });
 
     const result = await harness.cli.run(
-      [
-        "service",
-        "show",
-        "--project",
-        "acme-app",
-        "--service",
-        "hello-world",
-        "--json",
-      ],
+      ["service", "show", "--project", "acme-app", "hello-world", "--json"],
       { cwd: harness.cwd, env: harness.env },
     );
 
@@ -214,19 +197,11 @@ describe("prisma-cli service show", () => {
     expect(result.stderr).toContain("CLI.CREDENTIALS_REQUIRED");
   });
 
-  it("rejects an unknown --service name as SERVICE.SELECTION_INVALID", async () => {
+  it("rejects an unknown service name as SERVICE.SELECTION_INVALID", async () => {
     const harness = await makeServiceCli();
 
     const result = await harness.cli.run(
-      [
-        "service",
-        "show",
-        "--project",
-        "acme-app",
-        "--service",
-        "nope",
-        "--json",
-      ],
+      ["service", "show", "--project", "acme-app", "nope", "--json"],
       { cwd: harness.cwd, env: harness.env },
     );
 
@@ -269,7 +244,7 @@ describe("prisma-cli service show", () => {
     });
 
     const result = await harness.cli.run(
-      ["service", "show", "--project", "acme-app", "--service", "api"],
+      ["service", "show", "--project", "acme-app", "api"],
       {
         cwd: harness.cwd,
         env: { ...harness.env, PRISMA_SERVICE_ID: "svc_1" },
@@ -297,10 +272,10 @@ describe("prisma-cli service show", () => {
 
     expect(result.exitCode).toBe(2);
     expect(result.stderr).toContain("SERVICE.TARGET_REQUIRED");
-    expect(result.stderr).toContain("--service");
+    expect(result.stderr).toContain("requires a service");
   });
 
-  it("names --service in the structured missing-target error", async () => {
+  it("names the service argument in the structured missing-target error", async () => {
     const harness = await makeServiceCli();
 
     const result = await harness.cli.run(
@@ -314,7 +289,7 @@ describe("prisma-cli service show", () => {
       throw new Error("expected an errored envelope");
     }
     expect(frame.envelope.error.code).toBe("SERVICE.TARGET_REQUIRED");
-    expect(frame.envelope.error.summary).toContain("--service");
+    expect(frame.envelope.error.summary).toContain("requires a service");
     expect(frame.envelope.nextActions).toContainEqual({
       kind: "run-command",
       label: "List services",

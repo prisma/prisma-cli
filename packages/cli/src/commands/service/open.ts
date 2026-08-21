@@ -1,4 +1,4 @@
-import { defineCommand, flag } from "@prisma/cli-engine";
+import { defineCommand, flag, positional } from "@prisma/cli-engine";
 import { ok } from "@prisma/cli-engine/protocol";
 import {
   deployFailedError,
@@ -20,16 +20,12 @@ export const serviceOpenCommand = defineCommand({
   help: {
     summary: "Open the service's live URL",
     examples: [
-      "service open --service my-service",
-      "service open --service my-service --branch feature-x",
+      "service open my-service",
+      "service open my-service --branch feature-x",
     ],
   },
   args: {
     flags: {
-      service: flag.string({
-        brief: "Service name",
-        placeholder: "name",
-      }),
       project: flag.string({
         brief: "Project id or name",
         placeholder: "id-or-name",
@@ -39,11 +35,17 @@ export const serviceOpenCommand = defineCommand({
         placeholder: "name",
       }),
     },
+    positionals: {
+      service: positional.optionalString({
+        brief: "Service name",
+        placeholder: "service",
+      }),
+    },
   },
   needs: { credentials: true },
   handler: async (args, ctx) => {
     const state = await resolveServiceReadState(ctx, {
-      serviceName: args.flags.service,
+      serviceName: args.positionals.service,
       projectRef: args.flags.project,
       branchName: args.flags.branch,
       commandName: "service open",
@@ -55,7 +57,7 @@ export const serviceOpenCommand = defineCommand({
         throw deployFailedError("Failed to resolve service URL", error, [
           runCommandAction(
             "Inspect the service",
-            `service show --service ${state.service.name}`,
+            `service show ${state.service.name}`,
           ),
         ]);
       });

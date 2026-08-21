@@ -3,6 +3,7 @@ import {
   type AppProvider,
   type AppRecord,
   createAppProvider,
+  type DeploymentRecord,
   type DomainRecord,
 } from "../../lib/app/app-provider";
 import { resolveReadBranch } from "../../lib/app/read-branch";
@@ -21,6 +22,8 @@ import {
   branchNotDeployableError,
   branchValueEmptyError,
   deployFailedError,
+  deploymentDetachedError,
+  deploymentNotFoundError,
   domainCommandError,
   domainHostnameInvalidError,
   domainNotFoundError,
@@ -269,8 +272,8 @@ export interface RequestedServiceTarget {
   value: string;
 }
 
-/** The service target the run was given, if any: `--service <name>`
- *  wins, then PRISMA_SERVICE_ID (a service id). */
+/** The service target the run was given, if any: the service name
+ *  argument wins, then PRISMA_SERVICE_ID (a service id). */
 export function requestedServiceTarget(
   ctx: ServiceContext,
   explicitServiceName: string | undefined,
@@ -322,6 +325,34 @@ export function matchRequestedService(
     );
   }
   return matched;
+}
+
+export interface DeploymentSubject {
+  provider: AppProvider;
+  service: AppRecord;
+  deployment: DeploymentRecord;
+}
+
+/** Resolve a deployment by its globally-unique id. The id alone names
+ *  the subject — no service, project, or branch parameter is consulted,
+ *  the same way `service deployment show` resolves it. */
+export async function resolveDeploymentSubject(
+  ctx: ServiceContext,
+  deploymentId: string,
+): Promise<DeploymentSubject> {
+  const provider = serviceProvider(ctx);
+  const shown = await provider
+    .showDeployment(deploymentId, { signal: ctx.signal })
+    .catch((error) => {
+      throw deployFailedError("Failed to show deployment", error, []);
+    });
+  if (!shown) {
+    throw deploymentNotFoundError(deploymentId);
+  }
+  if (!shown.app) {
+    throw deploymentDetachedError(deploymentId);
+  }
+  return { provider, service: shown.app, deployment: shown.deployment };
 }
 
 /** The live deployment is the one the service record names as its latest
@@ -467,7 +498,7 @@ export async function resolveDomainByHostname(
   throw domainNotFoundError(hostname);
 }
 
-export interface ServiceProjectState {
+interface ServiceProjectState {
   provider: AppProvider;
   target: ResolvedServiceProjectContext;
   projectId: string;
@@ -477,10 +508,8 @@ export interface ServiceReadState extends ServiceProjectState {
   service: AppRecord;
 }
 
-/** Project + branch resolution without a service target. For the
- *  callers that resolve their subject by a globally-unique deployment
- *  id and never need a service parameter. */
-export async function resolveServiceProjectState(
+/** Project + branch resolution, before the service match. */
+async function resolveServiceProjectState(
   ctx: ServiceContext,
   options: {
     projectRef?: string;

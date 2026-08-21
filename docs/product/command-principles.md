@@ -101,6 +101,10 @@ Resolve a deployment and show or stream its logs.
 
 `delete` destroys a resource; `remove` detaches one thing from another without destroying it. A command that permanently destroys what it targets is spelled `delete` (`project delete`, `service delete`, `postgres delete`); `remove` is reserved for detachment.
 
+### Subjects are positional
+
+A command that operates on a subject resource takes that resource's identifier as its first positional argument (`service show my-api`, `postgres delete db_123`, `service deployment promote dep_123`) — the established convention across CLIs. Flags never name the subject; they scope or qualify it (`--project`, `--branch`, `--role`). When the subject's identifier is globally unique — a deployment id, a bucket id — the id alone is the complete target, and the command asks for no redundant parent scope.
+
 ### `wait`
 
 Block until a remote resource reaches a terminal state.

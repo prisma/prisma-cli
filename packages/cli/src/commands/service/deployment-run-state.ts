@@ -4,10 +4,9 @@ import {
   deploymentStartPresentations,
   deploymentStopPresentations,
 } from "./presentation";
-import { requireDeploymentForService } from "./release";
 import type { ServiceDeploymentRunStateResult } from "./results";
 import type { ServiceContext } from "./target";
-import { resolveServiceReadState, toServiceSummary } from "./target";
+import { resolveDeploymentSubject, toServiceSummary } from "./target";
 
 /**
  * `start` and `stop` are the same command with the direction reversed,
@@ -35,13 +34,6 @@ const VERBS = {
 
 export type RunStateVerb = keyof typeof VERBS;
 
-export interface RunStateArgs {
-  deployment: string;
-  service?: string | undefined;
-  project?: string | undefined;
-  branch?: string | undefined;
-}
-
 export interface RunStateOutcome {
   result: ServiceDeploymentRunStateResult;
   diagnostics: Diagnostic[];
@@ -50,35 +42,17 @@ export interface RunStateOutcome {
 
 export async function changeDeploymentRunState(
   ctx: ServiceContext,
-  args: RunStateArgs,
+  deploymentId: string,
   verb: RunStateVerb,
 ): Promise<RunStateOutcome> {
   const spec = VERBS[verb];
-  const state = await resolveServiceReadState(ctx, {
-    ...(args.service !== undefined ? { serviceName: args.service } : {}),
-    ...(args.project !== undefined ? { projectRef: args.project } : {}),
-    ...(args.branch !== undefined ? { branchName: args.branch } : {}),
-    commandName: `service deployment ${verb}`,
-  });
-
-  const deploymentsResult = await state.provider
-    .listDeployments(state.service.id, { signal: ctx.signal })
-    .catch((error) => {
-      throw deployFailedError("Failed to list service deployments", error, [
-        runCommandAction(
-          "List deployments",
-          `service deployment list --service ${state.service.name}`,
-        ),
-      ]);
-    });
-  const targetDeployment = requireDeploymentForService(
-    deploymentsResult.deployments,
-    args.deployment,
-    state.service.name,
+  const { provider, service, deployment } = await resolveDeploymentSubject(
+    ctx,
+    deploymentId,
   );
-  const alreadyInState = targetDeployment.status === spec.settledStatus;
+  const alreadyInState = deployment.status === spec.settledStatus;
 
-  let observed = targetDeployment;
+  let observed = deployment;
   if (!alreadyInState) {
     ctx.report({ kind: "step-started", step: verb });
     try {
@@ -87,19 +61,19 @@ export async function changeDeploymentRunState(
       // is carried through, rather than the CLI guessing at the
       // precondition itself.
       await (verb === "start"
-        ? state.provider.startDeployment({
-            deploymentId: targetDeployment.id,
+        ? provider.startDeployment({
+            deploymentId: deployment.id,
             signal: ctx.signal,
           })
-        : state.provider.stopDeployment({
-            deploymentId: targetDeployment.id,
+        : provider.stopDeployment({
+            deploymentId: deployment.id,
             signal: ctx.signal,
           }));
       // The start and stop endpoints answer with nothing, so the status
       // is read back rather than assumed. A deployment still coming up
       // reports whatever state it is actually in.
-      observed = await state.provider.readDeployment({
-        deploymentId: targetDeployment.id,
+      observed = await provider.readDeployment({
+        deploymentId: deployment.id,
         signal: ctx.signal,
       });
     } catch (error) {
@@ -107,7 +81,7 @@ export async function changeDeploymentRunState(
       throw deployFailedError(spec.failureSummary, error, [
         runCommandAction(
           "Show the deployment",
-          `service deployment show ${targetDeployment.id}`,
+          `service deployment show ${deployment.id}`,
         ),
       ]);
     }
@@ -115,8 +89,7 @@ export async function changeDeploymentRunState(
   }
 
   const result: ServiceDeploymentRunStateResult = {
-    projectId: state.projectId,
-    service: toServiceSummary(deploymentsResult.app),
+    service: toServiceSummary(service),
     deployment: observed,
     alreadyInState,
   };

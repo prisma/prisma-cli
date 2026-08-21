@@ -278,7 +278,7 @@ describe("prisma-cli service domain add", () => {
     expect(frame.envelope.nextActions).toEqual([
       {
         kind: "user-choice",
-        label: "Unset PRISMA_SERVICE_ID, or pass --service <name>.",
+        label: "Unset PRISMA_SERVICE_ID, or pass a service name.",
       },
       {
         kind: "run-command",
@@ -288,7 +288,7 @@ describe("prisma-cli service domain add", () => {
     ]);
   });
 
-  it("requires --service or PRISMA_SERVICE_ID", async () => {
+  it("requires a service or PRISMA_SERVICE_ID", async () => {
     const harness = await makeServiceCli({
       routes: domainRoutes({ "GET /v1/apps": () => ({ data: page([]) }) }),
     });
@@ -312,7 +312,7 @@ describe("prisma-cli service domain add", () => {
       throw new Error("expected an errored envelope");
     }
     expect(frame.envelope.error.code).toBe("SERVICE.TARGET_REQUIRED");
-    expect(frame.envelope.error.summary).toContain("--service");
+    expect(frame.envelope.error.summary).toContain("requires a service");
     expect(frame.envelope.nextActions).toContainEqual({
       kind: "run-command",
       label: "List services",

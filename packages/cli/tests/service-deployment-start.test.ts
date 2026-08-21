@@ -64,16 +64,13 @@ function startRoutes(
     }),
   };
 }
-
-const TARGET = ["--project", "acme-app", "--service", "hello-world"];
-
 describe("prisma-cli service deployment start", () => {
   it("starts a stopped deployment and reports it running", async () => {
     const start = startRoutes();
     const harness = await makeServiceCli({ routes: start.routes });
 
     const result = await harness.cli.run(
-      ["service", "deployment", "start", "dep_1", ...TARGET],
+      ["service", "deployment", "start", "dep_1"],
       { cwd: harness.cwd, env: harness.env, isTty: { stdout: true } },
     );
 
@@ -86,7 +83,6 @@ describe("prisma-cli service deployment start", () => {
       outcome: "ok",
     });
     expect(result.presented?.data).toMatchObject({
-      projectId: "proj_1",
       service: { id: "svc_1", name: "hello-world" },
       deployment: { id: "dep_1", status: "running" },
       alreadyInState: false,
@@ -101,7 +97,6 @@ describe("prisma-cli service deployment start", () => {
     ).toEqual({
       kind: "fields",
       rows: [
-        { label: "project", value: "proj_1" },
         { label: "service", value: "hello-world" },
         { label: "deployment", value: "dep_1" },
         { label: "status", value: "running" },
@@ -122,7 +117,7 @@ describe("prisma-cli service deployment start", () => {
     const harness = await makeServiceCli({ routes: start.routes });
 
     const result = await harness.cli.run(
-      ["service", "deployment", "start", "dep_1", ...TARGET],
+      ["service", "deployment", "start", "dep_1"],
       { cwd: harness.cwd, env: harness.env, isTty: { stdout: true } },
     );
 
@@ -139,7 +134,7 @@ describe("prisma-cli service deployment start", () => {
     const harness = await makeServiceCli({ routes: start.routes });
 
     const result = await harness.cli.run(
-      ["service", "deployment", "start", "dep_2", ...TARGET],
+      ["service", "deployment", "start", "dep_2"],
       { cwd: harness.cwd, env: harness.env, isTty: { stdout: true } },
     );
 
@@ -175,7 +170,7 @@ describe("prisma-cli service deployment start", () => {
     const harness = await makeServiceCli({ routes: start.routes });
 
     const result = await harness.cli.run(
-      ["service", "deployment", "start", "dep_1", ...TARGET, "--json"],
+      ["service", "deployment", "start", "dep_1", "--json"],
       { cwd: harness.cwd, env: harness.env },
     );
 
@@ -198,7 +193,7 @@ describe("prisma-cli service deployment start", () => {
     const harness = await makeServiceCli({ routes: start.routes });
 
     const result = await harness.cli.run(
-      ["service", "deployment", "start", "dep_missing", ...TARGET, "--json"],
+      ["service", "deployment", "start", "dep_missing", "--json"],
       { cwd: harness.cwd, env: harness.env },
     );
 
@@ -216,7 +211,7 @@ describe("prisma-cli service deployment start", () => {
     const harness = await makeServiceCli({ routes: start.routes });
 
     const result = await harness.cli.run(
-      ["service", "deployment", "start", "dep_1", ...TARGET, "--json"],
+      ["service", "deployment", "start", "dep_1", "--json"],
       { cwd: harness.cwd, env: harness.env },
     );
 
@@ -239,7 +234,7 @@ describe("prisma-cli service deployment start", () => {
     });
 
     const result = await harness.cli.run(
-      ["service", "deployment", "start", "dep_1", ...TARGET],
+      ["service", "deployment", "start", "dep_1"],
       { cwd: harness.cwd, env: harness.env, isTty: { stdout: true } },
     );
 

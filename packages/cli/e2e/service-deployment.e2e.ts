@@ -84,8 +84,6 @@ describeCommand("service deployment start", () => {
       "deployment",
       "start",
       existing.deploymentId,
-      "--service",
-      existing.serviceName,
     ]);
     const started = run.envelope.result as {
       readonly deployment: DeploymentRow;
@@ -105,7 +103,6 @@ describeCommand("service deployment list", () => {
       "service",
       "deployment",
       "list",
-      "--service",
       existing.serviceName,
     ]);
     const listed = run.envelope.result as {
@@ -151,12 +148,7 @@ describeCommand("service open", () => {
     // No browser and no TTY in CI, so the command reports the URL it
     // would have opened. That it declined to open is part of the
     // contract, not an incidental detail.
-    const run = await scratch.run([
-      "service",
-      "open",
-      "--service",
-      existing.serviceName,
-    ]);
+    const run = await scratch.run(["service", "open", existing.serviceName]);
     const opened = run.envelope.result as {
       readonly service: { readonly id: string };
       readonly url: string;
@@ -177,8 +169,6 @@ describeCommand("service deployment stop", () => {
       "deployment",
       "stop",
       existing.deploymentId,
-      "--service",
-      existing.serviceName,
     ]);
     const stopped = run.envelope.result as {
       readonly deployment: DeploymentRow;
@@ -201,18 +191,14 @@ describeCommand("service deployment delete", () => {
       "deployment",
       "delete",
       existing.deploymentId,
-      "--service",
-      existing.serviceName,
       "--confirm",
       existing.deploymentId,
     ]);
     const removed = run.envelope.result as {
-      readonly projectId: string;
       readonly deploymentId: string;
       readonly deleted: boolean;
     };
 
-    expect(removed.projectId).toBe(scratch.project().id);
     expect(removed.deploymentId).toBe(existing.deploymentId);
     expect(removed.deleted).toBe(true);
     // Teardown has nothing left to remove.
@@ -222,7 +208,6 @@ describeCommand("service deployment delete", () => {
       "service",
       "deployment",
       "list",
-      "--service",
       existing.serviceName,
     ]);
     const remaining = after.envelope.result as {

@@ -1,40 +1,19 @@
-import { defineCommand, flag, positional } from "@prisma/cli-engine";
+import { defineCommand, positional } from "@prisma/cli-engine";
 import type { Diagnostic } from "@prisma/cli-engine/protocol";
 import { ok } from "@prisma/cli-engine/protocol";
 import { deployFailedError, runCommandAction } from "./errors";
 import { promotePresentations } from "./presentation";
-import {
-  promoteProgressReporter,
-  requireDeploymentForService,
-} from "./release";
+import { promoteProgressReporter } from "./release";
 import type { ServicePromoteResult } from "./results";
-import {
-  resolveCurrentLiveDeploymentId,
-  resolveServiceReadState,
-  toServiceSummary,
-} from "./target";
+import { resolveDeploymentSubject, toServiceSummary } from "./target";
 
 export const serviceDeploymentPromoteCommand = defineCommand({
   help: {
     summary:
       "Promote a deployment to production by rebuilding with production env vars",
-    examples: [
-      "service deployment promote dep_123 --service my-service",
-      "service deployment promote dep_123 --service my-service --branch feature-x",
-    ],
+    examples: ["service deployment promote dep_123"],
   },
   args: {
-    flags: {
-      service: flag.string({ brief: "Service name", placeholder: "name" }),
-      project: flag.string({
-        brief: "Project id or name",
-        placeholder: "id-or-name",
-      }),
-      branch: flag.string({
-        brief: "Branch the service lives on (default: the default branch)",
-        placeholder: "name",
-      }),
-    },
     positionals: {
       deployment: positional.string({
         brief: "Deployment id to promote",
@@ -44,42 +23,20 @@ export const serviceDeploymentPromoteCommand = defineCommand({
   },
   needs: { credentials: true },
   handler: async (args, ctx) => {
-    const state = await resolveServiceReadState(ctx, {
-      serviceName: args.flags.service,
-      projectRef: args.flags.project,
-      branchName: args.flags.branch,
-      commandName: "service deployment promote",
-    });
-
-    const deploymentsResult = await state.provider
-      .listDeployments(state.service.id, { signal: ctx.signal })
-      .catch((error) => {
-        throw deployFailedError("Failed to list service deployments", error, [
-          runCommandAction(
-            "List deployments",
-            `service deployment list --service ${state.service.name}`,
-          ),
-        ]);
-      });
-    const currentLiveDeploymentId = resolveCurrentLiveDeploymentId(
-      deploymentsResult.app,
-      deploymentsResult.deployments,
-    );
-    const targetDeployment = requireDeploymentForService(
-      deploymentsResult.deployments,
+    const { provider, service, deployment } = await resolveDeploymentSubject(
+      ctx,
       args.positionals.deployment,
-      state.service.name,
     );
-    const alreadyLive = currentLiveDeploymentId === targetDeployment.id;
+    const alreadyLive = service.liveDeploymentId === deployment.id;
 
     if (!alreadyLive) {
       ctx.report({ kind: "step-started", step: "promote" });
       try {
-        await state.provider.promoteDeployment({
-          appId: state.service.id,
-          deploymentId: targetDeployment.id,
+        await provider.promoteDeployment({
+          appId: service.id,
+          deploymentId: deployment.id,
           signal: ctx.signal,
-          progress: promoteProgressReporter(ctx, targetDeployment.id),
+          progress: promoteProgressReporter(ctx, deployment.id),
         });
       } catch (error) {
         ctx.report({
@@ -90,7 +47,7 @@ export const serviceDeploymentPromoteCommand = defineCommand({
         throw deployFailedError("Failed to promote deployment", error, [
           runCommandAction(
             "List deployments",
-            `service deployment list --service ${state.service.name}`,
+            `service deployment list ${service.name}`,
           ),
         ]);
       }
@@ -98,9 +55,8 @@ export const serviceDeploymentPromoteCommand = defineCommand({
     }
 
     const result: ServicePromoteResult = {
-      projectId: state.projectId,
-      service: toServiceSummary(deploymentsResult.app),
-      deployment: { ...targetDeployment, status: "running", live: true },
+      service: toServiceSummary(service),
+      deployment: { ...deployment, status: "running", live: true },
     };
     const diagnostics: Diagnostic[] = alreadyLive
       ? [

@@ -14,14 +14,7 @@ describe("prisma-cli service delete", () => {
     const harness = await makeServiceCli({ routes: releaseRoutes() });
 
     const result = await harness.cli.run(
-      [
-        "service",
-        "delete",
-        "--project",
-        "acme-app",
-        "--service",
-        "hello-world",
-      ],
+      ["service", "delete", "--project", "acme-app", "hello-world"],
       {
         cwd: harness.cwd,
         env: harness.env,
@@ -56,14 +49,7 @@ describe("prisma-cli service delete", () => {
     const harness = await makeServiceCli({ routes: releaseRoutes() });
 
     const result = await harness.cli.run(
-      [
-        "service",
-        "delete",
-        "--project",
-        "acme-app",
-        "--service",
-        "hello-world",
-      ],
+      ["service", "delete", "--project", "acme-app", "hello-world"],
       {
         cwd: harness.cwd,
         env: harness.env,
@@ -101,15 +87,7 @@ describe("prisma-cli service delete", () => {
     const harness = await makeServiceCli({ routes: releaseRoutes() });
 
     const result = await harness.cli.run(
-      [
-        "service",
-        "delete",
-        "--project",
-        "acme-app",
-        "--service",
-        "hello-world",
-        "--json",
-      ],
+      ["service", "delete", "--project", "acme-app", "hello-world", "--json"],
       {
         cwd: harness.cwd,
         env: harness.env,
@@ -131,14 +109,7 @@ describe("prisma-cli service delete", () => {
     const harness = await makeServiceCli({ routes: releaseRoutes() });
 
     const result = await harness.cli.run(
-      [
-        "service",
-        "delete",
-        "--project",
-        "acme-app",
-        "--service",
-        "hello-world",
-      ],
+      ["service", "delete", "--project", "acme-app", "hello-world"],
       {
         cwd: harness.cwd,
         env: harness.env,
@@ -155,15 +126,7 @@ describe("prisma-cli service delete", () => {
     const harness = await makeServiceCli({ routes: releaseRoutes() });
 
     const result = await harness.cli.run(
-      [
-        "service",
-        "delete",
-        "--project",
-        "acme-app",
-        "--service",
-        "hello-world",
-        "--json",
-      ],
+      ["service", "delete", "--project", "acme-app", "hello-world", "--json"],
       { cwd: harness.cwd, env: harness.env },
     );
 
@@ -184,7 +147,6 @@ describe("prisma-cli service delete", () => {
         "delete",
         "--project",
         "acme-app",
-        "--service",
         "hello-world",
         "--confirm",
         "hello-world",
@@ -205,7 +167,6 @@ describe("prisma-cli service delete", () => {
         "delete",
         "--project",
         "acme-app",
-        "--service",
         "hello-world",
         "--confirm",
         "hello-world",
@@ -232,7 +193,6 @@ describe("prisma-cli service delete", () => {
         "delete",
         "--project",
         "acme-app",
-        "--service",
         "hello-world",
         "--confirm",
         "some-other-service",
@@ -261,7 +221,6 @@ describe("prisma-cli service delete", () => {
         "delete",
         "--project",
         "acme-app",
-        "--service",
         "hello-world",
         "--yes",
         "--json",
@@ -286,7 +245,6 @@ describe("prisma-cli service delete", () => {
         "delete",
         "--project",
         "acme-app",
-        "--service",
         "hello-world",
         "--branch",
         "",
@@ -314,15 +272,7 @@ describe("prisma-cli service delete", () => {
     });
 
     const result = await harness.cli.run(
-      [
-        "service",
-        "delete",
-        "--project",
-        "acme-app",
-        "--service",
-        "hello-world",
-        "--json",
-      ],
+      ["service", "delete", "--project", "acme-app", "hello-world", "--json"],
       {
         cwd: harness.cwd,
         env: harness.env,
@@ -344,7 +294,7 @@ describe("prisma-cli service delete", () => {
     expect(frame.envelope.error.code).toBe("SERVICE.DELETE_FAILED");
   });
 
-  it("requires --service or PRISMA_SERVICE_ID, interactive terminals included", async () => {
+  it("requires a service or PRISMA_SERVICE_ID, interactive terminals included", async () => {
     const harness = await makeServiceCli({
       routes: releaseRoutes({ "GET /v1/apps": () => ({ data: page([]) }) }),
     });
@@ -361,12 +311,12 @@ describe("prisma-cli service delete", () => {
     }
     expect(frame.envelope.error.code).toBe("SERVICE.TARGET_REQUIRED");
     expect(frame.envelope.error.summary).toBe(
-      'Command "service delete" requires --service',
+      'Command "service delete" requires a service',
     );
     expect(frame.envelope.nextActions).toEqual([
       {
         kind: "user-choice",
-        label: "Pass --service <name>.",
+        label: "Pass the service name as the first argument.",
       },
       {
         kind: "user-choice",

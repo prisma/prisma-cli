@@ -1,4 +1,4 @@
-import { defineCommand, flag } from "@prisma/cli-engine";
+import { defineCommand, flag, positional } from "@prisma/cli-engine";
 import type { Diagnostic } from "@prisma/cli-engine/protocol";
 import { ok } from "@prisma/cli-engine/protocol";
 import {
@@ -23,14 +23,13 @@ export const serviceDeploymentRollbackCommand = defineCommand({
   help: {
     summary: "Roll back production to a previous deployment",
     examples: [
-      "service deployment rollback --service my-service",
-      "service deployment rollback --service my-service --to dep_123",
-      "service deployment rollback --service my-service --to dep_123 --confirm dep_123",
+      "service deployment rollback my-service",
+      "service deployment rollback my-service --to dep_123",
+      "service deployment rollback my-service --to dep_123 --confirm dep_123",
     ],
   },
   args: {
     flags: {
-      service: flag.string({ brief: "Service name", placeholder: "name" }),
       project: flag.string({
         brief: "Project id or name",
         placeholder: "id-or-name",
@@ -45,11 +44,17 @@ export const serviceDeploymentRollbackCommand = defineCommand({
         placeholder: "deployment",
       }),
     },
+    positionals: {
+      service: positional.optionalString({
+        brief: "Service name",
+        placeholder: "service",
+      }),
+    },
   },
   needs: { credentials: true },
   handler: async (args, ctx) => {
     const state = await resolveServiceReadState(ctx, {
-      serviceName: args.flags.service,
+      serviceName: args.positionals.service,
       projectRef: args.flags.project,
       branchName: args.flags.branch,
       commandName: "service deployment rollback",
@@ -61,7 +66,7 @@ export const serviceDeploymentRollbackCommand = defineCommand({
         throw deployFailedError("Failed to list service deployments", error, [
           runCommandAction(
             "List deployments",
-            `service deployment list --service ${state.service.name}`,
+            `service deployment list ${state.service.name}`,
           ),
         ]);
       });
@@ -113,7 +118,7 @@ export const serviceDeploymentRollbackCommand = defineCommand({
         throw deployFailedError("Failed to roll back deployment", error, [
           runCommandAction(
             "List deployments",
-            `service deployment list --service ${state.service.name}`,
+            `service deployment list ${state.service.name}`,
           ),
         ]);
       }

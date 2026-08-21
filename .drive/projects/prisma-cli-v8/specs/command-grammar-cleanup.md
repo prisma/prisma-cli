@@ -109,3 +109,7 @@ feedback
 
 - Brief: operator message 2026-08-21 (this spec's source of scope).
 - `packages/cli/src/cli.ts` (mount table), `packages/cli/tests/mount-coverage.test.ts` (grammar check), `packages/cli/src/commands/service/target.ts` (ambient context), `packages/cli/node_modules/@prisma/orm-toolchain/dist/cli.mjs` (shipped redirect table), `@prisma/composer-cli/dist/family.mjs` (composer family shape).
+
+## Amendment (2026-08-21, operator ruling on PR #218)
+
+§2's `--service <name>` targeting is superseded: any command that operates on a subject resource takes that resource's identifier as its first positional argument (recorded as "Subjects are positional" in `docs/product/command-principles.md`). Concretely: `service show|open|logs|delete <service>` and `service deployment list|rollback <service>` take the service name as an optional positional (PRISMA_SERVICE_ID stays as the env fallback; neither present is still the SERVICE.TARGET_REQUIRED refusal). `service deployment promote|start|stop|delete <deployment>` and `service logs --deployment <id>` are targeted by the globally-unique deployment id alone, resolved the way `service deployment show` always was — they take no `--service`, `--project`, or `--branch`, and their results carry no `projectId`. `project show [id-or-name]` follows the same rule. Domain commands keep `--service` as a scope flag: their positional is the hostname, and the management API has no global hostname lookup.

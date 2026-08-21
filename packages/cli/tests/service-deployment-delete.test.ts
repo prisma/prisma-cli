@@ -8,7 +8,6 @@ import {
 } from "./service-testkit";
 
 const INTERACTIVE = { stdin: true, stdout: true, stderr: true };
-const TARGET = ["--project", "acme-app", "--service", "hello-world"];
 
 function blocks(presented: unknown) {
   const value = presented as
@@ -42,7 +41,7 @@ describe("prisma-cli service deployment delete", () => {
     const harness = await makeServiceCli({ routes: removal.routes });
 
     const result = await harness.cli.run(
-      ["service", "deployment", "delete", "dep_1", ...TARGET],
+      ["service", "deployment", "delete", "dep_1"],
       {
         cwd: harness.cwd,
         env: harness.env,
@@ -60,7 +59,6 @@ describe("prisma-cli service deployment delete", () => {
       outcome: "ok",
     });
     expect(result.presented?.data).toEqual({
-      projectId: "proj_1",
       service: { id: "svc_1", name: "hello-world" },
       deploymentId: "dep_1",
       deleted: true,
@@ -75,7 +73,6 @@ describe("prisma-cli service deployment delete", () => {
     ).toEqual({
       kind: "fields",
       rows: [
-        { label: "project", value: "proj_1" },
         { label: "service", value: "hello-world" },
         { label: "deployment", value: "dep_1" },
         { label: "deleted", value: "yes" },
@@ -93,7 +90,6 @@ describe("prisma-cli service deployment delete", () => {
         "deployment",
         "delete",
         "dep_1",
-        ...TARGET,
         "--confirm",
         "dep_1",
         "--json",
@@ -121,7 +117,6 @@ describe("prisma-cli service deployment delete", () => {
         "deployment",
         "delete",
         "dep_1",
-        ...TARGET,
         "--confirm",
         "dep_2",
         "--json",
@@ -146,7 +141,7 @@ describe("prisma-cli service deployment delete", () => {
     const harness = await makeServiceCli({ routes: removal.routes });
 
     const result = await harness.cli.run(
-      ["service", "deployment", "delete", "dep_1", ...TARGET],
+      ["service", "deployment", "delete", "dep_1"],
       {
         cwd: harness.cwd,
         env: harness.env,
@@ -165,7 +160,7 @@ describe("prisma-cli service deployment delete", () => {
     const harness = await makeServiceCli({ routes: removal.routes });
 
     const result = await harness.cli.run(
-      ["service", "deployment", "delete", "dep_1", ...TARGET, "--json"],
+      ["service", "deployment", "delete", "dep_1", "--json"],
       { cwd: harness.cwd, env: harness.env },
     );
 
@@ -190,15 +185,7 @@ describe("prisma-cli service deployment delete", () => {
     const harness = await makeServiceCli({ routes: removal.routes });
 
     const result = await harness.cli.run(
-      [
-        "service",
-        "deployment",
-        "delete",
-        "dep_2",
-        ...TARGET,
-        "--confirm",
-        "dep_2",
-      ],
+      ["service", "deployment", "delete", "dep_2", "--confirm", "dep_2"],
       { cwd: harness.cwd, env: harness.env, isTty: { stdout: true } },
     );
 
@@ -229,7 +216,6 @@ describe("prisma-cli service deployment delete", () => {
         "deployment",
         "delete",
         "dep_2",
-        ...TARGET,
         "--confirm",
         "dep_2",
         "--json",
@@ -261,7 +247,6 @@ describe("prisma-cli service deployment delete", () => {
         "deployment",
         "delete",
         "dep_missing",
-        ...TARGET,
         "--confirm",
         "dep_missing",
         "--json",
@@ -286,7 +271,7 @@ describe("prisma-cli service deployment delete", () => {
     });
 
     const result = await harness.cli.run(
-      ["service", "deployment", "delete", "dep_1", ...TARGET],
+      ["service", "deployment", "delete", "dep_1"],
       { cwd: harness.cwd, env: harness.env, isTty: INTERACTIVE },
     );
 

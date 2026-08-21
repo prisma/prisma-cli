@@ -1,31 +1,24 @@
 import type { CommandContext } from "@prisma/cli-engine";
-import { defineSessionCommand, flag } from "@prisma/cli-engine";
+import { defineSessionCommand, flag, positional } from "@prisma/cli-engine";
 import { CliStructuredError, ok } from "@prisma/cli-engine/protocol";
 import type { AppProvider, AppRecord } from "../../lib/app/app-provider";
 import { forEachNdjsonRecord } from "../../lib/ndjson";
 import {
   adviceAction,
   deployFailedError,
-  deploymentDetachedError,
   deploymentNotFoundError,
-  deploymentOutsideProjectError,
   logsRangeConflictError,
   noDeploymentsError,
   runCommandAction,
 } from "./errors";
 import { requireDeploymentForService } from "./release";
 import type { ServiceDeploymentSummary } from "./results";
-import type {
-  ServiceContext,
-  ServiceProjectState,
-  ServiceReadState,
-} from "./target";
+import type { ServiceContext, ServiceReadState } from "./target";
 import {
   applyLiveDeploymentHint,
-  listServices,
   requestedServiceTarget,
   resolveCurrentLiveDeploymentId,
-  resolveServiceProjectState,
+  resolveDeploymentSubject,
   resolveServiceReadState,
 } from "./target";
 
@@ -169,7 +162,7 @@ function listDeployments(
       throw deployFailedError("Failed to list service deployments", error, [
         runCommandAction(
           "List deployments",
-          `service deployment list --service ${service.name}`,
+          `service deployment list ${service.name}`,
         ),
       ]);
     });
@@ -193,46 +186,6 @@ async function resolveDeploymentInService(
     state.service.name,
   );
   return { service: deploymentsResult.app, deployment };
-}
-
-/** `--deployment <id>` without a service target: the id is global, so
- *  it is resolved directly and then checked against the resolved
- *  project — a deployment that exists but belongs elsewhere is reported
- *  as its own failure. */
-async function resolveGlobalDeployment(
-  ctx: ServiceContext,
-  state: ServiceProjectState,
-  deploymentId: string,
-): Promise<LogTarget> {
-  const shown = await state.provider
-    .showDeployment(deploymentId, { signal: ctx.signal })
-    .catch((error) => {
-      throw deployFailedError("Failed to show deployment", error, [
-        runCommandAction(
-          "List deployments",
-          "service deployment list --service <name>",
-        ),
-      ]);
-    });
-  if (!shown) {
-    throw deploymentNotFoundError(deploymentId);
-  }
-  if (!shown.app) {
-    throw deploymentDetachedError(deploymentId);
-  }
-
-  const services = await listServices(
-    ctx,
-    state.provider,
-    state.projectId,
-    state.target.branch.name,
-  );
-  const owning = services.find((service) => service.id === shown.app?.id);
-  if (!owning) {
-    throw deploymentOutsideProjectError(deploymentId);
-  }
-
-  return { service: owning, deployment: shown.deployment };
 }
 
 /** No `--deployment`: read whatever is live for the resolved service. */
@@ -388,41 +341,39 @@ async function followPages(
 
 /**
  * A globally-unique deployment id is a complete target on its own, so
- * `--deployment` with no service target (neither --service nor
- * PRISMA_SERVICE_ID) skips service resolution and checks the deployment
- * against the resolved project instead. A named service scopes the
+ * `--deployment` with no service target (neither a service argument nor
+ * PRISMA_SERVICE_ID) resolves it directly, the way `service deployment
+ * show` does — no project resolution at all. A named service scopes the
  * lookup to that service.
  */
 async function resolveLogsTarget(
   ctx: ServiceContext,
-  flags: {
+  options: {
     service?: string | undefined;
     project?: string | undefined;
     branch?: string | undefined;
     deployment?: string | undefined;
   },
-): Promise<{ state: ServiceProjectState; target: LogTarget }> {
-  const explicitDeploymentId = flags.deployment;
-  const serviceRequested = requestedServiceTarget(ctx, flags.service) !== null;
-  const projectOptions = {
-    ...(flags.project !== undefined ? { projectRef: flags.project } : {}),
-    ...(flags.branch !== undefined ? { branchName: flags.branch } : {}),
-    commandName: "service logs",
-  };
+): Promise<{ projectId: string | null; target: LogTarget }> {
+  const explicitDeploymentId = options.deployment;
+  const serviceRequested =
+    requestedServiceTarget(ctx, options.service) !== null;
 
   if (explicitDeploymentId !== undefined && !serviceRequested) {
-    const state = await resolveServiceProjectState(ctx, projectOptions);
+    const subject = await resolveDeploymentSubject(ctx, explicitDeploymentId);
     return {
-      state,
-      target: await resolveGlobalDeployment(ctx, state, explicitDeploymentId),
+      projectId: null,
+      target: { service: subject.service, deployment: subject.deployment },
     };
   }
   const readState = await resolveServiceReadState(ctx, {
-    ...(flags.service !== undefined ? { serviceName: flags.service } : {}),
-    ...projectOptions,
+    ...(options.service !== undefined ? { serviceName: options.service } : {}),
+    ...(options.project !== undefined ? { projectRef: options.project } : {}),
+    ...(options.branch !== undefined ? { branchName: options.branch } : {}),
+    commandName: "service logs",
   });
   return {
-    state: readState,
+    projectId: readState.projectId,
     target:
       explicitDeploymentId !== undefined
         ? await resolveDeploymentInService(ctx, readState, explicitDeploymentId)
@@ -434,15 +385,20 @@ export const serviceLogsCommand = defineSessionCommand({
   help: {
     summary: "Read logs for a deployment of the service",
     examples: [
-      "service logs --service my-service",
-      "service logs --service my-service --tail 500",
-      "service logs --service my-service --follow",
+      "service logs my-service",
+      "service logs my-service --tail 500",
+      "service logs my-service --follow",
       "service logs --deployment dep_123 --from-start",
     ],
   },
   args: {
+    positionals: {
+      service: positional.optionalString({
+        brief: "Service name",
+        placeholder: "service",
+      }),
+    },
     flags: {
-      service: flag.string({ brief: "Service name", placeholder: "name" }),
       project: flag.string({
         brief: "Project id or name",
         placeholder: "id-or-name",
@@ -475,11 +431,16 @@ export const serviceLogsCommand = defineSessionCommand({
       throw logsRangeConflictError();
     }
 
-    const { state, target } = await resolveLogsTarget(ctx, args.flags);
+    const { projectId, target } = await resolveLogsTarget(ctx, {
+      service: args.positionals.service,
+      ...args.flags,
+    });
     const deploymentId = target.deployment.id;
 
     for (const line of [
-      `project: ${state.projectId}`,
+      // A run targeted purely by deployment id resolves no project, so
+      // there is none to report.
+      ...(projectId === null ? [] : [`project: ${projectId}`]),
       `service: ${target.service.name}`,
       `deployment: ${deploymentId}`,
     ]) {

@@ -119,7 +119,7 @@ export function serviceSelectionInvalidError(
     {
       why: `The service "${serviceName}" could not be found in resolved project "${projectId}".`,
       nextActions: [
-        adviceAction("Pass --service with the name of an existing service."),
+        adviceAction("Pass the name of an existing service."),
         // Not `service deployment list`: that command has to resolve a
         // service before it can list anything, so it fails the same way.
         runCommandAction("List services", "service list"),
@@ -176,10 +176,7 @@ export function noDeploymentsError(
   return new CliStructuredError("SERVICE.NO_DEPLOYMENTS", summary, {
     why,
     nextActions: [
-      runCommandAction(
-        "Inspect the service",
-        `service show --service ${serviceName}`,
-      ),
+      runCommandAction("Inspect the service", `service show ${serviceName}`),
     ],
   });
 }
@@ -195,7 +192,7 @@ export function deploymentNotFoundError(
       nextActions: [
         runCommandAction(
           "Choose an available deployment id",
-          "service deployment list --service <name>",
+          "service deployment list <service>",
         ),
       ],
     },
@@ -219,26 +216,8 @@ export function logsRangeConflictError(): CliStructuredError {
   );
 }
 
-/** A deployment id resolves globally, so one that exists but belongs to
- *  another project is its own failure — not "not found". */
-export function deploymentOutsideProjectError(
-  deploymentId: string,
-): CliStructuredError {
-  return new CliStructuredError(
-    "SERVICE.DEPLOYMENT_OUTSIDE_PROJECT",
-    `Deployment "${deploymentId}" belongs to another project`,
-    {
-      why: "The deployment exists, but the service that owns it is not in the resolved project.",
-      nextActions: [
-        adviceAction("Pass --project for the project that owns it."),
-        runCommandAction("List services", "service list"),
-      ],
-    },
-  );
-}
-
-/** The deployment exists but names no owning service, so there is no
- *  project to check it against and nothing to scope logs by. */
+/** The deployment exists but names no owning service, so there is
+ *  nothing to report or act on it as. */
 export function deploymentDetachedError(
   deploymentId: string,
 ): CliStructuredError {
@@ -269,7 +248,7 @@ export function deploymentNotFoundForServiceError(
       nextActions: [
         runCommandAction(
           "Choose an available deployment id",
-          `service deployment list --service ${serviceName}`,
+          `service deployment list ${serviceName}`,
         ),
       ],
     },
@@ -283,11 +262,11 @@ export function serviceTargetRequiredError(
 ): CliStructuredError {
   return new CliStructuredError(
     "SERVICE.TARGET_REQUIRED",
-    `Command "${commandName}" requires --service`,
+    `Command "${commandName}" requires a service`,
     {
       why: "Service commands act only on an explicitly named service, and this run named none.",
       nextActions: [
-        adviceAction("Pass --service <name>."),
+        adviceAction("Pass the service name as the first argument."),
         adviceAction("Or set PRISMA_SERVICE_ID to a service id."),
         // Not `service deployment list`: it resolves a service first, so
         // it cannot help a run that could not resolve one.
@@ -311,7 +290,7 @@ export function noPreviousDeploymentError(
         ),
         runCommandAction(
           "List deployments",
-          `service deployment list --service ${serviceName}`,
+          `service deployment list ${serviceName}`,
         ),
       ],
     },
@@ -331,11 +310,11 @@ export function liveDeploymentUnknownError(
       nextActions: [
         runCommandAction(
           "Roll back to a named deployment",
-          `service deployment rollback --to <deployment> --service ${serviceName}`,
+          `service deployment rollback ${serviceName} --to <deployment>`,
         ),
         runCommandAction(
           "List deployments",
-          `service deployment list --service ${serviceName}`,
+          `service deployment list ${serviceName}`,
         ),
       ],
     },
@@ -350,13 +329,10 @@ export function deleteFailedError(
   return new CliStructuredError("SERVICE.DELETE_FAILED", summary, {
     why: cause instanceof Error ? cause.message : String(cause),
     nextActions: [
-      runCommandAction(
-        "Inspect the service",
-        `service show --service ${serviceName}`,
-      ),
+      runCommandAction("Inspect the service", `service show ${serviceName}`),
       runCommandAction(
         "List deployments",
-        `service deployment list --service ${serviceName}`,
+        `service deployment list ${serviceName}`,
       ),
     ],
     cause,
@@ -391,7 +367,7 @@ export function liveUrlUnavailableError(
       nextActions: [
         runCommandAction(
           "Inspect the deployment state",
-          `service show --service ${serviceName}`,
+          `service show ${serviceName}`,
         ),
       ],
     },
@@ -471,7 +447,7 @@ export function selectedServiceMissingError(
     {
       why: `The service "${serviceId}" from ${envVarName} could not be found in resolved project "${projectId}".`,
       nextActions: [
-        adviceAction(`Unset ${envVarName}, or pass --service <name>.`),
+        adviceAction(`Unset ${envVarName}, or pass a service name.`),
         runCommandAction("List services", "service list"),
       ],
     },

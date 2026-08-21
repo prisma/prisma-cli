@@ -429,13 +429,20 @@ export function buildProjectSetupNextActions(
     suggestedProjectName?: string;
     createCommand?: string;
     reason?: string;
+    /** The explicit-target retry line, for commands whose grammar the
+     *  generic `--project <id-or-name>` template does not fit. */
+    retryCommand?: string;
   } = {},
 ): NextAction[] {
   const recoveryCommands = buildProjectRecoveryCommands(options.commandName);
   const linkCommand =
     recoveryCommands[0] ?? "prisma-cli project link <id-or-name>";
-  const retryCommand = recoveryCommands[1];
-  const commands = ["prisma-cli project list", ...recoveryCommands];
+  const retryCommand = options.retryCommand ?? recoveryCommands[1];
+  const commands = [
+    "prisma-cli project list",
+    linkCommand,
+    ...(retryCommand ? [retryCommand] : []),
+  ];
 
   const actions: NextAction[] = [
     {

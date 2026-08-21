@@ -98,12 +98,7 @@ describeCommand("service list", () => {
 describeCommand("service show", () => {
   it("shows the created service, with nothing deployed to it", async () => {
     const existing = requireService();
-    const run = await scratch.run([
-      "service",
-      "show",
-      "--service",
-      existing.name,
-    ]);
+    const run = await scratch.run(["service", "show", existing.name]);
     const shown = run.envelope.result as {
       readonly projectId: string;
       readonly service: { readonly id: string; readonly name: string };
@@ -130,7 +125,6 @@ describeCommand("service delete", () => {
     const deletion = await scratch.run([
       "service",
       "delete",
-      "--service",
       existing.name,
       "--confirm",
       existing.name,

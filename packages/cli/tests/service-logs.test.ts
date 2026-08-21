@@ -103,7 +103,7 @@ function dataLines(events: readonly { kind: string }[]): string[] {
     .map((output) => output.line);
 }
 
-const TARGET = ["--project", "acme-app", "--service", "hello-world"];
+const TARGET = ["--project", "acme-app", "hello-world"];
 /** Polling is instant so a follow test does not wait on the 2s default. */
 const FAST_POLL = { PRISMA_CLI_SERVICE_LOGS_POLL_MS: "0" };
 
@@ -225,7 +225,7 @@ describe("prisma-cli service logs", () => {
       throw new Error("expected an errored envelope");
     }
     expect(frame.envelope.error.code).toBe("SERVICE.TARGET_REQUIRED");
-    expect(frame.envelope.error.summary).toContain("--service");
+    expect(frame.envelope.error.summary).toContain("requires a service");
   });
 
   it("resolves --deployment within the named service", async () => {
@@ -327,42 +327,25 @@ describe("prisma-cli service logs", () => {
     expect(frame.envelope.error.code).toBe("SERVICE.DEPLOYMENT_NOT_FOUND");
   });
 
-  it("settles a deployment owned by another project as its own failure", async () => {
+  it("resolves --deployment purely by id, with no project resolution", async () => {
     const queries: Array<Record<string, unknown> | undefined> = [];
     const harness = await makeServiceCli({
-      routes: {
-        ...logRoutes([[end(null)]], queries),
-        // The deployment's owning service is found by the global scan
-        // (no branch scope), but the resolved project's own listing is
-        // branch-scoped and does not contain it.
-        "GET /v1/apps": (init) => ({
-          data: init.params?.query?.branchGitName ? page([]) : page([SERVICE]),
-        }),
-      },
+      routes: logRoutes([[log("from dep_1"), end("7")]], queries),
     });
 
     const result = await harness.cli.run(
-      [
-        "service",
-        "logs",
-        "--deployment",
-        "dep_1",
-        "--project",
-        "acme-app",
-        "--json",
-      ],
+      ["service", "logs", "--deployment", "dep_1"],
       { cwd: harness.cwd, env: harness.env },
     );
 
-    expect(result.exitCode).toBe(2);
-    const frame = result.json[result.json.length - 1];
-    if (frame?.kind !== "result" || frame.envelope.ok) {
-      throw new Error("expected an errored envelope");
-    }
-    expect(frame.envelope.error.code).toBe(
-      "SERVICE.DEPLOYMENT_OUTSIDE_PROJECT",
-    );
-    expect(queries).toEqual([]);
+    expect(result.exitCode).toBe(0);
+    expect(dataLines(result.events)).toEqual(["from dep_1"]);
+    // The run resolved no project, so the header names none.
+    expect(
+      outputs(result.events).some((output) =>
+        String(output.line).startsWith("project:"),
+      ),
+    ).toBe(false);
   });
 
   it("settles a service with no live deployment as SERVICE.NO_DEPLOYMENTS", async () => {

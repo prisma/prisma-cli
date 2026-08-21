@@ -15,15 +15,7 @@ describe("prisma-cli service deployment list", () => {
     const harness = await makeServiceCli();
 
     const result = await harness.cli.run(
-      [
-        "service",
-        "deployment",
-        "list",
-        "--project",
-        "acme-app",
-        "--service",
-        "hello-world",
-      ],
+      ["service", "deployment", "list", "--project", "acme-app", "hello-world"],
       { cwd: harness.cwd, env: harness.env, isTty: { stdout: true } },
     );
 
@@ -70,15 +62,7 @@ describe("prisma-cli service deployment list", () => {
     );
 
     const result = await harness.cli.run(
-      [
-        "service",
-        "deployment",
-        "list",
-        "--project",
-        "acme-app",
-        "--service",
-        "hello-world",
-      ],
+      ["service", "deployment", "list", "--project", "acme-app", "hello-world"],
       { cwd: harness.cwd, env: harness.env, isTty: { stdout: true } },
     );
 
@@ -107,7 +91,7 @@ describe("prisma-cli service deployment list", () => {
       throw new Error("expected an errored envelope");
     }
     expect(frame.envelope.error.code).toBe("SERVICE.TARGET_REQUIRED");
-    expect(frame.envelope.error.summary).toContain("--service");
+    expect(frame.envelope.error.summary).toContain("requires a service");
   });
 
   it("emits the completed json envelope with commandId service.deployment.list", async () => {
@@ -120,7 +104,6 @@ describe("prisma-cli service deployment list", () => {
         "list",
         "--project",
         "acme-app",
-        "--service",
         "hello-world",
         "--json",
       ],
@@ -156,7 +139,6 @@ describe("prisma-cli service deployment list", () => {
         "list",
         "--project",
         "acme-app",
-        "--service",
         "hello-world",
         "--json",
       ],

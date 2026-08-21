@@ -128,12 +128,7 @@ export function listPresentations(result: ServiceListResult): Presentations {
     next: () => {
       const first = result.services[0];
       return first
-        ? [
-            runCommandAction(
-              "Show a service",
-              `service show --service ${first.name}`,
-            ),
-          ]
+        ? [runCommandAction("Show a service", `service show ${first.name}`)]
         : // Not a run-command: `command` is executed verbatim, and
           // `service create <name>` would make a service literally
           // called "<name>". Naming it is the user's choice, which is
@@ -177,7 +172,7 @@ export function createPresentations(
       runCommandAction("Deploy to the service", "deploy"),
       runCommandAction(
         "Show the service",
-        `service show --service ${result.service.name}`,
+        `service show ${result.service.name}`,
       ),
     ],
   };
@@ -189,7 +184,7 @@ export function showPresentations(result: ServiceShowResult): Presentations {
     next.push(
       runCommandAction(
         "Open the live URL",
-        `service open --service ${result.service.name}`,
+        `service open ${result.service.name}`,
       ),
     );
   }
@@ -316,7 +311,7 @@ export function openPresentations(
     next: () => [
       runCommandAction(
         "Inspect the service",
-        `service show --service ${result.service.name}`,
+        `service show ${result.service.name}`,
       ),
       runCommandAction(
         "Show the live deployment",
@@ -333,7 +328,7 @@ function deploymentNextActions(
   return [
     runCommandAction(
       "List deployments",
-      `service deployment list --service ${serviceName}`,
+      `service deployment list ${serviceName}`,
     ),
     runCommandAction(
       "Show the deployment",
@@ -356,7 +351,6 @@ export function promotePresentations(
           : `Promoted ${result.deployment.id} to production.`,
       ),
       fields([
-        { label: "project", value: result.projectId },
         { label: "service", value: result.service.name },
         { label: "deployment", value: result.deployment.id },
         { label: "status", value: result.deployment.status },
@@ -415,7 +409,6 @@ export function deploymentStartPresentations(
           : `Started ${result.deployment.id}.`,
       ),
       fields([
-        { label: "project", value: result.projectId },
         { label: "service", value: result.service.name },
         { label: "deployment", value: result.deployment.id },
         { label: "status", value: result.deployment.status },
@@ -442,7 +435,6 @@ export function deploymentStopPresentations(
           : `Stopped ${result.deployment.id}.`,
       ),
       fields([
-        { label: "project", value: result.projectId },
         { label: "service", value: result.service.name },
         { label: "deployment", value: result.deployment.id },
         { label: "status", value: result.deployment.status },
@@ -462,7 +454,6 @@ export function deploymentDeletePresentations(
     human: () => [
       completed(`Deleted ${result.deploymentId} from ${result.service.name}.`),
       fields([
-        { label: "project", value: result.projectId },
         { label: "service", value: result.service.name },
         { label: "deployment", value: result.deploymentId },
         { label: "deleted", value: "yes" },
@@ -471,7 +462,7 @@ export function deploymentDeletePresentations(
     next: () => [
       runCommandAction(
         "List deployments",
-        `service deployment list --service ${result.service.name}`,
+        `service deployment list ${result.service.name}`,
       ),
     ],
   };

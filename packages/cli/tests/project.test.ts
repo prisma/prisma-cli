@@ -396,7 +396,7 @@ describe("prisma-cli project show", () => {
     expect(result.presented?.presentation.next?.at(-1)).toEqual({
       kind: "run-command",
       label: "Retry with an explicit Project",
-      command: "prisma-cli project show --project <id-or-name>",
+      command: "prisma-cli project show <id-or-name>",
     });
     // "Not linked" is prose for a reader; stdout leaves the field empty.
     expect(result.presented?.presentation.stdout).toEqual([
@@ -408,7 +408,7 @@ describe("prisma-cli project show", () => {
 
   it("maps an unknown --project to PROJECT.NOT_FOUND", async () => {
     const result = await makeCli(fakeClient()).run(
-      ["project", "show", "--project", "nope", "--json"],
+      ["project", "show", "nope", "--json"],
       { cwd: await tempCwd() },
     );
 
@@ -429,7 +429,7 @@ describe("prisma-cli project show", () => {
       { ...API_PROJECTS[0], id: "proj_b", name: "Billing" },
     ];
     const result = await makeCli(fakeClient({ projects: duplicates })).run(
-      ["project", "show", "--project", "Billing", "--json"],
+      ["project", "show", "Billing", "--json"],
       { cwd: await tempCwd() },
     );
 

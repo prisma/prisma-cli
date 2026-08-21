@@ -14,7 +14,7 @@ describe("prisma-cli service open", () => {
     const harness = await makeServiceCli({ openUrl: opener });
 
     const result = await harness.cli.run(
-      ["service", "open", "--project", "acme-app", "--service", "hello-world"],
+      ["service", "open", "--project", "acme-app", "hello-world"],
       { cwd: harness.cwd, env: harness.env, isTty: { stdout: true } },
     );
 
@@ -41,7 +41,7 @@ describe("prisma-cli service open", () => {
       {
         kind: "run-command",
         label: "Inspect the service",
-        command: "prisma-cli service show --service hello-world",
+        command: "prisma-cli service show hello-world",
       },
       {
         kind: "run-command",
@@ -56,7 +56,7 @@ describe("prisma-cli service open", () => {
     const harness = await makeServiceCli({ openUrl: opener });
 
     const result = await harness.cli.run(
-      ["service", "open", "--project", "acme-app", "--service", "hello-world"],
+      ["service", "open", "--project", "acme-app", "hello-world"],
       {
         cwd: harness.cwd,
         env: harness.env,
@@ -87,7 +87,7 @@ describe("prisma-cli service open", () => {
     });
 
     const result = await harness.cli.run(
-      ["service", "open", "--project", "acme-app", "--service", "hello-world"],
+      ["service", "open", "--project", "acme-app", "hello-world"],
       {
         cwd: harness.cwd,
         env: harness.env,
@@ -113,15 +113,7 @@ describe("prisma-cli service open", () => {
     });
 
     const result = await harness.cli.run(
-      [
-        "service",
-        "open",
-        "--project",
-        "acme-app",
-        "--service",
-        "hello-world",
-        "--json",
-      ],
+      ["service", "open", "--project", "acme-app", "hello-world", "--json"],
       { cwd: harness.cwd, env: harness.env },
     );
 
@@ -136,7 +128,7 @@ describe("prisma-cli service open", () => {
       {
         kind: "run-command",
         label: "Inspect the service",
-        command: "prisma-cli service show --service hello-world",
+        command: "prisma-cli service show hello-world",
       },
     ]);
   });
@@ -151,15 +143,7 @@ describe("prisma-cli service open", () => {
     });
 
     const result = await harness.cli.run(
-      [
-        "service",
-        "open",
-        "--project",
-        "acme-app",
-        "--service",
-        "hello-world",
-        "--json",
-      ],
+      ["service", "open", "--project", "acme-app", "hello-world", "--json"],
       { cwd: harness.cwd, env: harness.env },
     );
 
@@ -175,15 +159,7 @@ describe("prisma-cli service open", () => {
     const harness = await makeServiceCli();
 
     const result = await harness.cli.run(
-      [
-        "service",
-        "open",
-        "--project",
-        "acme-app",
-        "--service",
-        "hello-world",
-        "--json",
-      ],
+      ["service", "open", "--project", "acme-app", "hello-world", "--json"],
       { cwd: harness.cwd, env: harness.env },
     );
 
