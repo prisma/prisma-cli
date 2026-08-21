@@ -132,7 +132,7 @@ describe("prisma service domain wait", () => {
     if (frame?.kind !== "result" || frame.envelope.ok) {
       throw new Error("expected an errored envelope");
     }
-    // The legacy guidance builder writes "prisma-cli app domain retry".
+    // The guidance builder writes the command a user types today.
     expect(frame.envelope.error.nextActions).toContainEqual({
       kind: "user-choice",
       label:
