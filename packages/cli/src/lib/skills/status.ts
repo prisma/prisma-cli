@@ -23,9 +23,10 @@ export interface InstalledSourcePackage {
   readonly conflictingVersions: readonly string[];
 }
 
-/** "unmanaged": the directory exists but is not this CLI's copy — no
- *  stamp, or a stamp naming a package outside the allowlist. Sync never
- *  touches it. */
+/** "unmanaged": the directory holds a SKILL.md this CLI did not write —
+ *  unstamped, or stamped by a package outside the allowlist. Sync never
+ *  touches it. A directory without a SKILL.md reads as "absent" so an
+ *  interrupted copy is repaired by the next sync. */
 export type SkillTargetState = "synced" | "stale" | "absent" | "unmanaged";
 
 export interface SkillTarget {
@@ -189,7 +190,7 @@ async function readSkillStatus(
     targets.push({
       dir,
       syncedVersion: stamp?.libraryVersion ?? null,
-      state: await stampState(skillDir, stamp, source.version),
+      state: stampState(stamp, source.version),
     });
   }
 
@@ -205,13 +206,14 @@ async function readSkillStatus(
   };
 }
 
-async function stampState(
-  skillDir: string,
+function stampState(
   stamp: SkillStamp | null,
   sourceVersion: string,
-): Promise<SkillTargetState> {
+): SkillTargetState {
+  // A null stamp means no readable SKILL.md: nobody's skill, so sync
+  // may (re)write it — this is how an interrupted copy self-heals.
   if (stamp === null) {
-    return (await exists(skillDir)) ? "unmanaged" : "absent";
+    return "absent";
   }
   if (stamp.library === null || !isSkillSourcePackage(stamp.library)) {
     return "unmanaged";
@@ -282,15 +284,6 @@ async function skillDirectories(dir: string): Promise<string[]> {
 async function isFile(target: string): Promise<boolean> {
   try {
     return (await stat(target)).isFile();
-  } catch {
-    return false;
-  }
-}
-
-async function exists(target: string): Promise<boolean> {
-  try {
-    await stat(target);
-    return true;
   } catch {
     return false;
   }

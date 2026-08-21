@@ -1,4 +1,4 @@
-// biome-ignore-all lint/performance/noAwaitInLoops: one skill tree is written at a time, so an interrupted sync leaves whole trees rather than an interleaving of half-copied ones.
+// biome-ignore-all lint/performance/noAwaitInLoops: one skill tree is written at a time; an interrupted copy can leave one partial tree, which reads as absent (no SKILL.md yet) and is repaired by the next sync.
 import { mkdir, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 
@@ -18,9 +18,9 @@ export interface PrunedSkill {
   readonly dirs: readonly string[];
 }
 
-/** A target directory sync would have written, except it holds a skill
- *  this CLI does not manage — no stamp, or a stamp from a package
- *  outside the allowlist. */
+/** A target directory sync would have written, except it holds a
+ *  SKILL.md this CLI does not manage — unstamped, or stamped by a
+ *  package outside the allowlist. */
 export interface RefusedSkill {
   readonly skill: string;
   readonly dirs: readonly string[];
@@ -55,6 +55,17 @@ export async function syncSkills(status: SkillsStatus): Promise<SyncOutcome> {
       .map((target) => target.dir);
     if (refusedDirs.length > 0) {
       refused.push({ skill: skill.skill, dirs: refusedDirs });
+    }
+    // Older CLI versions wrote a `*` .gitignore into their copies; a
+    // copy that is already current never gets rewritten, so the stray
+    // file is removed here.
+    for (const target of skill.targets) {
+      if (target.state === "synced") {
+        await rm(
+          path.join(status.projectRoot, target.dir, skill.skill, ".gitignore"),
+          { force: true },
+        );
+      }
     }
     if (dirs.length === 0) {
       continue;

@@ -682,6 +682,72 @@ describe("harness directories that already exist", () => {
     );
   });
 
+  it("removes an old CLI's .gitignore from a copy that is already current", async () => {
+    const root = await makeProjectRoot();
+    await installPackage(root, {
+      name: "@prisma/orm-postgres",
+      version: "8.1.0",
+      skills: ["prisma-8"],
+    });
+    await seedSyncedSkill(root, ".claude/skills", {
+      skill: "prisma-8",
+      library: "@prisma/orm-postgres",
+      version: "8.1.0",
+    });
+    const gitignore = path.join(
+      root,
+      ".claude/skills",
+      "prisma-8",
+      ".gitignore",
+    );
+    await writeFile(gitignore, "*\n", "utf8");
+    const skillBefore = await readFile(
+      path.join(root, ".claude/skills", "prisma-8", "SKILL.md"),
+      "utf8",
+    );
+
+    const { exitCode, result } = await runSync(root);
+
+    expect(exitCode).toBe(0);
+    expect(await exists(gitignore)).toBe(false);
+    expect(
+      await readFile(
+        path.join(root, ".claude/skills", "prisma-8", "SKILL.md"),
+        "utf8",
+      ),
+    ).toBe(skillBefore);
+    // The current copy was cleaned, not resynced.
+    expect(result.synced.flatMap((skill) => skill.dirs)).not.toContain(
+      ".claude/skills",
+    );
+    expect(result.pruned).toEqual([]);
+  });
+
+  it("repairs a partial tree that lost its SKILL.md", async () => {
+    const root = await makeProjectRoot();
+    await installPackage(root, {
+      name: "@prisma/orm-postgres",
+      version: "8.1.0",
+      skills: ["prisma-8"],
+    });
+    // What an interrupted copy leaves: files, but no SKILL.md yet.
+    await mkdir(path.join(root, ".claude/skills", "prisma-8", "references"), {
+      recursive: true,
+    });
+    await writeFile(
+      path.join(root, ".claude/skills", "prisma-8", "references", "usage.md"),
+      "# half-copied\n",
+      "utf8",
+    );
+
+    const { exitCode, result } = await runSync(root);
+
+    expect(exitCode).toBe(0);
+    expect(result.refused).toEqual([]);
+    expect(result.synced[0]?.dirs).toEqual([...HARNESS_SKILL_DIRS]);
+    expect(await stampOf(root, ".claude/skills", "prisma-8")).toBe("8.1.0");
+  });
+
   it("re-syncs after the copies are deleted by hand", async () => {
     const root = await makeProjectRoot();
     await installPackage(root, {
