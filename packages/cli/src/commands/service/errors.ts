@@ -120,7 +120,7 @@ export function serviceSelectionInvalidError(
       why: `The service "${serviceName}" could not be found in resolved project "${projectId}".`,
       nextActions: [
         adviceAction("Pass the name of an existing service."),
-        // Not `service deployment list`: that command has to resolve a
+        // Not `service version list`: that command has to resolve a
         // service before it can list anything, so it fails the same way.
         runCommandAction("List services", "service list"),
       ],
@@ -168,12 +168,12 @@ export function deployFailedError(
   });
 }
 
-export function noDeploymentsError(
+export function noVersionsError(
   summary: string,
   why: string,
   serviceName: string,
 ): CliStructuredError {
-  return new CliStructuredError("SERVICE.NO_DEPLOYMENTS", summary, {
+  return new CliStructuredError("SERVICE.NO_VERSIONS", summary, {
     why,
     nextActions: [
       runCommandAction("Inspect the service", `service show ${serviceName}`),
@@ -181,18 +181,16 @@ export function noDeploymentsError(
   });
 }
 
-export function deploymentNotFoundError(
-  deploymentId: string,
-): CliStructuredError {
+export function versionNotFoundError(deploymentId: string): CliStructuredError {
   return new CliStructuredError(
-    "SERVICE.DEPLOYMENT_NOT_FOUND",
-    `Deployment "${deploymentId}" not found`,
+    "SERVICE.VERSION_NOT_FOUND",
+    `Version "${deploymentId}" not found`,
     {
-      why: "The requested deployment does not exist or is no longer available.",
+      why: "The requested service version does not exist or is no longer available.",
       nextActions: [
         runCommandAction(
-          "Choose an available deployment id",
-          "service deployment list <service>",
+          "Choose an available version id",
+          "service version list <service>",
         ),
       ],
     },
@@ -216,39 +214,37 @@ export function logsRangeConflictError(): CliStructuredError {
   );
 }
 
-/** The deployment exists but names no owning service, so there is
+/** The version exists but names no owning service, so there is
  *  nothing to report or act on it as. */
-export function deploymentDetachedError(
-  deploymentId: string,
-): CliStructuredError {
+export function versionDetachedError(deploymentId: string): CliStructuredError {
   return new CliStructuredError(
-    "SERVICE.DEPLOYMENT_DETACHED",
-    `Deployment "${deploymentId}" has no owning service`,
+    "SERVICE.VERSION_DETACHED",
+    `Version "${deploymentId}" has no owning service`,
     {
-      why: "The Management API returned the deployment without a service, so it cannot be scoped to a project.",
+      why: "The Management API returned the version without a service, so there is nothing to report or act on it as.",
       nextActions: [
         runCommandAction(
-          "Show the deployment",
-          `service deployment show ${deploymentId}`,
+          "Show the version",
+          `service version show ${deploymentId}`,
         ),
       ],
     },
   );
 }
 
-export function deploymentNotFoundForServiceError(
+export function versionNotFoundForServiceError(
   deploymentId: string,
   serviceName: string,
 ): CliStructuredError {
   return new CliStructuredError(
-    "SERVICE.DEPLOYMENT_NOT_FOUND",
-    `Deployment "${deploymentId}" not found for service "${serviceName}"`,
+    "SERVICE.VERSION_NOT_FOUND",
+    `Version "${deploymentId}" not found for service "${serviceName}"`,
     {
-      why: "The requested deployment does not belong to the resolved service or is no longer available.",
+      why: "The requested version does not belong to the resolved service or is no longer available.",
       nextActions: [
         runCommandAction(
-          "Choose an available deployment id",
-          `service deployment list ${serviceName}`,
+          "Choose an available version id",
+          `service version list ${serviceName}`,
         ),
       ],
     },
@@ -268,7 +264,7 @@ export function serviceTargetRequiredError(
       nextActions: [
         adviceAction("Pass the service name as the first argument."),
         adviceAction("Or set PRISMA_SERVICE_ID to a service id."),
-        // Not `service deployment list`: it resolves a service first, so
+        // Not `service version list`: it resolves a service first, so
         // it cannot help a run that could not resolve one.
         runCommandAction("List services", "service list"),
       ],
@@ -276,21 +272,21 @@ export function serviceTargetRequiredError(
   );
 }
 
-export function noPreviousDeploymentError(
+export function noPreviousVersionError(
   serviceName: string,
 ): CliStructuredError {
   return new CliStructuredError(
-    "SERVICE.NO_PREVIOUS_DEPLOYMENT",
-    "No previous deployment available for rollback",
+    "SERVICE.NO_PREVIOUS_VERSION",
+    "No previous version available for rollback",
     {
-      why: "The service does not have an earlier deployment to switch back to.",
+      why: "The service does not have an earlier version to switch back to.",
       nextActions: [
         adviceAction(
-          "Deploy a second version first, or pass --to <deployment-id> for a specific earlier deployment.",
+          "Deploy a second version first, or pass --to <version-id> for a specific earlier version.",
         ),
         runCommandAction(
-          "List deployments",
-          `service deployment list ${serviceName}`,
+          "List versions",
+          `service version list ${serviceName}`,
         ),
       ],
     },
@@ -299,22 +295,22 @@ export function noPreviousDeploymentError(
 
 /** Rolling back without `--to` needs the live deployment: the default
  *  target is defined relative to it. */
-export function liveDeploymentUnknownError(
+export function liveVersionUnknownError(
   serviceName: string,
 ): CliStructuredError {
   return new CliStructuredError(
-    "SERVICE.LIVE_DEPLOYMENT_UNKNOWN",
-    "Cannot determine which deployment is currently live",
+    "SERVICE.LIVE_VERSION_UNKNOWN",
+    "Cannot determine which version is currently live",
     {
-      why: "The service record does not name a live deployment, so the deployment to roll back to cannot be chosen without guessing what production is serving.",
+      why: "The service record does not name a live version, so the version to roll back to cannot be chosen without guessing what production is serving.",
       nextActions: [
         runCommandAction(
-          "Roll back to a named deployment",
-          `service deployment rollback ${serviceName} --to <deployment>`,
+          "Roll back to a named version",
+          `service version rollback ${serviceName} --to <version>`,
         ),
         runCommandAction(
-          "List deployments",
-          `service deployment list ${serviceName}`,
+          "List versions",
+          `service version list ${serviceName}`,
         ),
       ],
     },
@@ -330,10 +326,7 @@ export function deleteFailedError(
     why: cause instanceof Error ? cause.message : String(cause),
     nextActions: [
       runCommandAction("Inspect the service", `service show ${serviceName}`),
-      runCommandAction(
-        "List deployments",
-        `service deployment list ${serviceName}`,
-      ),
+      runCommandAction("List versions", `service version list ${serviceName}`),
     ],
     cause,
   });
@@ -363,10 +356,10 @@ export function liveUrlUnavailableError(
     "SERVICE.FEATURE_UNAVAILABLE",
     "Live URL is not available for this service",
     {
-      why: "Deployments exist, but the provider does not expose a stable live service URL for this service yet.",
+      why: "Versions exist, but the provider does not expose a stable live service URL for this service yet.",
       nextActions: [
         runCommandAction(
-          "Inspect the deployment state",
+          "Inspect the service state",
           `service show ${serviceName}`,
         ),
       ],
@@ -671,8 +664,8 @@ function domainRequiresDeploymentError(
   error: DomainApiError,
 ): CliStructuredError {
   return new CliStructuredError(
-    "SERVICE.NO_DEPLOYMENTS",
-    "Custom domain requires a live production deployment",
+    "SERVICE.NO_VERSIONS",
+    "Custom domain requires a live production version",
     {
       why: "The selected production service does not have a promoted version that can receive a custom domain.",
       meta: debugMeta(error),
@@ -682,7 +675,7 @@ function domainRequiresDeploymentError(
         // with the dropped command; without the advice the only thing
         // left told the user to rerun what had just failed.
         adviceAction(
-          "Promote a deployment on the service's production branch, then add the domain again.",
+          "Promote a version on the service's production branch, then add the domain again.",
         ),
         runCommandAction(
           "Add the domain",

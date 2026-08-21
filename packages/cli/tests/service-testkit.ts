@@ -288,7 +288,7 @@ export function releaseRoutes(overrides: Routes = {}): Routes {
 const SERVICE_GROUPS = {
   service: { brief: "Manage services and deployments for a project" },
   "service domain": { brief: "Manage custom domains for a service" },
-  "service deployment": { brief: "Manage deployments for a service" },
+  "service version": { brief: "Manage deployments for a service" },
   build: { brief: "Inspect builds created by a git push or Console" },
 };
 

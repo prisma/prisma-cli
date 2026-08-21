@@ -64,13 +64,13 @@ function startRoutes(
     }),
   };
 }
-describe("prisma-cli service deployment start", () => {
+describe("prisma-cli service version start", () => {
   it("starts a stopped deployment and reports it running", async () => {
     const start = startRoutes();
     const harness = await makeServiceCli({ routes: start.routes });
 
     const result = await harness.cli.run(
-      ["service", "deployment", "start", "dep_1"],
+      ["service", "version", "start", "dep_1"],
       { cwd: harness.cwd, env: harness.env, isTty: { stdout: true } },
     );
 
@@ -84,7 +84,7 @@ describe("prisma-cli service deployment start", () => {
     });
     expect(result.presented?.data).toMatchObject({
       service: { id: "svc_1", name: "hello-world" },
-      deployment: { id: "dep_1", status: "running" },
+      version: { id: "dep_1", status: "running" },
       alreadyInState: false,
     });
     expect(presentedSummary(result.presented)).toEqual({
@@ -98,7 +98,7 @@ describe("prisma-cli service deployment start", () => {
       kind: "fields",
       rows: [
         { label: "service", value: "hello-world" },
-        { label: "deployment", value: "dep_1" },
+        { label: "version", value: "dep_1" },
         { label: "status", value: "running" },
         // releaseRoutes serves each deployment's detail as
         // "<id>.prisma.app", and the listing reads those details.
@@ -117,14 +117,14 @@ describe("prisma-cli service deployment start", () => {
     const harness = await makeServiceCli({ routes: start.routes });
 
     const result = await harness.cli.run(
-      ["service", "deployment", "start", "dep_1"],
+      ["service", "version", "start", "dep_1"],
       { cwd: harness.cwd, env: harness.env, isTty: { stdout: true } },
     );
 
     expect(result.exitCode).toBe(0);
     expect(start.started).toEqual(["dep_1"]);
     expect(result.presented?.data).toMatchObject({
-      deployment: { id: "dep_1", status: "starting" },
+      version: { id: "dep_1", status: "starting" },
       alreadyInState: false,
     });
   });
@@ -134,7 +134,7 @@ describe("prisma-cli service deployment start", () => {
     const harness = await makeServiceCli({ routes: start.routes });
 
     const result = await harness.cli.run(
-      ["service", "deployment", "start", "dep_2"],
+      ["service", "version", "start", "dep_2"],
       { cwd: harness.cwd, env: harness.env, isTty: { stdout: true } },
     );
 
@@ -142,9 +142,9 @@ describe("prisma-cli service deployment start", () => {
     expect(start.started).toEqual([]);
     expect(result.presented?.diagnostics).toEqual([
       {
-        code: "SERVICE.DEPLOYMENT_ALREADY_RUNNING",
+        code: "SERVICE.VERSION_ALREADY_RUNNING",
         severity: "warn",
-        summary: "The selected deployment is already running.",
+        summary: "The selected version is already running.",
         nextActions: [],
       },
     ]);
@@ -170,7 +170,7 @@ describe("prisma-cli service deployment start", () => {
     const harness = await makeServiceCli({ routes: start.routes });
 
     const result = await harness.cli.run(
-      ["service", "deployment", "start", "dep_1", "--json"],
+      ["service", "version", "start", "dep_1", "--json"],
       { cwd: harness.cwd, env: harness.env },
     );
 
@@ -180,7 +180,7 @@ describe("prisma-cli service deployment start", () => {
       throw new Error("expected an errored envelope");
     }
     expect(frame.envelope.error.code).toBe("SERVICE.DEPLOY_FAILED");
-    expect(frame.envelope.error.summary).toBe("Failed to start deployment");
+    expect(frame.envelope.error.summary).toBe("Failed to start version");
     // The CLI invents no precondition of its own: what the user reads is
     // the message the API sent back.
     expect(frame.envelope.error.why).toContain(
@@ -188,12 +188,12 @@ describe("prisma-cli service deployment start", () => {
     );
   });
 
-  it("settles an unknown deployment id as SERVICE.DEPLOYMENT_NOT_FOUND", async () => {
+  it("settles an unknown deployment id as SERVICE.VERSION_NOT_FOUND", async () => {
     const start = startRoutes();
     const harness = await makeServiceCli({ routes: start.routes });
 
     const result = await harness.cli.run(
-      ["service", "deployment", "start", "dep_missing", "--json"],
+      ["service", "version", "start", "dep_missing", "--json"],
       { cwd: harness.cwd, env: harness.env },
     );
 
@@ -202,16 +202,16 @@ describe("prisma-cli service deployment start", () => {
     if (frame?.kind !== "result" || frame.envelope.ok) {
       throw new Error("expected an errored envelope");
     }
-    expect(frame.envelope.error.code).toBe("SERVICE.DEPLOYMENT_NOT_FOUND");
+    expect(frame.envelope.error.code).toBe("SERVICE.VERSION_NOT_FOUND");
     expect(start.started).toEqual([]);
   });
 
-  it("emits the completed json envelope with commandId service.deployment.start", async () => {
+  it("emits the completed json envelope with commandId service.version.start", async () => {
     const start = startRoutes();
     const harness = await makeServiceCli({ routes: start.routes });
 
     const result = await harness.cli.run(
-      ["service", "deployment", "start", "dep_1", "--json"],
+      ["service", "version", "start", "dep_1", "--json"],
       { cwd: harness.cwd, env: harness.env },
     );
 
@@ -220,9 +220,9 @@ describe("prisma-cli service deployment start", () => {
     if (frame?.kind !== "result" || !frame.envelope.ok) {
       throw new Error("expected a completed envelope");
     }
-    expect(frame.envelope.commandId).toBe("service.deployment.start");
+    expect(frame.envelope.commandId).toBe("service.version.start");
     expect(frame.envelope.result).toMatchObject({
-      deployment: { id: "dep_1", status: "running" },
+      version: { id: "dep_1", status: "running" },
     });
   });
 
@@ -234,7 +234,7 @@ describe("prisma-cli service deployment start", () => {
     });
 
     const result = await harness.cli.run(
-      ["service", "deployment", "start", "dep_1"],
+      ["service", "version", "start", "dep_1"],
       { cwd: harness.cwd, env: harness.env, isTty: { stdout: true } },
     );
 

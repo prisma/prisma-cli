@@ -148,8 +148,8 @@ export async function deployService(
   // failure would strand the whole scratch project, not just this
   // service.
   try {
-    await cli.run(["service", "deployment", "start", deploymentId]);
-    await cli.run(["service", "deployment", "promote", deploymentId]);
+    await cli.run(["service", "version", "start", deploymentId]);
+    await cli.run(["service", "version", "promote", deploymentId]);
   } catch (failure) {
     await deleteDeployment(cli, { id: deploymentId, serviceName });
     throw failure;
@@ -175,7 +175,7 @@ export async function deleteDeployment(
     const removal = await cli.run(
       [
         "service",
-        "deployment",
+        "version",
         "delete",
         deployment.id,
         "--confirm",

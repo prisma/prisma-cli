@@ -126,7 +126,7 @@ describe("prisma-cli service logs", () => {
     // The service's latest deployment is dep_2, so that is what is read.
     expect(outputs(result.events)).toContainEqual({
       channel: "diagnostic",
-      line: "deployment: dep_2",
+      line: "version: dep_2",
     });
     expect(dataLines(result.events)).toEqual(["first line", "second line"]);
     // One page only: no follow, so no second request.
@@ -190,21 +190,21 @@ describe("prisma-cli service logs", () => {
     expect(queries).toEqual([]);
   });
 
-  it("reads an explicit --deployment resolved globally", async () => {
+  it("reads an explicit --version resolved globally", async () => {
     const queries: Array<Record<string, unknown> | undefined> = [];
     const harness = await makeServiceCli({
       routes: logRoutes([[log("from dep_1"), end("7")]], queries),
     });
 
     const result = await harness.cli.run(
-      ["service", "logs", "--deployment", "dep_1", "--project", "acme-app"],
+      ["service", "logs", "--version-id", "dep_1", "--project", "acme-app"],
       { cwd: harness.cwd, env: harness.env },
     );
 
     expect(result.exitCode).toBe(0);
     expect(outputs(result.events)).toContainEqual({
       channel: "diagnostic",
-      line: "deployment: dep_1",
+      line: "version: dep_1",
     });
     expect(dataLines(result.events)).toEqual(["from dep_1"]);
   });
@@ -228,14 +228,14 @@ describe("prisma-cli service logs", () => {
     expect(frame.envelope.error.summary).toContain("requires a service");
   });
 
-  it("resolves --deployment within the named service", async () => {
+  it("resolves --version within the named service", async () => {
     const queries: Array<Record<string, unknown> | undefined> = [];
     const harness = await makeServiceCli({
       routes: logRoutes([[log("from dep_1"), end("7")]], queries),
     });
 
     const result = await harness.cli.run(
-      ["service", "logs", "--deployment", "dep_1", ...TARGET],
+      ["service", "logs", "--version-id", "dep_1", ...TARGET],
       { cwd: harness.cwd, env: harness.env },
     );
 
@@ -246,18 +246,18 @@ describe("prisma-cli service logs", () => {
     });
     expect(outputs(result.events)).toContainEqual({
       channel: "diagnostic",
-      line: "deployment: dep_1",
+      line: "version: dep_1",
     });
     expect(dataLines(result.events)).toEqual(["from dep_1"]);
   });
 
-  it("refuses a --deployment the named service does not own", async () => {
+  it("refuses a --version the named service does not own", async () => {
     const harness = await makeServiceCli({
       routes: logRoutes([[end(null)]], []),
     });
 
     const result = await harness.cli.run(
-      ["service", "logs", "--deployment", "dep_missing", ...TARGET, "--json"],
+      ["service", "logs", "--version-id", "dep_missing", ...TARGET, "--json"],
       { cwd: harness.cwd, env: harness.env },
     );
 
@@ -266,12 +266,12 @@ describe("prisma-cli service logs", () => {
     if (frame?.kind !== "result" || frame.envelope.ok) {
       throw new Error("expected an errored envelope");
     }
-    expect(frame.envelope.error.code).toBe("SERVICE.DEPLOYMENT_NOT_FOUND");
+    expect(frame.envelope.error.code).toBe("SERVICE.VERSION_NOT_FOUND");
     // The service-scoped refusal, not the global lookup's 404.
     expect(frame.envelope.error.summary).toContain('for service "hello-world"');
   });
 
-  it("scopes --deployment to the PRISMA_SERVICE_ID service like --service", async () => {
+  it("scopes --version to the PRISMA_SERVICE_ID service like --service", async () => {
     const harness = await makeServiceCli({
       routes: logRoutes([[end(null)]], []),
     });
@@ -280,7 +280,7 @@ describe("prisma-cli service logs", () => {
       [
         "service",
         "logs",
-        "--deployment",
+        "--version-id",
         "dep_missing",
         "--project",
         "acme-app",
@@ -297,11 +297,11 @@ describe("prisma-cli service logs", () => {
     if (frame?.kind !== "result" || frame.envelope.ok) {
       throw new Error("expected an errored envelope");
     }
-    expect(frame.envelope.error.code).toBe("SERVICE.DEPLOYMENT_NOT_FOUND");
+    expect(frame.envelope.error.code).toBe("SERVICE.VERSION_NOT_FOUND");
     expect(frame.envelope.error.summary).toContain('for service "hello-world"');
   });
 
-  it("settles an unknown --deployment as SERVICE.DEPLOYMENT_NOT_FOUND", async () => {
+  it("settles an unknown --version as SERVICE.VERSION_NOT_FOUND", async () => {
     const harness = await makeServiceCli({
       routes: logRoutes([[end(null)]], []),
     });
@@ -310,7 +310,7 @@ describe("prisma-cli service logs", () => {
       [
         "service",
         "logs",
-        "--deployment",
+        "--version-id",
         "dep_missing",
         "--project",
         "acme-app",
@@ -324,17 +324,17 @@ describe("prisma-cli service logs", () => {
     if (frame?.kind !== "result" || frame.envelope.ok) {
       throw new Error("expected an errored envelope");
     }
-    expect(frame.envelope.error.code).toBe("SERVICE.DEPLOYMENT_NOT_FOUND");
+    expect(frame.envelope.error.code).toBe("SERVICE.VERSION_NOT_FOUND");
   });
 
-  it("resolves --deployment purely by id, with no project resolution", async () => {
+  it("resolves --version purely by id, with no project resolution", async () => {
     const queries: Array<Record<string, unknown> | undefined> = [];
     const harness = await makeServiceCli({
       routes: logRoutes([[log("from dep_1"), end("7")]], queries),
     });
 
     const result = await harness.cli.run(
-      ["service", "logs", "--deployment", "dep_1"],
+      ["service", "logs", "--version-id", "dep_1"],
       { cwd: harness.cwd, env: harness.env },
     );
 
@@ -348,7 +348,7 @@ describe("prisma-cli service logs", () => {
     ).toBe(false);
   });
 
-  it("settles a service with no live deployment as SERVICE.NO_DEPLOYMENTS", async () => {
+  it("settles a service with no live deployment as SERVICE.NO_VERSIONS", async () => {
     const harness = await makeServiceCli({
       routes: {
         ...logRoutes([[end(null)]], []),
@@ -371,7 +371,7 @@ describe("prisma-cli service logs", () => {
     if (frame?.kind !== "result" || frame.envelope.ok) {
       throw new Error("expected an errored envelope");
     }
-    expect(frame.envelope.error.code).toBe("SERVICE.NO_DEPLOYMENTS");
+    expect(frame.envelope.error.code).toBe("SERVICE.NO_VERSIONS");
   });
 
   it("settles an error terminal record as a structured failure", async () => {

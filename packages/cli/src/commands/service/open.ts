@@ -3,16 +3,16 @@ import { ok } from "@prisma/cli-engine/protocol";
 import {
   deployFailedError,
   liveUrlUnavailableError,
-  noDeploymentsError,
+  noVersionsError,
   runCommandAction,
 } from "./errors";
 import { openPresentations } from "./presentation";
 import type { ServiceOpenResult } from "./results";
 import {
-  applyLiveDeploymentHint,
-  resolveCurrentLiveDeploymentId,
+  applyLiveVersionHint,
+  resolveCurrentLiveVersionId,
   resolveServiceReadState,
-  sortDeploymentsNewestFirst,
+  sortVersionsNewestFirst,
   toServiceSummary,
 } from "./target";
 
@@ -61,12 +61,12 @@ export const serviceOpenCommand = defineCommand({
           ),
         ]);
       });
-    const currentLiveDeploymentId = resolveCurrentLiveDeploymentId(
+    const currentLiveDeploymentId = resolveCurrentLiveVersionId(
       deploymentsResult.app,
       deploymentsResult.deployments,
     );
-    const deployments = sortDeploymentsNewestFirst(
-      applyLiveDeploymentHint(
+    const deployments = sortVersionsNewestFirst(
+      applyLiveVersionHint(
         deploymentsResult.deployments,
         currentLiveDeploymentId,
       ),
@@ -78,9 +78,9 @@ export const serviceOpenCommand = defineCommand({
       : null;
 
     if (!liveDeployment) {
-      throw noDeploymentsError(
-        "No deployments available to open",
-        `The service "${deploymentsResult.app.name}" does not have any deployments yet.`,
+      throw noVersionsError(
+        "No versions available to open",
+        `The service "${deploymentsResult.app.name}" does not have any versions yet.`,
         deploymentsResult.app.name,
       );
     }

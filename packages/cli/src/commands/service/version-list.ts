@@ -1,22 +1,22 @@
 import { defineCommand, flag, positional } from "@prisma/cli-engine";
 import { ok } from "@prisma/cli-engine/protocol";
 import { deployFailedError } from "./errors";
-import { deploymentListPresentations } from "./presentation";
-import type { ServiceDeploymentListResult } from "./results";
+import { versionListPresentations } from "./presentation";
+import type { ServiceVersionListResult } from "./results";
 import {
-  applyLiveDeploymentHint,
-  resolveCurrentLiveDeploymentId,
+  applyLiveVersionHint,
+  resolveCurrentLiveVersionId,
   resolveServiceReadState,
-  sortDeploymentsNewestFirst,
+  sortVersionsNewestFirst,
   toServiceSummary,
 } from "./target";
 
-export const serviceDeploymentListCommand = defineCommand({
+export const serviceVersionListCommand = defineCommand({
   help: {
-    summary: "List deployments for the service",
+    summary: "List versions of the service",
     examples: [
-      "service deployment list my-service",
-      "service deployment list my-service --branch feature-x",
+      "service version list my-service",
+      "service version list my-service --branch feature-x",
     ],
   },
   args: {
@@ -43,36 +43,30 @@ export const serviceDeploymentListCommand = defineCommand({
       serviceName: args.positionals.service,
       projectRef: args.flags.project,
       branchName: args.flags.branch,
-      commandName: "service deployment list",
+      commandName: "service version list",
     });
 
     const deploymentsResult = await state.provider
       .listDeployments(state.service.id, { signal: ctx.signal })
       .catch((error) => {
-        throw deployFailedError(
-          "Failed to list service deployments",
-          error,
-          [],
-        );
+        throw deployFailedError("Failed to list service versions", error, []);
       });
-    const currentLiveDeploymentId = resolveCurrentLiveDeploymentId(
+    const currentLiveDeploymentId = resolveCurrentLiveVersionId(
       deploymentsResult.app,
       deploymentsResult.deployments,
     );
-    const deployments = sortDeploymentsNewestFirst(
-      applyLiveDeploymentHint(
+    const deployments = sortVersionsNewestFirst(
+      applyLiveVersionHint(
         deploymentsResult.deployments,
         currentLiveDeploymentId,
       ),
     );
 
-    const result: ServiceDeploymentListResult = {
+    const result: ServiceVersionListResult = {
       projectId: state.projectId,
       service: toServiceSummary(deploymentsResult.app),
-      deployments,
+      versions: deployments,
     };
-    return ok(
-      ctx.present({ data: result }, deploymentListPresentations(result)),
-    );
+    return ok(ctx.present({ data: result }, versionListPresentations(result)));
   },
 });

@@ -445,6 +445,8 @@ Still open:
 
 The cleanup PR removed the compute config and `init`, made service commands parameter-only, renamed the six destructive `remove` commands to `delete`, moved `postgres restore`/`ref *`/`migrate`/`format`/`composer dev|deploy`, and dropped `composer destroy|log` and the `build` group. Deliberately left behind:
 
+- **The wire layer still speaks App/Deployment.** The CLI surface says Service/Version (ADR-012), while the adapter (`packages/cli/src/lib/app/app-provider.ts`), compute-sdk names, `/v1/deployments` paths, and `appId` keep platform vocabulary. They rename in pdp-control-plane's coordinated all-surfaces pass, and the adapter is the one file where both vocabularies are allowed to meet until then.
+
 - ~~**`project env` still infers scope from the current git branch.**~~ Closed on the PR branch (2026-08-21, operator ruling): `project env list` with no `--role`/`--branch` lists the overview instead of inferring from the checkout; `readLocalGitBranch` and `lib/git/local-branch.ts` are deleted.
 - ~~**`knownLiveDeploymentByProject` has no writer.**~~ Closed on the PR branch (2026-08-21): the local-state shape, its store methods, and `service delete`'s cleanup pass were deleted.
 - **Upstream family cleanups.** The shell now wraps both external families: composer still ships `destroy`/`log` commands (and their help) that nothing mounts, and orm-toolchain still keys its family `ref *` and ships the `migration ref` → `ref` redirect the wrapper drops, plus a `migration apply` replacement that says `migrate`. Each repo should retire those surfaces so the wrapper shrinks to a pass-through.

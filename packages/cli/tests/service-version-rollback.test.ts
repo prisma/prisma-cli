@@ -39,14 +39,14 @@ function unknownLiveDeploymentRoutes(overrides: Routes = {}): Routes {
   });
 }
 
-describe("prisma-cli service deployment rollback", () => {
+describe("prisma-cli service version rollback", () => {
   it("rolls back to the deployment before the live one by default", async () => {
     const harness = await makeServiceCli({ routes: releaseRoutes() });
 
     const result = await harness.cli.run(
       [
         "service",
-        "deployment",
+        "version",
         "rollback",
         "--project",
         "acme-app",
@@ -60,8 +60,8 @@ describe("prisma-cli service deployment rollback", () => {
     expect(result.exitCode).toBe(0);
     expect(result.presented?.data).toMatchObject({
       service: { id: "svc_1", name: "hello-world" },
-      deployment: { id: "dep_1", status: "running", live: true },
-      previousLiveDeploymentId: "dep_2",
+      version: { id: "dep_1", status: "running", live: true },
+      previousLiveVersionId: "dep_2",
     });
     expect(presentedSummary(result.presented)).toEqual({
       kind: "summary",
@@ -76,7 +76,7 @@ describe("prisma-cli service deployment rollback", () => {
     const result = await harness.cli.run(
       [
         "service",
-        "deployment",
+        "version",
         "rollback",
         "--to",
         "dep_2",
@@ -92,9 +92,9 @@ describe("prisma-cli service deployment rollback", () => {
     expect(result.exitCode).toBe(0);
     expect(result.presented?.diagnostics).toEqual([
       {
-        code: "SERVICE.DEPLOYMENT_ALREADY_LIVE",
+        code: "SERVICE.VERSION_ALREADY_LIVE",
         severity: "warn",
-        summary: "The selected deployment is already live for this service.",
+        summary: "The selected version is already live for this service.",
         nextActions: [],
       },
     ]);
@@ -112,7 +112,7 @@ describe("prisma-cli service deployment rollback", () => {
     const result = await harness.cli.run(
       [
         "service",
-        "deployment",
+        "version",
         "rollback",
         "--to",
         "dep_1",
@@ -127,7 +127,7 @@ describe("prisma-cli service deployment rollback", () => {
 
     expect(result.exitCode).toBe(0);
     expect(result.presented?.data).toMatchObject({
-      deployment: { id: "dep_1" },
+      version: { id: "dep_1" },
     });
   });
 
@@ -137,7 +137,7 @@ describe("prisma-cli service deployment rollback", () => {
     const result = await harness.cli.run(
       [
         "service",
-        "deployment",
+        "version",
         "rollback",
         "--project",
         "acme-app",
@@ -169,13 +169,13 @@ describe("prisma-cli service deployment rollback", () => {
     ]);
   });
 
-  it("emits the completed json envelope with commandId service.deployment.rollback", async () => {
+  it("emits the completed json envelope with commandId service.version.rollback", async () => {
     const harness = await makeServiceCli({ routes: releaseRoutes() });
 
     const result = await harness.cli.run(
       [
         "service",
-        "deployment",
+        "version",
         "rollback",
         "--project",
         "acme-app",
@@ -192,10 +192,10 @@ describe("prisma-cli service deployment rollback", () => {
     if (frame?.kind !== "result" || !frame.envelope.ok) {
       throw new Error("expected a completed envelope");
     }
-    expect(frame.envelope.commandId).toBe("service.deployment.rollback");
+    expect(frame.envelope.commandId).toBe("service.version.rollback");
     expect(frame.envelope.result).toMatchObject({
-      deployment: { id: "dep_1" },
-      previousLiveDeploymentId: "dep_2",
+      version: { id: "dep_1" },
+      previousLiveVersionId: "dep_2",
     });
   });
 
@@ -205,7 +205,7 @@ describe("prisma-cli service deployment rollback", () => {
     const result = await harness.cli.run(
       [
         "service",
-        "deployment",
+        "version",
         "rollback",
         "--project",
         "acme-app",
@@ -224,7 +224,7 @@ describe("prisma-cli service deployment rollback", () => {
 
     expect(result.exitCode).toBe(0);
     expect(result.presented?.data).toMatchObject({
-      deployment: { id: "dep_1" },
+      version: { id: "dep_1" },
     });
   });
 
@@ -234,7 +234,7 @@ describe("prisma-cli service deployment rollback", () => {
     const result = await harness.cli.run(
       [
         "service",
-        "deployment",
+        "version",
         "rollback",
         "--project",
         "acme-app",
@@ -261,7 +261,7 @@ describe("prisma-cli service deployment rollback", () => {
     const result = await harness.cli.run(
       [
         "service",
-        "deployment",
+        "version",
         "rollback",
         "--project",
         "acme-app",
@@ -280,7 +280,7 @@ describe("prisma-cli service deployment rollback", () => {
     }
     expect(frame.envelope.error.code).toBe("CLI.CONSENT_REQUIRED");
     expect(frame.envelope.error.summary).toContain(
-      'Roll back Service "hello-world" to deployment dep_1 and make it live?',
+      'Roll back Service "hello-world" to version dep_1 and make it live?',
     );
     expect(frame.envelope.error.summary).toContain("--confirm dep_1");
     expect(frame.envelope.error.meta).toMatchObject({
@@ -294,7 +294,7 @@ describe("prisma-cli service deployment rollback", () => {
     const result = await harness.cli.run(
       [
         "service",
-        "deployment",
+        "version",
         "rollback",
         "--project",
         "acme-app",
@@ -324,7 +324,7 @@ describe("prisma-cli service deployment rollback", () => {
     const result = await harness.cli.run(
       [
         "service",
-        "deployment",
+        "version",
         "rollback",
         "--project",
         "acme-app",
@@ -353,7 +353,7 @@ describe("prisma-cli service deployment rollback", () => {
     const result = await harness.cli.run(
       [
         "service",
-        "deployment",
+        "version",
         "rollback",
         "--project",
         "acme-app",
@@ -381,18 +381,18 @@ describe("prisma-cli service deployment rollback", () => {
     if (frame?.kind !== "result" || frame.envelope.ok) {
       throw new Error("expected an errored envelope");
     }
-    expect(frame.envelope.error.code).toBe("SERVICE.LIVE_DEPLOYMENT_UNKNOWN");
+    expect(frame.envelope.error.code).toBe("SERVICE.LIVE_VERSION_UNKNOWN");
     expect(frame.envelope.nextActions).toEqual([
       {
         kind: "run-command",
-        label: "Roll back to a named deployment",
+        label: "Roll back to a named version",
         command:
-          "prisma-cli service deployment rollback hello-world --to <deployment>",
+          "prisma-cli service version rollback hello-world --to <version>",
       },
       {
         kind: "run-command",
-        label: "List deployments",
-        command: "prisma-cli service deployment list hello-world",
+        label: "List versions",
+        command: "prisma-cli service version list hello-world",
       },
     ]);
   });
@@ -405,7 +405,7 @@ describe("prisma-cli service deployment rollback", () => {
     const result = await harness.cli.run(
       [
         "service",
-        "deployment",
+        "version",
         "rollback",
         "--to",
         "dep_1",
@@ -420,8 +420,8 @@ describe("prisma-cli service deployment rollback", () => {
 
     expect(result.exitCode).toBe(0);
     expect(result.presented?.data).toMatchObject({
-      deployment: { id: "dep_1" },
-      previousLiveDeploymentId: null,
+      version: { id: "dep_1" },
+      previousLiveVersionId: null,
     });
     expect(result.events.at(-1)).toEqual({
       kind: "step-finished",
@@ -430,7 +430,7 @@ describe("prisma-cli service deployment rollback", () => {
     });
   });
 
-  it("reports SERVICE.NO_PREVIOUS_DEPLOYMENT when only the live deployment exists", async () => {
+  it("reports SERVICE.NO_PREVIOUS_VERSION when only the live deployment exists", async () => {
     const [, live] = DEPLOYMENTS;
     const harness = await makeServiceCli({
       routes: releaseRoutes({
@@ -441,7 +441,7 @@ describe("prisma-cli service deployment rollback", () => {
     const result = await harness.cli.run(
       [
         "service",
-        "deployment",
+        "version",
         "rollback",
         "--project",
         "acme-app",
@@ -456,23 +456,23 @@ describe("prisma-cli service deployment rollback", () => {
     if (frame?.kind !== "result" || frame.envelope.ok) {
       throw new Error("expected an errored envelope");
     }
-    expect(frame.envelope.error.code).toBe("SERVICE.NO_PREVIOUS_DEPLOYMENT");
+    expect(frame.envelope.error.code).toBe("SERVICE.NO_PREVIOUS_VERSION");
     // The advice stays; the `service deploy` action is gone with the command.
     expect(frame.envelope.nextActions).toEqual([
       {
         kind: "user-choice",
         label:
-          "Deploy a second version first, or pass --to <deployment-id> for a specific earlier deployment.",
+          "Deploy a second version first, or pass --to <version-id> for a specific earlier version.",
       },
       {
         kind: "run-command",
-        label: "List deployments",
-        command: "prisma-cli service deployment list hello-world",
+        label: "List versions",
+        command: "prisma-cli service version list hello-world",
       },
     ]);
   });
 
-  it("reports SERVICE.NO_PREVIOUS_DEPLOYMENT for a service with no deployments at all", async () => {
+  it("reports SERVICE.NO_PREVIOUS_VERSION for a service with no deployments at all", async () => {
     const harness = await makeServiceCli({
       routes: unknownLiveDeploymentRoutes({
         "GET /v1/apps/{appId}/deployments": () => ({ data: page([]) }),
@@ -482,7 +482,7 @@ describe("prisma-cli service deployment rollback", () => {
     const result = await harness.cli.run(
       [
         "service",
-        "deployment",
+        "version",
         "rollback",
         "--project",
         "acme-app",
@@ -499,7 +499,7 @@ describe("prisma-cli service deployment rollback", () => {
     }
     // An empty listing has no live deployment either, and the emptiness
     // is the more useful answer of the two.
-    expect(frame.envelope.error.code).toBe("SERVICE.NO_PREVIOUS_DEPLOYMENT");
+    expect(frame.envelope.error.code).toBe("SERVICE.NO_PREVIOUS_VERSION");
   });
 
   it("settles a failing promote call as SERVICE.DEPLOY_FAILED after a failed step", async () => {
@@ -515,7 +515,7 @@ describe("prisma-cli service deployment rollback", () => {
     const result = await harness.cli.run(
       [
         "service",
-        "deployment",
+        "version",
         "rollback",
         "--project",
         "acme-app",
@@ -546,7 +546,7 @@ describe("prisma-cli service deployment rollback", () => {
     });
 
     const result = await harness.cli.run(
-      ["service", "deployment", "rollback", "--project", "acme-app", "--json"],
+      ["service", "version", "rollback", "--project", "acme-app", "--json"],
       { cwd: harness.cwd, env: harness.env },
     );
 
@@ -557,7 +557,7 @@ describe("prisma-cli service deployment rollback", () => {
     }
     expect(frame.envelope.error.code).toBe("SERVICE.TARGET_REQUIRED");
     expect(frame.envelope.error.summary).toBe(
-      'Command "service deployment rollback" requires a service',
+      'Command "service version rollback" requires a service',
     );
   });
 
@@ -568,7 +568,7 @@ describe("prisma-cli service deployment rollback", () => {
     });
 
     const result = await harness.cli.run(
-      ["service", "deployment", "rollback", "--project", "acme-app"],
+      ["service", "version", "rollback", "--project", "acme-app"],
       { cwd: harness.cwd, env: harness.env, isTty: { stdout: true } },
     );
 

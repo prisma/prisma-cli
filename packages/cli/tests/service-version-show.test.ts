@@ -48,12 +48,12 @@ async function seedRememberedLiveDeployment(
   );
 }
 
-describe("prisma-cli service deployment show", () => {
+describe("prisma-cli service version show", () => {
   it("presents the promoted service url and takes the live flag from the service's latest deployment", async () => {
     const harness = await makeServiceCli({ routes: showDeployRoutes() });
 
     const result = await harness.cli.run(
-      ["service", "deployment", "show", "dep_2"],
+      ["service", "version", "show", "dep_2"],
       {
         cwd: harness.cwd,
         env: harness.env,
@@ -64,7 +64,7 @@ describe("prisma-cli service deployment show", () => {
     expect(result.exitCode).toBe(0);
     expect(result.presented?.data).toEqual({
       service: { id: "svc_1", name: "hello-world" },
-      deployment: {
+      version: {
         id: "dep_2",
         status: "running",
         createdAt: "2026-08-02T00:00:00.000Z",
@@ -79,13 +79,13 @@ describe("prisma-cli service deployment show", () => {
     await seedRememberedLiveDeployment(harness);
 
     const result = await harness.cli.run(
-      ["service", "deployment", "show", "dep_1"],
+      ["service", "version", "show", "dep_1"],
       { cwd: harness.cwd, env: harness.env, isTty: { stdout: true } },
     );
 
     expect(result.exitCode).toBe(0);
     expect(result.presented?.data).toMatchObject({
-      deployment: { id: "dep_1", live: false },
+      version: { id: "dep_1", live: false },
     });
   });
 
@@ -93,13 +93,13 @@ describe("prisma-cli service deployment show", () => {
     const harness = await makeServiceCli({ routes: neverPromotedRoutes() });
 
     const result = await harness.cli.run(
-      ["service", "deployment", "show", "dep_1"],
+      ["service", "version", "show", "dep_1"],
       { cwd: harness.cwd, env: harness.env, isTty: { stdout: true } },
     );
 
     expect(result.exitCode).toBe(0);
     expect(result.presented?.data).toMatchObject({
-      deployment: { id: "dep_1", url: "https://dep1.prisma.app" },
+      version: { id: "dep_1", url: "https://dep1.prisma.app" },
     });
   });
 
@@ -107,21 +107,21 @@ describe("prisma-cli service deployment show", () => {
     const harness = await makeServiceCli({ routes: showDeployRoutes() });
 
     const result = await harness.cli.run(
-      ["service", "deployment", "show", "dep_1"],
+      ["service", "version", "show", "dep_1"],
       { cwd: harness.cwd, env: harness.env, isTty: { stdout: true } },
     );
 
     expect(result.exitCode).toBe(0);
     expect(result.presented?.data).toMatchObject({
-      deployment: { id: "dep_1", url: "https://dep1.prisma.app", live: false },
+      version: { id: "dep_1", url: "https://dep1.prisma.app", live: false },
     });
   });
 
-  it("settles an unknown deployment id as SERVICE.DEPLOYMENT_NOT_FOUND with exit 2", async () => {
+  it("settles an unknown deployment id as SERVICE.VERSION_NOT_FOUND with exit 2", async () => {
     const harness = await makeServiceCli({ routes: showDeployRoutes() });
 
     const result = await harness.cli.run(
-      ["service", "deployment", "show", "dep_missing", "--json"],
+      ["service", "version", "show", "dep_missing", "--json"],
       { cwd: harness.cwd, env: harness.env },
     );
 
@@ -130,9 +130,9 @@ describe("prisma-cli service deployment show", () => {
     if (frame?.kind !== "result" || frame.envelope.ok) {
       throw new Error("expected an errored envelope");
     }
-    expect(frame.envelope.error.code).toBe("SERVICE.DEPLOYMENT_NOT_FOUND");
+    expect(frame.envelope.error.code).toBe("SERVICE.VERSION_NOT_FOUND");
     expect(frame.envelope.error.summary).toBe(
-      'Deployment "dep_missing" not found',
+      'Version "dep_missing" not found',
     );
   });
 
@@ -147,7 +147,7 @@ describe("prisma-cli service deployment show", () => {
     });
 
     const result = await harness.cli.run(
-      ["service", "deployment", "show", "dep_2", "--json"],
+      ["service", "version", "show", "dep_2", "--json"],
       { cwd: harness.cwd, env: harness.env },
     );
 
@@ -159,11 +159,11 @@ describe("prisma-cli service deployment show", () => {
     expect(frame.envelope.error.code).toBe("SERVICE.DEPLOY_FAILED");
   });
 
-  it("emits the completed json envelope with commandId service.deployment.show", async () => {
+  it("emits the completed json envelope with commandId service.version.show", async () => {
     const harness = await makeServiceCli({ routes: showDeployRoutes() });
 
     const result = await harness.cli.run(
-      ["service", "deployment", "show", "dep_1", "--json"],
+      ["service", "version", "show", "dep_1", "--json"],
       { cwd: harness.cwd, env: harness.env },
     );
 
@@ -172,9 +172,9 @@ describe("prisma-cli service deployment show", () => {
     if (frame?.kind !== "result" || !frame.envelope.ok) {
       throw new Error("expected a completed envelope");
     }
-    expect(frame.envelope.commandId).toBe("service.deployment.show");
+    expect(frame.envelope.commandId).toBe("service.version.show");
     expect(frame.envelope.result).toMatchObject({
-      deployment: { id: "dep_1", live: false },
+      version: { id: "dep_1", live: false },
     });
   });
 
@@ -185,7 +185,7 @@ describe("prisma-cli service deployment show", () => {
     });
 
     const result = await harness.cli.run(
-      ["service", "deployment", "show", "dep_1"],
+      ["service", "version", "show", "dep_1"],
       {
         cwd: harness.cwd,
         env: harness.env,

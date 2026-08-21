@@ -150,7 +150,7 @@ describe("prisma-cli service domain add", () => {
     });
   });
 
-  it("maps a 422 without a live production deployment to SERVICE.NO_DEPLOYMENTS", async () => {
+  it("maps a 422 without a live production deployment to SERVICE.NO_VERSIONS", async () => {
     const harness = await makeServiceCli({
       routes: domainRoutes({
         "POST /v1/apps/{appId}/domains": () => ({
@@ -170,7 +170,7 @@ describe("prisma-cli service domain add", () => {
     if (frame?.kind !== "result" || frame.envelope.ok) {
       throw new Error("expected an errored envelope");
     }
-    expect(frame.envelope.error.code).toBe("SERVICE.NO_DEPLOYMENTS");
+    expect(frame.envelope.error.code).toBe("SERVICE.NO_VERSIONS");
     // No action suggests `service deploy --branch production`: the binary
     // does not answer to it. The advice carries what the user has to do
     // first, so the retry action is not the only thing offered.
@@ -178,7 +178,7 @@ describe("prisma-cli service domain add", () => {
       {
         kind: "user-choice",
         label:
-          "Promote a deployment on the service's production branch, then add the domain again.",
+          "Promote a version on the service's production branch, then add the domain again.",
       },
       {
         kind: "run-command",

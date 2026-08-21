@@ -4,11 +4,6 @@ import { adviceAction, runCommandAction } from "./errors";
 import type {
   ServiceCreateResult,
   ServiceDeleteResult,
-  ServiceDeploymentDeleteResult,
-  ServiceDeploymentListResult,
-  ServiceDeploymentRunStateResult,
-  ServiceDeploymentShowResult,
-  ServiceDeploymentSummary,
   ServiceDomainAddResult,
   ServiceDomainDeleteResult,
   ServiceDomainRetryResult,
@@ -21,6 +16,11 @@ import type {
   ServicePromoteResult,
   ServiceRollbackResult,
   ServiceShowResult,
+  ServiceVersionDeleteResult,
+  ServiceVersionListResult,
+  ServiceVersionRunStateResult,
+  ServiceVersionShowResult,
+  ServiceVersionSummary,
 } from "./results";
 
 type FieldRow = { label: string; value: string };
@@ -40,9 +40,7 @@ function completed(text: string): Block {
   return { kind: "summary", status: "ok", text };
 }
 
-function formatRecentDeployments(
-  deployments: ServiceDeploymentSummary[],
-): string {
+function formatRecentDeployments(deployments: ServiceVersionSummary[]): string {
   if (deployments.length === 0) {
     return "none";
   }
@@ -160,7 +158,7 @@ export function createPresentations(
         { label: "service", value: result.service.name },
         { label: "id", value: result.service.id },
         { label: "region", value: result.service.region ?? "" },
-        // A service with no deployment has no address that resolves, so
+        // A service with no version has no address that resolves, so
         // it reports what it needs next instead of a dead URL.
         {
           label: "live url",
@@ -188,12 +186,12 @@ export function showPresentations(result: ServiceShowResult): Presentations {
       ),
     );
   }
-  const inspectable = result.liveDeployment ?? result.recentDeployments[0];
+  const inspectable = result.liveVersion ?? result.recentVersions[0];
   if (inspectable) {
     next.push(
       runCommandAction(
-        "Show the deployment",
-        `service deployment show ${inspectable.id}`,
+        "Show the version",
+        `service version show ${inspectable.id}`,
       ),
     );
   }
@@ -206,13 +204,13 @@ export function showPresentations(result: ServiceShowResult): Presentations {
         { label: "project", value: result.projectId },
         { label: "service", value: result.service.name },
         {
-          label: "live deployment",
-          value: result.liveDeployment?.id ?? "",
+          label: "live version",
+          value: result.liveVersion?.id ?? "",
         },
         { label: "live url", value: result.liveUrl ?? "unavailable" },
         {
-          label: "recent deployments",
-          value: formatRecentDeployments(result.recentDeployments),
+          label: "recent versions",
+          value: formatRecentDeployments(result.recentVersions),
         },
       ]),
     ],
@@ -220,28 +218,28 @@ export function showPresentations(result: ServiceShowResult): Presentations {
   };
 }
 
-export function deploymentListPresentations(
-  result: ServiceDeploymentListResult,
+export function versionListPresentations(
+  result: ServiceVersionListResult,
 ): Presentations {
   return {
     stdout: () => [],
     json: () => result,
     human: () => [
-      title(`Listing deployments for service ${result.service.name}.`),
+      title(`Listing versions of service ${result.service.name}.`),
       fields([
         { label: "project", value: result.projectId },
         { label: "service", value: result.service.name },
       ]),
-      result.deployments.length === 0
+      result.versions.length === 0
         ? {
             kind: "summary",
             status: "info",
-            text: "No deployments found.",
+            text: "No versions found.",
           }
         : {
             kind: "table",
-            columns: ["deployment", "status", "created", "live"],
-            rows: result.deployments.map((deployment) => [
+            columns: ["version", "status", "created", "live"],
+            rows: result.versions.map((deployment) => [
               deployment.id,
               deployment.status,
               deployment.createdAt,
@@ -250,12 +248,12 @@ export function deploymentListPresentations(
           },
     ],
     next: () => {
-      const newest = result.deployments[0];
+      const newest = result.versions[0];
       return newest
         ? [
             runCommandAction(
-              "Show the newest deployment",
-              `service deployment show ${newest.id}`,
+              "Show the newest version",
+              `service version show ${newest.id}`,
             ),
           ]
         : [];
@@ -263,28 +261,28 @@ export function deploymentListPresentations(
   };
 }
 
-export function deploymentShowPresentations(
-  result: ServiceDeploymentShowResult,
+export function versionShowPresentations(
+  result: ServiceVersionShowResult,
 ): Presentations {
   return {
     stdout: () => [],
     json: () => result,
     next: () => [],
     human: () => [
-      title("Showing deployment details."),
+      title("Showing service version details."),
       fields([
         ...(result.service
           ? [{ label: "service", value: result.service.name }]
           : []),
-        { label: "deployment", value: result.deployment.id },
-        { label: "status", value: result.deployment.status },
-        ...(result.deployment.url
-          ? [{ label: "url", value: result.deployment.url }]
+        { label: "version", value: result.version.id },
+        { label: "status", value: result.version.status },
+        ...(result.version.url
+          ? [{ label: "url", value: result.version.url }]
           : []),
-        ...(result.deployment.live === null
+        ...(result.version.live === null
           ? []
-          : [{ label: "live", value: result.deployment.live ? "yes" : "no" }]),
-        { label: "created", value: result.deployment.createdAt },
+          : [{ label: "live", value: result.version.live ? "yes" : "no" }]),
+        { label: "created", value: result.version.createdAt },
       ]),
     ],
   };
@@ -314,25 +312,22 @@ export function openPresentations(
         `service show ${result.service.name}`,
       ),
       runCommandAction(
-        "Show the live deployment",
-        `service deployment show ${liveDeploymentId}`,
+        "Show the live version",
+        `service version show ${liveDeploymentId}`,
       ),
     ],
   };
 }
 
-function deploymentNextActions(
+function versionNextActions(
   deploymentId: string,
   serviceName: string,
 ): NextAction[] {
   return [
+    runCommandAction("List versions", `service version list ${serviceName}`),
     runCommandAction(
-      "List deployments",
-      `service deployment list ${serviceName}`,
-    ),
-    runCommandAction(
-      "Show the deployment",
-      `service deployment show ${deploymentId}`,
+      "Show the version",
+      `service version show ${deploymentId}`,
     ),
   ];
 }
@@ -347,20 +342,19 @@ export function promotePresentations(
     human: () => [
       completed(
         alreadyLive
-          ? `${result.deployment.id} was already live for ${result.service.name}.`
-          : `Promoted ${result.deployment.id} to production.`,
+          ? `${result.version.id} was already live for ${result.service.name}.`
+          : `Promoted ${result.version.id} to production.`,
       ),
       fields([
         { label: "service", value: result.service.name },
-        { label: "deployment", value: result.deployment.id },
-        { label: "status", value: result.deployment.status },
-        ...(result.deployment.url
-          ? [{ label: "url", value: result.deployment.url }]
+        { label: "version", value: result.version.id },
+        { label: "status", value: result.version.status },
+        ...(result.version.url
+          ? [{ label: "url", value: result.version.url }]
           : []),
       ]),
     ],
-    next: () =>
-      deploymentNextActions(result.deployment.id, result.service.name),
+    next: () => versionNextActions(result.version.id, result.service.name),
   };
 }
 
@@ -374,30 +368,29 @@ export function rollbackPresentations(
     human: () => [
       completed(
         alreadyLive
-          ? `${result.deployment.id} was already live for ${result.service.name}.`
-          : `Rolled ${result.service.name} back to ${result.deployment.id}.`,
+          ? `${result.version.id} was already live for ${result.service.name}.`
+          : `Rolled ${result.service.name} back to ${result.version.id}.`,
       ),
       fields([
         { label: "project", value: result.projectId },
         { label: "service", value: result.service.name },
-        { label: "deployment", value: result.deployment.id },
-        { label: "status", value: result.deployment.status },
+        { label: "version", value: result.version.id },
+        { label: "status", value: result.version.status },
         {
-          label: "previous live deployment",
-          value: result.previousLiveDeploymentId ?? "unknown",
+          label: "previous live version",
+          value: result.previousLiveVersionId ?? "unknown",
         },
-        ...(result.deployment.url
-          ? [{ label: "url", value: result.deployment.url }]
+        ...(result.version.url
+          ? [{ label: "url", value: result.version.url }]
           : []),
       ]),
     ],
-    next: () =>
-      deploymentNextActions(result.deployment.id, result.service.name),
+    next: () => versionNextActions(result.version.id, result.service.name),
   };
 }
 
-export function deploymentStartPresentations(
-  result: ServiceDeploymentRunStateResult,
+export function versionStartPresentations(
+  result: ServiceVersionRunStateResult,
 ): Presentations {
   return {
     stdout: () => [],
@@ -405,25 +398,24 @@ export function deploymentStartPresentations(
     human: () => [
       completed(
         result.alreadyInState
-          ? `${result.deployment.id} was already running.`
-          : `Started ${result.deployment.id}.`,
+          ? `${result.version.id} was already running.`
+          : `Started ${result.version.id}.`,
       ),
       fields([
         { label: "service", value: result.service.name },
-        { label: "deployment", value: result.deployment.id },
-        { label: "status", value: result.deployment.status },
-        ...(result.deployment.url
-          ? [{ label: "url", value: result.deployment.url }]
+        { label: "version", value: result.version.id },
+        { label: "status", value: result.version.status },
+        ...(result.version.url
+          ? [{ label: "url", value: result.version.url }]
           : []),
       ]),
     ],
-    next: () =>
-      deploymentNextActions(result.deployment.id, result.service.name),
+    next: () => versionNextActions(result.version.id, result.service.name),
   };
 }
 
-export function deploymentStopPresentations(
-  result: ServiceDeploymentRunStateResult,
+export function versionStopPresentations(
+  result: ServiceVersionRunStateResult,
 ): Presentations {
   return {
     stdout: () => [],
@@ -431,38 +423,37 @@ export function deploymentStopPresentations(
     human: () => [
       completed(
         result.alreadyInState
-          ? `${result.deployment.id} was already stopped.`
-          : `Stopped ${result.deployment.id}.`,
+          ? `${result.version.id} was already stopped.`
+          : `Stopped ${result.version.id}.`,
       ),
       fields([
         { label: "service", value: result.service.name },
-        { label: "deployment", value: result.deployment.id },
-        { label: "status", value: result.deployment.status },
+        { label: "version", value: result.version.id },
+        { label: "status", value: result.version.status },
       ]),
     ],
-    next: () =>
-      deploymentNextActions(result.deployment.id, result.service.name),
+    next: () => versionNextActions(result.version.id, result.service.name),
   };
 }
 
-export function deploymentDeletePresentations(
-  result: ServiceDeploymentDeleteResult,
+export function versionDeletePresentations(
+  result: ServiceVersionDeleteResult,
 ): Presentations {
   return {
     stdout: () => [],
     json: () => result,
     human: () => [
-      completed(`Deleted ${result.deploymentId} from ${result.service.name}.`),
+      completed(`Deleted ${result.versionId} from ${result.service.name}.`),
       fields([
         { label: "service", value: result.service.name },
-        { label: "deployment", value: result.deploymentId },
+        { label: "version", value: result.versionId },
         { label: "deleted", value: "yes" },
       ]),
     ],
     next: () => [
       runCommandAction(
-        "List deployments",
-        `service deployment list ${result.service.name}`,
+        "List versions",
+        `service version list ${result.service.name}`,
       ),
     ],
   };
@@ -475,9 +466,7 @@ export function deletePresentations(
     stdout: () => [],
     json: () => result,
     human: () => [
-      completed(
-        `Deleted ${result.service.name} and every deployment it owned.`,
-      ),
+      completed(`Deleted ${result.service.name} and every version it owned.`),
       fields([
         { label: "project", value: result.projectId },
         { label: "service", value: result.service.name },

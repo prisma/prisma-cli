@@ -5,38 +5,38 @@ import { deployFailedError, runCommandAction } from "./errors";
 import { promotePresentations } from "./presentation";
 import { promoteProgressReporter } from "./release";
 import type { ServicePromoteResult } from "./results";
-import { resolveDeploymentSubject, toServiceSummary } from "./target";
+import { resolveVersionSubject, toServiceSummary } from "./target";
 
-export const serviceDeploymentPromoteCommand = defineCommand({
+export const serviceVersionPromoteCommand = defineCommand({
   help: {
     summary:
-      "Promote a deployment to production by rebuilding with production env vars",
-    examples: ["service deployment promote dep_123"],
+      "Promote a service version to production by rebuilding with production env vars",
+    examples: ["service version promote cpv_123"],
   },
   args: {
     positionals: {
-      deployment: positional.string({
-        brief: "Deployment id to promote",
-        placeholder: "deployment",
+      version: positional.string({
+        brief: "Version id to promote",
+        placeholder: "version",
       }),
     },
   },
   needs: { credentials: true },
   handler: async (args, ctx) => {
-    const { provider, service, deployment } = await resolveDeploymentSubject(
+    const { provider, service, version } = await resolveVersionSubject(
       ctx,
-      args.positionals.deployment,
+      args.positionals.version,
     );
-    const alreadyLive = service.liveDeploymentId === deployment.id;
+    const alreadyLive = service.liveDeploymentId === version.id;
 
     if (!alreadyLive) {
       ctx.report({ kind: "step-started", step: "promote" });
       try {
         await provider.promoteDeployment({
           appId: service.id,
-          deploymentId: deployment.id,
+          deploymentId: version.id,
           signal: ctx.signal,
-          progress: promoteProgressReporter(ctx, deployment.id),
+          progress: promoteProgressReporter(ctx, version.id),
         });
       } catch (error) {
         ctx.report({
@@ -44,10 +44,10 @@ export const serviceDeploymentPromoteCommand = defineCommand({
           step: "promote",
           outcome: "failed",
         });
-        throw deployFailedError("Failed to promote deployment", error, [
+        throw deployFailedError("Failed to promote version", error, [
           runCommandAction(
-            "List deployments",
-            `service deployment list ${service.name}`,
+            "List versions",
+            `service version list ${service.name}`,
           ),
         ]);
       }
@@ -56,15 +56,14 @@ export const serviceDeploymentPromoteCommand = defineCommand({
 
     const result: ServicePromoteResult = {
       service: toServiceSummary(service),
-      deployment: { ...deployment, status: "running", live: true },
+      version: { ...version, status: "running", live: true },
     };
     const diagnostics: Diagnostic[] = alreadyLive
       ? [
           {
-            code: "SERVICE.DEPLOYMENT_ALREADY_LIVE",
+            code: "SERVICE.VERSION_ALREADY_LIVE",
             severity: "warn",
-            summary:
-              "The selected deployment is already live for this service.",
+            summary: "The selected version is already live for this service.",
             nextActions: [],
           },
         ]

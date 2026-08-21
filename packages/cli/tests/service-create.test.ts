@@ -71,7 +71,7 @@ describe("prisma-cli service create", () => {
         id: "svc_new",
         name: "worker",
         region: "eu-central-1",
-        liveDeploymentId: null,
+        liveVersionId: null,
         liveUrl: null,
       },
       existing: false,

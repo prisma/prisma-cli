@@ -50,8 +50,8 @@ The CLI should keep the meaning of these nouns stable:
 - `schema`
 - `database`
 - `bucket`
-- `app`
-- `deployment`
+- `service`
+- `version` (always qualified in prose: a service version)
 - `domain`
 
 If a noun means one thing in docs and a different thing in commands or output, the model is already drifting.
@@ -95,7 +95,7 @@ Build and release an app into a target branch.
 
 ### `logs`
 
-Resolve a deployment and show or stream its logs.
+Resolve a service version and show or stream its logs.
 
 ### `delete` and `remove`
 
@@ -103,7 +103,7 @@ Resolve a deployment and show or stream its logs.
 
 ### Subjects are positional
 
-A command that operates on a subject resource takes that resource's identifier as its first positional argument (`service show my-api`, `postgres delete db_123`, `service deployment promote dep_123`) — the established convention across CLIs. Flags never name the subject; they scope or qualify it (`--project`, `--branch`, `--role`). When the subject's identifier is globally unique — a deployment id, a bucket id — the id alone is the complete target, and the command asks for no redundant parent scope.
+A command that operates on a subject resource takes that resource's identifier as its first positional argument (`service show my-api`, `postgres delete db_123`, `service version promote cpv_123`) — the established convention across CLIs. Flags never name the subject; they scope or qualify it (`--project`, `--branch`, `--role`). When the subject's identifier is globally unique — a service version id, a bucket id — the id alone is the complete target, and the command asks for no redundant parent scope.
 
 ### `wait`
 
@@ -121,7 +121,7 @@ In the MVP, that means preview source plus production rebuild.
 
 ### `rollback`
 
-Return traffic to a previous healthy deployment without rebuilding.
+Return traffic to a previous healthy service version without rebuilding.
 
 In the MVP, that means production rollback only.
 

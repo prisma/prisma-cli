@@ -22,7 +22,7 @@ describe("prisma-cli service show", () => {
     expect(result.presented?.data).toEqual({
       projectId: "proj_1",
       service: { id: "svc_1", name: "hello-world" },
-      liveDeployment: {
+      liveVersion: {
         id: "dep_2",
         status: "running",
         createdAt: "2026-08-02T00:00:00.000Z",
@@ -30,7 +30,7 @@ describe("prisma-cli service show", () => {
         live: true,
       },
       liveUrl: "https://hello.prisma.app",
-      recentDeployments: [
+      recentVersions: [
         {
           id: "dep_2",
           status: "running",
@@ -102,7 +102,7 @@ describe("prisma-cli service show", () => {
 
     expect(result.exitCode).toBe(0);
     expect(result.presented?.data).toMatchObject({
-      liveDeployment: null,
+      liveVersion: null,
       liveUrl: null,
     });
   });

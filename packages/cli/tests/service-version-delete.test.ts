@@ -35,13 +35,13 @@ function deleteRoutes(overrides: Routes = {}): {
   };
 }
 
-describe("prisma-cli service deployment delete", () => {
+describe("prisma-cli service version delete", () => {
   it("deletes the deployment once consent is typed back", async () => {
     const removal = deleteRoutes();
     const harness = await makeServiceCli({ routes: removal.routes });
 
     const result = await harness.cli.run(
-      ["service", "deployment", "delete", "dep_1"],
+      ["service", "version", "delete", "dep_1"],
       {
         cwd: harness.cwd,
         env: harness.env,
@@ -60,7 +60,7 @@ describe("prisma-cli service deployment delete", () => {
     });
     expect(result.presented?.data).toEqual({
       service: { id: "svc_1", name: "hello-world" },
-      deploymentId: "dep_1",
+      versionId: "dep_1",
       deleted: true,
     });
     expect(presentedSummary(result.presented)).toEqual({
@@ -74,7 +74,7 @@ describe("prisma-cli service deployment delete", () => {
       kind: "fields",
       rows: [
         { label: "service", value: "hello-world" },
-        { label: "deployment", value: "dep_1" },
+        { label: "version", value: "dep_1" },
         { label: "deleted", value: "yes" },
       ],
     });
@@ -85,15 +85,7 @@ describe("prisma-cli service deployment delete", () => {
     const harness = await makeServiceCli({ routes: removal.routes });
 
     const result = await harness.cli.run(
-      [
-        "service",
-        "deployment",
-        "delete",
-        "dep_1",
-        "--confirm",
-        "dep_1",
-        "--json",
-      ],
+      ["service", "version", "delete", "dep_1", "--confirm", "dep_1", "--json"],
       { cwd: harness.cwd, env: harness.env },
     );
 
@@ -103,7 +95,7 @@ describe("prisma-cli service deployment delete", () => {
     if (frame?.kind !== "result" || !frame.envelope.ok) {
       throw new Error("expected a completed envelope");
     }
-    expect(frame.envelope.commandId).toBe("service.deployment.delete");
+    expect(frame.envelope.commandId).toBe("service.version.delete");
     expect(frame.envelope.result).toMatchObject({ deleted: true });
   });
 
@@ -112,15 +104,7 @@ describe("prisma-cli service deployment delete", () => {
     const harness = await makeServiceCli({ routes: removal.routes });
 
     const result = await harness.cli.run(
-      [
-        "service",
-        "deployment",
-        "delete",
-        "dep_1",
-        "--confirm",
-        "dep_2",
-        "--json",
-      ],
+      ["service", "version", "delete", "dep_1", "--confirm", "dep_2", "--json"],
       { cwd: harness.cwd, env: harness.env },
     );
 
@@ -141,7 +125,7 @@ describe("prisma-cli service deployment delete", () => {
     const harness = await makeServiceCli({ routes: removal.routes });
 
     const result = await harness.cli.run(
-      ["service", "deployment", "delete", "dep_1"],
+      ["service", "version", "delete", "dep_1"],
       {
         cwd: harness.cwd,
         env: harness.env,
@@ -160,7 +144,7 @@ describe("prisma-cli service deployment delete", () => {
     const harness = await makeServiceCli({ routes: removal.routes });
 
     const result = await harness.cli.run(
-      ["service", "deployment", "delete", "dep_1", "--json"],
+      ["service", "version", "delete", "dep_1", "--json"],
       { cwd: harness.cwd, env: harness.env },
     );
 
@@ -185,14 +169,14 @@ describe("prisma-cli service deployment delete", () => {
     const harness = await makeServiceCli({ routes: removal.routes });
 
     const result = await harness.cli.run(
-      ["service", "deployment", "delete", "dep_2", "--confirm", "dep_2"],
+      ["service", "version", "delete", "dep_2", "--confirm", "dep_2"],
       { cwd: harness.cwd, env: harness.env, isTty: { stdout: true } },
     );
 
     expect(result.exitCode).toBe(0);
     expect(removal.deleted).toEqual(["dep_2"]);
     expect(result.presented?.data).toMatchObject({
-      deploymentId: "dep_2",
+      versionId: "dep_2",
       deleted: true,
     });
   });
@@ -211,15 +195,7 @@ describe("prisma-cli service deployment delete", () => {
     const harness = await makeServiceCli({ routes: removal.routes });
 
     const result = await harness.cli.run(
-      [
-        "service",
-        "deployment",
-        "delete",
-        "dep_2",
-        "--confirm",
-        "dep_2",
-        "--json",
-      ],
+      ["service", "version", "delete", "dep_2", "--confirm", "dep_2", "--json"],
       { cwd: harness.cwd, env: harness.env },
     );
 
@@ -229,7 +205,7 @@ describe("prisma-cli service deployment delete", () => {
       throw new Error("expected an errored envelope");
     }
     expect(frame.envelope.error.code).toBe("SERVICE.DEPLOY_FAILED");
-    expect(frame.envelope.error.summary).toBe("Failed to delete deployment");
+    expect(frame.envelope.error.summary).toBe("Failed to delete version");
     // The CLI does not stop the deployment first or invent the
     // precondition; the API states it and the user reads what it said.
     expect(frame.envelope.error.why).toContain(
@@ -237,14 +213,14 @@ describe("prisma-cli service deployment delete", () => {
     );
   });
 
-  it("settles an unknown deployment id as SERVICE.DEPLOYMENT_NOT_FOUND", async () => {
+  it("settles an unknown deployment id as SERVICE.VERSION_NOT_FOUND", async () => {
     const removal = deleteRoutes();
     const harness = await makeServiceCli({ routes: removal.routes });
 
     const result = await harness.cli.run(
       [
         "service",
-        "deployment",
+        "version",
         "delete",
         "dep_missing",
         "--confirm",
@@ -260,7 +236,7 @@ describe("prisma-cli service deployment delete", () => {
     if (frame?.kind !== "result" || frame.envelope.ok) {
       throw new Error("expected an errored envelope");
     }
-    expect(frame.envelope.error.code).toBe("SERVICE.DEPLOYMENT_NOT_FOUND");
+    expect(frame.envelope.error.code).toBe("SERVICE.VERSION_NOT_FOUND");
   });
 
   it("fails early with the engine sign-in error when unauthenticated", async () => {
@@ -271,7 +247,7 @@ describe("prisma-cli service deployment delete", () => {
     });
 
     const result = await harness.cli.run(
-      ["service", "deployment", "delete", "dep_1"],
+      ["service", "version", "delete", "dep_1"],
       { cwd: harness.cwd, env: harness.env, isTty: INTERACTIVE },
     );
 

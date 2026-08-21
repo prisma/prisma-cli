@@ -45,8 +45,8 @@ describe("prisma-cli service open", () => {
       },
       {
         kind: "run-command",
-        label: "Show the live deployment",
-        command: "prisma-cli service deployment show dep_2",
+        label: "Show the live version",
+        command: "prisma-cli service version show dep_2",
       },
     ]);
   });
@@ -99,7 +99,7 @@ describe("prisma-cli service open", () => {
     expect(result.presented?.data).toMatchObject({ opened: false });
   });
 
-  it("settles a service with no deployments as SERVICE.NO_DEPLOYMENTS", async () => {
+  it("settles a service with no deployments as SERVICE.NO_VERSIONS", async () => {
     const harness = await makeServiceCli({
       routes: readFlowRoutes({
         "GET /v1/apps": () => ({
@@ -122,7 +122,7 @@ describe("prisma-cli service open", () => {
     if (frame?.kind !== "result" || frame.envelope.ok) {
       throw new Error("expected an errored envelope");
     }
-    expect(frame.envelope.error.code).toBe("SERVICE.NO_DEPLOYMENTS");
+    expect(frame.envelope.error.code).toBe("SERVICE.NO_VERSIONS");
     // No action suggests `service deploy`: the binary does not answer to it.
     expect(frame.envelope.nextActions).toEqual([
       {

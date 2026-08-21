@@ -7,7 +7,7 @@ export interface ServiceSummary {
   name: string;
 }
 
-export interface ServiceDeploymentSummary {
+export interface ServiceVersionSummary {
   id: string;
   status: string;
   url: string | null;
@@ -16,13 +16,13 @@ export interface ServiceDeploymentSummary {
 }
 
 /** A service as `service list` and `service create` report it. `liveUrl`
- *  is null until a deployment is promoted: the endpoint domain a service
+ *  is null until a version is promoted: the endpoint domain a service
  *  carries before that does not resolve. */
 export interface ServiceListEntry {
   id: string;
   name: string;
   region: string | null;
-  liveDeploymentId: string | null;
+  liveVersionId: string | null;
   liveUrl: string | null;
 }
 
@@ -45,20 +45,20 @@ export interface ServiceCreateResult {
 export interface ServiceShowResult {
   projectId: string;
   service: ServiceSummary;
-  liveDeployment: ServiceDeploymentSummary | null;
+  liveVersion: ServiceVersionSummary | null;
   liveUrl: string | null;
-  recentDeployments: ServiceDeploymentSummary[];
+  recentVersions: ServiceVersionSummary[];
 }
 
-export interface ServiceDeploymentListResult {
+export interface ServiceVersionListResult {
   projectId: string;
   service: ServiceSummary;
-  deployments: ServiceDeploymentSummary[];
+  versions: ServiceVersionSummary[];
 }
 
-export interface ServiceDeploymentShowResult {
+export interface ServiceVersionShowResult {
   service: ServiceSummary | null;
-  deployment: ServiceDeploymentSummary;
+  version: ServiceVersionSummary;
 }
 
 export interface ServiceOpenResult {
@@ -68,31 +68,31 @@ export interface ServiceOpenResult {
   opened: boolean;
 }
 
-/** Targeted by deployment id alone, so no project is resolved. */
+/** Targeted by version id alone, so no project is resolved. */
 export interface ServicePromoteResult {
   service: ServiceSummary;
-  deployment: ServiceDeploymentSummary;
+  version: ServiceVersionSummary;
 }
 
 export interface ServiceRollbackResult {
   projectId: string;
   service: ServiceSummary;
-  deployment: ServiceDeploymentSummary;
-  previousLiveDeploymentId: string | null;
+  version: ServiceVersionSummary;
+  previousLiveVersionId: string | null;
 }
 
-/** What `service deployment start` and `stop` report. `alreadyInState`
- *  is true when the deployment already had the status the command asks
+/** What `service version start` and `stop` report. `alreadyInState`
+ *  is true when the version already had the status the command asks
  *  for, so the run made no call. */
-export interface ServiceDeploymentRunStateResult {
+export interface ServiceVersionRunStateResult {
   service: ServiceSummary;
-  deployment: ServiceDeploymentSummary;
+  version: ServiceVersionSummary;
   alreadyInState: boolean;
 }
 
-export interface ServiceDeploymentDeleteResult {
+export interface ServiceVersionDeleteResult {
   service: ServiceSummary;
-  deploymentId: string;
+  versionId: string;
   deleted: true;
 }
 

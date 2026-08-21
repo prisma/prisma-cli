@@ -22,8 +22,6 @@ import {
   branchNotDeployableError,
   branchValueEmptyError,
   deployFailedError,
-  deploymentDetachedError,
-  deploymentNotFoundError,
   domainCommandError,
   domainHostnameInvalidError,
   domainNotFoundError,
@@ -33,14 +31,16 @@ import {
   selectedServiceMissingError,
   serviceSelectionInvalidError,
   serviceTargetRequiredError,
+  versionDetachedError,
+  versionNotFoundError,
   workspaceRequiredError,
 } from "./errors";
 import type {
-  ServiceDeploymentSummary,
   ServiceDomainSummary,
   ServiceDomainTarget,
   ServiceListEntry,
   ServiceSummary,
+  ServiceVersionSummary,
 } from "./results";
 
 /** A hostname's optional root dot, and one DNS label. */
@@ -321,39 +321,39 @@ export function matchRequestedService(
   return matched;
 }
 
-export interface DeploymentSubject {
+export interface VersionSubject {
   provider: AppProvider;
   service: AppRecord;
-  deployment: DeploymentRecord;
+  version: DeploymentRecord;
 }
 
-/** Resolve a deployment by its globally-unique id. The id alone names
+/** Resolve a service version by its globally-unique id. The id alone names
  *  the subject — no service, project, or branch parameter is consulted,
- *  the same way `service deployment show` resolves it. */
-export async function resolveDeploymentSubject(
+ *  the same way `service version show` resolves it. */
+export async function resolveVersionSubject(
   ctx: ServiceContext,
   deploymentId: string,
-): Promise<DeploymentSubject> {
+): Promise<VersionSubject> {
   const provider = serviceProvider(ctx);
   const shown = await provider
     .showDeployment(deploymentId, { signal: ctx.signal })
     .catch((error) => {
-      throw deployFailedError("Failed to show deployment", error, []);
+      throw deployFailedError("Failed to show version", error, []);
     });
   if (!shown) {
-    throw deploymentNotFoundError(deploymentId);
+    throw versionNotFoundError(deploymentId);
   }
   if (!shown.app) {
-    throw deploymentDetachedError(deploymentId);
+    throw versionDetachedError(deploymentId);
   }
-  return { provider, service: shown.app, deployment: shown.deployment };
+  return { provider, service: shown.app, version: shown.deployment };
 }
 
 /** The live deployment is the one the service record names as its latest
  *  deployment. Nothing else decides it — local CLI state never does. */
-export function resolveCurrentLiveDeploymentId(
+export function resolveCurrentLiveVersionId(
   service: Pick<AppRecord, "liveDeploymentId">,
-  deployments: ServiceDeploymentSummary[],
+  deployments: ServiceVersionSummary[],
 ): string | null {
   if (
     service.liveDeploymentId &&
@@ -364,10 +364,10 @@ export function resolveCurrentLiveDeploymentId(
   return null;
 }
 
-export function applyLiveDeploymentHint(
-  deployments: ServiceDeploymentSummary[],
+export function applyLiveVersionHint(
+  deployments: ServiceVersionSummary[],
   currentLiveDeploymentId: string | null,
-): ServiceDeploymentSummary[] {
+): ServiceVersionSummary[] {
   if (!currentLiveDeploymentId) {
     return deployments.map((deployment) => ({
       ...deployment,
@@ -380,9 +380,9 @@ export function applyLiveDeploymentHint(
   }));
 }
 
-export function sortDeploymentsNewestFirst(
-  deployments: ServiceDeploymentSummary[],
-): ServiceDeploymentSummary[] {
+export function sortVersionsNewestFirst(
+  deployments: ServiceVersionSummary[],
+): ServiceVersionSummary[] {
   return deployments
     .slice()
     .sort(
@@ -407,7 +407,7 @@ export function toServiceListEntry(service: AppRecord): ServiceListEntry {
     id: service.id,
     name: service.name,
     region: service.region,
-    liveDeploymentId: service.liveDeploymentId,
+    liveVersionId: service.liveDeploymentId,
     liveUrl: service.liveDeploymentId ? service.liveUrl : null,
   };
 }

@@ -32,7 +32,7 @@ describe("prisma-cli service delete", () => {
     expect(presentedSummary(result.presented)).toEqual({
       kind: "summary",
       status: "ok",
-      text: "Deleted hello-world and every deployment it owned.",
+      text: "Deleted hello-world and every version it owned.",
     });
     // The service is gone, so nothing service-scoped can run next;
     // listing what remains is all that is left to suggest.
@@ -66,7 +66,7 @@ describe("prisma-cli service delete", () => {
     });
     expect(result.events).toContainEqual({
       kind: "progress",
-      step: "delete-deployments",
+      step: "delete-versions",
       completed: 2,
       total: 2,
     });
@@ -322,7 +322,7 @@ describe("prisma-cli service delete", () => {
         kind: "user-choice",
         label: "Or set PRISMA_SERVICE_ID to a service id.",
       },
-      // Not `service deployment list`: that command resolves a service
+      // Not `service version list`: that command resolves a service
       // before it lists anything, so it fails the same way this did.
       {
         kind: "run-command",

@@ -5,36 +5,36 @@ import {
   runCommandAction,
   userCancelledError,
 } from "./errors";
-import { deploymentDeletePresentations } from "./presentation";
-import type { ServiceDeploymentDeleteResult } from "./results";
-import { resolveDeploymentSubject, toServiceSummary } from "./target";
+import { versionDeletePresentations } from "./presentation";
+import type { ServiceVersionDeleteResult } from "./results";
+import { resolveVersionSubject, toServiceSummary } from "./target";
 
-export const serviceDeploymentDeleteCommand = defineCommand({
+export const serviceVersionDeleteCommand = defineCommand({
   help: {
-    summary: "Delete a deployment and the artifact it holds",
+    summary: "Delete a service version and the artifact it holds",
     examples: [
-      "service deployment delete dep_123",
-      "service deployment delete dep_123 --confirm dep_123",
+      "service version delete cpv_123",
+      "service version delete cpv_123 --confirm cpv_123",
     ],
   },
   args: {
     positionals: {
-      deployment: positional.string({
-        brief: "Deployment id to delete",
-        placeholder: "deployment",
+      version: positional.string({
+        brief: "Version id to delete",
+        placeholder: "version",
       }),
     },
   },
   needs: { credentials: true },
   handler: async (args, ctx) => {
-    const { provider, service, deployment } = await resolveDeploymentSubject(
+    const { provider, service, version } = await resolveVersionSubject(
       ctx,
-      args.positionals.deployment,
+      args.positionals.version,
     );
 
     const granted = await ctx.prompt.consent(
-      `Delete deployment "${deployment.id}" from Service "${service.name}"?`,
-      { token: deployment.id },
+      `Delete version "${version.id}" from Service "${service.name}"?`,
+      { token: version.id },
     );
     // A token consent resolves to true or throws (mismatch, or the
     // engine's consent-required error), so this guard only fires if that
@@ -47,27 +47,27 @@ export const serviceDeploymentDeleteCommand = defineCommand({
     ctx.report({ kind: "step-started", step: "delete" });
     try {
       await provider.deleteDeployment({
-        deploymentId: deployment.id,
+        deploymentId: version.id,
         signal: ctx.signal,
       });
     } catch (error) {
       ctx.report({ kind: "step-finished", step: "delete", outcome: "failed" });
-      throw deployFailedError("Failed to delete deployment", error, [
+      throw deployFailedError("Failed to delete version", error, [
         runCommandAction(
-          "List deployments",
-          `service deployment list ${service.name}`,
+          "List versions",
+          `service version list ${service.name}`,
         ),
       ]);
     }
     ctx.report({ kind: "step-finished", step: "delete", outcome: "ok" });
 
-    const result: ServiceDeploymentDeleteResult = {
+    const result: ServiceVersionDeleteResult = {
       service: toServiceSummary(service),
-      deploymentId: deployment.id,
+      versionId: version.id,
       deleted: true,
     };
     return ok(
-      ctx.present({ data: result }, deploymentDeletePresentations(result)),
+      ctx.present({ data: result }, versionDeletePresentations(result)),
     );
   },
 });

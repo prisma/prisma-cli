@@ -4,16 +4,16 @@ import { deployFailedError, runCommandAction } from "./errors";
 import { showPresentations } from "./presentation";
 import type { ServiceShowResult } from "./results";
 import {
-  applyLiveDeploymentHint,
-  resolveCurrentLiveDeploymentId,
+  applyLiveVersionHint,
+  resolveCurrentLiveVersionId,
   resolveServiceReadState,
-  sortDeploymentsNewestFirst,
+  sortVersionsNewestFirst,
   toServiceSummary,
 } from "./target";
 
 export const serviceShowCommand = defineCommand({
   help: {
-    summary: "Show the service and its current deployment",
+    summary: "Show the service and its current version",
     examples: [
       "service show my-service",
       "service show my-service --branch feature-x",
@@ -51,22 +51,22 @@ export const serviceShowCommand = defineCommand({
       .catch((error) => {
         throw deployFailedError("Failed to inspect service", error, [
           runCommandAction(
-            "List deployments",
-            `service deployment list ${state.service.name}`,
+            "List versions",
+            `service version list ${state.service.name}`,
           ),
         ]);
       });
-    const currentLiveDeploymentId = resolveCurrentLiveDeploymentId(
+    const currentLiveDeploymentId = resolveCurrentLiveVersionId(
       deploymentsResult.app,
       deploymentsResult.deployments,
     );
-    const deployments = sortDeploymentsNewestFirst(
-      applyLiveDeploymentHint(
+    const deployments = sortVersionsNewestFirst(
+      applyLiveVersionHint(
         deploymentsResult.deployments,
         currentLiveDeploymentId,
       ),
     );
-    const liveDeployment = currentLiveDeploymentId
+    const liveVersion = currentLiveDeploymentId
       ? (deployments.find(
           (deployment) => deployment.id === currentLiveDeploymentId,
         ) ?? null)
@@ -75,12 +75,12 @@ export const serviceShowCommand = defineCommand({
     const result: ServiceShowResult = {
       projectId: state.projectId,
       service: toServiceSummary(deploymentsResult.app),
-      liveDeployment,
+      liveVersion,
       // A service that was never promoted still carries an endpoint
       // domain, and that domain does not resolve. Only a service with a
       // live deployment has a URL to show.
-      liveUrl: liveDeployment ? deploymentsResult.app.liveUrl : null,
-      recentDeployments: deployments.slice(0, 5),
+      liveUrl: liveVersion ? deploymentsResult.app.liveUrl : null,
+      recentVersions: deployments.slice(0, 5),
     };
     return ok(ctx.present({ data: result }, showPresentations(result)));
   },

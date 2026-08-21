@@ -1,13 +1,13 @@
 import type { DestroyAppProgress, PromoteProgress } from "@prisma/compute-sdk";
 import type { DeploymentRecord } from "../../lib/app/app-provider";
 import {
-  deploymentNotFoundForServiceError,
-  liveDeploymentUnknownError,
-  noPreviousDeploymentError,
+  liveVersionUnknownError,
+  noPreviousVersionError,
+  versionNotFoundForServiceError,
 } from "./errors";
 import type { ServiceContext } from "./target";
 
-export function requireDeploymentForService(
+export function requireVersionForService(
   deployments: DeploymentRecord[],
   deploymentId: string,
   serviceName: string,
@@ -16,7 +16,7 @@ export function requireDeploymentForService(
     (candidate) => candidate.id === deploymentId,
   );
   if (!deployment) {
-    throw deploymentNotFoundForServiceError(deploymentId, serviceName);
+    throw versionNotFoundForServiceError(deploymentId, serviceName);
   }
   return deployment;
 }
@@ -31,16 +31,16 @@ export function resolveRollbackTarget(
   serviceName: string,
 ): DeploymentRecord {
   if (deployments.length === 0) {
-    throw noPreviousDeploymentError(serviceName);
+    throw noPreviousVersionError(serviceName);
   }
   if (currentLiveDeploymentId === null) {
-    throw liveDeploymentUnknownError(serviceName);
+    throw liveVersionUnknownError(serviceName);
   }
   const previousDeployment = deployments.find(
     (deployment) => deployment.id !== currentLiveDeploymentId,
   );
   if (!previousDeployment) {
-    throw noPreviousDeploymentError(serviceName);
+    throw noPreviousVersionError(serviceName);
   }
   return previousDeployment;
 }
@@ -115,7 +115,7 @@ export function destroyProgressReporter(
       stopping = deploymentIds.length;
       ctx.report({
         kind: "progress",
-        step: "stop-deployments",
+        step: "stop-versions",
         completed: 0,
         total: stopping,
       });
@@ -124,7 +124,7 @@ export function destroyProgressReporter(
       stopped += 1;
       ctx.report({
         kind: "progress",
-        step: "stop-deployments",
+        step: "stop-versions",
         completed: stopped,
         total: stopping,
       });
@@ -133,7 +133,7 @@ export function destroyProgressReporter(
       deleting = deploymentIds.length;
       ctx.report({
         kind: "progress",
-        step: "delete-deployments",
+        step: "delete-versions",
         completed: 0,
         total: deleting,
       });
@@ -142,7 +142,7 @@ export function destroyProgressReporter(
       deleted += 1;
       ctx.report({
         kind: "progress",
-        step: "delete-deployments",
+        step: "delete-versions",
         completed: deleted,
         total: deleting,
       });

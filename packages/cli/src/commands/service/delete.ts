@@ -42,7 +42,7 @@ export const serviceDeleteCommand = defineCommand({
     });
 
     const granted = await ctx.prompt.consent(
-      `Delete Service "${state.service.name}" and every deployment it owns?`,
+      `Delete Service "${state.service.name}" and every version it owns?`,
       { token: state.service.name },
     );
     // A token consent resolves to true or throws (mismatch, or the

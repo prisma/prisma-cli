@@ -9,19 +9,19 @@ import {
   releaseRoutes,
 } from "./service-testkit";
 
-describe("prisma-cli service deployment promote", () => {
+describe("prisma-cli service version promote", () => {
   it("promotes the requested deployment and reports it as the live one", async () => {
     const harness = await makeServiceCli({ routes: releaseRoutes() });
 
     const result = await harness.cli.run(
-      ["service", "deployment", "promote", "dep_1"],
+      ["service", "version", "promote", "dep_1"],
       { cwd: harness.cwd, env: harness.env, isTty: { stdout: true } },
     );
 
     expect(result.exitCode).toBe(0);
     expect(result.presented?.data).toMatchObject({
       service: { id: "svc_1", name: "hello-world" },
-      deployment: { id: "dep_1", status: "running", live: true },
+      version: { id: "dep_1", status: "running", live: true },
     });
     expect(presentedSummary(result.presented)).toEqual({
       kind: "summary",
@@ -34,7 +34,7 @@ describe("prisma-cli service deployment promote", () => {
     const harness = await makeServiceCli({ routes: releaseRoutes() });
 
     const result = await harness.cli.run(
-      ["service", "deployment", "promote", "dep_1"],
+      ["service", "version", "promote", "dep_1"],
       { cwd: harness.cwd, env: harness.env },
     );
 
@@ -66,7 +66,7 @@ describe("prisma-cli service deployment promote", () => {
   it("writes no local selection or live-deployment state", async () => {
     const harness = await makeServiceCli({ routes: releaseRoutes() });
 
-    await harness.cli.run(["service", "deployment", "promote", "dep_1"], {
+    await harness.cli.run(["service", "version", "promote", "dep_1"], {
       cwd: harness.cwd,
       env: harness.env,
     });
@@ -80,16 +80,16 @@ describe("prisma-cli service deployment promote", () => {
     const harness = await makeServiceCli({ routes: releaseRoutes() });
 
     const result = await harness.cli.run(
-      ["service", "deployment", "promote", "dep_2"],
+      ["service", "version", "promote", "dep_2"],
       { cwd: harness.cwd, env: harness.env, isTty: { stdout: true } },
     );
 
     expect(result.exitCode).toBe(0);
     expect(result.presented?.diagnostics).toEqual([
       {
-        code: "SERVICE.DEPLOYMENT_ALREADY_LIVE",
+        code: "SERVICE.VERSION_ALREADY_LIVE",
         severity: "warn",
-        summary: "The selected deployment is already live for this service.",
+        summary: "The selected version is already live for this service.",
         nextActions: [],
       },
     ]);
@@ -101,13 +101,13 @@ describe("prisma-cli service deployment promote", () => {
     });
   });
 
-  it("emits the completed json envelope with commandId service.deployment.promote", async () => {
+  it("emits the completed json envelope with commandId service.version.promote", async () => {
     const harness = await makeServiceCli({ routes: releaseRoutes() });
 
     const result = await harness.cli.run(
       [
         "service",
-        "deployment",
+        "version",
         "promote",
         "dep_1",
 
@@ -121,10 +121,10 @@ describe("prisma-cli service deployment promote", () => {
     if (frame?.kind !== "result" || !frame.envelope.ok) {
       throw new Error("expected a completed envelope");
     }
-    expect(frame.envelope.commandId).toBe("service.deployment.promote");
+    expect(frame.envelope.commandId).toBe("service.version.promote");
     expect(frame.envelope.result).toMatchObject({
       service: { id: "svc_1", name: "hello-world" },
-      deployment: { id: "dep_1" },
+      version: { id: "dep_1" },
     });
   });
 
@@ -134,7 +134,7 @@ describe("prisma-cli service deployment promote", () => {
     const result = await harness.cli.run(
       [
         "service",
-        "deployment",
+        "version",
         "promote",
         "dep_missing",
 
@@ -148,7 +148,7 @@ describe("prisma-cli service deployment promote", () => {
     if (frame?.kind !== "result" || frame.envelope.ok) {
       throw new Error("expected an errored envelope");
     }
-    expect(frame.envelope.error.code).toBe("SERVICE.DEPLOYMENT_NOT_FOUND");
+    expect(frame.envelope.error.code).toBe("SERVICE.VERSION_NOT_FOUND");
   });
 
   it("settles a failing promote call as SERVICE.DEPLOY_FAILED after a failed step", async () => {
@@ -164,7 +164,7 @@ describe("prisma-cli service deployment promote", () => {
     const result = await harness.cli.run(
       [
         "service",
-        "deployment",
+        "version",
         "promote",
         "dep_1",
 
@@ -186,13 +186,13 @@ describe("prisma-cli service deployment promote", () => {
     expect(frame.envelope.error.code).toBe("SERVICE.DEPLOY_FAILED");
   });
 
-  it("settles a deployment with no owning service as SERVICE.DEPLOYMENT_DETACHED", async () => {
+  it("settles a deployment with no owning service as SERVICE.VERSION_DETACHED", async () => {
     const harness = await makeServiceCli({
       routes: releaseRoutes({ "GET /v1/apps": () => ({ data: page([]) }) }),
     });
 
     const result = await harness.cli.run(
-      ["service", "deployment", "promote", "dep_1", "--json"],
+      ["service", "version", "promote", "dep_1", "--json"],
       { cwd: harness.cwd, env: harness.env },
     );
 
@@ -201,7 +201,7 @@ describe("prisma-cli service deployment promote", () => {
     if (frame?.kind !== "result" || frame.envelope.ok) {
       throw new Error("expected an errored envelope");
     }
-    expect(frame.envelope.error.code).toBe("SERVICE.DEPLOYMENT_DETACHED");
+    expect(frame.envelope.error.code).toBe("SERVICE.VERSION_DETACHED");
   });
 
   it("fails early with the engine sign-in error when unauthenticated", async () => {
@@ -211,7 +211,7 @@ describe("prisma-cli service deployment promote", () => {
     });
 
     const result = await harness.cli.run(
-      ["service", "deployment", "promote", "dep_1"],
+      ["service", "version", "promote", "dep_1"],
       { cwd: harness.cwd, env: harness.env, isTty: { stdout: true } },
     );
 

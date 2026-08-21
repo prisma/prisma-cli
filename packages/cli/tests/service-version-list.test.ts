@@ -10,12 +10,12 @@ import {
   SERVICE_DETAIL,
 } from "./service-testkit";
 
-describe("prisma-cli service deployment list", () => {
+describe("prisma-cli service version list", () => {
   it("lists deployments newest first with the live hint applied", async () => {
     const harness = await makeServiceCli();
 
     const result = await harness.cli.run(
-      ["service", "deployment", "list", "--project", "acme-app", "hello-world"],
+      ["service", "version", "list", "--project", "acme-app", "hello-world"],
       { cwd: harness.cwd, env: harness.env, isTty: { stdout: true } },
     );
 
@@ -23,7 +23,7 @@ describe("prisma-cli service deployment list", () => {
     expect(result.presented?.data).toEqual({
       projectId: "proj_1",
       service: { id: "svc_1", name: "hello-world" },
-      deployments: [
+      versions: [
         {
           id: "dep_2",
           status: "running",
@@ -62,13 +62,13 @@ describe("prisma-cli service deployment list", () => {
     );
 
     const result = await harness.cli.run(
-      ["service", "deployment", "list", "--project", "acme-app", "hello-world"],
+      ["service", "version", "list", "--project", "acme-app", "hello-world"],
       { cwd: harness.cwd, env: harness.env, isTty: { stdout: true } },
     );
 
     expect(result.exitCode).toBe(0);
     expect(result.presented?.data).toMatchObject({
-      deployments: [
+      versions: [
         { id: "dep_2", live: null },
         { id: "dep_1", live: null },
       ],
@@ -81,7 +81,7 @@ describe("prisma-cli service deployment list", () => {
     });
 
     const result = await harness.cli.run(
-      ["service", "deployment", "list", "--project", "acme-app", "--json"],
+      ["service", "version", "list", "--project", "acme-app", "--json"],
       { cwd: harness.cwd, env: harness.env },
     );
 
@@ -94,13 +94,13 @@ describe("prisma-cli service deployment list", () => {
     expect(frame.envelope.error.summary).toContain("requires a service");
   });
 
-  it("emits the completed json envelope with commandId service.deployment.list", async () => {
+  it("emits the completed json envelope with commandId service.version.list", async () => {
     const harness = await makeServiceCli();
 
     const result = await harness.cli.run(
       [
         "service",
-        "deployment",
+        "version",
         "list",
         "--project",
         "acme-app",
@@ -115,7 +115,7 @@ describe("prisma-cli service deployment list", () => {
     if (frame?.kind !== "result" || !frame.envelope.ok) {
       throw new Error("expected a completed envelope");
     }
-    expect(frame.envelope.commandId).toBe("service.deployment.list");
+    expect(frame.envelope.commandId).toBe("service.version.list");
     expect(frame.envelope.result).toMatchObject({
       projectId: "proj_1",
       service: { id: "svc_1", name: "hello-world" },
@@ -135,7 +135,7 @@ describe("prisma-cli service deployment list", () => {
     const result = await harness.cli.run(
       [
         "service",
-        "deployment",
+        "version",
         "list",
         "--project",
         "acme-app",
@@ -152,7 +152,7 @@ describe("prisma-cli service deployment list", () => {
     }
     expect(frame.envelope.error.code).toBe("SERVICE.DEPLOY_FAILED");
     expect(frame.envelope.error.summary).toBe(
-      "Failed to list service deployments",
+      "Failed to list service versions",
     );
     expect(frame.envelope.nextActions).toEqual([]);
   });
@@ -161,7 +161,7 @@ describe("prisma-cli service deployment list", () => {
     const harness = await makeServiceCli({ authenticated: false });
 
     const result = await harness.cli.run(
-      ["service", "deployment", "list", "--project", "acme-app"],
+      ["service", "version", "list", "--project", "acme-app"],
       { cwd: harness.cwd, env: harness.env, isTty: { stdout: true } },
     );
 

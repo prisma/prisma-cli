@@ -54,13 +54,6 @@ import { projectShowCommand } from "./commands/project/show";
 import { projectTransferCommand } from "./commands/project/transfer";
 import { serviceCreateCommand } from "./commands/service/create";
 import { serviceDeleteCommand } from "./commands/service/delete";
-import { serviceDeploymentDeleteCommand } from "./commands/service/deployment-delete";
-import { serviceDeploymentListCommand } from "./commands/service/deployment-list";
-import { serviceDeploymentPromoteCommand } from "./commands/service/deployment-promote";
-import { serviceDeploymentRollbackCommand } from "./commands/service/deployment-rollback";
-import { serviceDeploymentShowCommand } from "./commands/service/deployment-show";
-import { serviceDeploymentStartCommand } from "./commands/service/deployment-start";
-import { serviceDeploymentStopCommand } from "./commands/service/deployment-stop";
 import { serviceDomainAddCommand } from "./commands/service/domain-add";
 import { serviceDomainDeleteCommand } from "./commands/service/domain-delete";
 import { serviceDomainRetryCommand } from "./commands/service/domain-retry";
@@ -70,6 +63,13 @@ import { serviceListCommand } from "./commands/service/list";
 import { serviceLogsCommand } from "./commands/service/logs";
 import { serviceOpenCommand } from "./commands/service/open";
 import { serviceShowCommand } from "./commands/service/show";
+import { serviceVersionDeleteCommand } from "./commands/service/version-delete";
+import { serviceVersionListCommand } from "./commands/service/version-list";
+import { serviceVersionPromoteCommand } from "./commands/service/version-promote";
+import { serviceVersionRollbackCommand } from "./commands/service/version-rollback";
+import { serviceVersionShowCommand } from "./commands/service/version-show";
+import { serviceVersionStartCommand } from "./commands/service/version-start";
+import { serviceVersionStopCommand } from "./commands/service/version-stop";
 import { getCliVersion } from "./lib/version";
 
 export const platformCommandFamily: CommandFamily = defineCommandFamily({
@@ -116,13 +116,13 @@ export const platformCommandFamily: CommandFamily = defineCommandFamily({
     serviceCreate: serviceCreateCommand,
     serviceShow: serviceShowCommand,
     serviceOpen: serviceOpenCommand,
-    serviceDeploymentList: serviceDeploymentListCommand,
-    serviceDeploymentShow: serviceDeploymentShowCommand,
-    serviceDeploymentPromote: serviceDeploymentPromoteCommand,
-    serviceDeploymentRollback: serviceDeploymentRollbackCommand,
-    serviceDeploymentStart: serviceDeploymentStartCommand,
-    serviceDeploymentStop: serviceDeploymentStopCommand,
-    serviceDeploymentDelete: serviceDeploymentDeleteCommand,
+    serviceDeploymentList: serviceVersionListCommand,
+    serviceDeploymentShow: serviceVersionShowCommand,
+    serviceDeploymentPromote: serviceVersionPromoteCommand,
+    serviceDeploymentRollback: serviceVersionRollbackCommand,
+    serviceDeploymentStart: serviceVersionStartCommand,
+    serviceDeploymentStop: serviceVersionStopCommand,
+    serviceDeploymentDelete: serviceVersionDeleteCommand,
     serviceDelete: serviceDeleteCommand,
     serviceDomainAdd: serviceDomainAddCommand,
     serviceDomainShow: serviceDomainShowCommand,
@@ -284,9 +284,9 @@ export const cliGroups: Readonly<
   "bucket key": { brief: "Manage access keys for an object-store bucket" },
   branch: { brief: "View your Platform branches" },
   git: { brief: "Manage Git repository connections for a project" },
-  service: { brief: "Manage services and deployments for a project" },
+  service: { brief: "Manage services and their versions for a project" },
   "service domain": { brief: "Manage custom domains for a service" },
-  "service deployment": { brief: "Manage deployments for a service" },
+  "service version": { brief: "Manage the versions of a service" },
   agent: { brief: "Manage Prisma skills for AI coding agents" },
   "auth workspace": { brief: "Manage local workspace sessions" },
   contract: { brief: "Define and emit your application data contract" },
@@ -340,13 +340,13 @@ export const mountedCommands: Readonly<Record<string, AnyCommand>> = {
   "service create": serviceCreateCommand,
   "service show": serviceShowCommand,
   "service open": serviceOpenCommand,
-  "service deployment list": serviceDeploymentListCommand,
-  "service deployment show": serviceDeploymentShowCommand,
-  "service deployment promote": serviceDeploymentPromoteCommand,
-  "service deployment rollback": serviceDeploymentRollbackCommand,
-  "service deployment start": serviceDeploymentStartCommand,
-  "service deployment stop": serviceDeploymentStopCommand,
-  "service deployment delete": serviceDeploymentDeleteCommand,
+  "service version list": serviceVersionListCommand,
+  "service version show": serviceVersionShowCommand,
+  "service version promote": serviceVersionPromoteCommand,
+  "service version rollback": serviceVersionRollbackCommand,
+  "service version start": serviceVersionStartCommand,
+  "service version stop": serviceVersionStopCommand,
+  "service version delete": serviceVersionDeleteCommand,
   "service delete": serviceDeleteCommand,
   "service domain add": serviceDomainAddCommand,
   "service domain show": serviceDomainShowCommand,

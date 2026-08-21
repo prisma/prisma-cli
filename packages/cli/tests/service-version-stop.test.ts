@@ -65,13 +65,13 @@ function stopRoutes(
     }),
   };
 }
-describe("prisma-cli service deployment stop", () => {
+describe("prisma-cli service version stop", () => {
   it("stops a running deployment and reports it stopped", async () => {
     const stop = stopRoutes();
     const harness = await makeServiceCli({ routes: stop.routes });
 
     const result = await harness.cli.run(
-      ["service", "deployment", "stop", "dep_2"],
+      ["service", "version", "stop", "dep_2"],
       { cwd: harness.cwd, env: harness.env, isTty: { stdout: true } },
     );
 
@@ -85,7 +85,7 @@ describe("prisma-cli service deployment stop", () => {
     });
     expect(result.presented?.data).toMatchObject({
       service: { id: "svc_1", name: "hello-world" },
-      deployment: { id: "dep_2", status: "stopped" },
+      version: { id: "dep_2", status: "stopped" },
       alreadyInState: false,
     });
     expect(presentedSummary(result.presented)).toEqual({
@@ -100,7 +100,7 @@ describe("prisma-cli service deployment stop", () => {
       kind: "fields",
       rows: [
         { label: "service", value: "hello-world" },
-        { label: "deployment", value: "dep_2" },
+        { label: "version", value: "dep_2" },
         { label: "status", value: "stopped" },
       ],
     });
@@ -116,14 +116,14 @@ describe("prisma-cli service deployment stop", () => {
     const harness = await makeServiceCli({ routes: stop.routes });
 
     const result = await harness.cli.run(
-      ["service", "deployment", "stop", "dep_2"],
+      ["service", "version", "stop", "dep_2"],
       { cwd: harness.cwd, env: harness.env, isTty: { stdout: true } },
     );
 
     expect(result.exitCode).toBe(0);
     expect(stop.stopped).toEqual(["dep_2"]);
     expect(result.presented?.data).toMatchObject({
-      deployment: { id: "dep_2", status: "stopping" },
+      version: { id: "dep_2", status: "stopping" },
       alreadyInState: false,
     });
   });
@@ -133,7 +133,7 @@ describe("prisma-cli service deployment stop", () => {
     const harness = await makeServiceCli({ routes: stop.routes });
 
     const result = await harness.cli.run(
-      ["service", "deployment", "stop", "dep_1"],
+      ["service", "version", "stop", "dep_1"],
       { cwd: harness.cwd, env: harness.env, isTty: { stdout: true } },
     );
 
@@ -141,9 +141,9 @@ describe("prisma-cli service deployment stop", () => {
     expect(stop.stopped).toEqual([]);
     expect(result.presented?.diagnostics).toEqual([
       {
-        code: "SERVICE.DEPLOYMENT_ALREADY_STOPPED",
+        code: "SERVICE.VERSION_ALREADY_STOPPED",
         severity: "warn",
-        summary: "The selected deployment is already stopped.",
+        summary: "The selected version is already stopped.",
         nextActions: [],
       },
     ]);
@@ -165,7 +165,7 @@ describe("prisma-cli service deployment stop", () => {
     const harness = await makeServiceCli({ routes: stop.routes });
 
     const result = await harness.cli.run(
-      ["service", "deployment", "stop", "dep_2", "--json"],
+      ["service", "version", "stop", "dep_2", "--json"],
       { cwd: harness.cwd, env: harness.env },
     );
 
@@ -175,15 +175,15 @@ describe("prisma-cli service deployment stop", () => {
       throw new Error("expected an errored envelope");
     }
     expect(frame.envelope.error.code).toBe("SERVICE.DEPLOY_FAILED");
-    expect(frame.envelope.error.summary).toBe("Failed to stop deployment");
+    expect(frame.envelope.error.summary).toBe("Failed to stop version");
   });
 
-  it("settles an unknown deployment id as SERVICE.DEPLOYMENT_NOT_FOUND", async () => {
+  it("settles an unknown deployment id as SERVICE.VERSION_NOT_FOUND", async () => {
     const stop = stopRoutes();
     const harness = await makeServiceCli({ routes: stop.routes });
 
     const result = await harness.cli.run(
-      ["service", "deployment", "stop", "dep_missing", "--json"],
+      ["service", "version", "stop", "dep_missing", "--json"],
       { cwd: harness.cwd, env: harness.env },
     );
 
@@ -192,16 +192,16 @@ describe("prisma-cli service deployment stop", () => {
     if (frame?.kind !== "result" || frame.envelope.ok) {
       throw new Error("expected an errored envelope");
     }
-    expect(frame.envelope.error.code).toBe("SERVICE.DEPLOYMENT_NOT_FOUND");
+    expect(frame.envelope.error.code).toBe("SERVICE.VERSION_NOT_FOUND");
     expect(stop.stopped).toEqual([]);
   });
 
-  it("emits the completed json envelope with commandId service.deployment.stop", async () => {
+  it("emits the completed json envelope with commandId service.version.stop", async () => {
     const stop = stopRoutes();
     const harness = await makeServiceCli({ routes: stop.routes });
 
     const result = await harness.cli.run(
-      ["service", "deployment", "stop", "dep_2", "--json"],
+      ["service", "version", "stop", "dep_2", "--json"],
       { cwd: harness.cwd, env: harness.env },
     );
 
@@ -210,9 +210,9 @@ describe("prisma-cli service deployment stop", () => {
     if (frame?.kind !== "result" || !frame.envelope.ok) {
       throw new Error("expected a completed envelope");
     }
-    expect(frame.envelope.commandId).toBe("service.deployment.stop");
+    expect(frame.envelope.commandId).toBe("service.version.stop");
     expect(frame.envelope.result).toMatchObject({
-      deployment: { id: "dep_2", status: "stopped" },
+      version: { id: "dep_2", status: "stopped" },
     });
   });
 
@@ -224,7 +224,7 @@ describe("prisma-cli service deployment stop", () => {
     });
 
     const result = await harness.cli.run(
-      ["service", "deployment", "stop", "dep_2"],
+      ["service", "version", "stop", "dep_2"],
       { cwd: harness.cwd, env: harness.env, isTty: { stdout: true } },
     );
 

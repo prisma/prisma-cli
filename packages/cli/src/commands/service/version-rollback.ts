@@ -9,23 +9,23 @@ import {
 import { rollbackPresentations } from "./presentation";
 import {
   promoteProgressReporter,
-  requireDeploymentForService,
+  requireVersionForService,
   resolveRollbackTarget,
 } from "./release";
 import type { ServiceRollbackResult } from "./results";
 import {
-  resolveCurrentLiveDeploymentId,
+  resolveCurrentLiveVersionId,
   resolveServiceReadState,
   toServiceSummary,
 } from "./target";
 
-export const serviceDeploymentRollbackCommand = defineCommand({
+export const serviceVersionRollbackCommand = defineCommand({
   help: {
-    summary: "Roll back production to a previous deployment",
+    summary: "Roll back production to a previous service version",
     examples: [
-      "service deployment rollback my-service",
-      "service deployment rollback my-service --to dep_123",
-      "service deployment rollback my-service --to dep_123 --confirm dep_123",
+      "service version rollback my-service",
+      "service version rollback my-service --to cpv_123",
+      "service version rollback my-service --to cpv_123 --confirm cpv_123",
     ],
   },
   args: {
@@ -40,8 +40,8 @@ export const serviceDeploymentRollbackCommand = defineCommand({
       }),
       to: flag.string({
         brief:
-          "Deployment id to roll back to (default: the deployment before the live one)",
-        placeholder: "deployment",
+          "Version id to roll back to (default: the version before the live one)",
+        placeholder: "version",
       }),
     },
     positionals: {
@@ -57,25 +57,25 @@ export const serviceDeploymentRollbackCommand = defineCommand({
       serviceName: args.positionals.service,
       projectRef: args.flags.project,
       branchName: args.flags.branch,
-      commandName: "service deployment rollback",
+      commandName: "service version rollback",
     });
 
     const deploymentsResult = await state.provider
       .listDeployments(state.service.id, { signal: ctx.signal })
       .catch((error) => {
-        throw deployFailedError("Failed to list service deployments", error, [
+        throw deployFailedError("Failed to list service versions", error, [
           runCommandAction(
-            "List deployments",
-            `service deployment list ${state.service.name}`,
+            "List versions",
+            `service version list ${state.service.name}`,
           ),
         ]);
       });
-    const currentLiveDeploymentId = resolveCurrentLiveDeploymentId(
+    const currentLiveDeploymentId = resolveCurrentLiveVersionId(
       deploymentsResult.app,
       deploymentsResult.deployments,
     );
-    const targetDeployment = args.flags.to
-      ? requireDeploymentForService(
+    const targetVersion = args.flags.to
+      ? requireVersionForService(
           deploymentsResult.deployments,
           args.flags.to,
           state.service.name,
@@ -87,8 +87,8 @@ export const serviceDeploymentRollbackCommand = defineCommand({
         );
 
     const granted = await ctx.prompt.consent(
-      `Roll back Service "${state.service.name}" to deployment ${targetDeployment.id} and make it live?`,
-      { token: targetDeployment.id },
+      `Roll back Service "${state.service.name}" to version ${targetVersion.id} and make it live?`,
+      { token: targetVersion.id },
     );
     // A token consent resolves to true or throws (mismatch, or the
     // engine's consent-required error), so this guard only fires if that
@@ -98,16 +98,16 @@ export const serviceDeploymentRollbackCommand = defineCommand({
       throw userCancelledError("Service rollback canceled");
     }
 
-    const alreadyLive = currentLiveDeploymentId === targetDeployment.id;
+    const alreadyLive = currentLiveDeploymentId === targetVersion.id;
 
     if (!alreadyLive) {
       ctx.report({ kind: "step-started", step: "rollback" });
       try {
         await state.provider.promoteDeployment({
           appId: state.service.id,
-          deploymentId: targetDeployment.id,
+          deploymentId: targetVersion.id,
           signal: ctx.signal,
-          progress: promoteProgressReporter(ctx, targetDeployment.id),
+          progress: promoteProgressReporter(ctx, targetVersion.id),
         });
       } catch (error) {
         ctx.report({
@@ -115,10 +115,10 @@ export const serviceDeploymentRollbackCommand = defineCommand({
           step: "rollback",
           outcome: "failed",
         });
-        throw deployFailedError("Failed to roll back deployment", error, [
+        throw deployFailedError("Failed to roll back version", error, [
           runCommandAction(
-            "List deployments",
-            `service deployment list ${state.service.name}`,
+            "List versions",
+            `service version list ${state.service.name}`,
           ),
         ]);
       }
@@ -128,16 +128,15 @@ export const serviceDeploymentRollbackCommand = defineCommand({
     const result: ServiceRollbackResult = {
       projectId: state.projectId,
       service: toServiceSummary(deploymentsResult.app),
-      deployment: { ...targetDeployment, status: "running", live: true },
-      previousLiveDeploymentId: currentLiveDeploymentId,
+      version: { ...targetVersion, status: "running", live: true },
+      previousLiveVersionId: currentLiveDeploymentId,
     };
     const diagnostics: Diagnostic[] = alreadyLive
       ? [
           {
-            code: "SERVICE.DEPLOYMENT_ALREADY_LIVE",
+            code: "SERVICE.VERSION_ALREADY_LIVE",
             severity: "warn",
-            summary:
-              "The selected deployment is already live for this service.",
+            summary: "The selected version is already live for this service.",
             nextActions: [],
           },
         ]

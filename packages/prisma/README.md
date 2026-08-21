@@ -16,7 +16,7 @@
 Prisma Developer Platform.
 
 It is one binary for the ORM, Composer, and the Prisma Developer
-Platform: projects, branches, services, deployments, environment
+Platform: projects, branches, services, service versions, environment
 variables, and the Prisma ORM schema and migration workflow.
 
 ---
@@ -71,7 +71,7 @@ npx prisma project env list --role preview
 | `branch` | List Prisma branches for the resolved project. |
 | `postgres` | Create, inspect, back up, restore, and delete Prisma Postgres databases and their connections. |
 | `bucket` | Create, list, and delete object-store buckets and their access keys. |
-| `service` | Inspect services: deployments, logs, domains, promote, roll back, delete. |
+| `service` | Inspect services: versions, logs, domains, promote, roll back, delete. |
 | `dev`, `deploy` | Run a Composer app locally; deploy it to the platform. |
 | `contract`, `db`, `migration`, `orm init`, `lsp` | The Prisma ORM workflow. |
 
@@ -83,7 +83,7 @@ npx prisma auth whoami
 npx prisma project show
 npx prisma branch list
 npx prisma service list
-npx prisma service deployment promote DEPLOYMENT_ID
+npx prisma service version promote VERSION_ID
 ```
 
 ### Built for humans, CI, and agents
