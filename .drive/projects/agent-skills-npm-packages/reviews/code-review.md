@@ -32,6 +32,8 @@ asks Opus-4.8-mid; unavailable in this session, using Opus.
 | Slice 3 | Round 3 | SATISFIED — S3-R2-1 fixed in both templates, the comment, and all four snapshots; no new findings |
 | Slice 2 | Round 5 (CI repair) | SATISFIED — the cli-engine revert is exact and both Windows failures were fixture-only; no new findings |
 | Slice 3 | Round 4 (CI repair) | SATISFIED — the e2e harness now fakes the package init installs, the test's proof is intact, nothing else touched |
+| Slice 2 | Round 6 (operator amendments) | SATISFIED — the rewriter is gone with no producer left on an old spelling, and amendments 2 and 3 hold; no new findings |
+| Slice 3 | Round 5 (operator amendments) | ANOTHER ROUND NEEDED (amendments 1 and 2 met in code and tests; one new low finding, S3-R5-1, a doc left describing the retired postinstall) |
 
 ## Findings log
 
@@ -360,6 +362,16 @@ These two files are rendered into the project as its quick reference, so they ar
 Neither line breaks anything at run time — `pnpm dlx @prisma/cli@next` still resolves — but the commit's stated aim is that everything init writes names one binary, and this is the last scaffolded text that does not.
 
 Required action: change both lines in both templates to name `prisma` (`a catalogs entry for prisma or {{pkg}}`, `pnpm dlx prisma@next orm init …`) and refresh the two affected snapshots. The same stale spelling appears in a code comment at `src/commands/init/detect-package-manager.ts:26-28`; worth the same one-line pass while the files are open, though it is not user-facing.
+
+### S3-R5-1 — low — `.refs/prisma` `docs/reference/error-reference.md:146,148`
+
+The retired-code entry for `CLI.INIT_SKILL_INSTALL_FAILED` still describes the mechanism the operator amendments removed. Line 146 says init "copies them into the agent directories by running `prisma skills sync` once, then writes a `postinstall` script that repeats the sync on every later install", and line 148 says "the postinstall retries on the next install". Init no longer writes that script, and amendment 2 says nothing may write it.
+
+This is the same paragraph the slice rewrote in an earlier commit, so it is one edit that was missed rather than a document nobody touched. `skills/README.md` was corrected in this commit and now says init runs the sync once at scaffold time, so the two documents in this repository disagree about what init does.
+
+It is worth fixing rather than leaving because the entry exists to explain to someone reading an old error code what replaced it. A reader following it will go looking for a script that is not there, and may add it back believing it is the design.
+
+Required action: drop the two clauses about the postinstall from both sentences, and say what actually keeps the copies current — the per-command staleness check, which names the sync command when the copies fall behind. The rest of the entry (the retirement, the exit codes, the "a sync that fails no longer fails anything" point) is still correct.
 
 ## Round notes
 
@@ -1007,5 +1019,41 @@ The proof is intact, and it is the assertion on the spawned script that carries 
 Nothing else is touched. The commit is one file, ten lines replaced by ten, and every one of them is a name change.
 
 **On the Integration (2/4) failure.** I did not read the CI logs, and I did not need to in order to check the reasoning. The branch's complete file list against `origin/main` contains no `db-verify` file and no database command path at all; outside the CLI package's `src` and `test` trees it touches exactly two test files, the init emit e2e and the init skill-distribution integration test. So the failing file is in an area this branch does not modify and does not import, which is what the repository's rule for classifying a CI failure asks you to establish. Treating it as a worker-crash flake is sound on that evidence. The usual caveat applies: if it repeats on a re-run, it stops being a flake and wants a real look.
+
+**Slice 2, round 6 (operator amendments) — `4cf056e`, `f237e32`. SATISFIED.** Both commits match the amendments and I have no new findings.
+
+**Amendment 4: the rewriter is gone, and nothing is left feeding it an old spelling.** `renameAppCopy`, `toCurrentCommandLine`, `COMMAND_PREFIXES` and `LEGACY_CLI_NAME` no longer appear anywhere in the package — I grepped for all four across `src` and `tests`. `fromLegacyCliError` now does only structural work: the flat code becomes `SERVICE.<code>`, a free-text `fix` becomes a user-choice action, and each `nextSteps` line becomes a run-command action. Every piece of copy — summary, why, fix, command lines — passes through untouched.
+
+**The structural-only claim holds, and removing the filter is safe.** This was the part worth checking, because the old code only turned a `nextSteps` line into a run-command action when it started with a binary name; without the filter, any line at all becomes a command the user is told to run. So I enumerated the producers instead of assuming. `fromLegacyCliError` is called from four places, all in `service/target.ts`, and they feed exactly three builders: `computeConfigErrorToCliError`, `projectApiError` and `projectResolutionErrorToCliError`. Every `nextSteps` entry any of them emits is a `prisma …` command line, or the list is empty — the compute-config cases emit `prisma service <command>` and per-target variants, the project-resolution cases emit `prisma project list`, `prisma project link …`, `prisma auth workspace use …` and the recovery commands built by `buildProjectRecoveryCommands`, and `projectApiError` emits none. Nothing prose-like or URL-like reaches this path, so the filter had nothing left to drop and its removal changes no output.
+
+**Producers were fixed rather than papered over.** `domain-guidance.ts` writes `prisma service domain retry/show` at all five call sites, and `compute-config.ts` says "Service target" and "service target" in the two places that said "App". A sweep for `prisma-cli ` and for the `app` noun in guidance strings across `src` finds no producer still on the old spelling; what survives is the known list — the update-check entrypoint matcher and cache directory, the sign-in analytics tags, and the `prisma/prisma-cli` repository URLs, none of which are command copy.
+
+**Coverage did not go down when `service-legacy-errors.test.ts` was deleted.** The structural conversion is still pinned by `service-compute-config.test.ts`, which asserts the full `nextActions` array — the fix as a user-choice action followed by one run-command per configured target — and the `SERVICE.` code prefix and rewritten summary; and by `service-domain-wait.test.ts`, which asserts the guidance action verbatim. Both files also assert that the serialised error never contains `prisma-cli app `, so the old spelling cannot creep back in unnoticed. The deleted file existed only to pin the rewriter, which no longer exists.
+
+**On keeping `portCommandString`: the implementer's argument is right.** It is not spelling rewriting, and the difference is visible in what produces its input. `formatPrismaCliCommand` defaults to the package invocation and emits `npx -y @prisma/cli@next <args>` today — a current producer, not a legacy one. `portCommandString` turns that into `prisma <args>` for display, which is a choice of invocation style, not a translation from an old name to a new one. Amendment 4 removes the layer that let producers keep writing yesterday's spelling; this converts today's package-runner form into today's binary form. One note for whoever owns the naming question: the regular expression matches `@prisma/cli@…` while the producer builds its string from `PRISMA_CLI_PACKAGE_SPEC`, so the two would have to change together if that package name ever becomes `prisma`. They agree today.
+
+**Amendment 3: gitignoring is self-contained.** `replaceTree` writes a `.gitignore` containing `*` into each managed skill directory after copying the tree. Nothing in `packages/cli/src/lib/skills/` reads or writes a root `.gitignore`; the only root-gitignore writer in the package is the unrelated local project pin in `lib/project/local-pin.ts`, which predates this work and has nothing to do with skills. The stamp and the orphan scan both key on `SKILL.md` alone, so the extra file is invisible to them, and the new test proves it rather than asserting it: after a sync, every harness copy has the `.gitignore`, the list reports `upToDate` with no orphans, and a second sync synchronises and prunes nothing.
+
+Two things about that file worth knowing rather than fixing. A bare `*` also ignores the `.gitignore` itself, which is the intended effect — the whole managed directory disappears from git's view — but it does mean nothing about the mechanism shows up in `git status`. And an ignore file does not untrack anything already committed, so a project that committed synced skills before this change keeps them tracked until someone removes them.
+
+**Amendment 2: nothing edits the user's package.json.** The skills code only ever reads a `package.json` — for workspace patterns, for a member check, and for a package's version. Sync's `next` output gained one advisory that shows the postinstall one-liner as something the user may add themselves, which is exactly what the amendment permits, and it appears only when the project actually has skill source packages installed. The test runs the real command and compares the manifest byte for byte before and after, so a future change that starts writing the manifest fails here. `docs/product/output-conventions.md` now states the same model in one paragraph: the notice is the mechanism, the gitignoring is confined to the managed directories, and the postinstall is the user's own choice.
+
+Per the review brief I did not re-run anything; the implementer reports 1037 passed with the one known skip, a clean typecheck and clean lint.
+
+**Slice 3, round 5 (operator amendments) — `0800daec`. ANOTHER ROUND NEEDED**, on one low finding in a document. The code side of amendments 1 and 2 is done properly.
+
+**No postinstall writing.** `SKILLS_SYNC_SCRIPT` is deleted from `hygiene-package-scripts.ts`, and `mergePackageScripts` survives with `REQUIRED_SCRIPTS` as its default, so `contract:emit` is still merged with the same collision handling — a user's own script of the same name still wins and produces a warning. The scaffold now calls `mergePackageScripts(working)` with no second argument, so there is no path that could pass a skills script in. A grep for `postinstall` across the CLI package's source finds nothing.
+
+**No skill entries in the root gitignore.** `SYNCED_SKILL_GITIGNORE_ENTRIES` is deleted, `mergeGitignore` keeps `REQUIRED_GITIGNORE_ENTRIES` as its default, and the scaffold's conditional list is gone — it now merges the base entries only. That also removes the last place where `--skip-skills` had to change what was written to a file the user owns.
+
+**Exactly one skills touchpoint remains.** `syncAgentSkills` is called from one place in `init.ts`, guarded by `inputs.installProjectSkill`, which is `!flags.skipSkills`. The retired-skill cleanup (`legacySkillDirs`) is the only other skills-related thing init does, and it is unchanged and unconditional — it was unconditional before this commit too. That is defensible: it removes directories left by earlier generations of the Prisma skills, which is a repair rather than wiring, and the integration suite still exercises it.
+
+**The advice strings say the right thing now.** The failed-sync warning no longer promises a postinstall retry; it says the user is pointed back at the sync, and names the command. The skipped-sync warning is unchanged and already named the command. `formatSkillSyncCommand` still produces the per-manager form that runs the installed copy. No string anywhere in init mentions a postinstall.
+
+**The tests were rewritten to prove the absence, not just to stop asserting the presence.** `init-scaffold.test.ts` keeps a case under the heading "the skill-sync wiring it does not write" that asserts no `postinstall` key and no `skills/prisma-8/` line in the gitignore, and the integration suite has its own "writes no skills wiring into the project" case doing the same against the real binary. The rest of the integration suite still pins what matters: exactly one sync invocation, one binary end to end (`add -D prisma@next @types/node` plus `dlx prisma@next skills sync` plus `contract:emit: prisma contract emit`), no `skills add` and no `prisma/prisma` fetch, the retired-directory cleanup, and nothing spawned at all under `--skip-skills`. The journey harness comment was corrected too — it explained `--skip-skills` in terms of the GitHub tag fetch that no longer happens.
+
+**The one finding, S3-R5-1**, is `docs/reference/error-reference.md`, which still tells the reader init writes a postinstall that repeats the sync on every install. `skills/README.md` was corrected in the same commit, so the two documents now disagree.
+
+Per the review brief I did not re-run anything; the implementer reports 1436 CLI tests, 17 of 17 integration, 115 of 115 e2e, and a clean typecheck.
 
 ## Orchestrator notes
