@@ -6,7 +6,7 @@
  * copies are current, and when the check is opted out.
  */
 import { resolvePrismaCliPackageCommand } from "../../lib/agent/cli-command";
-import { readSkillsStatus } from "../../lib/skills/status";
+import { readSkillsStatus, type SkillsStatus } from "../../lib/skills/status";
 
 const SKILLS_SYNC_ARGS = ["skills", "sync"] as const;
 
@@ -23,7 +23,14 @@ export async function resolveAgentSetupTipCommand(
     return null;
   }
 
-  const status = await readSkillsStatus(ctx.cwd);
+  // The tip resolves after the credential is stored: a project the
+  // status scan cannot read must not fail a login that succeeded.
+  let status: SkillsStatus;
+  try {
+    status = await readSkillsStatus(ctx.cwd, { orphans: false });
+  } catch {
+    return null;
+  }
   if (status.packages.length === 0 || status.upToDate || status.checkDisabled) {
     return null;
   }
