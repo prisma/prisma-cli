@@ -23,10 +23,18 @@ const virtual = vi.hoisted(() => ({
 
 vi.mock("node:fs/promises", async (importOriginal) => {
   const real = await importOriginal<typeof import("node:fs/promises")>();
-  const behind = (target: unknown): unknown =>
-    typeof target === "string" && target.startsWith(virtual.prefix)
-      ? path.join(virtual.realDir, target.slice(virtual.prefix.length))
+  const behind = (target: unknown): unknown => {
+    if (typeof target !== "string") {
+      return target;
+    }
+    // Production code routes paths through path.join, which uses
+    // backslashes on Windows; the virtual prefix is declared with
+    // forward slashes, so compare in forward-slash form.
+    const asPosix = target.split(path.sep).join("/");
+    return asPosix.startsWith(virtual.prefix)
+      ? path.join(virtual.realDir, asPosix.slice(virtual.prefix.length))
       : target;
+  };
   return {
     ...real,
     readFile: (target: unknown, ...rest: unknown[]) =>

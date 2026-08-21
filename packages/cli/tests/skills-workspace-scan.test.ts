@@ -72,7 +72,9 @@ describe("expanding a ** workspace glob", () => {
       path.join(root, "packages/group/two"),
       path.join(root, "packages/one"),
     ]);
-    const walked = reads.dirs.map((dir) => path.relative(root, dir)).sort();
+    const walked = reads.dirs
+      .map((dir) => path.relative(root, dir).split(path.sep).join("/"))
+      .sort();
     expect(walked).toEqual(["packages", "packages/group"]);
   });
 
