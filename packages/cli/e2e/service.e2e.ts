@@ -31,7 +31,7 @@ interface ServiceRow {
   readonly id: string;
   readonly name: string;
   readonly region: string | null;
-  readonly liveDeploymentId: string | null;
+  readonly liveVersionId: string | null;
   readonly liveUrl: string | null;
 }
 
@@ -57,7 +57,7 @@ describeCommand("service create", () => {
     expect(created.branch).toBe("main");
     // Nothing has been deployed, so the endpoint domain the service
     // already carries is not presented as a live URL.
-    expect(created.service.liveDeploymentId).toBeNull();
+    expect(created.service.liveVersionId).toBeNull();
     expect(created.service.liveUrl).toBeNull();
 
     serviceId = created.service.id;
@@ -102,9 +102,9 @@ describeCommand("service show", () => {
     const shown = run.envelope.result as {
       readonly projectId: string;
       readonly service: { readonly id: string; readonly name: string };
-      readonly liveDeployment: unknown;
+      readonly liveVersion: unknown;
       readonly liveUrl: string | null;
-      readonly recentDeployments: readonly unknown[];
+      readonly recentVersions: readonly unknown[];
     };
 
     expect(shown.projectId).toBe(scratch.project().id);
@@ -113,9 +113,9 @@ describeCommand("service show", () => {
     // `service create` does not deploy, so these three state the same
     // fact three ways, and each is a separate chance to invent one: no
     // promoted deployment, so no live URL, and no history to show.
-    expect(shown.liveDeployment).toBeNull();
+    expect(shown.liveVersion).toBeNull();
     expect(shown.liveUrl).toBeNull();
-    expect(shown.recentDeployments).toEqual([]);
+    expect(shown.recentVersions).toEqual([]);
   });
 });
 
