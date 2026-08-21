@@ -1,4 +1,8 @@
-import type { PrunedSkill, SyncedSkill } from "../../lib/skills/sync";
+import type {
+  PrunedSkill,
+  RefusedSkill,
+  SyncedSkill,
+} from "../../lib/skills/sync";
 
 export interface SkillsPackageReport {
   readonly package: string;
@@ -13,13 +17,16 @@ export interface SkillsSyncResult {
   readonly packages: readonly SkillsPackageReport[];
   readonly synced: readonly SyncedSkill[];
   readonly pruned: readonly PrunedSkill[];
+  /** Target directories left untouched because they hold a skill this
+   *  CLI does not manage. */
+  readonly refused: readonly RefusedSkill[];
   readonly checkDisabled: boolean;
 }
 
 export interface SkillsListTarget {
   readonly dir: string;
   readonly syncedVersion: string | null;
-  readonly state: "synced" | "stale" | "absent";
+  readonly state: "synced" | "stale" | "absent" | "unmanaged";
 }
 
 export interface SkillsListEntry {

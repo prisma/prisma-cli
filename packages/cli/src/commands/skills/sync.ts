@@ -4,7 +4,7 @@ import { CliStructuredError, notOk, ok } from "@prisma/cli-engine/protocol";
 import { writeSkillsCheckDisabled } from "../../lib/skills/opt-out";
 import type { InstalledSourcePackage } from "../../lib/skills/status";
 import { readSkillsStatus } from "../../lib/skills/status";
-import { syncSkills } from "../../lib/skills/sync";
+import { type RefusedSkill, syncSkills } from "../../lib/skills/sync";
 import { skillsConfigSection } from "./config";
 import { syncPresentations } from "./presentation";
 import type { SkillsPackageReport, SkillsSyncResult } from "./results";
@@ -39,6 +39,27 @@ export function versionConflictDiagnostics(
         },
       ],
     }));
+}
+
+/** Target directories that already hold a skill this CLI does not
+ *  manage: sync leaves them alone, and the user hears why the packaged
+ *  skill was not installed there. */
+export function unmanagedDirectoryDiagnostics(
+  refused: readonly RefusedSkill[],
+): Diagnostic[] {
+  return refused.flatMap((entry) =>
+    entry.dirs.map((dir) => ({
+      code: "SKILLS.UNMANAGED_DIRECTORY",
+      severity: "warn" as const,
+      summary: `${dir}/${entry.skill} is not managed by this CLI, so it was left untouched.`,
+      nextActions: [
+        {
+          kind: "user-choice" as const,
+          label: `Move or remove ${dir}/${entry.skill}, then rerun skills sync to install the packaged skill.`,
+        },
+      ],
+    })),
+  );
 }
 
 function bothSwitchesError(): CliStructuredError {
@@ -99,6 +120,7 @@ export const skillsSyncCommand = defineCommand({
       packages: packageReports(outcome.packages),
       synced: outcome.synced,
       pruned: outcome.pruned,
+      refused: outcome.refused,
       checkDisabled,
     };
 
@@ -106,7 +128,10 @@ export const skillsSyncCommand = defineCommand({
       ctx.present(
         {
           data: result,
-          diagnostics: versionConflictDiagnostics(outcome.packages),
+          diagnostics: [
+            ...versionConflictDiagnostics(outcome.packages),
+            ...unmanagedDirectoryDiagnostics(outcome.refused),
+          ],
         },
         syncPresentations(result),
       ),

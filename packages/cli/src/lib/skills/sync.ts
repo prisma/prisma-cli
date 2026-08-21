@@ -18,11 +18,20 @@ export interface PrunedSkill {
   readonly dirs: readonly string[];
 }
 
+/** A target directory sync would have written, except it holds a skill
+ *  this CLI does not manage — no stamp, or a stamp from a package
+ *  outside the allowlist. */
+export interface RefusedSkill {
+  readonly skill: string;
+  readonly dirs: readonly string[];
+}
+
 export interface SyncOutcome {
   readonly projectRoot: string;
   readonly packages: readonly InstalledSourcePackage[];
   readonly synced: readonly SyncedSkill[];
   readonly pruned: readonly PrunedSkill[];
+  readonly refused: readonly RefusedSkill[];
   readonly checkDisabled: boolean;
 }
 
@@ -30,14 +39,23 @@ export interface SyncOutcome {
  * Brings the harness skill directories in line with the installed
  * source packages: copies each skill tree whose stamp does not match
  * the package it came from, and removes copies whose source package is
- * gone. Doing nothing is the normal outcome and is not an error.
+ * gone. A target directory that exists but is not this CLI's copy is
+ * refused, never replaced. Doing nothing is the normal outcome and is
+ * not an error.
  */
 export async function syncSkills(status: SkillsStatus): Promise<SyncOutcome> {
   const synced: SyncedSkill[] = [];
+  const refused: RefusedSkill[] = [];
   for (const skill of status.skills) {
     const dirs = skill.targets
-      .filter((target) => target.state !== "synced")
+      .filter((target) => target.state === "stale" || target.state === "absent")
       .map((target) => target.dir);
+    const refusedDirs = skill.targets
+      .filter((target) => target.state === "unmanaged")
+      .map((target) => target.dir);
+    if (refusedDirs.length > 0) {
+      refused.push({ skill: skill.skill, dirs: refusedDirs });
+    }
     if (dirs.length === 0) {
       continue;
     }
@@ -75,6 +93,7 @@ export async function syncSkills(status: SkillsStatus): Promise<SyncOutcome> {
     packages: status.packages,
     synced,
     pruned,
+    refused,
     checkDisabled: status.checkDisabled,
   };
 }

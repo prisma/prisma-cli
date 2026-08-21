@@ -569,6 +569,79 @@ describe("harness directories that already exist", () => {
     expect(await stampOf(root, ".claude/skills", "prisma-8")).toBe("8.1.0");
   });
 
+  it("refuses to replace a user-authored skill that collides on name", async () => {
+    const root = await makeProjectRoot();
+    await installPackage(root, {
+      name: "@prisma/orm-postgres",
+      version: "8.1.0",
+      skills: ["prisma-8"],
+    });
+    const userSkill = path.join(root, ".claude/skills", "prisma-8");
+    await mkdir(userSkill, { recursive: true });
+    const content = "---\nname: prisma-8\n---\n\nMy own notes.\n";
+    await writeFile(path.join(userSkill, "SKILL.md"), content, "utf8");
+
+    const run = await makeCli().run(["skills", "sync"], {
+      cwd: root,
+      isTty: { stdout: true, stderr: true },
+    });
+    const result = run.presented?.data as SkillsSyncResult;
+
+    expect(run.exitCode).toBe(0);
+    expect(await readFile(path.join(userSkill, "SKILL.md"), "utf8")).toBe(
+      content,
+    );
+    expect(result.refused).toEqual([
+      { skill: "prisma-8", dirs: [".claude/skills"] },
+    ]);
+    expect(result.synced[0]?.dirs).toEqual([
+      ".cursor/skills",
+      ".agents/skills",
+      ".windsurf/skills",
+    ]);
+    expect(run.stderr).toContain(
+      ".claude/skills/prisma-8 is not managed by this CLI, so it was left untouched.",
+    );
+  });
+
+  it("refuses to replace a colliding skill stamped by a package outside the allowlist", async () => {
+    const root = await makeProjectRoot();
+    await installPackage(root, {
+      name: "@prisma/orm-postgres",
+      version: "8.1.0",
+      skills: ["prisma-8"],
+    });
+    await seedSyncedSkill(root, ".claude/skills", {
+      skill: "prisma-8",
+      library: "@acme/toolkit",
+      version: "1.0.0",
+    });
+
+    const run = await makeCli().run(["skills", "sync"], {
+      cwd: root,
+      isTty: { stdout: true, stderr: true },
+    });
+    const result = run.presented?.data as SkillsSyncResult;
+
+    expect(run.exitCode).toBe(0);
+    expect(await stampOf(root, ".claude/skills", "prisma-8")).toBe("1.0.0");
+    expect(result.refused).toEqual([
+      { skill: "prisma-8", dirs: [".claude/skills"] },
+    ]);
+    expect(run.stderr).toContain(
+      ".claude/skills/prisma-8 is not managed by this CLI, so it was left untouched.",
+    );
+
+    // The refused directory does not keep the project reading as stale.
+    const list = await runList(root);
+    expect(list.result.upToDate).toBe(true);
+    expect(list.result.skills[0]?.targets[0]).toEqual({
+      dir: ".claude/skills",
+      syncedVersion: "1.0.0",
+      state: "unmanaged",
+    });
+  });
+
   it("re-syncs after the copies are deleted by hand", async () => {
     const root = await makeProjectRoot();
     await installPackage(root, {

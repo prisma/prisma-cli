@@ -9,7 +9,7 @@ import {
   PACKAGE_SKILLS_DIR,
   SKILL_SOURCE_PACKAGES,
 } from "./allowlist";
-import { readSkillStamp } from "./frontmatter";
+import { readSkillStamp, type SkillStamp } from "./frontmatter";
 import { readSkillsCheckDisabled } from "./opt-out";
 import { findProjectRoot, workspaceMemberDirs } from "./project-root";
 import { type ResolvedPackage, resolvePackage } from "./resolve";
@@ -23,7 +23,10 @@ export interface InstalledSourcePackage {
   readonly conflictingVersions: readonly string[];
 }
 
-export type SkillTargetState = "synced" | "stale" | "absent";
+/** "unmanaged": the directory exists but is not this CLI's copy — no
+ *  stamp, or a stamp naming a package outside the allowlist. Sync never
+ *  touches it. */
+export type SkillTargetState = "synced" | "stale" | "absent" | "unmanaged";
 
 export interface SkillTarget {
   /** Harness directory, relative to the project root. */
@@ -168,14 +171,12 @@ async function readSkillStatus(
 ): Promise<SkillStatus> {
   const targets: SkillTarget[] = [];
   for (const dir of HARNESS_SKILL_DIRS) {
-    const stamp = await readSkillStamp(
-      path.join(projectRoot, dir, source.skill, "SKILL.md"),
-    );
-    const syncedVersion = stamp?.libraryVersion ?? null;
+    const skillDir = path.join(projectRoot, dir, source.skill);
+    const stamp = await readSkillStamp(path.join(skillDir, "SKILL.md"));
     targets.push({
       dir,
-      syncedVersion,
-      state: stampState(syncedVersion, source.version),
+      syncedVersion: stamp?.libraryVersion ?? null,
+      state: await stampState(skillDir, stamp, source.version),
     });
   }
 
@@ -185,18 +186,24 @@ async function readSkillStatus(
     version: source.version,
     sourceDir: source.dir,
     targets,
-    upToDate: targets.every((target) => target.state === "synced"),
+    upToDate: targets.every(
+      (target) => target.state === "synced" || target.state === "unmanaged",
+    ),
   };
 }
 
-function stampState(
-  syncedVersion: string | null,
+async function stampState(
+  skillDir: string,
+  stamp: SkillStamp | null,
   sourceVersion: string,
-): SkillTargetState {
-  if (syncedVersion === null) {
-    return "absent";
+): Promise<SkillTargetState> {
+  if (stamp === null) {
+    return (await exists(skillDir)) ? "unmanaged" : "absent";
   }
-  return syncedVersion === sourceVersion ? "synced" : "stale";
+  if (stamp.library === null || !isSkillSourcePackage(stamp.library)) {
+    return "unmanaged";
+  }
+  return stamp.libraryVersion === sourceVersion ? "synced" : "stale";
 }
 
 /**
@@ -262,6 +269,15 @@ async function skillDirectories(dir: string): Promise<string[]> {
 async function isFile(target: string): Promise<boolean> {
   try {
     return (await stat(target)).isFile();
+  } catch {
+    return false;
+  }
+}
+
+async function exists(target: string): Promise<boolean> {
+  try {
+    await stat(target);
+    return true;
   } catch {
     return false;
   }
