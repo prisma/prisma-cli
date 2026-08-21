@@ -1223,3 +1223,29 @@ The `.gitignore` cleanup is unconditional and permanent. Every `skills sync` iss
 #### Verdict
 
 **ANOTHER ROUND NEEDED** — all eleven round-2 findings are addressed and the three that had to be fixed in this PR are verified fixed against the binary, but the round-2 fix for the unmanaged/absent split introduced a path where an unreadable user-authored `SKILL.md` is deleted (INIT-R3-2), and the login tip still has an unguarded throw one line past the new guard (INIT-R3-1); both are small, contained changes.
+
+### Init slice — Round 4 (verification)
+
+**Verification run locally:** `pnpm --filter @prisma/cli test` → 61 files, 914 passed / 1 skipped, exit 0 (up from 911, matching the three new tests). `pnpm --filter @prisma/cli typecheck` → clean. `pnpm lint` still aborts with `fatal runtime error: stack overflow` inside biome on every input in this worktree, unchanged from rounds 2 and 3, so lint conformance remains unverified. Everything below was exercised against the rebuilt binary (`packages/cli/dist/cli.js`) in throwaway fixture projects with a stub `@prisma/orm-postgres@8.1.0` shipping one skill, plus one direct call into `src/` through `tsx` for the login-tip case, not read off the diff. The three commits touch six files and nothing else; the worktree is clean.
+
+#### Per-finding verdicts
+
+**INIT-R3-1 — fixed.** `resolvePrismaCliPackageCommand` moved inside the same `try` as `readSkillsStatus` (`agent-setup-tip.ts:27-43`), and the now-unused `SkillsStatus` type import is gone. Reproduced the round-3 repro directly against `src/`: a project with a chmod-000 `package.json` and an installed source package. `readSkillsStatus` succeeded, `resolvePrismaCliPackageCommand` threw `EACCES`, and `resolveAgentSetupTipCommand` returned `null` with exit 0. The early returns kept their original conditions and order, so the only behavior change is that a resolver throw now yields no tip instead of failing the login. One side effect worth knowing rather than fixing: an `AbortError` from `ctx.signal` is now swallowed too, which means a cancelled login skips the tip instead of propagating — the right outcome for a tip, and `login.ts:148` does nothing else with it.
+
+**INIT-R3-2 — fixed.** `stampState` became `targetState` and stats the `SKILL.md` path before deciding: `stamp === null` now means `absent` only when the file is genuinely missing, `unmanaged` otherwise (`status.ts:216-241`). Reproduced both sides against the binary. Unreadable file: a user-authored `.claude/skills/prisma-8/` with a chmod-000 `SKILL.md` and a sibling `notes.md` gave exit 0, `refused: [{"skill":"prisma-8","dirs":[".claude/skills"]}]`, `synced` covering only the other three harness dirs, the `SKILLS.UNMANAGED_DIRECTORY` diagnostic, `notes.md` intact, and `SKILL.md` byte-identical (md5 `f875c4bc…` before and after). Missing file: a partial tree holding only `references/usage.md` still classified `absent` and was fully rewritten — `synced` listed all four dirs, `refused` was empty, and the stale `usage.md` is gone. The `SkillTargetState` doc comment was updated to name the unreadable case.
+
+**INIT-R3-3 — fixed.** The unconditional `rm` became `removeOldCliGitignore`, which reads the file and removes it only when the content matches `/^\*\r?\n?$/` (`sync.ts:112-125`); a read failure is a no-op. The regex covers exactly what the old CLI wrote — commit b154aef wrote the literal `"*\n"`. Reproduced: in an already-current project I planted `*\n`, bare `*`, and `*\r\n` in three managed copies; all three were removed, `synced`/`pruned`/`refused` all stayed empty, and `SKILL.md` kept the same md5, so nothing resynced. In a second project a user's `# keep these copies out of git\n*\n` and a `*.log` both survived verbatim. The docs sentence landed at `docs/product/output-conventions.md:119`. It sits in the existing unwrapped paragraph, and no banned word appears in any added line across the three commits.
+
+#### New findings
+
+**INIT-R4-1 — nit — `packages/cli/src/lib/skills/status.ts:238-240`**
+
+A skill directory that cannot be listed at all still classifies as `absent`, and sync then fails the command with a raw internal error. With the whole `.claude/skills/prisma-8/` directory chmod-000, `stat` on the `SKILL.md` inside it fails, `pathExists` returns false, sync tries to replace the tree, and `rm(…, { recursive: true })` aborts with `CLI.INTERNAL_ERROR`, exit 1. No data is lost — the user's files survived because the OS refused the delete, not because the CLI declined. This is not a regression: at `b80ba18` the same directory also read as `absent` and hit the same `rm`. It is the same class of problem INIT-R3-2 named, one level up, and the cheap fix is the same shape — treat a `stat` failure that is not ENOENT as `unmanaged` rather than as absence.
+
+**INIT-R4-2 — nit — `packages/cli/src/lib/skills/sync.ts:21-23`**
+
+The `RefusedSkill` doc comment was left behind by the fix: it still reads "unstamped, or stamped by a package outside the allowlist", while the `SkillTargetState` comment in `status.ts` was updated to add "unreadable". The two comments describe the same set from opposite ends, so they should agree.
+
+#### Verdict
+
+**SATISFIED** — all three round-3 findings are verified fixed against the built binary, including the chmod-based cases, with the full test suite and typecheck green; the two remaining items are comment and edge-case nits, one of which predates this range.
