@@ -13,7 +13,6 @@ import { PRISMA_AGENT_INSTALL_ARGS } from "../../lib/agent/constants";
 import {
   isLikelyProjectDirectory,
   readPrismaAgentSetupStatus,
-  resolvePrismaAgentSetupCwd,
   shouldOfferPrismaAgentSetup,
 } from "../../lib/agent/setup-status";
 import { resolveStateDir } from "../../state-dir";
@@ -31,14 +30,7 @@ export async function resolveAgentSetupTipCommand(
     return null;
   }
 
-  const setupCwd = await resolvePrismaAgentSetupCwd({
-    cwd: ctx.cwd,
-    signal: ctx.signal,
-  });
-
-  if (
-    !(await isLikelyProjectDirectory({ cwd: setupCwd, signal: ctx.signal }))
-  ) {
+  if (!(await isLikelyProjectDirectory({ cwd: ctx.cwd, signal: ctx.signal }))) {
     return null;
   }
 
@@ -52,7 +44,7 @@ export async function resolveAgentSetupTipCommand(
 
   const shouldOffer = shouldOfferPrismaAgentSetup(
     await readPrismaAgentSetupStatus({
-      cwd: setupCwd,
+      cwd: ctx.cwd,
       stateStore,
       signal: ctx.signal,
     }),
@@ -62,7 +54,7 @@ export async function resolveAgentSetupTipCommand(
   }
 
   return await resolvePrismaCliPackageCommand({
-    cwd: setupCwd,
+    cwd: ctx.cwd,
     signal: ctx.signal,
     args: PRISMA_AGENT_INSTALL_ARGS,
   });

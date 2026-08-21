@@ -23,11 +23,6 @@ export const serviceDeploymentStartCommand = defineCommand({
         brief: "Deployment id to start",
         placeholder: "deployment",
       }),
-      service: positional.optionalString({
-        brief:
-          "Service target from prisma.compute.ts when the config defines multiple services",
-        placeholder: "service",
-      }),
     },
   },
   needs: { credentials: true },
@@ -39,7 +34,6 @@ export const serviceDeploymentStartCommand = defineCommand({
           deployment: args.positionals.deployment,
           service: args.flags.service,
           project: args.flags.project,
-          configTarget: args.positionals.service,
         },
         "start",
       );

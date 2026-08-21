@@ -6,7 +6,6 @@ import { resolvePrismaCliPackageCommand } from "../../lib/agent/cli-command";
 import { PRISMA_AGENT_INSTALL_ARGS } from "../../lib/agent/constants";
 import {
   readPrismaAgentSetupStatus,
-  resolvePrismaAgentSetupCwd,
 } from "../../lib/agent/setup-status";
 import { formatShellCommand } from "../../shell-command";
 import { resolveStateDir } from "../../state-dir";
@@ -70,16 +69,12 @@ export const agentStatusCommand = defineCommand({
   },
   handler: async (args, ctx) => {
     const statusScope = args.flags.global ? "global" : "project";
-    const cwd = await resolvePrismaAgentSetupCwd({
-      cwd: ctx.cwd,
-      signal: ctx.signal,
-    });
     const setupStatus = await readPrismaAgentSetupStatus({
-      cwd,
+      cwd: ctx.cwd,
       stateStore: await openStateStore(ctx),
       signal: ctx.signal,
     });
-    const skillsList = await listInstalledPrismaSkills(ctx, cwd, statusScope);
+    const skillsList = await listInstalledPrismaSkills(ctx, ctx.cwd, statusScope);
     const skillsInstalled =
       skillsList.status === "ok"
         ? skillsList.skills.length > 0
@@ -98,7 +93,7 @@ export const agentStatusCommand = defineCommand({
     const installCommand = skillsInstalled
       ? null
       : await resolvePrismaCliPackageCommand({
-          cwd,
+          cwd: ctx.cwd,
           signal: ctx.signal,
           args: args.flags.global
             ? [...PRISMA_AGENT_INSTALL_ARGS, "--global"]

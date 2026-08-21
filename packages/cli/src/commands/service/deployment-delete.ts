@@ -34,11 +34,6 @@ export const serviceDeploymentDeleteCommand = defineCommand({
         brief: "Deployment id to delete",
         placeholder: "deployment",
       }),
-      service: positional.optionalString({
-        brief:
-          "Service target from prisma.compute.ts when the config defines multiple services",
-        placeholder: "service",
-      }),
     },
   },
   needs: { credentials: true },
@@ -46,7 +41,6 @@ export const serviceDeploymentDeleteCommand = defineCommand({
     const state = await resolveServiceReleaseState(ctx, {
       serviceName: args.flags.service,
       projectRef: args.flags.project,
-      configTarget: args.positionals.service,
       command: "delete",
     });
 

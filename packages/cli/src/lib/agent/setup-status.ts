@@ -1,7 +1,5 @@
 import { readFile, stat } from "node:fs/promises";
 import path from "node:path";
-import { findComputeConfigDir } from "@prisma/compute-sdk/config";
-
 import type { LocalStateStore } from "../../adapters/local-state";
 import { PRISMA_SKILLS_LOCK_FILENAME, PRISMA_SKILLS_SOURCE } from "./constants";
 
@@ -17,8 +15,7 @@ export async function readPrismaAgentSetupStatus(options: {
   signal: AbortSignal;
   requiredSkill?: string;
 }): Promise<PrismaAgentSetupStatus> {
-  const setupCwd = await resolvePrismaAgentSetupCwd(options);
-  const skillsLockPath = path.join(setupCwd, PRISMA_SKILLS_LOCK_FILENAME);
+  const skillsLockPath = path.join(options.cwd, PRISMA_SKILLS_LOCK_FILENAME);
   const [skillsInstalled, promptDismissedAt] = await Promise.all([
     hasPrismaSkillsLock(skillsLockPath, options.signal, options.requiredSkill),
     options.stateStore?.readAgentSetupPromptDismissedAt() ?? null,
@@ -29,16 +26,6 @@ export async function readPrismaAgentSetupStatus(options: {
     skillsInstalled,
     promptDismissedAt,
   };
-}
-
-export async function resolvePrismaAgentSetupCwd(options: {
-  cwd: string;
-  signal: AbortSignal;
-}): Promise<string> {
-  options.signal.throwIfAborted();
-  const configDir = await findComputeConfigDir(options.cwd, options.signal);
-  options.signal.throwIfAborted();
-  return configDir ?? options.cwd;
 }
 
 export function isPrismaAgentSetupComplete(
@@ -59,7 +46,6 @@ export async function isLikelyProjectDirectory(options: {
 }): Promise<boolean> {
   const signals = [
     "package.json",
-    "prisma.compute.ts",
     "prisma.config.ts",
     ".git",
   ];

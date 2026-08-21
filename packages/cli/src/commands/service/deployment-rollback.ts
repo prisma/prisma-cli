@@ -42,20 +42,12 @@ export const serviceDeploymentRollbackCommand = defineCommand({
         placeholder: "deployment",
       }),
     },
-    positionals: {
-      service: positional.optionalString({
-        brief:
-          "Service target from prisma.compute.ts when the config defines multiple services",
-        placeholder: "service",
-      }),
-    },
   },
   needs: { credentials: true },
   handler: async (args, ctx) => {
     const state = await resolveServiceReleaseState(ctx, {
       serviceName: args.flags.service,
       projectRef: args.flags.project,
-      configTarget: args.positionals.service,
       command: "rollback",
     });
 

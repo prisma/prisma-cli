@@ -42,7 +42,6 @@ export interface RunStateArgs {
   deployment: string;
   service?: string | undefined;
   project?: string | undefined;
-  configTarget?: string | undefined;
 }
 
 export interface RunStateOutcome {
@@ -60,9 +59,6 @@ export async function changeDeploymentRunState(
   const state = await resolveServiceReleaseState(ctx, {
     ...(args.service !== undefined ? { serviceName: args.service } : {}),
     ...(args.project !== undefined ? { projectRef: args.project } : {}),
-    ...(args.configTarget !== undefined
-      ? { configTarget: args.configTarget }
-      : {}),
     command: verb,
   });
 

@@ -1,10 +1,4 @@
 import type { CommandContext } from "@prisma/cli-engine";
-import {
-  COMPUTE_CONFIG_FILENAME,
-  ComputeConfigTargetRequiredError,
-  inferComputeTargetFromCwd,
-  selectComputeDeployTarget,
-} from "@prisma/compute-sdk/config";
 import { LocalStateStore } from "../../adapters/local-state";
 import {
   type AppProvider,
@@ -12,12 +6,6 @@ import {
   createAppProvider,
   type DomainRecord,
 } from "../../lib/app/app-provider";
-import {
-  type ComputeDeployTarget,
-  computeConfigErrorToCliError,
-  type LoadedComputeConfig,
-  loadComputeConfig,
-} from "../../lib/app/compute-config";
 import { resolveReadBranch } from "../../lib/app/read-branch";
 import { readLocalGitBranch } from "../../lib/git/local-branch";
 import { projectApiError } from "../../lib/project/provider";
@@ -34,7 +22,6 @@ import type { BranchKind } from "../../types/branch";
 import type { ProjectResolution, ProjectSummary } from "../../types/project";
 import {
   branchNotDeployableError,
-  configTargetRequiresConfigError,
   deployFailedError,
   domainCommandError,
   domainHostnameInvalidError,
@@ -60,8 +47,6 @@ const PRISMA_PROJECT_ID_ENV_VAR = "PRISMA_PROJECT_ID";
 /** A hostname's optional root dot, and one DNS label. */
 const TRAILING_DOT = /\.$/;
 const DNS_LABEL = /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/;
-/** The group prefix a compute-config error message drops. */
-const SERVICE_PREFIX = /^service /;
 const PRISMA_SERVICE_ID_ENV_VAR = "PRISMA_SERVICE_ID";
 
 export type ServiceContext = Pick<
@@ -130,72 +115,6 @@ function readServiceEnvOverride(
  *  the run's abort signal. */
 function resolutionContext(ctx: ServiceContext): ProjectResolutionContext {
   return { runtime: { cwd: ctx.cwd, signal: ctx.signal } };
-}
-
-async function resolveComputeTarget(
-  ctx: ServiceContext,
-  configTarget: string | undefined,
-  commandName: string,
-  options?: {
-    targetOptional?: boolean;
-  },
-): Promise<{
-  config: LoadedComputeConfig | null;
-  target: ComputeDeployTarget | null;
-}> {
-  const loaded = await loadComputeConfig(ctx.cwd, ctx.signal);
-  if (loaded.isErr()) {
-    throw fromLegacyCliError(
-      computeConfigErrorToCliError(loaded.error, commandName),
-    );
-  }
-  const config = loaded.value;
-  if (!config) {
-    if (configTarget) {
-      throw configTargetRequiresConfigError(
-        configTarget,
-        COMPUTE_CONFIG_FILENAME,
-      );
-    }
-    return { config: null, target: null };
-  }
-
-  const requestedTarget =
-    configTarget ?? inferComputeTargetFromCwd(config, ctx.cwd);
-  const selected = selectComputeDeployTarget(config, requestedTarget);
-  if (selected.isErr()) {
-    if (
-      options?.targetOptional &&
-      selected.error instanceof ComputeConfigTargetRequiredError
-    ) {
-      return { config, target: null };
-    }
-    throw fromLegacyCliError(
-      computeConfigErrorToCliError(selected.error, commandName),
-    );
-  }
-
-  return { config, target: selected.value };
-}
-
-/**
- * Compute-config context for service management commands: the project
- * directory (where `.prisma/local.json` lives) and the config-selected
- * service name, which ranks below `--service` but above the remembered
- * selection.
- */
-export async function resolveComputeManagementContext(
-  ctx: ServiceContext,
-  configTarget: string | undefined,
-  commandName: string,
-): Promise<{ projectDir: string; configServiceName: string | undefined }> {
-  const compute = await resolveComputeTarget(ctx, configTarget, commandName, {
-    targetOptional: true,
-  });
-  return {
-    projectDir: compute.config?.configDir ?? ctx.cwd,
-    configServiceName: compute.target?.name ?? compute.target?.key ?? undefined,
-  };
 }
 
 interface ResolvedReadBranchRequest {
@@ -576,14 +495,13 @@ export interface ServiceReadState {
   selected: AppRecord | null;
 }
 
-/** The shared read flow for show / deployment list / open: config context,
- *  project + branch resolution, service listing, and selection. */
+/** The shared read flow for show / deployment list / open: project +
+ *  branch resolution, service listing, and selection. */
 export async function resolveServiceReadState(
   ctx: ServiceContext,
   options: {
     serviceName?: string;
     projectRef?: string;
-    configTarget?: string;
     branchName?: string;
     commandName: string;
     /** Skip the service picker entirely. A caller resolving its target
@@ -592,15 +510,9 @@ export async function resolveServiceReadState(
     skipSelection?: boolean;
   },
 ): Promise<ServiceReadState> {
-  const compute = await resolveComputeManagementContext(
-    ctx,
-    options.configTarget,
-    options.commandName.replace(SERVICE_PREFIX, ""),
-  );
   const provider = serviceProvider(ctx);
   const target = await resolveServiceProjectContext(ctx, options.projectRef, {
     commandName: options.commandName,
-    projectDir: compute.projectDir,
     ...(options.branchName !== undefined
       ? { branchName: options.branchName }
       : {}),
@@ -620,7 +532,7 @@ export async function resolveServiceReadState(
         stateStore,
         projectId,
         services,
-        options.serviceName ?? compute.configServiceName,
+        options.serviceName,
       );
   return { provider, stateStore, target, projectId, selected };
 }
@@ -638,15 +550,9 @@ export async function resolveServiceDomainTarget(
     serviceName?: string;
     projectRef?: string;
     branchName?: string;
-    configTarget?: string;
     commandName: string;
   },
 ): Promise<ResolvedServiceDomainTarget> {
-  const compute = await resolveComputeManagementContext(
-    ctx,
-    options.configTarget,
-    options.commandName.replace(SERVICE_PREFIX, ""),
-  );
   const branchName = options.branchName?.trim() || "production";
   if (toBranchKind(branchName) !== "production") {
     throw branchNotDeployableError(branchName);
@@ -658,7 +564,6 @@ export async function resolveServiceDomainTarget(
   const provider = serviceProvider(ctx);
   const target = await resolveServiceProjectContext(ctx, options.projectRef, {
     commandName: options.commandName,
-    projectDir: compute.projectDir,
     branchName,
     ...(envProjectId !== undefined ? { envProjectId } : {}),
   });
@@ -671,7 +576,6 @@ export async function resolveServiceDomainTarget(
     target.branch.name,
   );
 
-  const explicitServiceName = options.serviceName ?? compute.configServiceName;
   let selectedService: AppRecord | null;
   if (envServiceId) {
     selectedService =
@@ -689,7 +593,7 @@ export async function resolveServiceDomainTarget(
       stateStore,
       projectId,
       services,
-      explicitServiceName,
+      options.serviceName,
     );
   }
   if (!selectedService) {

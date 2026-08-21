@@ -22,11 +22,6 @@ export function domainTargetArgs() {
         brief: "Custom domain hostname",
         placeholder: "hostname",
       }),
-      service: positional.optionalString({
-        brief:
-          "Service target from prisma.compute.ts when the config defines multiple services",
-        placeholder: "service",
-      }),
     },
   };
 }

@@ -4,7 +4,6 @@ import { listPresentations } from "./presentation";
 import type { ServiceListResult } from "./results";
 import {
   listServices,
-  resolveComputeManagementContext,
   resolveServiceProjectContext,
   serviceProvider,
   toServiceListEntry,
@@ -29,16 +28,8 @@ export const serviceListCommand = defineCommand({
   },
   needs: { credentials: true },
   handler: async (args, ctx) => {
-    // Listing every service selects none, so no config target is passed:
-    // the only thing this call contributes is the project directory.
-    const compute = await resolveComputeManagementContext(
-      ctx,
-      undefined,
-      "list",
-    );
     const target = await resolveServiceProjectContext(ctx, args.flags.project, {
       commandName: "service list",
-      projectDir: compute.projectDir,
       ...(args.flags.branch !== undefined
         ? { branchName: args.flags.branch }
         : {}),

@@ -26,7 +26,6 @@ export const serviceDomainRemoveCommand = defineCommand({
       serviceName: args.flags.service,
       projectRef: args.flags.project,
       branchName: args.flags.branch,
-      configTarget: args.positionals.service,
       commandName: `service domain remove ${hostname}`,
     });
     const domain = await resolveDomainByHostname(

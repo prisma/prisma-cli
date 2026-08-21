@@ -425,13 +425,6 @@ export const serviceLogsCommand = defineSessionCommand({
         brief: "Keep polling for new lines until interrupted",
       }),
     },
-    positionals: {
-      service: positional.optionalString({
-        brief:
-          "Service target from prisma.compute.ts when the config defines multiple services",
-        placeholder: "service",
-      }),
-    },
   },
   needs: { credentials: true },
   handler: async (args, ctx) => {
@@ -441,11 +434,10 @@ export const serviceLogsCommand = defineSessionCommand({
       throw logsRangeConflictError();
     }
 
-    // "A service was named" — by --service or by the config target. It
-    // decides whether an explicit deployment id is looked up within that
-    // service or resolved globally, and a global lookup needs no service
-    // selection at all (so it never prompts for one).
-    const serviceNamed = args.flags.service ?? args.positionals.service;
+    // Naming a service decides whether an explicit deployment id is
+    // looked up within that service or resolved globally, and a global
+    // lookup needs no service selection at all (so it never prompts).
+    const serviceNamed = args.flags.service;
     const resolveGlobally = Boolean(args.flags.deployment) && !serviceNamed;
     const state = await resolveServiceReadState(ctx, {
       ...(args.flags.service !== undefined
@@ -453,9 +445,6 @@ export const serviceLogsCommand = defineSessionCommand({
         : {}),
       ...(args.flags.project !== undefined
         ? { projectRef: args.flags.project }
-        : {}),
-      ...(args.positionals.service !== undefined
-        ? { configTarget: args.positionals.service }
         : {}),
       commandName: "service logs",
       skipSelection: resolveGlobally,

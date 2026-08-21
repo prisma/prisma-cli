@@ -10,7 +10,6 @@ import type { ServiceCreateResult } from "./results";
 import {
   openServiceStateStore,
   rememberSelectedService,
-  resolveComputeManagementContext,
   resolveServiceProjectContext,
   serviceProvider,
   toServiceListEntry,
@@ -53,14 +52,8 @@ export const serviceCreateCommand = defineCommand({
       throw serviceNameRequiredError();
     }
 
-    const compute = await resolveComputeManagementContext(
-      ctx,
-      undefined,
-      "create",
-    );
     const target = await resolveServiceProjectContext(ctx, args.flags.project, {
       commandName: "service create",
-      projectDir: compute.projectDir,
       ...(args.flags.branch !== undefined
         ? { branchName: args.flags.branch }
         : {}),

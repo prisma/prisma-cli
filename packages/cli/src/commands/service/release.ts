@@ -29,7 +29,6 @@ export async function resolveServiceReleaseState(
   options: {
     serviceName?: string;
     projectRef?: string;
-    configTarget?: string;
     branchName?: string;
     command: "promote" | "rollback" | "remove" | "start" | "stop" | "delete";
   },
@@ -44,9 +43,6 @@ export async function resolveServiceReleaseState(
       : {}),
     ...(options.projectRef !== undefined
       ? { projectRef: options.projectRef }
-      : {}),
-    ...(options.configTarget !== undefined
-      ? { configTarget: options.configTarget }
       : {}),
     ...(options.branchName !== undefined
       ? { branchName: options.branchName }

@@ -38,9 +38,7 @@ const PRISMA_BUILD_HOST = /\b((?:[a-z0-9-]+\.)+prisma\.build)\b/i;
 
 /**
  * The rename surface for copy that flows through legacy error builders:
- * command lines and the "app target" noun in prose. Deliberately
- * narrow — `prisma.compute.ts` keys stay `app` (SDK-owned), including
- * prose that describes the config's `app`/`apps` entries.
+ * command lines and the "app target" noun in prose.
  */
 export function renameAppCopy(text: string): string {
   return text
@@ -764,20 +762,3 @@ function extractDomainDnsTarget(error: DomainApiError): string | null {
   return match?.[1]?.toLowerCase() ?? null;
 }
 
-export function configTargetRequiresConfigError(
-  configTarget: string,
-  configFilename: string,
-): CliStructuredError {
-  return new CliStructuredError(
-    "SERVICE.COMPUTE_CONFIG_TARGET_UNKNOWN",
-    `Service target "${configTarget}" requires a compute config file`,
-    {
-      why: `No ${configFilename} exists in the current directory, so there are no named service targets.`,
-      nextActions: [
-        adviceAction(
-          `Create ${configFilename} with an apps entry named "${configTarget}", or rerun without the target argument.`,
-        ),
-      ],
-    },
-  );
-}

@@ -518,40 +518,4 @@ describe("prisma-cli agent status", () => {
       },
     ]);
   });
-
-  it("reads the skills lock from the compute config root when run in a subdirectory", async () => {
-    vi.mocked(execa).mockRejectedValue(new Error("skills exploded"));
-    const { cwd, env } = await makeCwd();
-    const serviceDir = path.join(cwd, "services", "web");
-    await mkdir(serviceDir, { recursive: true });
-    // The compute-config search stops at the source root, so the
-    // temp directory needs one for the walk-up to reach it.
-    await mkdir(path.join(cwd, ".git"), { recursive: true });
-    await writeFile(
-      path.join(cwd, "prisma.compute.json"),
-      JSON.stringify({ apps: { web: { root: "services/web" } } }),
-      "utf8",
-    );
-    await writeFile(
-      path.join(cwd, "skills-lock.json"),
-      JSON.stringify({ sources: ["prisma/skills"] }),
-      "utf8",
-    );
-
-    const result = await makeCli().run(["agent", "status"], {
-      cwd: serviceDir,
-      env,
-    });
-
-    expect(result.exitCode).toBe(0);
-    expect(execa).toHaveBeenCalledWith(
-      "npx",
-      ["-y", "skills@latest", "list", "--json"],
-      expect.objectContaining({ cwd }),
-    );
-    expect(result.presented?.data).toMatchObject({
-      skillsLockInstalled: true,
-      skillsInstalled: true,
-    });
-  });
 });

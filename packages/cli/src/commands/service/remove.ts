@@ -61,13 +61,6 @@ export const serviceRemoveCommand = defineCommand({
         placeholder: "name",
       }),
     },
-    positionals: {
-      service: positional.optionalString({
-        brief:
-          "Service target from prisma.compute.ts when the config defines multiple services",
-        placeholder: "service",
-      }),
-    },
   },
   needs: { credentials: true },
   handler: async (args, ctx) => {
@@ -78,7 +71,6 @@ export const serviceRemoveCommand = defineCommand({
     const state = await resolveServiceReleaseState(ctx, {
       serviceName: args.flags.service,
       projectRef: args.flags.project,
-      configTarget: args.positionals.service,
       branchName: args.flags.branch,
       command: "remove",
     });

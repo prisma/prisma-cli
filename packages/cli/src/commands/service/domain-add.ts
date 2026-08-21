@@ -23,7 +23,6 @@ export const serviceDomainAddCommand = defineCommand({
       serviceName: args.flags.service,
       projectRef: args.flags.project,
       branchName: args.flags.branch,
-      configTarget: args.positionals.service,
       commandName: `service domain add ${hostname}`,
     });
 
