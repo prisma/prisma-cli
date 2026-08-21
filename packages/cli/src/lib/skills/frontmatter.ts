@@ -1,4 +1,5 @@
 import { readFile } from "node:fs/promises";
+import { unquote } from "./unquote";
 
 export interface SkillStamp {
   /** The npm package the skill was published in. */
@@ -8,7 +9,6 @@ export interface SkillStamp {
 }
 
 const LINE_BREAK = /\r?\n/;
-const QUOTED = /^(["'])(.*)\1$/;
 const INDENTED = /^[ \t]/;
 
 const EMPTY_STAMP: SkillStamp = { library: null, libraryVersion: null };
@@ -77,9 +77,4 @@ function keyOf(line: string): string | null {
 function valueAfterKey(line: string): string {
   const separator = line.indexOf(":");
   return unquote(line.slice(separator + 1).trim());
-}
-
-function unquote(value: string): string {
-  const quoted = QUOTED.exec(value);
-  return quoted?.[2] ?? value;
 }

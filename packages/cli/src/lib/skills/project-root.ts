@@ -1,6 +1,7 @@
 // biome-ignore-all lint/performance/noAwaitInLoops: the ancestor walk stops at the first directory that answers, and each glob segment is expanded from the directories the previous segment matched.
 import { readdir, readFile, stat } from "node:fs/promises";
 import path from "node:path";
+import { unquote } from "./unquote";
 
 /**
  * The directory the harness skill directories belong to: the workspace
@@ -71,7 +72,6 @@ export async function workspaceMemberDirs(root: string): Promise<string[]> {
 const LINE_BREAK = /\r?\n/;
 const PACKAGES_KEY = /^packages\s*:/;
 const SEQUENCE_ENTRY = /^\s+-\s+(.+?)\s*$/;
-const QUOTED = /^(["'])(.*)\1$/;
 const REGEX_METACHARACTER = /[.*+?^${}()|[\]\\]/g;
 
 function* ancestors(from: string): Generator<string> {
@@ -138,7 +138,7 @@ async function pnpmWorkspacePatterns(target: string): Promise<string[]> {
     }
     const entry = SEQUENCE_ENTRY.exec(line);
     if (entry?.[1]) {
-      patterns.push(stripQuotes(entry[1]));
+      patterns.push(unquote(entry[1]));
       continue;
     }
     if (line.trim() !== "") {
@@ -241,9 +241,4 @@ function segmentMatcher(segment: string): RegExp {
     .map((part) => part.replace(REGEX_METACHARACTER, "\\$&"))
     .join("[^/]*");
   return new RegExp(`^${source}$`);
-}
-
-function stripQuotes(value: string): string {
-  const quoted = QUOTED.exec(value);
-  return quoted?.[2] ?? value;
 }
