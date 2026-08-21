@@ -38,7 +38,7 @@ The long-term command surface grows through workflow groups such as:
 - `app`
 - `git`
 
-The preview implements only `auth`, `project`, `git`, `branch`, `database`, `bucket`, and `app`.
+The preview implements only `auth`, `project`, `git`, `branch`, `database`, `bucket`, `app`, `skills`, and `init`.
 
 ## Stable Nouns
 
@@ -97,7 +97,7 @@ Build and release an app into a target branch.
 
 Prepare the current repository for Prisma development, entirely locally: add the `postinstall` script that keeps the Prisma agent skills in sync (`prisma skills sync || exit 0`), then sync the skills once now.
 
-`init` calls no platform API, never prompts, and never overwrites a `postinstall` script the user wrote — it reports that as a diagnostic and leaves the script alone. Rerunning is safe; each step reports what is already done and the command exits 0.
+`init` calls no platform API, never prompts, and never overwrites a `postinstall` script the user wrote — it reports that as a diagnostic and leaves the script alone. The hook lands in the current directory's `package.json`, while the skills land at the discovered workspace root, so the two paths can differ inside a workspace member. Rerunning is safe; each step reports what is already done and the command exits 0.
 
 ### `logs`
 

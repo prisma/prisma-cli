@@ -116,7 +116,9 @@ It is silent when:
 - the project has run `skills sync --disable`, which records the opt-out in `.prisma/skills.json` at the project root
 - the command being run is itself a `skills` command
 
-This notice covers every project whose install does not resync the skills. `skills sync` itself never edits the user's `package.json` or root `.gitignore`.
+This notice covers every project whose install does not resync the skills. `skills sync` itself never edits the user's `package.json` or root `.gitignore`. The synced copies are ordinary files that git tracks like any other file in the repository.
+
+A target directory that already holds a `SKILL.md` this CLI did not write is `unmanaged`: sync refuses to replace it, reports each refusal as a `SKILLS.UNMANAGED_DIRECTORY` diagnostic and in the `refused` array of the JSON result, and `skills list` shows `unmanaged` in its State column. An unmanaged directory does not count as out of date — the staleness notice stays silent about it — but the human summary of `skills sync` and `skills list` names it instead of over-claiming: `Agent skills are up to date; 1 directory is not managed by this CLI.` A directory that merely exists without a `SKILL.md` is treated as absent and is written by the next sync.
 
 ## Human Output
 

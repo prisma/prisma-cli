@@ -333,7 +333,7 @@ export const initCommand = defineCommand({
   help: {
     summary: "Prepare this repository for Prisma development",
     description:
-      "Runs locally and calls no platform API. Adds a postinstall script to package.json that keeps the Prisma agent skills in sync on every install, then syncs the skills once now. Rerunning is safe: each step reports what is already done.",
+      "Runs locally and calls no platform API. Adds a postinstall script to package.json that keeps the Prisma agent skills in sync on every install, then syncs the skills once now. The hook lands in the current directory's package.json, while the skills land at the workspace root. Rerunning is safe: each step reports what is already done.",
     examples: ["init", "init --no-postinstall"],
   },
   needs: { config: skillsConfigSection },
