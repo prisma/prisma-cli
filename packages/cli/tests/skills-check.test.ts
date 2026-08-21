@@ -280,25 +280,22 @@ describe("the skills check off switches", () => {
   it.each([
     ["--config <path>", ["--config", "elsewhere.config.ts"]],
     ["--config=<path>", ["--config=elsewhere.config.ts"]],
-  ])(
-    "reads the config file an explicit %s names",
-    async (_name, configArgv) => {
-      const root = await makeStaleProject();
-      await writeFile(
-        path.join(root, "elsewhere.config.ts"),
-        configSource({ check: false }),
-        "utf8",
-      );
-      const proc = makeProcess({
-        cwd: root,
-        argv: ["auth", "whoami", ...configArgv],
-      });
+  ])("reads the config file an explicit %s names", async (_name, configArgv) => {
+    const root = await makeStaleProject();
+    await writeFile(
+      path.join(root, "elsewhere.config.ts"),
+      configSource({ check: false }),
+      "utf8",
+    );
+    const proc = makeProcess({
+      cwd: root,
+      argv: ["auth", "whoami", ...configArgv],
+    });
 
-      await main(proc, stubCli());
+    await main(proc, stubCli());
 
-      expect(proc.stderrText).toBe("");
-    },
-  );
+    expect(proc.stderrText).toBe("");
+  });
 
   it("still reports when prisma.config.ts leaves the check on", async () => {
     const root = await makeStaleProject();
