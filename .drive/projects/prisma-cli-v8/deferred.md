@@ -87,12 +87,10 @@ composer can use it.
   and composer bump their engine pins and publish → the rc1 bump PR
   here pins those versions.
 - **The prisma bin's mount makes composer's help examples wrong.**
-  Composer writes them as `{bin} deploy src/service.ts`; mounted under
-  the `composer` root the invocation is `prisma composer deploy`, and
-  the engine's `resolveExample` substitutes only `{bin}`. Fix needs both
-  repos: a mount-aware placeholder in the engine (`{command}` → the
-  command's mounted path) and composer's eight example strings — two on
-  each of the four commands — rewritten to use it. Recorded in
+  **Closed by the command grammar cleanup (2026-08-21):** `dev` and
+  `deploy` moved to the root, so `{bin} deploy src/service.ts` renders
+  correctly; `destroy` and `log` were dropped entirely. No engine
+  placeholder needed. Recorded in
   `assets/s2/parity-divergences-s3.md`.
 
 ## The ORM family does not work through the assembled binary (found 2026-08-13, writing the e2e happy paths)
@@ -126,8 +124,9 @@ CLI does not do, and each restarts as engine work if wanted:
   secret handling before it is built.
 - **A `github` group for workspace-level GitHub connections** (#113):
   the engine ships repo-level `git connect|disconnect` only.
-- **Transient-read retry on `build logs` streaming** (#104): joins the
-  existing streaming follow-ups below.
+- **Transient-read retry on `build logs` streaming** (#104): moot —
+  the `build` group was removed by the command grammar cleanup
+  (2026-08-21).
 
 ## Ratified-as-shipped at the S2 sign-off (2026-08-12) — the gaps stay real
 
@@ -141,8 +140,10 @@ CLI does not do, and each restarts as engine work if wanted:
   `--follow` polls on a 2s interval rather than holding a socket open.
   The open remainder is the WebSocket live tail, in the closed
   `service logs` entry further down this file.
-- **`build logs` cannot exit 1 on a failed build** until the engine
-  grows a way for a stream to settle with a documented non-zero code.
+- **`build logs` cannot exit 1 on a failed build** — moot: the
+  command was removed with the `build` group by the command grammar
+  cleanup (2026-08-21). The engine gap (a stream settling with a
+  documented non-zero code) remains real for future stream commands.
 - **The crash-recovery feedback action does not port** (the legacy
   crash envelope pre-filled a `feedback` command; the engine's crash
   path has no hook for it).
@@ -478,7 +479,8 @@ to `delete`, moved `postgres restore`/`ref *`/`migrate`/`format`/
   (pre-existing): the other service commands take `--project` and the
   link file but not the env var. Unify or document.
 - **orm-toolchain's shipped help examples name retired spellings.**
-  The bundle's `format` and `ref list|delete` commands carry examples
-  the moves invalidated; the shell wrapper respells them (D4-1 ruling)
-  until orm-toolchain updates its own examples to `contract format`
-  and `migration ref *`.
+  Six commands' shipped examples start with the family's own key —
+  `format`, `migrate`, `ref list|set|delete`, and `init` — which the
+  mounts respell to `contract format`, `db migrate`, `migration ref *`
+  and `orm init`. The shell wrapper rewrites the examples (D4-1
+  ruling) until orm-toolchain updates its own.
