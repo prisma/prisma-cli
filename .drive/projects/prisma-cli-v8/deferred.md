@@ -449,3 +449,36 @@ Still open:
 - **Neither product repo installs its own tarball before publishing.** That is why an uninstallable `@prisma/composer-cli@0.6.0` sat on `latest` unnoticed. prisma-cli's check 3 does exactly this — pack, install into a clean sandbox with `npm --ignore-scripts`, start every declared bin — and is worth porting to both.
 - **The engine-pin check compares for equality, not peer satisfaction.** Both families now declare an exact peer equal to the shell's pin, so equality is correct and stricter today. Widening to range satisfaction belongs with the post-GA move to engine ranges (ADR 0004), not before.
 - **`credential-manager.ts` uses the banned word.** `packages/cli/src/auth/credential-manager.ts` has a private `#repin` method (about the active-workspace marker, a different concept from dependency versions). The operator banned the word outright; renaming it is a mechanical change to a private method, left out of the publish-channel work to keep that diff to one subject.
+
+## Left open by the command grammar cleanup (2026-08-21)
+
+The cleanup PR removed the compute config and `init`, made service
+commands parameter-only, renamed the six destructive `remove` commands
+to `delete`, moved `postgres restore`/`ref *`/`migrate`/`format`/
+`composer dev|deploy`, and dropped `composer destroy|log` and the
+`build` group. Deliberately left behind:
+
+- **`project env` still infers scope from the current git branch.**
+  `controllers/app-env.ts` imports `readLocalGitBranch` — the same
+  ambient context the brief removed from the service commands, but the
+  brief enumerated service commands only. Extending "parameters only"
+  to `project env` is a product call.
+- **`knownLiveDeploymentByProject` has no writer.** `service delete`
+  clears a local-state key nothing sets; pre-existing on `main` at
+  `87ffd44`, not slice fallout. Delete the shape or reinstate the
+  writer.
+- **Upstream family cleanups.** The shell now wraps both external
+  families: composer still ships `destroy`/`log` commands (and their
+  help) that nothing mounts, and orm-toolchain still keys its family
+  `ref *` and ships the `migration ref` → `ref` redirect the wrapper
+  drops, plus a `migration apply` replacement that says `migrate`.
+  Each repo should retire those surfaces so the wrapper shrinks to a
+  pass-through.
+- **`PRISMA_PROJECT_ID` is honoured only by the domain commands**
+  (pre-existing): the other service commands take `--project` and the
+  link file but not the env var. Unify or document.
+- **orm-toolchain's shipped help examples name retired spellings.**
+  The bundle's `format` and `ref list|delete` commands carry examples
+  the moves invalidated; the shell wrapper respells them (D4-1 ruling)
+  until orm-toolchain updates its own examples to `contract format`
+  and `migration ref *`.
