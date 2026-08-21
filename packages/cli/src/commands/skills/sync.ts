@@ -62,7 +62,7 @@ export const skillsSyncCommand = defineCommand({
       "Copy the agent skills from installed Prisma packages into this project",
     description:
       "Skills come from the Prisma packages the project installs, so they always describe the version in use. Sync copies them into the skill directories the agent harnesses read, and removes copies whose package is gone. It does nothing, and exits 0, when everything is already current.",
-    examples: ["skills sync", "skills sync --json", "skills sync --disable"],
+    examples: ["skills sync", "skills sync --disable"],
   },
   args: {
     flags: {

@@ -222,11 +222,14 @@ describe("the skills check off switches", () => {
     expect(proc.stderrText).toBe("");
   });
 
-  it("stays silent for the skills commands themselves", async () => {
-    const proc = makeProcess({
-      cwd: await makeStaleProject(),
-      argv: ["skills", "list"],
-    });
+  it.each([
+    ["skills list", ["skills", "list"]],
+    [
+      "a global flag before the group",
+      ["--config", "prisma.config.ts", "skills", "list"],
+    ],
+  ])("stays silent for the skills commands themselves (%s)", async (_name, argv) => {
+    const proc = makeProcess({ cwd: await makeStaleProject(), argv });
 
     await main(proc, stubCli());
 

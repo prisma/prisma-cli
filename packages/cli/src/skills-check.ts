@@ -67,10 +67,31 @@ export function renderStaleNotice(status: SkillsStatus): string | null {
   );
 }
 
-/**
- * The off switches that cost nothing to read. `skills` commands are
- * exempt: the one that fixes this must not also complain about it.
- */
+/** The shared flags that take a separate value, so the word after them
+ *  is that value rather than the command being invoked. */
+const FLAGS_TAKING_A_VALUE = new Set([
+  "--format",
+  "--log-level",
+  "--config",
+  "--confirm",
+]);
+
+/** The first word of the invocation — the group, or the command when it
+ *  is mounted top-level — skipping the shared flags that may precede it. */
+function invokedGroup(argv: readonly string[]): string | undefined {
+  for (let index = 0; index < argv.length; index += 1) {
+    const token = argv[index] as string;
+    if (!token.startsWith("-")) {
+      return token;
+    }
+    if (FLAGS_TAKING_A_VALUE.has(token)) {
+      index += 1;
+    }
+  }
+  return undefined;
+}
+
+/** The off switches that cost nothing to read. */
 function isSuppressedByInvocation(runtime: SkillsCheckRuntime): boolean {
   const env = runtime.env;
   if (env[SKILLS_CHECK_ENV_VAR] === "0") {
@@ -81,7 +102,8 @@ function isSuppressedByInvocation(runtime: SkillsCheckRuntime): boolean {
   }
 
   const argv = runtime.argv;
-  if (argv[0] === "skills") {
+  // The command that fixes this must not also complain about it.
+  if (invokedGroup(argv) === "skills") {
     return true;
   }
   if (
