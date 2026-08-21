@@ -1,17 +1,8 @@
 /**
  * The prisma.config.ts loader behind Runtime.loadConfig: resolve the
- * file, evaluate it, check the defineConfig version marker, and
- * produce LoadedConfig.
- *
- * Resolution is either the file `--config` named — no discovery at
- * all — or discovery: walk upward from cwd, taking prisma.config.ts
- * in each ancestor directory as a candidate. A candidate carrying
- * `root: true` stops the walk and becomes the anchor; otherwise the
- * walk reaches the filesystem root and the topmost candidate wins.
- * Each candidate is evaluated to read its `root` flag, so a candidate
- * that cannot be evaluated (or has no version marker) can never carry
- * `root: true`; it still counts as a candidate, and its diagnostics
- * surface if it ends up the anchor.
+ * file (the one `--config` named, otherwise prisma.config.ts in cwd —
+ * cwd only, no walking up), evaluate it, check the defineConfig version
+ * marker, and produce LoadedConfig.
  *
  * Which section names a CLI recognises is not this module's business:
  * it hands back every top-level key the file had, and the engine — not
@@ -19,8 +10,8 @@
  * sections the mounted commands declare.
  *
  * Absence of an undiscovered file is not an error: section validators
- * own absence, so no prisma.config.ts in cwd or any ancestor yields no
- * sections and no diagnostics.
+ * own absence, so no prisma.config.ts in cwd yields no sections and no
+ * diagnostics.
  * Absence of a file the user NAMED with --config is an error — they
  * said which file to read and it was not there. An evaluated file
  * WITHOUT the marker (a classic Prisma 7 config, which uses the same
@@ -61,19 +52,9 @@ const MARKER_KEY = "$prismaConfig";
  * `__proto__` is reserved for the reason `$meta` is: c12 merges layers
  * with defu, which drops the key rather than let a config file reach an
  * object's prototype, so a section by that name could never be read.
- *
- * `root` is a different kind of reservation: not mechanics, but the
- * first engine-owned file-level setting. It is an optional boolean the
- * loader reads during discovery — `root: true` stops the upward search
- * at that file — and surfaces on LoadedConfig, never as a section.
  */
 export function reservedConfigSectionName(name: string): boolean {
-  return (
-    name === "root" ||
-    name === "extends" ||
-    name === "__proto__" ||
-    name.startsWith("$")
-  );
+  return name === "extends" || name === "__proto__" || name.startsWith("$");
 }
 
 /**
@@ -160,22 +141,6 @@ function missingNamedFileDiagnostic(path: string): Diagnostic {
   };
 }
 
-function invalidRootDiagnostic(path: string): Diagnostic {
-  return {
-    code: "CLI.CONFIG_ROOT_INVALID",
-    severity: "error",
-    summary: `${path} sets 'root' to a value that is not a boolean.`,
-    why: "'root' is a file-level setting read during config discovery: 'root: true' stops the upward search at this file. It is not a config section, and only true or false mean anything.",
-    nextActions: [
-      {
-        kind: "user-choice",
-        label: "Set root to true or false, or remove the key.",
-      },
-    ],
-    where: { path },
-  };
-}
-
 function unreadableDiagnostic(path: string, cause: unknown): Diagnostic {
   const message = cause instanceof Error ? cause.message : String(cause);
   return {
@@ -254,24 +219,44 @@ function sectionsOf(
   exported: Record<string, unknown>,
 ): Record<string, unknown> {
   return Object.fromEntries(
-    Object.entries(exported).filter(
-      ([key]) => key !== MARKER_KEY && key !== "root",
-    ),
+    Object.entries(exported).filter(([key]) => key !== MARKER_KEY),
   );
 }
 
 /**
- * Evaluates and interprets the one file at `path` (which exists and is
- * absolute). Absolute is not cosmetic, and it is one more thing than
- * either reference repository does — both are handed an absolute path
- * before they reach c12, so neither has to resolve one. Given a
- * relative path, c12 resolves it a second time against its own cwd and
- * looks for a file that is not there, and jiti cannot import a
- * relative specifier at all. An absolute path also makes the file's
- * path in every diagnostic absolute, and makes the loaded-file
- * comparison compare like with like.
+ * The file to read, always absolute: the one --config named, resolved
+ * against cwd, or prisma.config.ts in cwd.
+ *
+ * Absolute is not cosmetic, and it is one more thing than either
+ * reference repository does — both are handed an absolute path before
+ * they reach c12, so neither has to resolve one. Given a relative path,
+ * c12 resolves it a second time against its own cwd and looks for a
+ * file that is not there, and jiti cannot import a relative specifier
+ * at all. Resolving here also makes the file's path in every diagnostic
+ * absolute, and makes the loaded-file comparison compare like with
+ * like.
  */
-async function loadConfigFile(path: string): Promise<LoadedConfig> {
+function fileToRead(cwd: string, configPath: string | undefined): string {
+  const root = resolve(cwd);
+  return configPath === undefined
+    ? join(root, CONFIG_FILE_NAME)
+    : resolve(root, configPath);
+}
+
+/**
+ * The real-disk loader behind Runtime.loadConfig. The bin binds it to
+ * the process cwd; tests hand in fixtures.
+ */
+export async function loadConfig(
+  cwd: string,
+  configPath?: string,
+): Promise<LoadedConfig> {
+  const path = fileToRead(cwd, configPath);
+  if (!existsSync(path)) {
+    return configPath === undefined
+      ? { path, sections: {}, diagnostics: [] }
+      : fileLevelConfig(path, missingNamedFileDiagnostic(path));
+  }
   let exported: unknown;
   try {
     exported = await evaluateConfigFile(path);
@@ -285,50 +270,5 @@ async function loadConfigFile(path: string): Promise<LoadedConfig> {
   if (version !== PRISMA_CONFIG_VERSION) {
     return fileLevelConfig(path, unsupportedVersionDiagnostic(path, version));
   }
-  const root = exported.root;
-  if (root !== undefined && typeof root !== "boolean") {
-    return fileLevelConfig(path, invalidRootDiagnostic(path));
-  }
-  const loaded = { path, sections: sectionsOf(exported), diagnostics: [] };
-  return root === undefined ? loaded : { ...loaded, root };
-}
-
-/**
- * The real-disk loader behind Runtime.loadConfig. The bin binds it to
- * the process cwd; tests hand in fixtures.
- */
-export async function loadConfig(
-  cwd: string,
-  configPath?: string,
-): Promise<LoadedConfig> {
-  const base = resolve(cwd);
-  if (configPath !== undefined) {
-    const path = resolve(base, configPath);
-    return existsSync(path)
-      ? loadConfigFile(path)
-      : fileLevelConfig(path, missingNamedFileDiagnostic(path));
-  }
-  let topmost: LoadedConfig | undefined;
-  for (let dir = base; ; ) {
-    const candidate = join(dir, CONFIG_FILE_NAME);
-    if (existsSync(candidate)) {
-      // biome-ignore lint/performance/noAwaitInLoops: candidates are read in walk order, and a `root: true` result ends the walk before the next candidate is touched.
-      topmost = await loadConfigFile(candidate);
-      if (topmost.root === true) {
-        return topmost;
-      }
-    }
-    const parent = dirname(dir);
-    if (parent === dir) {
-      break;
-    }
-    dir = parent;
-  }
-  return (
-    topmost ?? {
-      path: join(base, CONFIG_FILE_NAME),
-      sections: {},
-      diagnostics: [],
-    }
-  );
+  return { path, sections: sectionsOf(exported), diagnostics: [] };
 }
