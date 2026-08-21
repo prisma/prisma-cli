@@ -484,3 +484,9 @@ to `delete`, moved `postgres restore`/`ref *`/`migrate`/`format`/
   mounts respell to `contract format`, `db migrate`, `migration ref *`
   and `orm init`. The shell wrapper rewrites the examples (D4-1
   ruling) until orm-toolchain updates its own.
+- **The deployment-id targeting asymmetry is undocumented.**
+  `service deployment delete|promote|rollback|start|stop` require
+  `--service` even when given a globally-unique deployment id, while
+  `service logs --deployment` without a service target resolves the id
+  globally within the project. Deliberate (per the cleanup plan), but
+  no artifact explains it to a user who meets it. Document or unify.
