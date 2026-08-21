@@ -1111,3 +1111,67 @@ It is the same shape as `CONFIG_MISSING_MARKER`, `CONFIG_VERSION_UNSUPPORTED`, a
 `root === undefined ? loaded : { ...loaded, root }` keeps the property off the object rather than setting it to `undefined`, which is what `LoadedConfig`'s optional `readonly root?: boolean` implies and what the existing whole-object `toEqual` assertions depend on. Both cases are pinned by tests (`config.test.ts:196-215` and `240-246`).
 
 **Verdict: ANOTHER ROUND NEEDED** — the requirements doc still says discovery never walks up and that five file-level diagnostics are all there are (INIT-R1-1), the fixture tests now depend on no config existing above the checkout on the machine running them (INIT-R1-2), and decision 1's reach past the repository boundary needs the operator's ruling before this lands.
+
+### Init slice — Round 2 (init command, agent-group deletion, sync rulings)
+
+**Verification run locally:** `pnpm --filter @prisma/cli test` → 60 files, 901 passed / 1 skipped, exit 0. `pnpm --filter @prisma/cli typecheck` → clean. `pnpm lint` could **not** be run: biome 2.4.16 aborts with `fatal runtime error: stack overflow` on every input in this worktree, including a single unrelated file (`src/cli-name.ts`), so the crash is environmental and not caused by these commits. Lint conformance is unverified.
+
+**Rulings confirmed implemented:** the postinstall hint is gone from `next()` (`commands/skills/presentation.ts:41`); no `.gitignore` is written anywhere (`lib/skills/sync.ts:108`); the `agent` group is gone with no dangling imports (typecheck passes; `src/commands/agent/` and `src/lib/agent/setup-status.ts` deleted; the only surviving `agent-skills` strings are unrelated fixture text in `packages/cli-engine/tests/package-install-matrix.test.ts`); the refusal path is real and tested; the six smaller owed fixes are all present (`skills-check.ts:39-49`, `:104-107`, `:133`, `:144-157`, `lib/skills/unquote.ts`, doc unwrapping). No banned words appear anywhere in the added prose, and the changed doc paragraphs are unwrapped. mount-coverage and e2e-coverage are consistent with the new surface.
+
+#### INIT-R2-1 — major — `packages/cli/src/commands/init.ts:182`
+
+`init` exits 1 when `package.json` exists but cannot be written. `readFile` is guarded, `JSON.parse` is guarded, the skills sync is guarded — the `writeFile` is not, so an `EACCES` (read-only file, restricted directory, some CI checkouts) escapes the handler. Reproduced against the built binary: a chmod-444 package.json yields exit=1 with `CLI.INTERNAL_ERROR`. This breaks the "always exit 0, a failure is a diagnostic" ruling, and the failure is reported as an internal error rather than as guidance. Wrap the write the same way the read is wrapped and return an `INIT.PACKAGE_JSON_UNWRITABLE` diagnostic with `APPEND_ADVICE`.
+
+#### INIT-R2-2 — major — `packages/cli/src/commands/init.ts:150-155,180`
+
+A non-object `scripts` value is silently destroyed. When `manifest.scripts` is not a plain object the code falls back to `{}` and then assigns `manifest.scripts = { ...scripts, postinstall }`, overwriting whatever was there. Reproduced: `{"scripts": "oops"}` in, `{"scripts": {"postinstall": ...}}` out, exit 0, no diagnostic. The ruling is "never touch anything else in the file". A malformed `scripts` is still the user's data. Treat a non-object `scripts` like a foreign postinstall: leave the file untouched, report `kept`/`skipped` with a diagnostic. No test covers this case.
+
+#### INIT-R2-3 — major — `packages/cli/src/commands/init.ts:13,221`
+
+`init` drops the unmanaged-directory refusal. It imports `packageReports` and `versionConflictDiagnostics` from `commands/skills/sync` but not `unmanagedDirectoryDiagnostics`, so the diagnostic added in `fd999a4` — the one that tells the user why the packaged skill was not installed — never fires through `init`. Worse, the human output is actively wrong: `syncPresentations` renders no refusal block at all (`commands/skills/presentation.ts:42-67`), so with `refused` non-empty and `synced`/`pruned` empty, `syncSummary` prints "Agent skills are up to date." (`presentation.ts:18-20`). A user who runs `prisma init` over a hand-written `.claude/skills/prisma-8` is told everything is fine while the packaged skill was never installed there. Add `unmanagedDirectoryDiagnostics(outcome.refused)` to `syncSkillsStep`'s diagnostics, and consider making the refusal visible in the shared sync presentation (a `Refused` table) rather than only in diagnostics.
+
+#### INIT-R2-4 — medium — `packages/cli/src/lib/skills/status.ts:213-214`
+
+A directory with no `SKILL.md` at all is classified `unmanaged`, so sync refuses it permanently. `stampState` returns `unmanaged` whenever the stamp read fails and the directory merely exists. A directory containing no `SKILL.md` is not somebody's skill — it is most often *sync's own interrupted copy*: `replaceTree` removes the destination and then copies file by file (`lib/skills/sync.ts:108-111`), so a `Ctrl-C` mid-copy leaves a partial tree that may not yet contain `SKILL.md`. Before this change that state read as `absent` and the next sync repaired it; now it reads `unmanaged`, sync will never touch it again, `findOrphanedSkills` ignores it too (`status.ts:236` only considers directories holding a `SKILL.md`), and the user is told to move or remove a directory the CLI itself left behind. The file-header comment on `sync.ts:1` still claims an interrupted sync leaves whole trees, which is not true within a single skill. Suggested fix: return `absent` when `SKILL.md` does not exist, and reserve `unmanaged` for a `SKILL.md` that exists but is unstamped or foreign-stamped. That keeps the data-loss protection (the finding was about a real user-authored `SKILL.md`) and restores self-healing.
+
+#### INIT-R2-5 — medium — `packages/cli/src/lib/skills/sync.ts:108-111`
+
+The `.gitignore` written by an older CLI only disappears when the skill happens to be resynced. `replaceTree` runs only for targets in state `stale` or `absent`. A project already synced at the current version keeps the `*` `.gitignore` inside every managed skill directory indefinitely, so its skill copies stay invisible to git while a freshly-synced project's copies do not — the same CLI version producing two different git behaviors depending on project history. The test at `tests/skills-sync.test.ts` ("removes one an older CLI wrote") only proves the resync case. Either delete a stray `.gitignore` on the no-op path, or state in `docs/product/output-conventions.md` that the leftover is expected until the next version bump.
+
+#### INIT-R2-6 — low — `packages/cli/src/commands/init.ts:130`
+
+A `package.json` with a UTF-8 BOM is treated as unparseable, so the hook is silently skipped (diagnostic only). Reproduced: BOM input → `{"outcome":"skipped"}` + `INIT.PACKAGE_JSON_UNREADABLE`, exit 0. Exit-code discipline holds, but BOM-prefixed manifests are common on Windows and this is a one-line fix (strip the BOM before parse, re-prefix on write).
+
+#### INIT-R2-7 — low — `packages/cli/src/commands/init.ts:181-186`
+
+Line endings are not preserved. Only the trailing newline and the indent width are carried over; a CRLF manifest comes back LF. Reproduced: CRLF in, LF out. That is a whole-file diff for a Windows repository from a command whose promise is "never touch anything else in the file". Detect `\r\n` alongside the indent and rejoin.
+
+#### INIT-R2-8 — low — `packages/cli/src/commands/auth/agent-setup-tip.ts:26`
+
+The post-login tip's status read is unguarded, and it scans more than it needs. `resolveAgentSetupTipCommand` is awaited at `commands/auth/login.ts:148`, *after* the credential has already been stored; if `readSkillsStatus` throws, login reports failure for a login that in fact succeeded. The deleted `readPrismaAgentSetupStatus` had its own `try/catch` (two of them), so this is a guard lost in the rewrite. Wrap it and return `null`. Separately, the call omits `{ orphans: false }` even though the tip never reads `status.orphans` — the option added in `0fcd704` for exactly this reason.
+
+#### INIT-R2-9 — low — `packages/cli/src/adapters/local-state.ts:21-22,42-43,82-83`
+
+Dead local state. `readAgentSetupPromptDismissedAt` / `setAgentSetupPromptDismissedAt` were deleted, but the `agent: { setupPromptDismissedAt }` field is still declared, defaulted, and parsed, with no reader or writer left in the tree. Remove the field with the group that owned it, or note why the persisted shape must stay for forward compatibility.
+
+#### INIT-R2-10 — low — `docs/product/output-conventions.md:106`
+
+Docs do not cover the two behaviors this round introduced. Nothing in `docs/` mentions the `unmanaged` state or the refusal rule, even though it is a new user-visible outcome of `skills sync`, a new value in `skills list`'s State column, and a new `refused` array in the JSON result. The same edit also removed the only sentence explaining how synced copies relate to git without replacing it, so the docs are now silent on the fact that the copies are ordinary tracked files. `command-principles.md` gains a good `init` entry; the preview-scope sentence just above it still omits both `skills` and `init` — the `skills` omission predates this PR, the `init` one does not.
+
+#### INIT-R2-11 — nit — `packages/cli/src/skills-check.ts:39-45`
+
+The opt-out fix reads the same two things twice. `maybeWriteSkillsStaleNotice` calls `findProjectRoot` then `readSkillsCheckDisabled`, and `readSkillsStatus` immediately does both again (`lib/skills/status.ts:80-81`). The early-exit saving is real and the ruling is satisfied; passing the already-resolved root (or the already-read flag) into `readSkillsStatus` would avoid the duplicate ancestor walk on the path that does not exit early.
+
+#### Decision verdicts
+
+**A — post-login tip repointed to `skills sync` — sound.** `skills sync` is the right target rather than `init`: the tip fires only when copies are stale, and offering `init` there would offer to edit `package.json` as a side effect of logging in. The four suppressions match the check's own contract. Two defects in the implementation are filed as INIT-R2-8; neither changes the decision.
+
+**B — `unmanaged` targets do not count as outdated — sound.** A notice naming a directory sync will never touch would be unactionable noise repeated on every command, and `skills list` still reports the true per-target state. One presentational consequence to accept or fix: `skills list` prints "Agent skills are up to date." while a target reads `unmanaged`, which is the same over-claim as INIT-R2-3 in a less harmful place. A one-clause summary variant ("up to date; 1 directory is not managed by this CLI") would close it.
+
+**C — `"kept"` for a foreign postinstall, unparseable treated as missing — sound.** Both land in "report and leave alone", which is what the ruling asks for, and `kept` carries the user's actual script in the JSON so a caller can see what blocked it. The reservation is scope, not shape: the unparseable bucket currently swallows BOM files (INIT-R2-6), and the non-object `scripts` case bypasses this discipline entirely instead of joining it (INIT-R2-2).
+
+**D — sync at the discovered project root, edit cwd's `package.json` — sound.** The ruling names cwd's `package.json` explicitly, and the skill directories genuinely belong to the workspace root, so the split is correct rather than accidental. It is also visible: `syncPresentations` prints a `project` field with the root it used. Worth one sentence in the `init` help description saying the hook lands in the current directory while the skills land at the workspace root, since the two paths can differ.
+
+**E — the browser success page's `npx skills add prisma/skills` copy button — escalate to operator, recommend deleting it.** Confirmed still present at `packages/cli/src/auth/login.ts:571` and `:582` (asserted at `tests/auth-login.test.ts:61`). It is the same third-party installer ecosystem the `agent` group wrapped, and it is now the only surface in the product still promoting it. After this PR the CLI's answer to "using an AI coding agent?" is `prisma init`, so the page contradicts the CLI in the one place a brand-new user is most likely to look. It is a separate surface and out of the stated scope, so it is the operator's call whether it dies here or in a follow-up — but it should not survive the group indefinitely.
+
+**ANOTHER ROUND NEEDED** — three defects must be fixed in this PR before the slice is correct: `init` exits 1 on an unwritable `package.json` (INIT-R2-1), it silently destroys a non-object `scripts` value (INIT-R2-2), and it reports "up to date" while dropping the unmanaged-directory refusal the round was built to add (INIT-R2-3).
