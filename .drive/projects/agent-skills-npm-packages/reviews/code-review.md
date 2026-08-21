@@ -26,6 +26,9 @@ asks Opus-4.8-mid; unavailable in this session, using Opus.
 | Slice 3 | Round 1 | ANOTHER ROUND NEEDED |
 | Slice 2 | Round 2 | ANOTHER ROUND NEEDED (both round-1 findings fixed; two new, both small) |
 | Slice 2 | Round 3 | ANOTHER ROUND NEEDED (R2 findings fixed; S2-R2-1 premise corrected — reviewer error; two further sweep residues) |
+| Slice 2 | Round 4 | SATISFIED — both round-3 findings fixed, no new findings, no collateral damage |
+| Slice 1 | Round 2 | SATISFIED — S1-R1-1 fixed by a real pack-and-read-back test, no new findings |
+| Slice 3 | Round 2 | ANOTHER ROUND NEEDED (S3-R1-1 fixed end to end; one new low finding, S3-R2-1, in the quick-reference template init writes) |
 
 ## Findings log
 
@@ -343,6 +346,17 @@ disagree about the same URL.
 Required action: restore `/docs/orm/tools/prisma-cli` in the comment. Worth a
 quick pass for any other place where the sweep rewrote a URL, an npm package
 name, or an analytics identifier rather than a command a user types.
+
+### S3-R2-1 — low — `.refs/prisma` `packages/1-framework/3-tooling/cli/src/commands/init/templates/quick-reference-postgres.md:94-95` and `quick-reference-mongo.md:115-116`
+
+These two files are rendered into the project as its quick reference, so they are strings init writes. Every other command in them now says `prisma`, but the "Monorepo notes" section still names the old package on two lines:
+
+- "a `catalogs` entry for `@prisma/cli` or `{{pkg}}`" — init no longer installs `@prisma/cli`, so a catalog entry for that name no longer changes what init installs. The sentence tells the reader to look at the wrong entry.
+- "`pnpm dlx @prisma/cli@next init …` works in any directory" — this is the one remaining place in the scaffolded documentation that names the package whose bin is `prisma-cli`, and it is also the pre-rename command spelling (`init` rather than `orm init`). `skills/README.md` in this same commit was updated to `pnpm dlx prisma@next orm init`, so the repository and the document it hands users now disagree.
+
+Neither line breaks anything at run time — `pnpm dlx @prisma/cli@next` still resolves — but the commit's stated aim is that everything init writes names one binary, and this is the last scaffolded text that does not.
+
+Required action: change both lines in both templates to name `prisma` (`a catalogs entry for prisma or {{pkg}}`, `pnpm dlx prisma@next orm init …`) and refresh the two affected snapshots. The same stale spelling appears in a code comment at `src/commands/init/detect-package-manager.ts:26-28`; worth the same one-line pass while the files are open, though it is not user-facing.
 
 ## Round notes
 
@@ -908,5 +922,48 @@ discover.
   install the `prisma` package rather than `@prisma/cli@next`.
 
 I did not re-run the gate, per the coordinator's report of the green run.
+
+**Slice 2, round 4 — `2c976bf`. SATISFIED.** Both round-3 findings are fixed, there is no collateral damage, and I have no new findings.
+
+**S2-R3-1 is fixed.** The unreachable `command.startsWith("prisma ")` branch is gone from `portCommandString`, and the comment now describes what the function does rather than what it used to do: strings that already name this binary pass through, and the only spelling still rewritten is the package-runner prefix the legacy formatter emitted. I checked that removing the branch changes no behaviour — with `CLI_NAME` equal to `"prisma"` the first guard catches every string the deleted branch could have caught, and it returns them unchanged, which is the same answer the deleted branch produced. I also read the callers (`branch/errors.ts`, `bucket/errors.ts`, `git/errors.ts`, `project/presentation.ts`, and `project/errors.ts` itself) and the tests that assert on `prisma auth login` next actions; all of them feed strings that the first guard handles.
+
+**S2-R3-2 is fixed**, and better than I asked. The title names `prisma-cli` again, and a comment above it records why: the assertion is about what this package publishes, not about what a user types. That is the note that stops the next reader "correcting" the assertion instead of the title.
+
+No collateral damage. The commit touches exactly two source files plus the drive artifacts, and both source changes are the two fixes. The drive artifacts riding along is accepted, as instructed, and I am not filing it. Per the review brief I did not re-run the suites; the implementer's pre-halt run is the record.
+
+**Slice 1, round 2 — `900db17`. SATISFIED.** One commit since the round-1 head, and it does exactly what S1-R1-1 asked.
+
+`packages/0-shared/publish-surface/test/package-skills.test.ts` now proves the claim from the artifact. For each of the three target packages it deletes the staged `skills/` tree, runs `pnpm pack` the way the publish workflow does, unpacks the tarball, and reads `skills/prisma-8/SKILL.md` back out of it. Deleting first is what makes `prepack` the only possible source of what ships, and it also exercises `prepack`'s relative invocation of the sync script — the main-module guard I flagged in round 1 as never being tested under that path.
+
+It is mutation-sensitive in both directions I named. Dropping `"skills"` from a manifest's `files` fails the packed-artifact test (the file is simply not in the tarball) as well as the manifest assertion. Dropping the `prepack` script fails it too, because nothing is left to re-stage the deleted tree. Neither mutation can pass by leaving a stale copy on disk, which was the whole weakness of the previous version.
+
+The comparison is a real byte comparison, not a spot check: the packed skill directory's file list must equal the tracked tree's, every non-`SKILL.md` file must match byte for byte, and `SKILL.md` itself must equal the tracked source with only the `library` line rewritten to name the packing package. I checked the quoting matches rather than assuming — `stampSkillMetadata` writes `library: '<value>'` with single quotes and the test's expected replacement writes single quotes, so the equality is exact rather than accidentally lenient. The stamped `library_version` is asserted against the packed manifest's own version, and a separate case asserts the tracked source's stamp equals the repository root version, so the lockstep chain is checked end to end.
+
+Two small things I looked at and am not filing. The test deletes the package's `skills/` directory in the working tree before packing; the directory is gitignored build output that `prepack` regenerates, so the only cost is that a failed pack leaves it absent until the next build. And each packed case carries a 60-second timeout because it shells out to `pnpm pack` — slower than the rest of the file, and worth it for what it proves.
+
+Nothing else changed since round 1, so everything in that note still stands.
+
+**Slice 3, round 2 — `26df6a2`. ANOTHER ROUND NEEDED**, on one low finding. The important part — S3-R1-1 — is fixed properly, and fixed in the direction round 2 of slice 2 said was right.
+
+**S3-R1-1 is fixed.** `cliDevDeps` is now `['prisma@next']`, the package that actually declares the `prisma` bin. I verified that against the manifest in prisma-cli rather than taking it from the commit message: `packages/prisma/package.json` declares `"bin": { "prisma": "./dist/prisma.js" }`, and it declares `@prisma/cli-engine` in `dependencies`, so the engine-version probe still finds the exact version it needs.
+
+Every string I was asked to check now names the same binary, and I traced each one in the tree rather than reading only the diff.
+
+- The engine-version probe reads `node_modules/prisma/package.json` (`init-packages.ts`), and the comment in `init.ts` was corrected from "peer" to "dependency", which matches how `prisma` actually declares the engine.
+- The emit spawn resolves `prisma/package.json` and reads the `prisma` bin entry (`init-emit.ts`), and all three of its error messages name `prisma` consistently.
+- The `contract:emit` script is `prisma contract emit` (`hygiene-package-scripts.ts`), and the failed-emit next action (`EMIT_COMMAND` in `init-diagnostics.ts`) is the same string.
+- The scaffold quick-reference prefix is `formatRunCommand(packageManager, 'prisma', '')`, so the generated document says `pnpm prisma contract emit` and so on.
+- The direct sync invocation is `dlx prisma@next skills sync`, from the single constant `SKILLS_SYNC_PACKAGE`.
+- The postinstall is `prisma skills sync || exit 0`, and its comment now explains `|| exit 0` in terms of the `prisma` binary being absent in a production install.
+
+**The `formatSkillSyncCommand` note from round 1 is addressed.** The advice now runs the copy the project already has — `pnpm exec prisma skills sync`, `npm exec`, `yarn exec`, `bun run` — instead of fetching a fresh one with `dlx`. Deno keeps the `npm:` specifier, and the reason is recorded in the doc comment: Deno has no local-bin runner. The unit test asserts all five spellings.
+
+**The integration test asserts one binary end to end**, which is the part that makes this hard to regress: "names one binary everywhere: the one it installed" checks in one case that the install command is `add -D prisma@next @types/node`, that the sync command is `dlx prisma@next skills sync`, and that the written manifest carries both `postinstall: prisma skills sync || exit 0` and `contract:emit: prisma contract emit`. Its comment states the failure it exists to catch — that naming `@prisma/cli` would leave both scripts calling a binary the project does not have, with `|| exit 0` hiding it. The offline shim was updated to materialise a `prisma` package with a `prisma` bin, so the test cannot pass against the old layout.
+
+**The one finding, S3-R2-1**, is the last scaffolded text that still names the old package: the "Monorepo notes" section of both quick-reference templates. It is two lines in each file plus two snapshots, and it is the same class of thing the rest of the commit fixed.
+
+The two implementer judgement calls are recorded as noted, not as findings: no migration entry for projects created before this change, and the repository-wide `prisma-cli` to `prisma` rename in prisma/prisma deliberately left undone. The second is why a great many `prisma-cli` strings remain in that package (`control-api/`, `orm/db/`, `commands/init/errors.ts`, `orm/config-section.ts`); I checked that they are all in that undone-rename set rather than in the set of strings init writes into a project, which is what this slice owns.
+
+One thing for the orchestrator, not a defect: this branch is stacked on the slice-1 head from before the S1-R1-1 fix (`c95e2d02`), not on `900db17`. A merge of slice 1 followed by slice 3 keeps the fix, so nothing is at risk, but a rebase before opening the PR makes the diff show only slice 3's work.
 
 ## Orchestrator notes
