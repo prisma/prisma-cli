@@ -26,8 +26,12 @@ function resolveStatusSource(
   return statusScope === "project" ? "skills-lock" : "unavailable";
 }
 
-function openStateStore(ctx: AgentContext): LocalStateStore {
-  const stateDir = resolveStateDir({ env: ctx.env, cwd: ctx.cwd });
+async function openStateStore(ctx: AgentContext): Promise<LocalStateStore> {
+  const stateDir = await resolveStateDir({
+    env: ctx.env,
+    cwd: ctx.cwd,
+    signal: ctx.signal,
+  });
   return new LocalStateStore(stateDir, ctx.signal);
 }
 
@@ -65,7 +69,7 @@ export const agentStatusCommand = defineCommand({
     const statusScope = args.flags.global ? "global" : "project";
     const setupStatus = await readPrismaAgentSetupStatus({
       cwd: ctx.cwd,
-      stateStore: openStateStore(ctx),
+      stateStore: await openStateStore(ctx),
       signal: ctx.signal,
     });
     const skillsList = await listInstalledPrismaSkills(
