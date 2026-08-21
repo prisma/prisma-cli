@@ -95,6 +95,33 @@ Update available: prisma-cli <current> -> <latest>
 See https://www.prisma.io/docs/orm/tools/prisma-cli for update instructions.
 ```
 
+## Out-Of-Date Agent Skills
+
+The CLI prints one advisory line after normal command output when the agent
+skills copied into the project's harness skill directories do not match the
+Prisma packages the project has installed:
+
+```text
+Prisma agent skills are out of date (installed @prisma/orm-postgres 8.1.0, synced 8.0.0). Run: prisma-cli skills sync
+```
+
+A project that has never been synced is reported the same way, with `synced
+none`. Like the update notification, this is human-oriented stderr output, must
+never reach stdout, and must never change the command's exit code. Unlike the
+update notification it is **not** conditioned on a TTY: its main reader is a
+coding agent, which runs the CLI without one.
+
+It is silent when:
+
+- the copies match the installed packages
+- `--quiet` or `--json` / `--format json` is active
+- `PRISMA_SKILLS_CHECK=0` is set
+- CI is detected
+- `prisma.config.ts` sets `skills: { check: false }`
+- the project has run `skills sync --disable`, which records the opt-out in
+  `.prisma/skills.json` at the project root
+- the command being run is itself a `skills` command
+
 ## Human Output
 
 Human-facing output should follow `cli-style-guide.md` and optimize for:

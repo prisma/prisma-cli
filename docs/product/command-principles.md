@@ -29,6 +29,7 @@ Use the other convention docs for adjacent concerns:
 The long-term command surface grows through workflow groups such as:
 
 - `agent`
+- `skills`
 - `auth`
 - `project`
 - `branch`
