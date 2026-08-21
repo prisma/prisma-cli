@@ -31,6 +31,7 @@ asks Opus-4.8-mid; unavailable in this session, using Opus.
 | Slice 3 | Round 2 | ANOTHER ROUND NEEDED (S3-R1-1 fixed end to end; one new low finding, S3-R2-1, in the quick-reference template init writes) |
 | Slice 3 | Round 3 | SATISFIED — S3-R2-1 fixed in both templates, the comment, and all four snapshots; no new findings |
 | Slice 2 | Round 5 (CI repair) | SATISFIED — the cli-engine revert is exact and both Windows failures were fixture-only; no new findings |
+| Slice 3 | Round 4 (CI repair) | SATISFIED — the e2e harness now fakes the package init installs, the test's proof is intact, nothing else touched |
 
 ## Findings log
 
@@ -996,5 +997,15 @@ Everything else — the harness directories, the package skills directory, the s
 In `skills-workspace-scan.test.ts` only the comparison changed. The test still asserts the exact set of directories the walk read — `packages` and `packages/group`, and nothing else — still caps the whole status read at fewer than twelve directory reads, and still asserts that no `dist` directory was read. That last check compares against `${path.sep}dist`, so it was already separator-aware and stays correct on both platforms. Normalising the recorded paths before comparing them cannot make the assertion pass with a different set of directories, because the set is compared by equality, not by containment.
 
 Per the review brief I did not re-run the suite; the implementer reports 1040 passed with the one known skip and a clean typecheck.
+
+**Slice 3, round 4 (CI repair) — `4c9ce87`. SATISFIED.** The commit does what it says, the test still proves what it existed to prove, and nothing else moved.
+
+The harness now plants `node_modules/prisma` with a `prisma` bin at `bin/prisma.mjs`, which is the package init installs and the one `init-emit.ts` resolves. That is the whole cause of the failure: init resolved `prisma/package.json`, found nothing, and settled at exit 5 with `CLI.INIT_EMIT_FAILED` before either case could assert anything. The doc comment at the top of the file, the describe title, and the first case's title were updated to name the same package, so the file no longer describes a layout it does not create.
+
+The proof is intact, and it is the assertion on the spawned script that carries it: the recorded `process.argv[1]` must be the real path of `node_modules/prisma/bin/prisma.mjs` inside the scaffold. Nothing else can write that sentinel file, so an init that emitted in process — the regression this suite exists to catch — still fails here. The rest of the first case is unchanged: argv equal to `['contract', 'emit']`, the child's working directory equal to the scaffold, exit code 0, and `"contractEmitted":true` in the settled frame. The second case is untouched and still pins the failure path: exit 5, the `CLI.INIT_EMIT_FAILED` code, the child's stderr marker carried into the diagnostic, and "exited with code 3".
+
+Nothing else is touched. The commit is one file, ten lines replaced by ten, and every one of them is a name change.
+
+**On the Integration (2/4) failure.** I did not read the CI logs, and I did not need to in order to check the reasoning. The branch's complete file list against `origin/main` contains no `db-verify` file and no database command path at all; outside the CLI package's `src` and `test` trees it touches exactly two test files, the init emit e2e and the init skill-distribution integration test. So the failing file is in an area this branch does not modify and does not import, which is what the repository's rule for classifying a CI failure asks you to establish. Treating it as a worker-crash flake is sound on that evidence. The usual caveat applies: if it repeats on a re-run, it stops being a flake and wants a real look.
 
 ## Orchestrator notes
