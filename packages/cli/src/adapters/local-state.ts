@@ -18,9 +18,6 @@ export interface LocalState {
   branch: {
     active: string;
   };
-  agent: {
-    setupPromptDismissedAt: string | null;
-  };
 }
 
 export interface RememberedProjectState {
@@ -38,9 +35,6 @@ const DEFAULT_STATE: LocalState = {
   },
   branch: {
     active: "preview",
-  },
-  agent: {
-    setupPromptDismissedAt: null,
   },
 };
 
@@ -78,9 +72,6 @@ export class LocalStateStore {
         },
         branch: {
           active: parsed.branch?.active ?? DEFAULT_STATE.branch.active,
-        },
-        agent: {
-          setupPromptDismissedAt: parsed.agent?.setupPromptDismissedAt ?? null,
         },
       };
     } catch (error) {
