@@ -15,12 +15,16 @@ import {
 } from "./errors";
 import { requireDeploymentForService } from "./release";
 import type { ServiceDeploymentSummary } from "./results";
-import type { ServiceContext, ServiceReadState } from "./target";
+import type {
+  ServiceContext,
+  ServiceProjectState,
+  ServiceReadState,
+} from "./target";
 import {
   applyLiveDeploymentHint,
   listServices,
-  rememberSelectedService,
   resolveCurrentLiveDeploymentId,
+  resolveServiceProjectState,
   resolveServiceReadState,
 } from "./target";
 
@@ -167,40 +171,35 @@ function listDeployments(
     });
 }
 
-/** `--deployment <id>`: the id is global, so it is resolved directly and
- *  then checked against the resolved project — a deployment that exists
- *  but belongs elsewhere is reported as its own failure. */
-async function resolveExplicitDeployment(
+/** `--deployment <id>` with a service target: the id must belong to
+ *  the resolved service. */
+async function resolveDeploymentInService(
   ctx: ServiceContext,
   state: ServiceReadState,
-  serviceName: string | undefined,
   deploymentId: string,
 ): Promise<LogTarget> {
-  if (serviceName) {
-    if (!state.selected) {
-      throw noDeploymentsError(
-        "No deployments available to read logs from",
-        "The resolved project does not have any deployed service yet.",
-      );
-    }
-    const deploymentsResult = await listDeployments(
-      ctx,
-      state.provider,
-      state.selected.id,
-    );
-    const deployment = requireDeploymentForService(
-      deploymentsResult.deployments,
-      deploymentId,
-      state.selected.name,
-    );
-    await rememberSelectedService(
-      state.stateStore,
-      state.projectId,
-      deploymentsResult.app,
-    );
-    return { service: deploymentsResult.app, deployment };
-  }
+  const deploymentsResult = await listDeployments(
+    ctx,
+    state.provider,
+    state.service.id,
+  );
+  const deployment = requireDeploymentForService(
+    deploymentsResult.deployments,
+    deploymentId,
+    state.service.name,
+  );
+  return { service: deploymentsResult.app, deployment };
+}
 
+/** `--deployment <id>` without a service target: the id is global, so
+ *  it is resolved directly and then checked against the resolved
+ *  project — a deployment that exists but belongs elsewhere is reported
+ *  as its own failure. */
+async function resolveGlobalDeployment(
+  ctx: ServiceContext,
+  state: ServiceProjectState,
+  deploymentId: string,
+): Promise<LogTarget> {
   const shown = await state.provider
     .showDeployment(deploymentId, { signal: ctx.signal })
     .catch((error) => {
@@ -226,26 +225,18 @@ async function resolveExplicitDeployment(
     throw deploymentOutsideProjectError(deploymentId);
   }
 
-  await rememberSelectedService(state.stateStore, state.projectId, owning);
   return { service: owning, deployment: shown.deployment };
 }
 
-/** No `--deployment`: read whatever is live for the selected service. */
+/** No `--deployment`: read whatever is live for the resolved service. */
 async function resolveLiveDeployment(
   ctx: ServiceContext,
   state: ServiceReadState,
 ): Promise<LogTarget> {
-  if (!state.selected) {
-    throw noDeploymentsError(
-      "No deployments available to read logs from",
-      "The resolved project does not have any deployed service yet.",
-    );
-  }
-
   const deploymentsResult = await listDeployments(
     ctx,
     state.provider,
-    state.selected.id,
+    state.service.id,
   );
   const currentLiveDeploymentId = resolveCurrentLiveDeploymentId(
     deploymentsResult.app,
@@ -260,12 +251,6 @@ async function resolveLiveDeployment(
         (candidate) => candidate.id === currentLiveDeploymentId,
       ) ?? null)
     : null;
-
-  await rememberSelectedService(
-    state.stateStore,
-    state.projectId,
-    deploymentsResult.app,
-  );
 
   if (!deployment) {
     throw noDeploymentsError(
@@ -434,30 +419,42 @@ export const serviceLogsCommand = defineSessionCommand({
       throw logsRangeConflictError();
     }
 
-    // Naming a service decides whether an explicit deployment id is
-    // looked up within that service or resolved globally, and a global
-    // lookup needs no service selection at all (so it never prompts).
-    const serviceNamed = args.flags.service;
-    const resolveGlobally = Boolean(args.flags.deployment) && !serviceNamed;
-    const state = await resolveServiceReadState(ctx, {
-      ...(args.flags.service !== undefined
-        ? { serviceName: args.flags.service }
-        : {}),
+    // A globally-unique deployment id is a complete target on its own,
+    // so `--deployment` without `--service` skips service resolution
+    // and checks the deployment against the resolved project instead.
+    const explicitDeploymentId = args.flags.deployment;
+    const projectOptions = {
       ...(args.flags.project !== undefined
         ? { projectRef: args.flags.project }
         : {}),
       commandName: "service logs",
-      skipSelection: resolveGlobally,
-    });
+    };
 
-    const target = args.flags.deployment
-      ? await resolveExplicitDeployment(
-          ctx,
-          state,
-          serviceNamed,
-          args.flags.deployment,
-        )
-      : await resolveLiveDeployment(ctx, state);
+    let state: ServiceProjectState;
+    let target: LogTarget;
+    if (
+      explicitDeploymentId !== undefined &&
+      args.flags.service === undefined
+    ) {
+      state = await resolveServiceProjectState(ctx, projectOptions);
+      target = await resolveGlobalDeployment(ctx, state, explicitDeploymentId);
+    } else {
+      const readState = await resolveServiceReadState(ctx, {
+        ...(args.flags.service !== undefined
+          ? { serviceName: args.flags.service }
+          : {}),
+        ...projectOptions,
+      });
+      state = readState;
+      target =
+        explicitDeploymentId !== undefined
+          ? await resolveDeploymentInService(
+              ctx,
+              readState,
+              explicitDeploymentId,
+            )
+          : await resolveLiveDeployment(ctx, readState);
+    }
     const deploymentId = target.deployment.id;
 
     for (const line of [

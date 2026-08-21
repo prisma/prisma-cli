@@ -5,7 +5,6 @@ import { deploymentListPresentations } from "./presentation";
 import type { ServiceDeploymentListResult } from "./results";
 import {
   applyLiveDeploymentHint,
-  rememberSelectedService,
   resolveCurrentLiveDeploymentId,
   resolveServiceReadState,
   sortDeploymentsNewestFirst,
@@ -40,19 +39,8 @@ export const serviceDeploymentListCommand = defineCommand({
       commandName: "service deployment list",
     });
 
-    if (!state.selected) {
-      const result: ServiceDeploymentListResult = {
-        projectId: state.projectId,
-        service: null,
-        deployments: [],
-      };
-      return ok(
-        ctx.present({ data: result }, deploymentListPresentations(result)),
-      );
-    }
-
     const deploymentsResult = await state.provider
-      .listDeployments(state.selected.id, { signal: ctx.signal })
+      .listDeployments(state.service.id, { signal: ctx.signal })
       .catch((error) => {
         throw deployFailedError(
           "Failed to list service deployments",
@@ -69,12 +57,6 @@ export const serviceDeploymentListCommand = defineCommand({
         deploymentsResult.deployments,
         currentLiveDeploymentId,
       ),
-    );
-
-    await rememberSelectedService(
-      state.stateStore,
-      state.projectId,
-      deploymentsResult.app,
     );
 
     const result: ServiceDeploymentListResult = {

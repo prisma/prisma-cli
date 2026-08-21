@@ -8,8 +8,6 @@ import {
 import { createPresentations } from "./presentation";
 import type { ServiceCreateResult } from "./results";
 import {
-  openServiceStateStore,
-  rememberSelectedService,
   resolveServiceProjectContext,
   serviceProvider,
   toServiceListEntry,
@@ -74,14 +72,6 @@ export const serviceCreateCommand = defineCommand({
           runCommandAction("List services", "service list"),
         ]);
       });
-
-    // A just-created service is the one later commands should act on.
-    const stateStore = await openServiceStateStore(ctx);
-    await rememberSelectedService(
-      stateStore,
-      target.project.id,
-      created.service,
-    );
 
     const result: ServiceCreateResult = {
       projectId: target.project.id,

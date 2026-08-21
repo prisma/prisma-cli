@@ -82,7 +82,7 @@ describe("prisma-cli service deployment promote", () => {
     });
   });
 
-  it("caches the selected service and writes no local live-deployment state", async () => {
+  it("writes no local selection or live-deployment state", async () => {
     const harness = await makeServiceCli({ routes: releaseRoutes() });
 
     await harness.cli.run(
@@ -99,14 +99,9 @@ describe("prisma-cli service deployment promote", () => {
       { cwd: harness.cwd, env: harness.env },
     );
 
-    const state = JSON.parse(
-      await readFile(path.join(harness.stateDir, "state.json"), "utf8"),
-    );
-    expect(state.app.selectedByProject.proj_1).toEqual({
-      id: "svc_1",
-      name: "hello-world",
-    });
-    expect(state.app.knownLiveDeploymentByProject).toEqual({});
+    await expect(
+      readFile(path.join(harness.stateDir, "state.json"), "utf8"),
+    ).rejects.toMatchObject({ code: "ENOENT" });
   });
 
   it("warns instead of promoting when the target is already live", async () => {
@@ -237,7 +232,7 @@ describe("prisma-cli service deployment promote", () => {
     expect(frame.envelope.error.code).toBe("SERVICE.DEPLOY_FAILED");
   });
 
-  it("requires an existing service", async () => {
+  it("requires --service or PRISMA_SERVICE_ID", async () => {
     const harness = await makeServiceCli({
       routes: releaseRoutes({ "GET /v1/apps": () => ({ data: page([]) }) }),
     });
@@ -262,13 +257,8 @@ describe("prisma-cli service deployment promote", () => {
     }
     expect(frame.envelope.error.code).toBe("SERVICE.TARGET_REQUIRED");
     expect(frame.envelope.error.summary).toBe(
-      'Command "service deployment promote" requires an existing service',
+      'Command "service deployment promote" requires --service',
     );
-    expect(frame.envelope.error.nextActions).toContainEqual({
-      kind: "user-choice",
-      label:
-        'Deploy a service first, or rerun "service deployment promote" with --service <name> once a service exists.',
-    });
   });
 
   it("fails early with the engine sign-in error when unauthenticated", async () => {

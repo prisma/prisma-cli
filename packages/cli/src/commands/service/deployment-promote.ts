@@ -9,11 +9,7 @@ import {
   resolveServiceReleaseState,
 } from "./release";
 import type { ServicePromoteResult } from "./results";
-import {
-  rememberSelectedService,
-  resolveCurrentLiveDeploymentId,
-  toServiceSummary,
-} from "./target";
+import { resolveCurrentLiveDeploymentId, toServiceSummary } from "./target";
 
 export const serviceDeploymentPromoteCommand = defineCommand({
   help: {
@@ -64,12 +60,6 @@ export const serviceDeploymentPromoteCommand = defineCommand({
       state.service.name,
     );
     const alreadyLive = currentLiveDeploymentId === targetDeployment.id;
-
-    await rememberSelectedService(
-      state.stateStore,
-      state.projectId,
-      deploymentsResult.app,
-    );
 
     if (!alreadyLive) {
       ctx.report({ kind: "step-started", step: "promote" });

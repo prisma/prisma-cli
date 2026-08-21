@@ -10,7 +10,6 @@ import { openPresentations } from "./presentation";
 import type { ServiceOpenResult } from "./results";
 import {
   applyLiveDeploymentHint,
-  rememberSelectedService,
   resolveCurrentLiveDeploymentId,
   resolveServiceReadState,
   sortDeploymentsNewestFirst,
@@ -42,15 +41,8 @@ export const serviceOpenCommand = defineCommand({
       commandName: "service open",
     });
 
-    if (!state.selected) {
-      throw noDeploymentsError(
-        "No deployments available to open",
-        "The resolved project does not have any deployed service yet.",
-      );
-    }
-
     const deploymentsResult = await state.provider
-      .listDeployments(state.selected.id, { signal: ctx.signal })
+      .listDeployments(state.service.id, { signal: ctx.signal })
       .catch((error) => {
         throw deployFailedError("Failed to resolve service URL", error, [
           runCommandAction("Inspect the service", "service show"),
@@ -71,12 +63,6 @@ export const serviceOpenCommand = defineCommand({
           (deployment) => deployment.id === currentLiveDeploymentId,
         ) ?? null)
       : null;
-
-    await rememberSelectedService(
-      state.stateStore,
-      state.projectId,
-      deploymentsResult.app,
-    );
 
     if (!liveDeployment) {
       throw noDeploymentsError(

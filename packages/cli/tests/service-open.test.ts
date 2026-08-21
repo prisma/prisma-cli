@@ -4,6 +4,7 @@ import {
   page,
   presentedSummary,
   readFlowRoutes,
+  SERVICE,
   SERVICE_DETAIL,
 } from "./service-testkit";
 
@@ -98,13 +99,29 @@ describe("prisma-cli service open", () => {
     expect(result.presented?.data).toMatchObject({ opened: false });
   });
 
-  it("settles a project with no services as SERVICE.NO_DEPLOYMENTS", async () => {
+  it("settles a service with no deployments as SERVICE.NO_DEPLOYMENTS", async () => {
     const harness = await makeServiceCli({
-      routes: readFlowRoutes({ "GET /v1/apps": () => ({ data: page([]) }) }),
+      routes: readFlowRoutes({
+        "GET /v1/apps": () => ({
+          data: page([{ ...SERVICE, latestDeploymentId: null }]),
+        }),
+        "GET /v1/apps/{appId}": () => ({
+          data: { data: { ...SERVICE_DETAIL, latestDeploymentId: null } },
+        }),
+        "GET /v1/apps/{appId}/deployments": () => ({ data: page([]) }),
+      }),
     });
 
     const result = await harness.cli.run(
-      ["service", "open", "--project", "acme-app", "--json"],
+      [
+        "service",
+        "open",
+        "--project",
+        "acme-app",
+        "--service",
+        "hello-world",
+        "--json",
+      ],
       { cwd: harness.cwd, env: harness.env },
     );
 

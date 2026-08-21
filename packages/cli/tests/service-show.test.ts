@@ -79,7 +79,7 @@ describe("prisma-cli service show", () => {
     });
   });
 
-  it("caches the selected service in the local state store", async () => {
+  it("writes no service selection into the local state store", async () => {
     const harness = await makeServiceCli();
 
     await harness.cli.run(
@@ -87,35 +87,26 @@ describe("prisma-cli service show", () => {
       { cwd: harness.cwd, env: harness.env },
     );
 
-    const state = JSON.parse(
-      await readFile(path.join(harness.stateDir, "state.json"), "utf8"),
-    );
-    expect(state.app.selectedByProject.proj_1).toEqual({
-      id: "svc_1",
-      name: "hello-world",
-    });
+    await expect(
+      readFile(path.join(harness.stateDir, "state.json"), "utf8"),
+    ).rejects.toMatchObject({ code: "ENOENT" });
   });
 
-  it("treats a project with no services as an undeployed success", async () => {
-    const harness = await makeServiceCli({
-      routes: readFlowRoutes({ "GET /v1/apps": () => ({ data: page([]) }) }),
-    });
+  it("resolves the service by id from PRISMA_SERVICE_ID", async () => {
+    const harness = await makeServiceCli();
 
     const result = await harness.cli.run(
       ["service", "show", "--project", "acme-app"],
-      { cwd: harness.cwd, env: harness.env },
+      {
+        cwd: harness.cwd,
+        env: { ...harness.env, PRISMA_SERVICE_ID: "svc_1" },
+      },
     );
 
     expect(result.exitCode).toBe(0);
-    expect(result.presented?.data).toEqual({
-      projectId: "proj_1",
-      service: null,
-      liveDeployment: null,
-      liveUrl: null,
-      recentDeployments: [],
+    expect(result.presented?.data).toMatchObject({
+      service: { id: "svc_1", name: "hello-world" },
     });
-    // Nothing to inspect and no `service deploy` to offer, so no actions.
-    expect(result.presented?.presentation.next).toEqual([]);
   });
 
   it("emits the completed json envelope with commandId service.show", async () => {
@@ -218,7 +209,7 @@ describe("prisma-cli service show", () => {
     expect(frame.envelope.error.code).toBe("SERVICE.SELECTION_INVALID");
   });
 
-  it("prompts to pick between several services and honors the answer", async () => {
+  it("prefers --service over PRISMA_SERVICE_ID", async () => {
     const second = {
       ...SERVICE,
       id: "svc_2",
@@ -249,12 +240,11 @@ describe("prisma-cli service show", () => {
     });
 
     const result = await harness.cli.run(
-      ["service", "show", "--project", "acme-app"],
+      ["service", "show", "--project", "acme-app", "--service", "api"],
       {
         cwd: harness.cwd,
-        env: harness.env,
-        isTty: { stdin: true, stdout: true, stderr: true },
-        answers: ["svc_2"],
+        env: { ...harness.env, PRISMA_SERVICE_ID: "svc_1" },
+        isTty: { stdout: true },
       },
     );
 
@@ -264,13 +254,25 @@ describe("prisma-cli service show", () => {
     });
   });
 
-  it("settles the picker as a structural prompt failure when non-interactive", async () => {
-    const second = { ...SERVICE, id: "svc_2", name: "api" };
-    const harness = await makeServiceCli({
-      routes: readFlowRoutes({
-        "GET /v1/apps": () => ({ data: page([SERVICE, second]) }),
-      }),
-    });
+  it("refuses without --service or PRISMA_SERVICE_ID, interactive terminals included", async () => {
+    const harness = await makeServiceCli();
+
+    const result = await harness.cli.run(
+      ["service", "show", "--project", "acme-app"],
+      {
+        cwd: harness.cwd,
+        env: harness.env,
+        isTty: { stdin: true, stdout: true, stderr: true },
+      },
+    );
+
+    expect(result.exitCode).toBe(2);
+    expect(result.stderr).toContain("SERVICE.TARGET_REQUIRED");
+    expect(result.stderr).toContain("--service");
+  });
+
+  it("names --service in the structured missing-target error", async () => {
+    const harness = await makeServiceCli();
 
     const result = await harness.cli.run(
       ["service", "show", "--project", "acme-app", "--json"],
@@ -282,6 +284,12 @@ describe("prisma-cli service show", () => {
     if (frame?.kind !== "result" || frame.envelope.ok) {
       throw new Error("expected an errored envelope");
     }
-    expect(frame.envelope.error.code).toBe("CLI.PROMPT_REQUIRED");
+    expect(frame.envelope.error.code).toBe("SERVICE.TARGET_REQUIRED");
+    expect(frame.envelope.error.summary).toContain("--service");
+    expect(frame.envelope.nextActions).toContainEqual({
+      kind: "run-command",
+      label: "List services",
+      command: "prisma-cli service list",
+    });
   });
 });

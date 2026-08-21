@@ -10,7 +10,7 @@ import {
 import { removePresentations } from "./presentation";
 import { destroyProgressReporter, resolveServiceReleaseState } from "./release";
 import type { ServiceRemoveResult } from "./results";
-import { toServiceSummary } from "./target";
+import { openServiceStateStore, toServiceSummary } from "./target";
 
 function cleanupWarning(target: string, error: unknown): Diagnostic {
   const cause = error instanceof Error ? error.message : String(error);
@@ -28,11 +28,6 @@ async function clearRemovedServiceState(
   serviceId: string,
 ): Promise<Diagnostic[]> {
   const warnings: Diagnostic[] = [];
-  try {
-    await stateStore.clearSelectedApp(projectId, serviceId);
-  } catch (error) {
-    warnings.push(cleanupWarning("selected service", error));
-  }
   try {
     await stateStore.clearKnownLiveDeployment(projectId, serviceId);
   } catch (error) {
@@ -106,7 +101,7 @@ export const serviceRemoveCommand = defineCommand({
     ctx.report({ kind: "step-finished", step: "remove", outcome: "ok" });
 
     const diagnostics = await clearRemovedServiceState(
-      state.stateStore,
+      await openServiceStateStore(ctx),
       state.projectId,
       removedService.id,
     );

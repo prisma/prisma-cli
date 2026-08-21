@@ -10,7 +10,7 @@ import {
 } from "./release";
 import type { ServiceDeploymentRunStateResult } from "./results";
 import type { ServiceContext } from "./target";
-import { rememberSelectedService, toServiceSummary } from "./target";
+import { toServiceSummary } from "./target";
 
 /**
  * `start` and `stop` are the same command with the direction reversed,
@@ -75,12 +75,6 @@ export async function changeDeploymentRunState(
     state.service.name,
   );
   const alreadyInState = targetDeployment.status === spec.settledStatus;
-
-  await rememberSelectedService(
-    state.stateStore,
-    state.projectId,
-    deploymentsResult.app,
-  );
 
   let observed = targetDeployment;
   if (!alreadyInState) {

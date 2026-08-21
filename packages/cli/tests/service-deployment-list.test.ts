@@ -91,25 +91,23 @@ describe("prisma-cli service deployment list", () => {
     });
   });
 
-  it("treats a project with no services as a success with an empty listing", async () => {
+  it("refuses without --service or PRISMA_SERVICE_ID", async () => {
     const harness = await makeServiceCli({
       routes: readFlowRoutes({ "GET /v1/apps": () => ({ data: page([]) }) }),
     });
 
     const result = await harness.cli.run(
-      ["service", "deployment", "list", "--project", "acme-app"],
+      ["service", "deployment", "list", "--project", "acme-app", "--json"],
       { cwd: harness.cwd, env: harness.env },
     );
 
-    expect(result.exitCode).toBe(0);
-    expect(result.presented?.data).toEqual({
-      projectId: "proj_1",
-      service: null,
-      deployments: [],
-    });
-    // An empty listing offers no action: `service deploy` is not a command
-    // this binary answers to.
-    expect(result.presented?.presentation.next).toEqual([]);
+    expect(result.exitCode).toBe(2);
+    const frame = result.json[result.json.length - 1];
+    if (frame?.kind !== "result" || frame.envelope.ok) {
+      throw new Error("expected an errored envelope");
+    }
+    expect(frame.envelope.error.code).toBe("SERVICE.TARGET_REQUIRED");
+    expect(frame.envelope.error.summary).toContain("--service");
   });
 
   it("emits the completed json envelope with commandId service.deployment.list", async () => {

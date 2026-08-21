@@ -5,7 +5,6 @@ import { showPresentations } from "./presentation";
 import type { ServiceShowResult } from "./results";
 import {
   applyLiveDeploymentHint,
-  rememberSelectedService,
   resolveCurrentLiveDeploymentId,
   resolveServiceReadState,
   sortDeploymentsNewestFirst,
@@ -37,19 +36,8 @@ export const serviceShowCommand = defineCommand({
       commandName: "service show",
     });
 
-    if (!state.selected) {
-      const result: ServiceShowResult = {
-        projectId: state.projectId,
-        service: null,
-        liveDeployment: null,
-        liveUrl: null,
-        recentDeployments: [],
-      };
-      return ok(ctx.present({ data: result }, showPresentations(result)));
-    }
-
     const deploymentsResult = await state.provider
-      .listDeployments(state.selected.id, { signal: ctx.signal })
+      .listDeployments(state.service.id, { signal: ctx.signal })
       .catch((error) => {
         throw deployFailedError("Failed to inspect service", error, [
           runCommandAction("List deployments", "service deployment list"),
@@ -70,12 +58,6 @@ export const serviceShowCommand = defineCommand({
           (deployment) => deployment.id === currentLiveDeploymentId,
         ) ?? null)
       : null;
-
-    await rememberSelectedService(
-      state.stateStore,
-      state.projectId,
-      deploymentsResult.app,
-    );
 
     const result: ServiceShowResult = {
       projectId: state.projectId,

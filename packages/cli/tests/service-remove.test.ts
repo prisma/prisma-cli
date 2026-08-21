@@ -1,4 +1,4 @@
-import { readFile, writeFile } from "node:fs/promises";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 
@@ -99,21 +99,21 @@ describe("prisma-cli service remove", () => {
     });
   });
 
-  it("clears the selected service and known live deployment from local state", async () => {
+  it("clears the known live deployment from local state", async () => {
     const harness = await makeServiceCli({ routes: releaseRoutes() });
 
-    await harness.cli.run(
-      ["service", "show", "--project", "acme-app", "--service", "hello-world"],
-      { cwd: harness.cwd, env: harness.env },
-    );
     // Nothing in the service family writes this key any more, but the
     // legacy `app` family still does for the same project, so clearing
     // it on removal has real effect until that family retires. Seeded
     // here so the assertion below observes a key that was present.
     const statePath = path.join(harness.stateDir, "state.json");
-    const seeded = JSON.parse(await readFile(statePath, "utf8"));
-    seeded.app.knownLiveDeploymentByProject = { proj_1: { svc_1: "dep_2" } };
-    await writeFile(statePath, JSON.stringify(seeded));
+    await mkdir(path.dirname(statePath), { recursive: true });
+    await writeFile(
+      statePath,
+      JSON.stringify({
+        app: { knownLiveDeploymentByProject: { proj_1: { svc_1: "dep_2" } } },
+      }),
+    );
 
     await harness.cli.run(
       [
@@ -135,7 +135,6 @@ describe("prisma-cli service remove", () => {
     const state = JSON.parse(
       await readFile(path.join(harness.stateDir, "state.json"), "utf8"),
     );
-    expect(state.app?.selectedByProject?.proj_1).toBeUndefined();
     expect(
       state.app?.knownLiveDeploymentByProject?.proj_1?.svc_1,
     ).toBeUndefined();
@@ -388,7 +387,7 @@ describe("prisma-cli service remove", () => {
     expect(frame.envelope.error.code).toBe("SERVICE.REMOVE_FAILED");
   });
 
-  it("requires an existing service", async () => {
+  it("requires --service or PRISMA_SERVICE_ID, interactive terminals included", async () => {
     const harness = await makeServiceCli({
       routes: releaseRoutes({ "GET /v1/apps": () => ({ data: page([]) }) }),
     });
@@ -405,15 +404,14 @@ describe("prisma-cli service remove", () => {
     }
     expect(frame.envelope.error.code).toBe("SERVICE.TARGET_REQUIRED");
     expect(frame.envelope.error.summary).toBe(
-      'Command "service remove" requires an existing service',
+      'Command "service remove" requires --service',
     );
     expect(frame.envelope.nextActions).toEqual([
       {
         kind: "user-choice",
-        label:
-          'Deploy a service first, or rerun "service remove" with --service <name> once a service exists.',
+        label: "Pass --service <name>.",
       },
-      // Not `service deployment list`: that command selects a service
+      // Not `service deployment list`: that command resolves a service
       // before it lists anything, so it fails the same way this did.
       {
         kind: "run-command",

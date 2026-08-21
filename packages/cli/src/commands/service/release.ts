@@ -1,5 +1,4 @@
 import type { DestroyAppProgress, PromoteProgress } from "@prisma/compute-sdk";
-import type { LocalStateStore } from "../../adapters/local-state";
 import type {
   AppProvider,
   AppRecord,
@@ -9,14 +8,12 @@ import {
   deploymentNotFoundForServiceError,
   liveDeploymentUnknownError,
   noPreviousDeploymentError,
-  releaseTargetRequiredError,
 } from "./errors";
 import type { ServiceContext } from "./target";
 import { resolveServiceReadState } from "./target";
 
 export interface ServiceReleaseState {
   provider: AppProvider;
-  stateStore: LocalStateStore;
   projectId: string;
   service: AppRecord;
 }
@@ -49,14 +46,10 @@ export async function resolveServiceReleaseState(
       : {}),
     commandName,
   });
-  if (!state.selected) {
-    throw releaseTargetRequiredError(commandName);
-  }
   return {
     provider: state.provider,
-    stateStore: state.stateStore,
     projectId: state.projectId,
-    service: state.selected,
+    service: state.service,
   };
 }
 

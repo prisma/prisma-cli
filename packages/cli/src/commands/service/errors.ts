@@ -119,10 +119,8 @@ export function serviceSelectionInvalidError(
     {
       why: `The service "${serviceName}" could not be found in resolved project "${projectId}".`,
       nextActions: [
-        adviceAction(
-          "Pass the name of an existing service, or rerun the command in a TTY to choose one.",
-        ),
-        // Not `service deployment list`: that command has to select a
+        adviceAction("Pass --service with the name of an existing service."),
+        // Not `service deployment list`: that command has to resolve a
         // service before it can list anything, so it fails the same way.
         runCommandAction("List services", "service list"),
       ],
@@ -272,21 +270,20 @@ export function deploymentNotFoundForServiceError(
   );
 }
 
-/** promote / rollback / remove need a service that already exists. */
-export function releaseTargetRequiredError(
+/** Every command that acts on an existing service needs its target
+ *  named explicitly; nothing is inferred, remembered, or prompted for. */
+export function serviceTargetRequiredError(
   commandName: string,
 ): CliStructuredError {
   return new CliStructuredError(
     "SERVICE.TARGET_REQUIRED",
-    `Command "${commandName}" requires an existing service`,
+    `Command "${commandName}" requires --service`,
     {
-      why: "The resolved project does not have a service that can be selected for this command.",
+      why: "Service commands act only on an explicitly named service: pass --service <name>, or set PRISMA_SERVICE_ID to a service id.",
       nextActions: [
-        adviceAction(
-          `Deploy a service first, or rerun "${commandName}" with --service <name> once a service exists.`,
-        ),
-        // Not `service deployment list`: it selects a service first, so
-        // it cannot help a run that could not select one.
+        adviceAction("Pass --service <name>."),
+        // Not `service deployment list`: it resolves a service first, so
+        // it cannot help a run that could not resolve one.
         runCommandAction("List services", "service list"),
       ],
     },
@@ -432,17 +429,6 @@ export function domainNotFoundError(hostname: string): CliStructuredError {
   );
 }
 
-export function domainTargetRequiredError(): CliStructuredError {
-  return new CliStructuredError(
-    "SERVICE.DOMAIN_TARGET_REQUIRED",
-    "Custom domain requires an existing service on the production branch",
-    {
-      why: "The resolved production branch does not have a service that can receive a custom domain.",
-      nextActions: [runCommandAction("Inspect the service", "service show")],
-    },
-  );
-}
-
 export function selectedServiceMissingError(
   envVarName: string,
   serviceId: string,
@@ -450,13 +436,12 @@ export function selectedServiceMissingError(
 ): CliStructuredError {
   return new CliStructuredError(
     "SERVICE.SELECTION_INVALID",
-    "Selected service does not exist in the resolved production branch",
+    "Selected service does not exist in the resolved project",
     {
       why: `The service "${serviceId}" from ${envVarName} could not be found in resolved project "${projectId}".`,
       nextActions: [
-        adviceAction(
-          `Unset ${envVarName}, pass --service <name>, or deploy the service on the production branch.`,
-        ),
+        adviceAction(`Unset ${envVarName}, or pass --service <name>.`),
+        runCommandAction("List services", "service list"),
       ],
     },
   );

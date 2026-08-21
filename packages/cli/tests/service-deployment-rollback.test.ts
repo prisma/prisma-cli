@@ -554,7 +554,7 @@ describe("prisma-cli service deployment rollback", () => {
     expect(frame.envelope.error.code).toBe("SERVICE.DEPLOY_FAILED");
   });
 
-  it("requires an existing service", async () => {
+  it("requires --service or PRISMA_SERVICE_ID", async () => {
     const harness = await makeServiceCli({
       routes: releaseRoutes({ "GET /v1/apps": () => ({ data: page([]) }) }),
     });
@@ -571,7 +571,7 @@ describe("prisma-cli service deployment rollback", () => {
     }
     expect(frame.envelope.error.code).toBe("SERVICE.TARGET_REQUIRED");
     expect(frame.envelope.error.summary).toBe(
-      'Command "service deployment rollback" requires an existing service',
+      'Command "service deployment rollback" requires --service',
     );
   });
 

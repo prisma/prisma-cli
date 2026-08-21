@@ -14,11 +14,7 @@ import {
   resolveServiceReleaseState,
 } from "./release";
 import type { ServiceRollbackResult } from "./results";
-import {
-  rememberSelectedService,
-  resolveCurrentLiveDeploymentId,
-  toServiceSummary,
-} from "./target";
+import { resolveCurrentLiveDeploymentId, toServiceSummary } from "./target";
 
 export const serviceDeploymentRollbackCommand = defineCommand({
   help: {
@@ -86,12 +82,6 @@ export const serviceDeploymentRollbackCommand = defineCommand({
     }
 
     const alreadyLive = currentLiveDeploymentId === targetDeployment.id;
-
-    await rememberSelectedService(
-      state.stateStore,
-      state.projectId,
-      deploymentsResult.app,
-    );
 
     if (!alreadyLive) {
       ctx.report({ kind: "step-started", step: "rollback" });

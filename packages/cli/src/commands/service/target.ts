@@ -7,7 +7,6 @@ import {
   type DomainRecord,
 } from "../../lib/app/app-provider";
 import { resolveReadBranch } from "../../lib/app/read-branch";
-import { readLocalGitBranch } from "../../lib/git/local-branch";
 import { projectApiError } from "../../lib/project/provider";
 import {
   type ProjectCandidate,
@@ -26,12 +25,12 @@ import {
   domainCommandError,
   domainHostnameInvalidError,
   domainNotFoundError,
-  domainTargetRequiredError,
   fromLegacyCliError,
   projectNotFoundError,
   runCommandAction,
   selectedServiceMissingError,
   serviceSelectionInvalidError,
+  serviceTargetRequiredError,
   workspaceRequiredError,
 } from "./errors";
 import type {
@@ -115,22 +114,6 @@ function readServiceEnvOverride(
  *  the run's abort signal. */
 function resolutionContext(ctx: ServiceContext): ProjectResolutionContext {
   return { runtime: { cwd: ctx.cwd, signal: ctx.signal } };
-}
-
-interface ResolvedReadBranchRequest {
-  name: string;
-  explicit: boolean;
-}
-
-async function resolveRequestedBranch(
-  ctx: ServiceContext,
-  explicitBranchName: string | undefined,
-): Promise<ResolvedReadBranchRequest> {
-  if (explicitBranchName) {
-    return { name: explicitBranchName, explicit: true };
-  }
-  const gitBranch = await readLocalGitBranch(ctx.cwd, ctx.signal);
-  return { name: gitBranch ?? "main", explicit: false };
 }
 
 export function toBranchKind(name: string): BranchKind {
@@ -225,7 +208,9 @@ export async function resolveServiceProjectContext(
     );
   }
   const resolved = resolvedResult.value;
-  const requested = await resolveRequestedBranch(ctx, options.branchName);
+  const requested = options.branchName
+    ? { name: options.branchName, explicit: true }
+    : { name: "main", explicit: false };
 
   const remoteBranch = requested.explicit
     ? null
@@ -286,62 +271,52 @@ export async function listServices(
     });
 }
 
-/**
- * The service picker: an explicit name must exist; otherwise the saved
- * selection is reused when still valid; otherwise the engine prompt
- * selects interactively (non-interactive contexts settle with the
- * engine's structural prompt failure).
- */
-export async function resolveExistingServiceSelection(
+export interface RequestedServiceTarget {
+  kind: "name" | "id";
+  value: string;
+}
+
+/** The service target the run was given: `--service <name>` wins, then
+ *  PRISMA_SERVICE_ID (a service id). Neither present refuses — service
+ *  commands never infer, remember, or prompt for a target. */
+export function requireRequestedServiceTarget(
   ctx: ServiceContext,
-  stateStore: LocalStateStore,
-  projectId: string,
-  services: AppRecord[],
   explicitServiceName: string | undefined,
-): Promise<AppRecord | null> {
+  commandName: string,
+): RequestedServiceTarget {
   if (explicitServiceName) {
+    return { kind: "name", value: explicitServiceName };
+  }
+  const envServiceId = readServiceEnvOverride(ctx, PRISMA_SERVICE_ID_ENV_VAR);
+  if (envServiceId) {
+    return { kind: "id", value: envServiceId };
+  }
+  throw serviceTargetRequiredError(commandName);
+}
+
+export function matchRequestedService(
+  requested: RequestedServiceTarget,
+  services: AppRecord[],
+  projectId: string,
+): AppRecord {
+  if (requested.kind === "name") {
     const matched = services.find(
-      (service) => service.name === explicitServiceName,
+      (service) => service.name === requested.value,
     );
     if (!matched) {
-      throw serviceSelectionInvalidError(explicitServiceName, projectId);
+      throw serviceSelectionInvalidError(requested.value, projectId);
     }
     return matched;
   }
-
-  const savedSelection = await stateStore.readSelectedApp(projectId);
-  if (savedSelection) {
-    const matched =
-      services.find((service) => service.id === savedSelection.id) ??
-      services.find((service) => service.name === savedSelection.name);
-    if (matched) {
-      return matched;
-    }
+  const matched = services.find((service) => service.id === requested.value);
+  if (!matched) {
+    throw selectedServiceMissingError(
+      PRISMA_SERVICE_ID_ENV_VAR,
+      requested.value,
+      projectId,
+    );
   }
-
-  if (services.length === 0) {
-    return null;
-  }
-
-  const selectedId = await ctx.prompt.select(
-    "Select a service",
-    sortServices(services).map((service) => ({
-      value: service.id,
-      label: service.name,
-    })),
-  );
-  return services.find((service) => service.id === selectedId) ?? null;
-}
-
-export async function rememberSelectedService(
-  stateStore: LocalStateStore,
-  projectId: string,
-  service: Pick<AppRecord, "id" | "name">,
-): Promise<void> {
-  await stateStore.setSelectedApp(projectId, {
-    id: service.id,
-    name: service.name,
-  });
+  return matched;
 }
 
 /** The live deployment is the one the service record names as its latest
@@ -487,29 +462,27 @@ export async function resolveDomainByHostname(
   throw domainNotFoundError(hostname);
 }
 
-export interface ServiceReadState {
+export interface ServiceProjectState {
   provider: AppProvider;
-  stateStore: LocalStateStore;
   target: ResolvedServiceProjectContext;
   projectId: string;
-  selected: AppRecord | null;
 }
 
-/** The shared read flow for show / deployment list / open: project +
- *  branch resolution, service listing, and selection. */
-export async function resolveServiceReadState(
+export interface ServiceReadState extends ServiceProjectState {
+  service: AppRecord;
+}
+
+/** Project + branch resolution without a service target. For the
+ *  callers that resolve their subject by a globally-unique deployment
+ *  id and never need a service parameter. */
+export async function resolveServiceProjectState(
   ctx: ServiceContext,
   options: {
-    serviceName?: string;
     projectRef?: string;
     branchName?: string;
     commandName: string;
-    /** Skip the service picker entirely. A caller resolving its target
-     *  by a globally-unique deployment id does not use the selection,
-     *  and selecting first would prompt for something it ignores. */
-    skipSelection?: boolean;
   },
-): Promise<ServiceReadState> {
+): Promise<ServiceProjectState> {
   const provider = serviceProvider(ctx);
   const target = await resolveServiceProjectContext(ctx, options.projectRef, {
     commandName: options.commandName,
@@ -517,29 +490,39 @@ export async function resolveServiceReadState(
       ? { branchName: options.branchName }
       : {}),
   });
-  const projectId = target.project.id;
-  const stateStore = await openServiceStateStore(ctx);
+  return { provider, target, projectId: target.project.id };
+}
+
+/** The shared read flow for every command that acts on an existing
+ *  service: project + branch resolution, service listing, and the
+ *  parameter-only service match. */
+export async function resolveServiceReadState(
+  ctx: ServiceContext,
+  options: {
+    serviceName?: string;
+    projectRef?: string;
+    branchName?: string;
+    commandName: string;
+  },
+): Promise<ServiceReadState> {
+  const requested = requireRequestedServiceTarget(
+    ctx,
+    options.serviceName,
+    options.commandName,
+  );
+  const state = await resolveServiceProjectState(ctx, options);
   const services = await listServices(
     ctx,
-    provider,
-    projectId,
-    target.branch.name,
+    state.provider,
+    state.projectId,
+    state.target.branch.name,
   );
-  const selected = options.skipSelection
-    ? null
-    : await resolveExistingServiceSelection(
-        ctx,
-        stateStore,
-        projectId,
-        services,
-        options.serviceName,
-      );
-  return { provider, stateStore, target, projectId, selected };
+  const service = matchRequestedService(requested, services, state.projectId);
+  return { ...state, service };
 }
 
 export interface ResolvedServiceDomainTarget {
   provider: AppProvider;
-  stateStore: LocalStateStore;
   service: AppRecord;
   resultTarget: ServiceDomainTarget;
 }
@@ -558,8 +541,13 @@ export async function resolveServiceDomainTarget(
     throw branchNotDeployableError(branchName);
   }
 
+  const requested = requireRequestedServiceTarget(
+    ctx,
+    options.serviceName,
+    options.commandName,
+  );
+
   const envProjectId = readServiceEnvOverride(ctx, PRISMA_PROJECT_ID_ENV_VAR);
-  const envServiceId = readServiceEnvOverride(ctx, PRISMA_SERVICE_ID_ENV_VAR);
 
   const provider = serviceProvider(ctx);
   const target = await resolveServiceProjectContext(ctx, options.projectRef, {
@@ -568,44 +556,17 @@ export async function resolveServiceDomainTarget(
     ...(envProjectId !== undefined ? { envProjectId } : {}),
   });
   const projectId = target.project.id;
-  const stateStore = await openServiceStateStore(ctx);
   const services = await listServices(
     ctx,
     provider,
     projectId,
     target.branch.name,
   );
-
-  let selectedService: AppRecord | null;
-  if (envServiceId) {
-    selectedService =
-      services.find((service) => service.id === envServiceId) ?? null;
-    if (!selectedService) {
-      throw selectedServiceMissingError(
-        PRISMA_SERVICE_ID_ENV_VAR,
-        envServiceId,
-        projectId,
-      );
-    }
-  } else {
-    selectedService = await resolveExistingServiceSelection(
-      ctx,
-      stateStore,
-      projectId,
-      services,
-      options.serviceName,
-    );
-  }
-  if (!selectedService) {
-    throw domainTargetRequiredError();
-  }
-
-  await rememberSelectedService(stateStore, projectId, selectedService);
+  const service = matchRequestedService(requested, services, projectId);
 
   return {
     provider,
-    stateStore,
-    service: selectedService,
+    service,
     resultTarget: {
       workspace: target.workspace,
       project: target.project,
@@ -613,7 +574,7 @@ export async function resolveServiceDomainTarget(
         name: target.branch.name,
         kind: target.branch.kind,
       },
-      service: toServiceSummary(selectedService),
+      service: toServiceSummary(service),
     },
   };
 }

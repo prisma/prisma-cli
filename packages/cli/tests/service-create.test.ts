@@ -154,7 +154,7 @@ describe("prisma-cli service create", () => {
     expect(result.presented?.data).toMatchObject({ branch: "main" });
   });
 
-  it("remembers the created service as the selection for later commands", async () => {
+  it("writes no service selection into the local state store", async () => {
     const created = createRoutes();
     const harness = await makeServiceCli({ routes: created.routes });
 
@@ -163,13 +163,9 @@ describe("prisma-cli service create", () => {
       { cwd: harness.cwd, env: harness.env },
     );
 
-    const state = JSON.parse(
-      await readFile(path.join(harness.stateDir, "state.json"), "utf8"),
-    );
-    expect(state.app.selectedByProject.proj_1).toEqual({
-      id: "svc_new",
-      name: "worker",
-    });
+    await expect(
+      readFile(path.join(harness.stateDir, "state.json"), "utf8"),
+    ).rejects.toMatchObject({ code: "ENOENT" });
   });
 
   it("reports the existing service when the name is already taken", async () => {

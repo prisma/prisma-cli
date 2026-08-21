@@ -134,7 +134,15 @@ describe("prisma-cli service — the workspace comes from the engine session", (
     });
 
     const result = await harness.cli.run(
-      ["service", "show", "--project", "acme-app", "--json"],
+      [
+        "service",
+        "show",
+        "--project",
+        "acme-app",
+        "--service",
+        "hello-world",
+        "--json",
+      ],
       { cwd: harness.cwd, env: harness.env },
     );
 

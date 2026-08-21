@@ -11,7 +11,7 @@ import {
   resolveServiceReleaseState,
 } from "./release";
 import type { ServiceDeploymentDeleteResult } from "./results";
-import { rememberSelectedService, toServiceSummary } from "./target";
+import { toServiceSummary } from "./target";
 
 export const serviceDeploymentDeleteCommand = defineCommand({
   help: {
@@ -55,12 +55,6 @@ export const serviceDeploymentDeleteCommand = defineCommand({
       deploymentsResult.deployments,
       args.positionals.deployment,
       state.service.name,
-    );
-
-    await rememberSelectedService(
-      state.stateStore,
-      state.projectId,
-      deploymentsResult.app,
     );
 
     const granted = await ctx.prompt.consent(
