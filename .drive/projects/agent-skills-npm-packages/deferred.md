@@ -1,5 +1,7 @@
 # Deferred — agent-skills-npm-packages
 
+- **When facade skill content diverges per database, split the skill by name — do not add a carrier package.** Today every facade ships an identical `prisma-8` skill and cross-package conflicts are arbitrated by highest version (`collectSkillSources`), which is safe only while content is identical and versions are lockstep. When per-database content arrives, give each facade a differently named skill (per-target skills, or a shared core plus per-target references) so names never conflict. A common or standalone skills package was considered and rejected 2026-08-21 (operator concurred): a transitive carrier is unresolvable from the project root under pnpm, and a direct-dependency skills package breaks the installed-version guarantee (facade upgraded, skills package not, check reports in sync). The allowlist still grows one deliberate line per facade either way.
+
 - **Retire or re-scope the `agent` command group in prisma-cli.**
   `prisma agent install|update|status` still installs the v6/v7-line
   skills by shelling out to `npx skills@latest add prisma/skills`, and
