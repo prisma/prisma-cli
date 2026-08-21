@@ -28,7 +28,6 @@ Use the other convention docs for adjacent concerns:
 
 The long-term command surface grows through workflow groups such as:
 
-- `agent`
 - `skills`
 - `auth`
 - `project`
@@ -39,7 +38,7 @@ The long-term command surface grows through workflow groups such as:
 - `app`
 - `git`
 
-The preview implements only `agent`, `auth`, `project`, `git`, `branch`, `database`, `bucket`, and `app`.
+The preview implements only `auth`, `project`, `git`, `branch`, `database`, `bucket`, and `app`.
 
 ## Stable Nouns
 

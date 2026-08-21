@@ -9,9 +9,6 @@ import {
 import { createComposerFamily } from "@prisma/composer-cli/family";
 import { ormCommandFamily as ormToolchainFamily } from "@prisma/orm-toolchain/cli";
 import { CLI_DOCS_URL, CLI_NAME } from "./cli-name";
-import { agentInstallCommand } from "./commands/agent/install";
-import { agentStatusCommand } from "./commands/agent/status";
-import { agentUpdateCommand } from "./commands/agent/update";
 import { authLoginCommand } from "./commands/auth/login";
 import { authLogoutCommand } from "./commands/auth/logout";
 import { authWhoamiCommand } from "./commands/auth/whoami";
@@ -183,7 +180,6 @@ export const cliGroups: Readonly<
   service: { brief: "Manage services and their versions for a project" },
   "service domain": { brief: "Manage custom domains for a service" },
   "service version": { brief: "Manage the versions of a service" },
-  agent: { brief: "Manage Prisma skills for AI coding agents" },
   "auth workspace": { brief: "Manage local workspace sessions" },
   contract: { brief: "Define and emit your application data contract" },
   db: { brief: "Verify, sign and update your database against the contract" },
@@ -281,9 +277,6 @@ export const mountedCommands: Readonly<Record<string, AnyCommand>> = {
   "migration ref list": ormCommandFamily.commands["migration ref list"],
   "migration ref set": ormCommandFamily.commands["migration ref set"],
   // Local utilities: no owning package, no config section, no API.
-  "agent install": agentInstallCommand,
-  "agent update": agentUpdateCommand,
-  "agent status": agentStatusCommand,
   "skills sync": skillsCommandFamily.commands.sync,
   "skills list": skillsCommandFamily.commands.list,
   feedback: feedbackCommand,

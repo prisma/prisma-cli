@@ -4,11 +4,12 @@
  * anything is published, so a tree that has lost a command cannot be
  * released.
  *
- * The exception set below (the engine's three telemetry commands,
- * `agent install|update|status`, and `feedback`) was ratified by the
- * operator on 2026-08-12. Adding to it requires an operator ruling
- * recorded here; giving those commands a real owning family, so the
- * exception set can shrink, is deferred work.
+ * The exception set below (the engine's three telemetry commands and
+ * `feedback`) was ratified by the operator on 2026-08-12; the
+ * `agent install|update|status` entries left it when the operator
+ * killed that group on 2026-08-21. Adding to it requires an operator
+ * ruling recorded here; giving those commands a real owning family, so
+ * the exception set can shrink, is deferred work.
  *
  * `orm init` keeps its path: only the top-level `init` (the compute
  * config wizard) was removed, by the 2026-08-21 PM review.
@@ -26,9 +27,6 @@ import {
   skillsCommandFamily,
 } from "../src/cli";
 import { CLI_DOCS_URL } from "../src/cli-name";
-import { agentInstallCommand } from "../src/commands/agent/install";
-import { agentStatusCommand } from "../src/commands/agent/status";
-import { agentUpdateCommand } from "../src/commands/agent/update";
 import { feedbackCommand } from "../src/commands/feedback";
 
 /**
@@ -38,9 +36,6 @@ import { feedbackCommand } from "../src/commands/feedback";
  */
 const FAMILYLESS: ReadonlySet<unknown> = new Set([
   ...Object.values(telemetryCommandGroup({ docsUrl: CLI_DOCS_URL }).commands),
-  agentInstallCommand,
-  agentUpdateCommand,
-  agentStatusCommand,
   feedbackCommand,
 ]);
 
@@ -77,9 +72,6 @@ function unownedMountPaths(
  * adding its path here.
  */
 const EXPECTED_MOUNT_PATHS: readonly string[] = [
-  "agent install",
-  "agent status",
-  "agent update",
   "auth login",
   "auth logout",
   "auth whoami",

@@ -171,18 +171,4 @@ export class LocalStateStore {
     await this.write(state);
     return state;
   }
-
-  async readAgentSetupPromptDismissedAt(): Promise<string | null> {
-    const state = await this.read();
-    return state.agent.setupPromptDismissedAt;
-  }
-
-  async setAgentSetupPromptDismissedAt(
-    dismissedAt: string,
-  ): Promise<LocalState> {
-    const state = await this.read();
-    state.agent.setupPromptDismissedAt = dismissedAt;
-    await this.write(state);
-    return state;
-  }
 }
