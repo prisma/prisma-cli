@@ -149,18 +149,13 @@ export function parseKeyValuePositional(
 
 const KEY_SHAPE = /^[A-Z_][A-Z0-9_]*$/;
 
-export function validateKey(
-  key: string,
-  command: "add" | "update",
-): void {
+export function validateKey(key: string, command: "add" | "update"): void {
   if (key.length === 0) {
     throw usageError(
       `Variable key cannot be empty`,
       "An empty key was passed.",
       "Pass an env-var key, e.g. STRIPE_KEY.",
-      [
-        `prisma-cli project env ${command} STRIPE_KEY=value --role production`,
-      ],
+      [`prisma-cli project env ${command} STRIPE_KEY=value --role production`],
       "app",
     );
   }
@@ -180,9 +175,7 @@ export function validateKey(
       `Variable key "${key}" must match the POSIX env-var shape`,
       "Keys must start with an uppercase letter or underscore and contain only uppercase letters, digits, and underscores.",
       "Rename the key to match [A-Z_][A-Z0-9_]*.",
-      [
-        `prisma-cli project env ${command} STRIPE_KEY=value --role production`,
-      ],
+      [`prisma-cli project env ${command} STRIPE_KEY=value --role production`],
       "app",
     );
   }
