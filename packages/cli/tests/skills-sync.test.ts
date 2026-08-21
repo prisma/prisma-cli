@@ -144,7 +144,7 @@ describe("skills sync", () => {
     expect(again.result.pruned).toEqual([]);
   });
 
-  it("suggests the optional postinstall script without touching package.json", async () => {
+  it("never touches package.json and suggests no follow-up", async () => {
     const root = await makeProjectRoot();
     await installPackage(root, {
       name: "@prisma/orm-postgres",
@@ -158,13 +158,7 @@ describe("skills sync", () => {
 
     const run = await makeCli().run(["skills", "sync"], { cwd: root });
 
-    expect(run.presented?.presentation.next).toEqual([
-      {
-        kind: "user-choice",
-        label:
-          'Optional: add "postinstall": "prisma skills sync || exit 0" to your root package.json to resync on every install. Without it, the CLI prints a notice when the skills go out of date.',
-      },
-    ]);
+    expect(run.presented?.presentation.next).toEqual([]);
     expect(await readFile(path.join(root, "package.json"), "utf8")).toBe(
       manifestBefore,
     );

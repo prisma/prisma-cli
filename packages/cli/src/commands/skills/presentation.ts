@@ -1,14 +1,5 @@
 import type { Block, Presentations } from "@prisma/cli-engine";
-import type { NextAction } from "@prisma/cli-engine/protocol";
 import type { SkillsListResult, SkillsSyncResult } from "./results";
-
-/** Sync never edits package.json; resyncing on install is the user's
- *  choice, and the staleness notice covers projects that skip it. */
-const POSTINSTALL_ADVICE: NextAction = {
-  kind: "user-choice",
-  label:
-    'Optional: add "postinstall": "prisma skills sync || exit 0" to your root package.json to resync on every install. Without it, the CLI prints a notice when the skills go out of date.',
-};
 
 function projectFields(projectRoot: string, checkDisabled: boolean): Block {
   return {
@@ -47,7 +38,7 @@ export function syncPresentations(result: SkillsSyncResult): Presentations {
 
   return {
     json: () => result,
-    next: () => (result.packages.length > 0 ? [POSTINSTALL_ADVICE] : []),
+    next: () => [],
     human: (): Block[] => [
       {
         kind: "summary",
