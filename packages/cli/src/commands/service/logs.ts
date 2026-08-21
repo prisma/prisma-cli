@@ -1,5 +1,5 @@
 import type { CommandContext } from "@prisma/cli-engine";
-import { defineSessionCommand, flag, positional } from "@prisma/cli-engine";
+import { defineSessionCommand, flag } from "@prisma/cli-engine";
 import { CliStructuredError, ok } from "@prisma/cli-engine/protocol";
 import type { AppProvider, AppRecord } from "../../lib/app/app-provider";
 import { forEachNdjsonRecord } from "../../lib/ndjson";

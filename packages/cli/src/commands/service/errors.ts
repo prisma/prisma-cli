@@ -761,4 +761,3 @@ function extractDomainDnsTarget(error: DomainApiError): string | null {
   const match = PRISMA_BUILD_HOST.exec(text);
   return match?.[1]?.toLowerCase() ?? null;
 }
-

@@ -47,7 +47,6 @@ describe("preview app provider", () => {
     expect(client.POST).not.toHaveBeenCalled();
   });
 
-
   it("treats re-adding an existing custom domain as idempotent", async () => {
     const client = {
       GET: vi.fn().mockImplementation((pathName: string) => {

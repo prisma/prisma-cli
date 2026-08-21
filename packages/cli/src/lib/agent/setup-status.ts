@@ -44,11 +44,7 @@ export async function isLikelyProjectDirectory(options: {
   cwd: string;
   signal: AbortSignal;
 }): Promise<boolean> {
-  const signals = [
-    "package.json",
-    "prisma.config.ts",
-    ".git",
-  ];
+  const signals = ["package.json", "prisma.config.ts", ".git"];
 
   return (
     await Promise.all(

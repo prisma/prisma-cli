@@ -1,4 +1,4 @@
-import { defineCommand, flag, positional } from "@prisma/cli-engine";
+import { defineCommand, flag } from "@prisma/cli-engine";
 import type { Diagnostic } from "@prisma/cli-engine/protocol";
 import { ok } from "@prisma/cli-engine/protocol";
 import type { LocalStateStore } from "../../adapters/local-state";

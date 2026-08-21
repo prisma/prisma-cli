@@ -56,7 +56,6 @@ export interface DeploymentRecord {
   live: boolean | null;
 }
 
-
 export interface EnvRecord {
   projectId: string;
   app: AppRecord;
@@ -1069,7 +1068,6 @@ function sameHostname(left: string, right: string): boolean {
 function normalizeHostnameForComparison(hostname: string): string {
   return hostname.trim().replace(/\.$/, "").toLowerCase();
 }
-
 
 function apiCallError(
   summary: string,

@@ -4,9 +4,7 @@ import { ok } from "@prisma/cli-engine/protocol";
 import { LocalStateStore } from "../../adapters/local-state";
 import { resolvePrismaCliPackageCommand } from "../../lib/agent/cli-command";
 import { PRISMA_AGENT_INSTALL_ARGS } from "../../lib/agent/constants";
-import {
-  readPrismaAgentSetupStatus,
-} from "../../lib/agent/setup-status";
+import { readPrismaAgentSetupStatus } from "../../lib/agent/setup-status";
 import { formatShellCommand } from "../../shell-command";
 import { resolveStateDir } from "../../state-dir";
 import { statusPresentations } from "./presentation";
@@ -74,7 +72,11 @@ export const agentStatusCommand = defineCommand({
       stateStore: await openStateStore(ctx),
       signal: ctx.signal,
     });
-    const skillsList = await listInstalledPrismaSkills(ctx, ctx.cwd, statusScope);
+    const skillsList = await listInstalledPrismaSkills(
+      ctx,
+      ctx.cwd,
+      statusScope,
+    );
     const skillsInstalled =
       skillsList.status === "ok"
         ? skillsList.skills.length > 0
