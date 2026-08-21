@@ -122,6 +122,8 @@ It is silent when:
   `.prisma/skills.json` at the project root
 - the command being run is itself a `skills` command
 
+This notice is the mechanism that keeps skills current; nothing wires up resyncing automatically. `skills sync` never edits the user's `package.json` or root `.gitignore`. It writes a `.gitignore` containing `*` inside each managed skill directory, so git ignores the synced copies without any change outside the directories sync manages. Sync's human output suggests an optional `"postinstall": "prisma skills sync || exit 0"` script the user can add to their root `package.json` themselves; a project without it is covered by this notice either way.
+
 ## Human Output
 
 Human-facing output should follow `cli-style-guide.md` and optimize for:

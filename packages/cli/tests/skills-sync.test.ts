@@ -119,6 +119,57 @@ describe("skills sync", () => {
     }
   });
 
+  it("writes a .gitignore into each managed copy, and the copy stays synced with it", async () => {
+    const root = await makeProjectRoot();
+    await installPackage(root, {
+      name: "@prisma/orm-postgres",
+      version: "8.1.0",
+      skills: ["prisma-8"],
+    });
+
+    await runSync(root);
+
+    for (const dir of HARNESS_SKILL_DIRS) {
+      expect(
+        await readFile(path.join(root, dir, "prisma-8", ".gitignore"), "utf8"),
+      ).toBe("*\n");
+    }
+    // The extra file changes neither the stamp nor the orphan scan: the
+    // copies read as current and a second sync touches nothing.
+    const list = await runList(root);
+    expect(list.result.upToDate).toBe(true);
+    expect(list.result.orphaned).toEqual([]);
+    const again = await runSync(root);
+    expect(again.result.synced).toEqual([]);
+    expect(again.result.pruned).toEqual([]);
+  });
+
+  it("suggests the optional postinstall script without touching package.json", async () => {
+    const root = await makeProjectRoot();
+    await installPackage(root, {
+      name: "@prisma/orm-postgres",
+      version: "8.1.0",
+      skills: ["prisma-8"],
+    });
+    const manifestBefore = await readFile(
+      path.join(root, "package.json"),
+      "utf8",
+    );
+
+    const run = await makeCli().run(["skills", "sync"], { cwd: root });
+
+    expect(run.presented?.presentation.next).toEqual([
+      {
+        kind: "user-choice",
+        label:
+          'Optional: add "postinstall": "prisma skills sync || exit 0" to your root package.json to resync on every install. Without it, the CLI prints a notice when the skills go out of date.',
+      },
+    ]);
+    expect(await readFile(path.join(root, "package.json"), "utf8")).toBe(
+      manifestBefore,
+    );
+  });
+
   it("resolves a package pnpm installed as a link into its store", async () => {
     const root = await makeProjectRoot();
     await installPackage(root, {
