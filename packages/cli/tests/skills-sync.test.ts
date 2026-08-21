@@ -761,6 +761,34 @@ describe("harness directories that already exist", () => {
     expect(result.pruned).toEqual([]);
   });
 
+  it("leaves a user's own .gitignore in a managed copy alone", async () => {
+    const root = await makeProjectRoot();
+    await installPackage(root, {
+      name: "@prisma/orm-postgres",
+      version: "8.1.0",
+      skills: ["prisma-8"],
+    });
+    await seedSyncedSkill(root, ".claude/skills", {
+      skill: "prisma-8",
+      library: "@prisma/orm-postgres",
+      version: "8.1.0",
+    });
+    const gitignore = path.join(
+      root,
+      ".claude/skills",
+      "prisma-8",
+      ".gitignore",
+    );
+    await writeFile(gitignore, "# keep these copies out of git\n*\n", "utf8");
+
+    const { exitCode } = await runSync(root);
+
+    expect(exitCode).toBe(0);
+    expect(await readFile(gitignore, "utf8")).toBe(
+      "# keep these copies out of git\n*\n",
+    );
+  });
+
   it("repairs a partial tree that lost its SKILL.md", async () => {
     const root = await makeProjectRoot();
     await installPackage(root, {

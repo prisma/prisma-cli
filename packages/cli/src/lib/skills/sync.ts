@@ -58,12 +58,12 @@ export async function syncSkills(status: SkillsStatus): Promise<SyncOutcome> {
     }
     // Older CLI versions wrote a `*` .gitignore into their copies; a
     // copy that is already current never gets rewritten, so the stray
-    // file is removed here.
+    // file is removed here. Only the exact file the old CLI wrote is
+    // removed — one the user authored stays.
     for (const target of skill.targets) {
       if (target.state === "synced") {
-        await rm(
+        await removeOldCliGitignore(
           path.join(status.projectRoot, target.dir, skill.skill, ".gitignore"),
-          { force: true },
         );
       }
     }
@@ -107,6 +107,20 @@ export async function syncSkills(status: SkillsStatus): Promise<SyncOutcome> {
     refused,
     checkDisabled: status.checkDisabled,
   };
+}
+
+const OLD_CLI_GITIGNORE = /^\*\r?\n?$/;
+
+async function removeOldCliGitignore(file: string): Promise<void> {
+  let content: string;
+  try {
+    content = await readFile(file, "utf8");
+  } catch {
+    return;
+  }
+  if (OLD_CLI_GITIGNORE.test(content)) {
+    await rm(file, { force: true });
+  }
 }
 
 /**
