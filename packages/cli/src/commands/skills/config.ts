@@ -53,7 +53,14 @@ export const skillsConfigSection = defineConfigSection<SkillsConfig>({
     if (typeof raw !== "object" || raw === null || Array.isArray(raw)) {
       return { ok: false, diagnostics: [invalidSection(raw)] };
     }
-    const check = (raw as { check?: unknown }).check;
+    // Reading a property can throw — a config file is user code, and
+    // may hand over an object whose getter does.
+    let check: unknown;
+    try {
+      check = (raw as { check?: unknown }).check;
+    } catch {
+      return { ok: false, diagnostics: [invalidSection(raw)] };
+    }
     if (check !== undefined && typeof check !== "boolean") {
       return { ok: false, diagnostics: [invalidCheck(check)] };
     }
