@@ -85,7 +85,7 @@ describe("enumerating workspace members", () => {
     ]);
   });
 
-  it("expands the globs a package.json declares, including **", async () => {
+  it("answers a ** glob with the packages, not with every directory", async () => {
     const root = await makeProjectRoot();
     await writeFile(
       path.join(root, "package.json"),
@@ -93,12 +93,19 @@ describe("enumerating workspace members", () => {
       "utf8",
     );
     await writeMember(root, "packages/one");
-    await writeMember(root, "packages/one/nested");
+    await writeMember(root, "packages/group/two");
+    // A package's own contents are not workspace members, and the walk
+    // must not descend into them: this is what keeps the staleness
+    // check proportional to the members rather than to the tree.
+    await mkdir(path.join(root, "packages/one/dist/chunks/inner"), {
+      recursive: true,
+    });
+    await mkdir(path.join(root, "packages/one/src"), { recursive: true });
+    await mkdir(path.join(root, "packages/.cache/build"), { recursive: true });
 
     expect(await workspaceMemberDirs(root)).toEqual([
-      path.join(root, "packages"),
+      path.join(root, "packages/group/two"),
       path.join(root, "packages/one"),
-      path.join(root, "packages/one/nested"),
     ]);
   });
 

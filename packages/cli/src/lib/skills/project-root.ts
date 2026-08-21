@@ -37,6 +37,10 @@ export async function findProjectRoot(cwd: string): Promise<string> {
  * config, expanded from its globs. This reads the declared globs and
  * never walks node_modules: a package is resolvable from a member
  * directory only because the user declared that member.
+ *
+ * Only directories holding a package.json come back — a member always
+ * has one — so a `**` pattern answers with packages rather than with
+ * every directory in the tree.
  */
 export async function workspaceMemberDirs(root: string): Promise<string[]> {
   const patterns = [
@@ -54,7 +58,14 @@ export async function workspaceMemberDirs(root: string): Promise<string[]> {
     }
   }
   dirs.delete(path.resolve(root));
-  return [...dirs].sort();
+
+  const members: string[] = [];
+  for (const dir of [...dirs].sort()) {
+    if (await exists(path.join(dir, "package.json"))) {
+      members.push(dir);
+    }
+  }
+  return members;
 }
 
 const LINE_BREAK = /\r?\n/;
@@ -181,8 +192,19 @@ async function matchSegment(dir: string, segment: string): Promise<string[]> {
   );
 }
 
+/**
+ * The directories `**` can reach, bounded twice over: the walk stops at
+ * a directory that holds a package.json, because that directory is the
+ * member and everything below it is that package's own contents, and it
+ * never enters a dot-directory. Without those bounds a `packages/**`
+ * workspace — an ordinary pattern — makes this walk the whole working
+ * tree, and every command pays for it through the staleness check.
+ */
 async function descendants(dir: string): Promise<string[]> {
   const found: string[] = [dir];
+  if (await exists(path.join(dir, "package.json"))) {
+    return found;
+  }
   for (const child of await subdirectories(dir)) {
     found.push(...(await descendants(child)));
   }
@@ -193,7 +215,12 @@ async function subdirectories(dir: string): Promise<string[]> {
   try {
     const entries = await readdir(dir, { withFileTypes: true });
     return entries
-      .filter((entry) => entry.isDirectory() && entry.name !== "node_modules")
+      .filter(
+        (entry) =>
+          entry.isDirectory() &&
+          entry.name !== "node_modules" &&
+          !entry.name.startsWith("."),
+      )
       .map((entry) => path.join(dir, entry.name));
   } catch {
     return [];
