@@ -10,7 +10,7 @@ import {
   SERVICE_DETAIL,
 } from "./service-testkit";
 
-describe("prisma-cli service version list", () => {
+describe("prisma service version list", () => {
   it("lists deployments newest first with the live hint applied", async () => {
     const harness = await makeServiceCli();
 

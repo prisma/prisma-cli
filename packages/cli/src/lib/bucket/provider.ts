@@ -233,7 +233,7 @@ export function createManagementBucketProvider(
           why: "Bucket key credentials are one-time-view secrets, but the Management API did not include them in this create response.",
           fix: "Create another bucket key and store the returned credentials immediately.",
           exitCode: 1,
-          nextSteps: [`prisma-cli bucket key create ${options.bucketId}`],
+          nextSteps: [`prisma bucket key create ${options.bucketId}`],
         });
       }
 

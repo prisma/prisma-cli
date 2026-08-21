@@ -100,7 +100,7 @@ function resolveTarget(
   return { target: { kind: "node", node }, path };
 }
 
-/** A BARE group invocation (`prisma-cli project`, or no argv at all)
+/** A BARE group invocation (`prisma project`, or no argv at all)
  *  is a help request; anything carrying flags or extra tokens is not —
  *  `cli --unknown` and `cli project --frobnicate` must reach routing
  *  and usage validation, not exit 0 with a help card. A bare leaf is a
@@ -142,7 +142,7 @@ export function renderHelp(
   out.write(`${lines.join("\n")}\n`);
 }
 
-/** `prisma-cli project → Manage and inspect your Prisma projects` */
+/** `prisma project → Manage and inspect your Prisma projects` */
 function header(
   spec: EngineSpec,
   path: readonly string[],

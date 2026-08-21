@@ -29,9 +29,13 @@ function toEngineNextAction(action: LegacyNextAction): NextAction {
 /**
  * The binary name legacy error copy is written in. It is fixed, not
  * `CLI_NAME`: these strings are inputs to the rewriting below, and a
- * renamed binary must still recognise them.
+ * renamed binary must still recognise them. Copy that already spells
+ * the current name is recognised too, so a builder modernised ahead of
+ * this layer keeps its command lines.
  */
 const LEGACY_CLI_NAME = "prisma-cli";
+
+const COMMAND_PREFIXES = [`${LEGACY_CLI_NAME} `, `${CLI_NAME} `] as const;
 
 const CNAME_HINT = /\bcname(?:s)?\s+to\b/;
 const PRISMA_BUILD_HOST = /\b((?:[a-z0-9-]+\.)+prisma\.build)\b/i;
@@ -43,6 +47,7 @@ const PRISMA_BUILD_HOST = /\b((?:[a-z0-9-]+\.)+prisma\.build)\b/i;
 export function renameAppCopy(text: string): string {
   return text
     .replaceAll(`${LEGACY_CLI_NAME} app `, `${CLI_NAME} service `)
+    .replaceAll(`${CLI_NAME} app `, `${CLI_NAME} service `)
     .replaceAll("App target", "Service target")
     .replaceAll("app target", "service target");
 }
@@ -50,9 +55,12 @@ export function renameAppCopy(text: string): string {
 /** A legacy `nextSteps` command line as this binary spells it. */
 function toCurrentCommandLine(legacyStep: string): string {
   const renamed = renameAppCopy(legacyStep);
-  return renamed.startsWith(`${LEGACY_CLI_NAME} `)
-    ? `${CLI_NAME} ${renamed.slice(LEGACY_CLI_NAME.length + 1)}`
-    : renamed;
+  const prefix = COMMAND_PREFIXES.find((candidate) =>
+    renamed.startsWith(candidate),
+  );
+  return prefix === undefined
+    ? renamed
+    : `${CLI_NAME} ${renamed.slice(prefix.length)}`;
 }
 
 /**
@@ -70,7 +78,9 @@ export function fromLegacyCliError(error: CliError): CliStructuredError {
       : [
           ...fixAction,
           ...error.nextSteps
-            .filter((step) => step.startsWith(`${LEGACY_CLI_NAME} `))
+            .filter((step) =>
+              COMMAND_PREFIXES.some((prefix) => step.startsWith(prefix)),
+            )
             .map((step) => ({
               kind: "run-command" as const,
               label: "Run",

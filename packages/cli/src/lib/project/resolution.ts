@@ -115,7 +115,7 @@ export class ProjectSetupRequiredError extends TaggedError(
     suggestion: ProjectSetupSuggestion;
   }) {
     const commandLabel = options.commandName
-      ? `prisma-cli ${options.commandName}`
+      ? `prisma ${options.commandName}`
       : "this command";
     super({
       message: `This directory is not linked to a Prisma Project, and ${commandLabel} will not choose one from package or directory names.`,
@@ -236,9 +236,9 @@ function projectNotFoundCliError(
     domain: "project",
     summary: "Project not found",
     why: `The project "${projectRef}" does not exist in workspace "${workspace.name}" or is not accessible.`,
-    fix: "Pass a project id or name from prisma-cli project list.",
+    fix: "Pass a project id or name from prisma project list.",
     exitCode: 1,
-    nextSteps: ["prisma-cli project list"],
+    nextSteps: ["prisma project list"],
   });
 }
 
@@ -256,11 +256,11 @@ function projectAmbiguousCliError(
   matches: ProjectCandidate[],
 ): CliError {
   const firstMatch = matches[0];
-  const nextSteps = ["prisma-cli project list"];
+  const nextSteps = ["prisma project list"];
   if (firstMatch) {
     // Surface the matched id verbatim so the user can copy the exact
     // shape of a disambiguating reference instead of guessing.
-    nextSteps.push(`prisma-cli project link ${firstMatch.id}`);
+    nextSteps.push(`prisma project link ${firstMatch.id}`);
   }
 
   return new CliError({
@@ -293,10 +293,7 @@ function localStateStaleCliError(): CliError {
       pinPath: LOCAL_RESOLUTION_PIN_RELATIVE_PATH,
     },
     exitCode: 1,
-    nextSteps: [
-      "prisma-cli project list",
-      "prisma-cli project link <id-or-name>",
-    ],
+    nextSteps: ["prisma project list", "prisma project link <id-or-name>"],
   });
 }
 
@@ -320,9 +317,9 @@ function localProjectWorkspaceMismatchCliError(options: {
     },
     exitCode: 1,
     nextSteps: [
-      `prisma-cli auth workspace use ${options.pinnedWorkspaceId}`,
-      "prisma-cli project list",
-      "prisma-cli project link <id-or-name>",
+      `prisma auth workspace use ${options.pinnedWorkspaceId}`,
+      "prisma project list",
+      "prisma project link <id-or-name>",
     ],
   });
 }
@@ -404,7 +401,7 @@ function projectSetupRequiredCliError(
     fix: "Link the directory to an existing Project, or pass --project <id-or-name> for this command.",
     meta: { ...suggestion },
     exitCode: 1,
-    nextSteps: ["prisma-cli project list", ...suggestion.recoveryCommands],
+    nextSteps: ["prisma project list", ...suggestion.recoveryCommands],
     nextActions: buildProjectSetupNextActions({
       commandName: error.commandName,
       suggestedProjectName: suggestion.suggestedProjectName,
@@ -425,10 +422,10 @@ export function buildProjectSetupNextActions(
 ): NextAction[] {
   const recoveryCommands = buildProjectRecoveryCommands(options.commandName);
   const linkCommand =
-    recoveryCommands[0] ?? "prisma-cli project link <id-or-name>";
+    recoveryCommands[0] ?? "prisma project link <id-or-name>";
   const retryCommand = options.retryCommand ?? recoveryCommands[1];
   const commands = [
-    "prisma-cli project list",
+    "prisma project list",
     linkCommand,
     ...(retryCommand ? [retryCommand] : []),
   ];
@@ -457,7 +454,7 @@ export function buildProjectSetupNextActions(
   const createCommand =
     options.createCommand ??
     (options.suggestedProjectName
-      ? `prisma-cli project create ${formatCommandArgument(options.suggestedProjectName)}`
+      ? `prisma project create ${formatCommandArgument(options.suggestedProjectName)}`
       : undefined);
   if (createCommand) {
     actions.push({
@@ -476,8 +473,7 @@ export function buildProjectSetupNextActions(
       journey: "recover",
       label: "Retry with an explicit Project",
       command:
-        retryCommand ??
-        `prisma-cli ${options.commandName} --project <id-or-name>`,
+        retryCommand ?? `prisma ${options.commandName} --project <id-or-name>`,
     });
   }
 
@@ -719,9 +715,9 @@ function resolvedTarget(
 function buildProjectRecoveryCommands(
   commandName: string | undefined,
 ): string[] {
-  const commands = ["prisma-cli project link <id-or-name>"];
+  const commands = ["prisma project link <id-or-name>"];
   if (commandName) {
-    commands.push(`prisma-cli ${commandName} --project <id-or-name>`);
+    commands.push(`prisma ${commandName} --project <id-or-name>`);
   }
   return commands;
 }

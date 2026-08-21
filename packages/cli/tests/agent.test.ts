@@ -80,7 +80,7 @@ beforeEach(() => {
   vi.mocked(execa).mockReset();
 });
 
-describe("prisma-cli agent install", () => {
+describe("prisma agent install", () => {
   it("declares no credential needs and runs without a session", async () => {
     for (const command of Object.values(AGENT_COMMANDS)) {
       expect(command.needs.credentials).toBe(false);
@@ -313,7 +313,7 @@ describe("prisma-cli agent install", () => {
   });
 });
 
-describe("prisma-cli agent update", () => {
+describe("prisma agent update", () => {
   it("runs the same operation under the update name", async () => {
     vi.mocked(execa).mockResolvedValue({ stdout: "", stderr: "" } as never);
     const { cwd, env } = await makeCwd();
@@ -352,7 +352,7 @@ describe("prisma-cli agent update", () => {
   });
 });
 
-describe("prisma-cli agent status", () => {
+describe("prisma agent status", () => {
   it("reports the Prisma skills the skills CLI lists and drops the rest", async () => {
     vi.mocked(execa).mockResolvedValue(
       skillsListStdout([

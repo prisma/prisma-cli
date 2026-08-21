@@ -99,7 +99,7 @@ function isErrorRecord(error: unknown): error is Record<string, unknown> {
 }
 
 export function authRequiredError(
-  nextSteps: string[] = ["prisma-cli auth login"],
+  nextSteps: string[] = ["prisma auth login"],
   options: { debug?: string | null } = {},
 ): CliError {
   return new CliError({
@@ -107,7 +107,7 @@ export function authRequiredError(
     domain: "auth",
     summary: "Authentication required",
     why: "This command needs an authenticated session.",
-    fix: "Run prisma-cli auth login, or rerun the command in a TTY to sign in interactively.",
+    fix: "Run prisma auth login, or rerun the command in a TTY to sign in interactively.",
     debug: options.debug,
     exitCode: 1,
     nextSteps,
@@ -122,7 +122,7 @@ export function authConfigInvalidError(message: string): CliError {
     why: message,
     fix: "Provide a valid PRISMA_SERVICE_TOKEN value, or unset the variable to use local OAuth login.",
     exitCode: 1,
-    nextSteps: ["prisma-cli auth login"],
+    nextSteps: ["prisma auth login"],
   });
 }
 
@@ -142,8 +142,8 @@ export function workspaceRequiredError(): CliError {
   return usageError(
     "Workspace required",
     "This command needs an active workspace, but the authenticated session does not have one.",
-    "Run prisma-cli auth login and choose a workspace.",
-    ["prisma-cli auth login"],
+    "Run prisma auth login and choose a workspace.",
+    ["prisma auth login"],
     "auth",
   );
 }

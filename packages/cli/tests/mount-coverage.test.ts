@@ -174,7 +174,7 @@ const MOUNTED_FAMILIES = {
   skills: skillsCommandFamily,
 };
 
-describe("prisma-cli mount coverage", () => {
+describe("prisma mount coverage", () => {
   it("mounts exactly the expected command paths", () => {
     expect(Object.keys(mountedCommands).sort()).toEqual(EXPECTED_MOUNT_PATHS);
   });

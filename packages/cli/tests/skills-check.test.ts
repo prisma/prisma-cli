@@ -138,7 +138,7 @@ describe("the skills check", () => {
 
     expect(exitCode).toBe(0);
     expect(proc.stderrText).toBe(
-      "Prisma agent skills are out of date (installed @prisma/orm-postgres 8.1.0, synced 8.0.0). Run: prisma-cli skills sync\n",
+      "Prisma agent skills are out of date (installed @prisma/orm-postgres 8.1.0, synced 8.0.0). Run: prisma skills sync\n",
     );
     expect(proc.stdoutText).toBe("");
   });

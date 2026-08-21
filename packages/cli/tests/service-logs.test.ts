@@ -107,7 +107,7 @@ const TARGET = ["--project", "acme-app", "hello-world"];
 /** Polling is instant so a follow test does not wait on the 2s default. */
 const FAST_POLL = { PRISMA_CLI_SERVICE_LOGS_POLL_MS: "0" };
 
-describe("prisma-cli service logs", () => {
+describe("prisma service logs", () => {
   it("reads one page of the live deployment's logs and exits 0", async () => {
     const queries: Array<Record<string, unknown> | undefined> = [];
     const harness = await makeServiceCli({
@@ -493,7 +493,7 @@ describe("prisma-cli service logs", () => {
   });
 });
 
-describe("prisma-cli service logs --follow", () => {
+describe("prisma service logs --follow", () => {
   it("polls from the cursor the previous page ended on until interrupted", async () => {
     const queries: Array<Record<string, unknown> | undefined> = [];
     const controller = new AbortController();

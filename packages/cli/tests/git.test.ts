@@ -228,7 +228,7 @@ beforeEach(() => {
   readOrigin.mockResolvedValue(null);
 });
 
-describe("prisma-cli git connect", () => {
+describe("prisma git connect", () => {
   it("connects the repository named by the positional", async () => {
     const calls: Call[] = [];
     const result = await makeCli(gitClient({ calls })).run(
@@ -302,12 +302,11 @@ describe("prisma-cli git connect", () => {
           {
             kind: "user-choice",
             label:
-              "Pass a GitHub repository URL, or add a GitHub origin remote and rerun prisma-cli git connect.",
+              "Pass a GitHub repository URL, or add a GitHub origin remote and rerun prisma git connect.",
           },
           {
             kind: "run-command",
-            command:
-              "prisma-cli git connect git@github.com:prisma/prisma-cli.git",
+            command: "prisma git connect git@github.com:prisma/prisma-cli.git",
           },
         ],
       },
@@ -335,7 +334,7 @@ describe("prisma-cli git connect", () => {
           },
           {
             kind: "run-command",
-            command: "prisma-cli git connect git@github.com:owner/repo.git",
+            command: "prisma git connect git@github.com:owner/repo.git",
           },
         ],
       },
@@ -385,7 +384,7 @@ describe("prisma-cli git connect", () => {
             label:
               "Disconnect the existing repository before connecting a different one.",
           },
-          { kind: "run-command", command: "prisma-cli git disconnect" },
+          { kind: "run-command", command: "prisma git disconnect" },
         ],
       },
     });
@@ -411,13 +410,12 @@ describe("prisma-cli git connect", () => {
         {
           kind: "user-choice",
           label:
-            "Finish installing the GitHub App in the browser, then rerun prisma-cli git connect.",
+            "Finish installing the GitHub App in the browser, then rerun prisma git connect.",
         },
         { kind: "open-url", label: INSTALL_URL, url: INSTALL_URL },
         {
           kind: "run-command",
-          command:
-            "prisma-cli git connect https://github.com/prisma/prisma-cli",
+          command: "prisma git connect https://github.com/prisma/prisma-cli",
         },
       ],
     });
@@ -447,13 +445,12 @@ describe("prisma-cli git connect", () => {
         {
           kind: "user-choice",
           label:
-            "Open the GitHub App installation URL, grant access to this repository, then rerun prisma-cli git connect.",
+            "Open the GitHub App installation URL, grant access to this repository, then rerun prisma git connect.",
         },
         { kind: "open-url", label: INSTALL_URL, url: INSTALL_URL },
         {
           kind: "run-command",
-          command:
-            "prisma-cli git connect https://github.com/prisma/prisma-cli",
+          command: "prisma git connect https://github.com/prisma/prisma-cli",
         },
       ],
     });
@@ -650,7 +647,7 @@ describe("prisma-cli git connect", () => {
             label:
               "This project or repository is already linked. Disconnect the old link first, then try again.",
           },
-          { kind: "run-command", command: "prisma-cli project show" },
+          { kind: "run-command", command: "prisma project show" },
         ],
       },
     });
@@ -733,7 +730,7 @@ describe("prisma-cli git connect", () => {
   });
 });
 
-describe("prisma-cli git disconnect", () => {
+describe("prisma git disconnect", () => {
   it("disconnects the connected repository", async () => {
     const calls: Call[] = [];
     const result = await makeCli(
@@ -790,9 +787,9 @@ describe("prisma-cli git disconnect", () => {
         nextActions: [
           {
             kind: "user-choice",
-            label: "Run prisma-cli git connect before disconnecting.",
+            label: "Run prisma git connect before disconnecting.",
           },
-          { kind: "run-command", command: "prisma-cli git connect" },
+          { kind: "run-command", command: "prisma git connect" },
         ],
       },
     });
@@ -823,7 +820,7 @@ describe("prisma-cli git disconnect", () => {
             label:
               "Make sure the GitHub App installation has access to this repository.",
           },
-          { kind: "run-command", command: "prisma-cli project show" },
+          { kind: "run-command", command: "prisma project show" },
         ],
       },
     });
@@ -847,11 +844,11 @@ describe("prisma-cli git disconnect", () => {
         summary: "Authentication required",
         why: "This command needs an authenticated session.",
         nextActions: [
-          { kind: "user-choice", label: "Run prisma-cli auth login." },
+          { kind: "user-choice", label: "Run prisma auth login." },
           {
             kind: "run-command",
-            label: "prisma-cli auth login",
-            command: "prisma-cli auth login",
+            label: "prisma auth login",
+            command: "prisma auth login",
           },
         ],
       },
@@ -882,7 +879,7 @@ describe("prisma-cli git disconnect", () => {
             label:
               "Re-run with --log-level verbose for the underlying API response details.",
           },
-          { kind: "run-command", command: "prisma-cli project show" },
+          { kind: "run-command", command: "prisma project show" },
         ],
       },
     });

@@ -593,7 +593,7 @@ export function unsupportedRepositoryProviderError(): CliError {
     why: "Repository connection supports GitHub repository URLs only.",
     fix: "Pass a GitHub repository URL such as git@github.com:prisma/prisma-cli.git.",
     exitCode: 2,
-    nextSteps: ["prisma-cli git connect git@github.com:owner/repo.git"],
+    nextSteps: ["prisma git connect git@github.com:owner/repo.git"],
   });
 }
 
@@ -603,9 +603,9 @@ export function repoNotConnectedError(): CliError {
     domain: "project",
     summary: "No GitHub repository connected",
     why: "The resolved project does not have an active GitHub repository connection.",
-    fix: "Run prisma-cli git connect before disconnecting.",
+    fix: "Run prisma git connect before disconnecting.",
     exitCode: 1,
-    nextSteps: ["prisma-cli git connect"],
+    nextSteps: ["prisma git connect"],
   });
 }
 
@@ -620,15 +620,15 @@ export function repoInstallationRequiredError(
     summary: "GitHub App installation required",
     why: `The selected workspace does not have a GitHub App installation that can be used to link ${repository.fullName}.`,
     fix: opened
-      ? "Finish installing the GitHub App in the browser, then rerun prisma-cli git connect."
-      : "Open the GitHub App installation URL, approve access, then rerun prisma-cli git connect.",
+      ? "Finish installing the GitHub App in the browser, then rerun prisma git connect."
+      : "Open the GitHub App installation URL, approve access, then rerun prisma git connect.",
     meta: {
       repository: repository.fullName,
       installUrl,
       opened,
     },
     exitCode: 1,
-    nextSteps: [installUrl, `prisma-cli git connect ${repository.url}`],
+    nextSteps: [installUrl, `prisma git connect ${repository.url}`],
   });
 }
 
@@ -642,14 +642,14 @@ export function repoNotAccessibleError(
     domain: "project",
     summary: "GitHub repository is not accessible",
     why: `The GitHub App installations connected to this workspace do not expose ${repository.fullName}.`,
-    fix: "Open the GitHub App installation URL, grant access to this repository, then rerun prisma-cli git connect.",
+    fix: "Open the GitHub App installation URL, grant access to this repository, then rerun prisma git connect.",
     meta: {
       repository: repository.fullName,
       installUrl,
       opened,
     },
     exitCode: 1,
-    nextSteps: [installUrl, `prisma-cli git connect ${repository.url}`],
+    nextSteps: [installUrl, `prisma git connect ${repository.url}`],
   });
 }
 
@@ -666,7 +666,7 @@ export function repoAlreadyConnectedError(
       repository: repositoryFullName,
     },
     exitCode: 1,
-    nextSteps: ["prisma-cli git disconnect"],
+    nextSteps: ["prisma git disconnect"],
   });
 }
 
@@ -685,7 +685,7 @@ export function repoConnectionApiError(
   const apiHint = error?.error?.hint;
 
   if (status === 401 || status === 403) {
-    return authRequiredError(["prisma-cli auth login"]);
+    return authRequiredError(["prisma auth login"]);
   }
 
   return new CliError({
@@ -701,13 +701,13 @@ export function repoConnectionApiError(
       ...(apiCode ? { apiCode } : {}),
     },
     exitCode: 1,
-    nextSteps: ["prisma-cli project show"],
+    nextSteps: ["prisma project show"],
   });
 }
 
 function repoConnectionFixForStatus(status: number): string {
   if (status === 404) {
-    return "Install the GitHub App for this workspace, then rerun prisma-cli git connect.";
+    return "Install the GitHub App for this workspace, then rerun prisma git connect.";
   }
 
   if (status === 409) {

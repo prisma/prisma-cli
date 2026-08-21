@@ -92,7 +92,7 @@ export const bucketKeyCreateCommand = defineCommand({
           "Bucket id required",
           "Bucket key creation needs a bucket id.",
           "Pass the bucket id.",
-          ["prisma-cli bucket list"],
+          ["prisma bucket list"],
           "bucket",
         );
       }

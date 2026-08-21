@@ -59,12 +59,12 @@ export function resolveEnvWriteSource(
 ): EnvWriteSource {
   if (filePath !== undefined && rawAssignment !== undefined) {
     throw usageError(
-      `prisma-cli project env ${command} accepts either KEY=VALUE or --file`,
+      `prisma project env ${command} accepts either KEY=VALUE or --file`,
       "The command received both a positional assignment and a dotenv file path.",
       "Pass one input source.",
       [
-        `prisma-cli project env ${command} KEY=value --role preview`,
-        `prisma-cli project env ${command} --file .env --role preview`,
+        `prisma project env ${command} KEY=value --role preview`,
+        `prisma project env ${command} --file .env --role preview`,
       ],
       "app",
     );
@@ -73,10 +73,10 @@ export function resolveEnvWriteSource(
   if (filePath !== undefined) {
     if (filePath.length === 0) {
       throw usageError(
-        `prisma-cli project env ${command} --file requires a path`,
+        `prisma project env ${command} --file requires a path`,
         "The --file flag was passed without a file path.",
         "Pass a readable dotenv file path.",
-        [`prisma-cli project env ${command} --file .env --role preview`],
+        [`prisma project env ${command} --file .env --role preview`],
         "app",
       );
     }
@@ -85,12 +85,12 @@ export function resolveEnvWriteSource(
 
   if (rawAssignment === undefined) {
     throw usageError(
-      `prisma-cli project env ${command} requires KEY=VALUE or --file`,
+      `prisma project env ${command} requires KEY=VALUE or --file`,
       "No environment variable input was supplied.",
       "Pass a single KEY=VALUE assignment or a dotenv file path.",
       [
-        `prisma-cli project env ${command} KEY=value --role preview`,
-        `prisma-cli project env ${command} --file .env --role preview`,
+        `prisma project env ${command} KEY=value --role preview`,
+        `prisma project env ${command} --file .env --role preview`,
       ],
       "app",
     );
@@ -162,7 +162,7 @@ export async function resolveScopeToApi(
       why: "Production variables are project-level only; branch overrides apply to preview branches.",
       fix: "Use --role production for the production branch.",
       exitCode: 1,
-      nextSteps: ["prisma-cli project env list --role production"],
+      nextSteps: ["prisma project env list --role production"],
     });
   }
 
@@ -286,9 +286,7 @@ async function resolveExistingBranch(
       why: "Branch update, list, and delete commands only target existing preview branches.",
       fix: "Create the branch by deploying it, or use `project env add --branch` to create its first override.",
       exitCode: 1,
-      nextSteps: [
-        `prisma-cli project env add KEY=value --branch ${branchName}`,
-      ],
+      nextSteps: [`prisma project env add KEY=value --branch ${branchName}`],
     });
   }
   return branch;
@@ -315,7 +313,7 @@ async function resolveOrCreateBranch(
       why: "Creating the first branch would make it the project default, but branch overrides are preview-only.",
       fix: "Create or deploy the default branch first, then add the branch override.",
       exitCode: 1,
-      nextSteps: ["prisma-cli git connect <repository-url>"],
+      nextSteps: ["prisma git connect <repository-url>"],
     });
   }
 

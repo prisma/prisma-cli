@@ -43,7 +43,7 @@ const PROJECT_CODE_MAP: Readonly<Record<string, `${string}.${string}`>> = {
 const PACKAGE_RUNNER_PREFIX = /^\S+(?: -y)? @prisma\/cli@\S+ /;
 const COMMENT_PREFIX = /^#\s*/;
 
-/** Legacy command strings are `prisma-cli …`, except one `prisma auth
+/** Legacy command strings are `prisma …`, except one `prisma auth
  *  login` copy bug and the package-runner formatter's output. */
 export function portCommandString(command: string): string {
   if (command.startsWith(`${CLI_NAME} `)) {

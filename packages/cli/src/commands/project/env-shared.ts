@@ -51,10 +51,10 @@ export function requireEnvScope(
   );
   if (!scope) {
     throw usageError(
-      `prisma-cli project env ${command} requires --role or --branch`,
+      `prisma project env ${command} requires --role or --branch`,
       "Writing without an explicit scope is rejected.",
       "Pass --role production, --role preview, or --branch <git-name>.",
-      [`prisma-cli project env ${command} KEY=value --role production`],
+      [`prisma project env ${command} KEY=value --role production`],
       "app",
     );
   }

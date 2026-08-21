@@ -83,7 +83,7 @@ original command on network discovery.
 Recommended shape:
 
 ```text
-Update available: prisma-cli <current> -> <latest>
+Update available: prisma <current> -> <latest>
 Run <package-manager command> to update.
 ```
 
@@ -91,7 +91,7 @@ When the CLI cannot confidently infer the install context, link to installation
 docs instead of guessing a package-manager command:
 
 ```text
-Update available: prisma-cli <current> -> <latest>
+Update available: prisma <current> -> <latest>
 See https://www.prisma.io/docs/orm/tools/prisma-cli for update instructions.
 ```
 
@@ -102,7 +102,7 @@ skills copied into the project's harness skill directories do not match the
 Prisma packages the project has installed:
 
 ```text
-Prisma agent skills are out of date (installed @prisma/orm-postgres 8.1.0, synced 8.0.0). Run: prisma-cli skills sync
+Prisma agent skills are out of date (installed @prisma/orm-postgres 8.1.0, synced 8.0.0). Run: prisma skills sync
 ```
 
 A project that has never been synced is reported the same way, with `synced
@@ -361,8 +361,8 @@ project show → This directory is not linked to a Prisma Project.
 │  project:    Not linked
 
 Next steps:
-- Link an existing Project you choose: prisma-cli project link <id-or-name>
-- Create a new Project: prisma-cli project create billing-api
+- Link an existing Project you choose: prisma project link <id-or-name>
+- Create a new Project: prisma project create billing-api
 ```
 
 Rules:
@@ -440,7 +440,7 @@ health is known. Do not print `Status: running` or `Deployment is running at ...
 Use short stage copy such as `Building locally...`, `Built <size>`,
 `Uploading...`, `Uploaded`, `Deploying...`, and `Deployed`.
 On success, print `Live in <duration>`, the URL on its own line, and
-`Logs   prisma-cli app logs`.
+`Logs   prisma app logs`.
 Human deploy output is stderr; `--json` is the machine-readable stdout path.
 
 Deploy result rows use one compact style: labels start two spaces from the left
@@ -578,15 +578,15 @@ context, status, decoration, and errors stay on stderr.
   },
   "warnings": [],
   "nextSteps": [
-    "prisma-cli app list-deploys --app hello-world",
-    "prisma-cli app show-deploy dep_045"
+    "prisma app list-deploys --app hello-world",
+    "prisma app show-deploy dep_045"
   ],
   "nextActions": [
     {
       "kind": "run-command",
       "journey": "inspect",
       "label": "View deployment logs",
-      "command": "prisma-cli app logs"
+      "command": "prisma app logs"
     }
   ]
 }

@@ -35,10 +35,7 @@ function setupCanceledError() {
     "Project setup canceled",
     "Project link needs a Project before it can continue.",
     "Choose an existing Project or create a new one, then rerun project link.",
-    [
-      "prisma-cli project link <id-or-name>",
-      "prisma-cli project create <name>",
-    ],
+    ["prisma project link <id-or-name>", "prisma project create <name>"],
     "project",
   );
 }
@@ -83,14 +80,14 @@ async function createProjectForLink(
       }
       throw projectCreateFailedError(error, projectName, workspace, {
         nextSteps: [
-          "prisma-cli project list",
-          "prisma-cli project link <id-or-name>",
-          `prisma-cli project create ${formatCommandArgument(projectName)}`,
+          "prisma project list",
+          "prisma project link <id-or-name>",
+          `prisma project create ${formatCommandArgument(projectName)}`,
         ],
         permissionFix:
           "Grant the token permission to create Projects in this workspace, or link an existing Project.",
         fallbackFix:
-          "Retry the command, or choose an existing Project with prisma-cli project link <id-or-name>.",
+          "Retry the command, or choose an existing Project with prisma project link <id-or-name>.",
       });
     });
 

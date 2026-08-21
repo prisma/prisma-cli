@@ -34,7 +34,7 @@ function waitEnv(env: Record<string, string | undefined>) {
   return { ...env, PRISMA_CLI_DOMAIN_WAIT_POLL_MS: "1" };
 }
 
-describe("prisma-cli service domain wait", () => {
+describe("prisma service domain wait", () => {
   it("emits a status event per transition and completes when the domain activates", async () => {
     const harness = await makeServiceCli({
       routes: waitRoutes(["pending_dns", "verifying", "active"]),
@@ -136,7 +136,7 @@ describe("prisma-cli service domain wait", () => {
     expect(frame.envelope.error.nextActions).toContainEqual({
       kind: "user-choice",
       label:
-        "Add CNAME shop.acme.com -> edge.prisma.build, then run prisma-cli service domain retry shop.acme.com.",
+        "Add CNAME shop.acme.com -> edge.prisma.build, then run prisma service domain retry shop.acme.com.",
     });
     expect(JSON.stringify(frame.envelope.error)).not.toContain(
       "prisma-cli app ",

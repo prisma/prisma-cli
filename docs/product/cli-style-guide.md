@@ -83,8 +83,8 @@ project show → This directory is not linked to a Prisma Project.
 │  project:    Not linked
 
 Next steps:
-- Link an existing Project you choose: prisma-cli project link <id-or-name>
-- Create a new Project: prisma-cli project create billing-api
+- Link an existing Project you choose: prisma project link <id-or-name>
+- Create a new Project: prisma project create billing-api
 ```
 
 Rules:

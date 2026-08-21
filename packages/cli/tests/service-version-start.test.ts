@@ -64,7 +64,7 @@ function startRoutes(
     }),
   };
 }
-describe("prisma-cli service version start", () => {
+describe("prisma service version start", () => {
   it("starts a stopped deployment and reports it running", async () => {
     const start = startRoutes();
     const harness = await makeServiceCli({ routes: start.routes });
