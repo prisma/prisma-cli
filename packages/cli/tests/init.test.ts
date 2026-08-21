@@ -4,7 +4,7 @@
  * writes into package.json, the in-process skills sync it runs, and the
  * diagnostics it answers with when either step has nothing safe to do.
  */
-import { readFile, rm, stat, writeFile } from "node:fs/promises";
+import { chmod, readFile, rm, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { createTestCli } from "@prisma/cli-engine/testing";
 import { describe, expect, it } from "vitest";
@@ -150,6 +150,78 @@ describe("init", () => {
     expect(await readFile(path.join(root, "package.json"), "utf8")).toBe(
       before,
     );
+  });
+
+  // chmod bits do not deny writes on Windows the way they do on POSIX.
+  it.skipIf(process.platform === "win32")(
+    "reports an unwritable package.json without failing",
+    async () => {
+      const root = await makeProjectRoot("init-");
+      const manifestPath = path.join(root, "package.json");
+      const before = await readFile(manifestPath, "utf8");
+      await chmod(manifestPath, 0o444);
+
+      const { exitCode, result, diagnosticCodes } = await runInit(root);
+      await chmod(manifestPath, 0o644);
+
+      expect(exitCode).toBe(0);
+      expect(result.postinstall).toEqual({ outcome: "skipped", script: null });
+      expect(diagnosticCodes).toContain("INIT.PACKAGE_JSON_UNWRITABLE");
+      expect(await readFile(manifestPath, "utf8")).toBe(before);
+    },
+  );
+
+  it("leaves a non-object scripts value untouched", async () => {
+    const root = await makeProjectRoot("init-");
+    await writeFile(
+      path.join(root, "package.json"),
+      `{\n  "name": "fixture-project",\n  "scripts": "oops"\n}\n`,
+      "utf8",
+    );
+    const before = await readFile(path.join(root, "package.json"), "utf8");
+
+    const { exitCode, result, diagnosticCodes } = await runInit(root);
+
+    expect(exitCode).toBe(0);
+    expect(result.postinstall).toEqual({ outcome: "kept", script: null });
+    expect(diagnosticCodes).toContain("INIT.SCRIPTS_NOT_AN_OBJECT");
+    expect(await readFile(path.join(root, "package.json"), "utf8")).toBe(
+      before,
+    );
+  });
+
+  it("keeps a UTF-8 BOM and still adds the hook", async () => {
+    const root = await makeProjectRoot("init-");
+    await writeFile(
+      path.join(root, "package.json"),
+      `\uFEFF{\n  "name": "bom-project"\n}\n`,
+      "utf8",
+    );
+
+    const { exitCode, result } = await runInit(root);
+
+    expect(exitCode).toBe(0);
+    expect(result.postinstall.outcome).toBe("added");
+    const source = await readFile(path.join(root, "package.json"), "utf8");
+    expect(source.startsWith("\uFEFF")).toBe(true);
+    expect(source).toContain(`"postinstall": "${POSTINSTALL_SCRIPT}"`);
+  });
+
+  it("preserves CRLF line endings", async () => {
+    const root = await makeProjectRoot("init-");
+    await writeFile(
+      path.join(root, "package.json"),
+      `{\r\n  "name": "crlf-project"\r\n}\r\n`,
+      "utf8",
+    );
+
+    const { exitCode, result } = await runInit(root);
+
+    expect(exitCode).toBe(0);
+    expect(result.postinstall.outcome).toBe("added");
+    const source = await readFile(path.join(root, "package.json"), "utf8");
+    expect(source.endsWith("\r\n")).toBe(true);
+    expect(source.split("\r\n").length).toBe(source.split("\n").length);
   });
 
   it("skips the hook with a diagnostic when there is no package.json", async () => {

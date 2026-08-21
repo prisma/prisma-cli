@@ -77,6 +77,26 @@ function unreadablePackageJsonDiagnostic(): Diagnostic {
   };
 }
 
+function unwritablePackageJsonDiagnostic(): Diagnostic {
+  return {
+    code: "INIT.PACKAGE_JSON_UNWRITABLE",
+    severity: "warn",
+    summary:
+      "package.json could not be written, so the postinstall hook was not added.",
+    nextActions: [APPEND_ADVICE],
+  };
+}
+
+function scriptsNotAnObjectDiagnostic(): Diagnostic {
+  return {
+    code: "INIT.SCRIPTS_NOT_AN_OBJECT",
+    severity: "warn",
+    summary:
+      "The scripts field in package.json is not an object, so init left it alone.",
+    nextActions: [APPEND_ADVICE],
+  };
+}
+
 function foreignPostinstallDiagnostic(): Diagnostic {
   return {
     code: "INIT.POSTINSTALL_KEPT",
@@ -109,14 +129,43 @@ function detectIndent(source: string): string {
   return FIRST_INDENT.exec(source)?.[1] ?? "  ";
 }
 
+const BOM = "\uFEFF";
+
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function parseManifestObject(source: string): Record<string, unknown> | null {
+  try {
+    const parsed: unknown = JSON.parse(source);
+    return isPlainObject(parsed) ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
+function renderManifest(
+  manifest: Record<string, unknown>,
+  source: string,
+  bom: string,
+  crlf: boolean,
+): string {
+  let rewritten = JSON.stringify(manifest, null, detectIndent(source));
+  if (crlf) {
+    rewritten = rewritten.replaceAll("\n", "\r\n");
+  }
+  const eol = crlf ? "\r\n" : "\n";
+  return `${bom}${rewritten}${source.endsWith("\n") ? eol : ""}`;
+}
+
 async function addPostinstallHook(
   cwd: string,
 ): Promise<Step<InitPostinstallReport>> {
   const manifestPath = path.join(cwd, "package.json");
 
-  let source: string;
+  let raw: string;
   try {
-    source = await readFile(manifestPath, "utf8");
+    raw = await readFile(manifestPath, "utf8");
   } catch {
     return {
       report: { outcome: "skipped", script: null },
@@ -125,18 +174,12 @@ async function addPostinstallHook(
     };
   }
 
-  let manifest: Record<string, unknown>;
-  try {
-    const parsed: unknown = JSON.parse(source);
-    if (
-      typeof parsed !== "object" ||
-      parsed === null ||
-      Array.isArray(parsed)
-    ) {
-      throw new Error("package.json is not an object");
-    }
-    manifest = parsed as Record<string, unknown>;
-  } catch {
+  const bom = raw.startsWith(BOM) ? BOM : "";
+  const source = bom === "" ? raw : raw.slice(BOM.length);
+  const crlf = source.includes("\r\n");
+
+  const manifest = parseManifestObject(source);
+  if (manifest === null) {
     return {
       report: { outcome: "skipped", script: null },
       line: summary(
@@ -147,12 +190,18 @@ async function addPostinstallHook(
     };
   }
 
-  const scripts =
-    typeof manifest.scripts === "object" &&
-    manifest.scripts !== null &&
-    !Array.isArray(manifest.scripts)
-      ? (manifest.scripts as Record<string, unknown>)
-      : {};
+  if (manifest.scripts !== undefined && !isPlainObject(manifest.scripts)) {
+    return {
+      report: { outcome: "kept", script: null },
+      line: summary(
+        "warn",
+        "The scripts field in package.json is not an object; left untouched.",
+      ),
+      diagnostics: [scriptsNotAnObjectDiagnostic()],
+    };
+  }
+
+  const scripts = (manifest.scripts as Record<string, unknown>) ?? {};
   const existing = scripts.postinstall;
 
   if (existing === POSTINSTALL_SCRIPT) {
@@ -178,12 +227,22 @@ async function addPostinstallHook(
   }
 
   manifest.scripts = { ...scripts, postinstall: POSTINSTALL_SCRIPT };
-  const rewritten = JSON.stringify(manifest, null, detectIndent(source));
-  await writeFile(
-    manifestPath,
-    source.endsWith("\n") ? `${rewritten}\n` : rewritten,
-    "utf8",
-  );
+  try {
+    await writeFile(
+      manifestPath,
+      renderManifest(manifest, source, bom, crlf),
+      "utf8",
+    );
+  } catch {
+    return {
+      report: { outcome: "skipped", script: null },
+      line: summary(
+        "warn",
+        "package.json could not be written; postinstall hook skipped.",
+      ),
+      diagnostics: [unwritablePackageJsonDiagnostic()],
+    };
+  }
 
   return {
     report: { outcome: "added", script: POSTINSTALL_SCRIPT },
