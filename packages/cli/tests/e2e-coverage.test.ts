@@ -122,7 +122,7 @@ const EXCLUSIONS: Readonly<Record<string, string>> = {
  *
  *
  * `service logs` arrived while this was being written, excluded because
- * "only `composer deploy` produces" a deployment to read logs from. That
+ * only Composer's deploy produced a deployment to read logs from. That
  * is no longer true, so it is owed rather than excused — it needs a
  * deployment that has actually served traffic, which is a little more
  * than the fixture does today.
