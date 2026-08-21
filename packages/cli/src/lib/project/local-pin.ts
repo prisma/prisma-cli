@@ -4,6 +4,8 @@ import path from "node:path";
 
 import { Result, TaggedError, UnhandledException } from "better-result";
 
+import { findNearestPrismaDir } from "./prisma-dir";
+
 export const LOCAL_RESOLUTION_PIN_RELATIVE_PATH = ".prisma/local.json";
 
 export interface LocalResolutionPin {
@@ -11,9 +13,11 @@ export interface LocalResolutionPin {
   projectId: string;
 }
 
+/** `directory` is where the pin was found — the nearest ancestor with a
+ *  `.prisma/` directory, which may be above cwd. */
 export type LocalResolutionPinReadResult =
   | { kind: "missing" }
-  | { kind: "present"; pin: LocalResolutionPin };
+  | { kind: "present"; pin: LocalResolutionPin; directory: string };
 
 export class LocalResolutionPinInvalidJsonError extends TaggedError(
   "LocalResolutionPinInvalidJsonError",
@@ -163,6 +167,9 @@ export type LocalResolutionPinGitignoreUpdateError =
   | LocalResolutionPinGitignoreUpdateAbortedError
   | LocalResolutionPinGitignoreUpdateFailedError;
 
+/** Reads the pin at the nearest ancestor with a `.prisma/` directory;
+ *  without one anywhere up the tree, reads at cwd and finds nothing.
+ *  Writes never walk — only discovery does. */
 export async function readLocalResolutionPin(
   cwd: string,
   signal?: AbortSignal,
@@ -170,7 +177,10 @@ export async function readLocalResolutionPin(
   return Result.gen(async function* () {
     yield* ensureLocalResolutionPinReadNotAborted(signal);
 
-    const file = yield* Result.await(readLocalResolutionPinFile(cwd, signal));
+    const directory = (await findNearestPrismaDir(cwd)) ?? cwd;
+    const file = yield* Result.await(
+      readLocalResolutionPinFile(directory, signal),
+    );
     if (file.kind === "missing") {
       return Result.ok({
         kind: "missing",
@@ -185,6 +195,7 @@ export async function readLocalResolutionPin(
     return Result.ok({
       kind: "present",
       pin: parsed,
+      directory,
     } satisfies LocalResolutionPinReadResult);
   });
 }

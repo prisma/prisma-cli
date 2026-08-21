@@ -132,9 +132,7 @@ export async function cleanupLocalPinForProject(
   }
 
   try {
-    await unlink(
-      path.join(context.runtime.cwd, LOCAL_RESOLUTION_PIN_RELATIVE_PATH),
-    );
+    await unlink(path.join(pin.directory, LOCAL_RESOLUTION_PIN_RELATIVE_PATH));
     return true;
   } catch {
     hooks.onError(
@@ -164,7 +162,7 @@ export async function rewriteOrClearLocalPinForProject(
 
   if (recipientWorkspaceId) {
     const writeResult = await writeLocalResolutionPin(
-      context.runtime.cwd,
+      pin.directory,
       { workspaceId: recipientWorkspaceId, projectId },
       context.runtime.signal,
     );
@@ -178,9 +176,7 @@ export async function rewriteOrClearLocalPinForProject(
   }
 
   try {
-    await unlink(
-      path.join(context.runtime.cwd, LOCAL_RESOLUTION_PIN_RELATIVE_PATH),
-    );
+    await unlink(path.join(pin.directory, LOCAL_RESOLUTION_PIN_RELATIVE_PATH));
     return "cleared";
   } catch {
     hooks.onError(
