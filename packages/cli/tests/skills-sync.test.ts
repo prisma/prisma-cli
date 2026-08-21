@@ -119,29 +119,35 @@ describe("skills sync", () => {
     }
   });
 
-  it("writes a .gitignore into each managed copy, and the copy stays synced with it", async () => {
+  it("writes no .gitignore into the copies, and removes one an older CLI wrote", async () => {
     const root = await makeProjectRoot();
     await installPackage(root, {
       name: "@prisma/orm-postgres",
       version: "8.1.0",
       skills: ["prisma-8"],
     });
+    // What a sync from an older CLI version left behind.
+    await seedSyncedSkill(root, ".claude/skills", {
+      skill: "prisma-8",
+      library: "@prisma/orm-postgres",
+      version: "8.0.0",
+    });
+    await writeFile(
+      path.join(root, ".claude/skills", "prisma-8", ".gitignore"),
+      "*\n",
+      "utf8",
+    );
 
     await runSync(root);
 
     for (const dir of HARNESS_SKILL_DIRS) {
-      expect(
-        await readFile(path.join(root, dir, "prisma-8", ".gitignore"), "utf8"),
-      ).toBe("*\n");
+      expect(await exists(path.join(root, dir, "prisma-8", ".gitignore"))).toBe(
+        false,
+      );
     }
-    // The extra file changes neither the stamp nor the orphan scan: the
-    // copies read as current and a second sync touches nothing.
     const list = await runList(root);
     expect(list.result.upToDate).toBe(true);
     expect(list.result.orphaned).toEqual([]);
-    const again = await runSync(root);
-    expect(again.result.synced).toEqual([]);
-    expect(again.result.pruned).toEqual([]);
   });
 
   it("never touches package.json and suggests no follow-up", async () => {

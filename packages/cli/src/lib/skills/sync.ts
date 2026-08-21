@@ -84,14 +84,11 @@ export async function syncSkills(status: SkillsStatus): Promise<SyncOutcome> {
  * that lost a reference file between versions does not keep the stale
  * one. Files are read and written rather than handed to `fs.cp`,
  * because under Yarn PnP the source lives inside a zip and only the
- * patched read path can see it. The copy carries its own `.gitignore`
- * so git ignores the managed directory without the project's root
- * `.gitignore` ever being edited.
+ * patched read path can see it.
  */
 async function replaceTree(source: string, destination: string): Promise<void> {
   await rm(destination, { recursive: true, force: true });
   await copyTree(source, destination);
-  await writeFile(path.join(destination, ".gitignore"), "*\n", "utf8");
 }
 
 async function copyTree(source: string, destination: string): Promise<void> {
