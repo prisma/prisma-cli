@@ -288,7 +288,7 @@ describe("prisma service domain add", () => {
       {
         kind: "run-command",
         label: "List services",
-        command: "prisma-cli service list",
+        command: "prisma service list",
       },
     ]);
   });

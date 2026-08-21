@@ -277,7 +277,7 @@ describe("prisma service show", () => {
     expect(frame.envelope.nextActions).toContainEqual({
       kind: "run-command",
       label: "List services",
-      command: "prisma-cli service list",
+      command: "prisma service list",
     });
   });
 });
