@@ -322,21 +322,30 @@ describe("init", () => {
     expect(run.stderr).not.toContain("Agent skills are up to date.");
   });
 
-  it("turns a sync failure into a diagnostic on a successful init", async () => {
-    const root = await makeProjectRoot("init-");
-    await installPackage(root, {
-      name: "@prisma/orm-postgres",
-      version: "8.1.0",
-      skills: ["prisma-8"],
-    });
-    // A regular file where the sync must make a directory.
-    await writeFile(path.join(root, ".claude"), "not a directory\n", "utf8");
+  it.skipIf(process.platform === "win32")(
+    "turns a sync failure into a diagnostic on a successful init",
+    async () => {
+      const root = await makeProjectRoot("init-");
+      await installPackage(root, {
+        name: "@prisma/orm-postgres",
+        version: "8.1.0",
+        skills: ["prisma-8"],
+      });
+      // A parent the sync cannot create the skill directory in.
+      const skillsDir = path.join(root, ".claude", "skills");
+      await mkdir(skillsDir, { recursive: true });
+      await chmod(skillsDir, 0o555);
 
-    const { exitCode, result, diagnosticCodes } = await runInit(root);
+      try {
+        const { exitCode, result, diagnosticCodes } = await runInit(root);
 
-    expect(exitCode).toBe(0);
-    expect(result.skills).toEqual({ outcome: "failed", sync: null });
-    expect(diagnosticCodes).toContain("INIT.SKILLS_SYNC_FAILED");
-    expect(result.postinstall.outcome).toBe("added");
-  });
+        expect(exitCode).toBe(0);
+        expect(result.skills).toEqual({ outcome: "failed", sync: null });
+        expect(diagnosticCodes).toContain("INIT.SKILLS_SYNC_FAILED");
+        expect(result.postinstall.outcome).toBe("added");
+      } finally {
+        await chmod(skillsDir, 0o755);
+      }
+    },
+  );
 });

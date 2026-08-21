@@ -221,9 +221,10 @@ async function targetState(
   if (stamp === null) {
     // Only a SKILL.md that is genuinely missing is nobody's skill, so
     // sync may (re)write it — this is how an interrupted copy
-    // self-heals. One that exists but cannot be read may be the user's;
-    // sync must refuse it rather than destroy it.
-    return (await pathExists(skillFile)) ? "unmanaged" : "absent";
+    // self-heals. One that exists but cannot be read — or sits in a
+    // directory that cannot be inspected — may be the user's; sync
+    // must refuse it rather than destroy it.
+    return (await missingFromDisk(skillFile)) ? "absent" : "unmanaged";
   }
   if (stamp.library === null || !isSkillSourcePackage(stamp.library)) {
     return "unmanaged";
@@ -231,12 +232,12 @@ async function targetState(
   return stamp.libraryVersion === sourceVersion ? "synced" : "stale";
 }
 
-async function pathExists(target: string): Promise<boolean> {
+async function missingFromDisk(target: string): Promise<boolean> {
   try {
     await stat(target);
-    return true;
-  } catch {
     return false;
+  } catch (error) {
+    return (error as NodeJS.ErrnoException).code === "ENOENT";
   }
 }
 

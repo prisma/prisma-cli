@@ -720,6 +720,38 @@ describe("harness directories that already exist", () => {
     },
   );
 
+  it.skipIf(process.platform === "win32")(
+    "refuses a skill directory that cannot be inspected",
+    async () => {
+      const root = await makeProjectRoot();
+      await installPackage(root, {
+        name: "@prisma/orm-postgres",
+        version: "8.1.0",
+        skills: ["prisma-8"],
+      });
+      const userSkill = path.join(root, ".claude/skills", "prisma-8");
+      await mkdir(userSkill, { recursive: true });
+      const notes = path.join(userSkill, "notes.md");
+      await writeFile(notes, "# my notes\n", "utf8");
+      await chmod(userSkill, 0o000);
+
+      try {
+        const { exitCode, result } = await runSync(root);
+
+        expect(exitCode).toBe(0);
+        expect(result.refused).toEqual([
+          { skill: "prisma-8", dirs: [".claude/skills"] },
+        ]);
+        expect(result.synced.flatMap((skill) => skill.dirs)).not.toContain(
+          ".claude/skills",
+        );
+      } finally {
+        await chmod(userSkill, 0o755);
+      }
+      expect(await readFile(notes, "utf8")).toBe("# my notes\n");
+    },
+  );
+
   it("removes an old CLI's .gitignore from a copy that is already current", async () => {
     const root = await makeProjectRoot();
     await installPackage(root, {
