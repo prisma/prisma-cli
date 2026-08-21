@@ -81,7 +81,7 @@ export function createManagementProjectProvider(
       }
       if (result.error) {
         throw projectApiError(
-          "Failed to remove project",
+          "Failed to delete project",
           result.response,
           result.error,
         );

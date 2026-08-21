@@ -339,7 +339,7 @@ async function resolveExistingBranch(
       code: "ENV_BRANCH_NOT_FOUND",
       domain: "app",
       summary: `Branch "${branchName}" not found`,
-      why: "Branch update, list, and remove commands only target existing preview branches.",
+      why: "Branch update, list, and delete commands only target existing preview branches.",
       fix: "Create the branch by deploying it, or use `project env add --branch` to create its first override.",
       exitCode: 1,
       nextSteps: [

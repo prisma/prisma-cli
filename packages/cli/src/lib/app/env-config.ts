@@ -151,7 +151,7 @@ const KEY_SHAPE = /^[A-Z_][A-Z0-9_]*$/;
 
 export function validateKey(
   key: string,
-  command: "add" | "update" | "remove",
+  command: "add" | "update",
 ): void {
   if (key.length === 0) {
     throw usageError(
@@ -159,7 +159,7 @@ export function validateKey(
       "An empty key was passed.",
       "Pass an env-var key, e.g. STRIPE_KEY.",
       [
-        `prisma-cli project env ${command} STRIPE_KEY${command === "remove" ? "" : "=value"} --role production`,
+        `prisma-cli project env ${command} STRIPE_KEY=value --role production`,
       ],
       "app",
     );
@@ -181,7 +181,7 @@ export function validateKey(
       "Keys must start with an uppercase letter or underscore and contain only uppercase letters, digits, and underscores.",
       "Rename the key to match [A-Z_][A-Z0-9_]*.",
       [
-        `prisma-cli project env ${command} STRIPE_KEY${command === "remove" ? "" : "=value"} --role production`,
+        `prisma-cli project env ${command} STRIPE_KEY=value --role production`,
       ],
       "app",
     );

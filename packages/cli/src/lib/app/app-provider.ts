@@ -447,7 +447,7 @@ export function createAppProvider(
 
       if (result.error) {
         throw domainApiCallError(
-          "Failed to remove custom domain",
+          "Failed to delete custom domain",
           result.response,
           result.error,
         );

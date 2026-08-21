@@ -1537,6 +1537,24 @@ describe("prisma-cli postgres backup restore", () => {
 });
 
 describe("prisma-cli postgres delete", () => {
+  it("reports a refused deletion as a failure to delete", async () => {
+    const result = await makeCli(
+      postgresClient({
+        routes: {
+          "DELETE /v1/databases/{databaseId}": () => apiFailure(500),
+        },
+      }),
+    ).run(["postgres", "delete", "db_1", "--confirm", "db_1", "--json"], {
+      cwd: await pinnedCwd(),
+    });
+
+    expect(result.exitCode).toBe(2);
+    expect(resultFrame(result.json).envelope).toMatchObject({
+      ok: false,
+      error: { summary: "Failed to delete database" },
+    });
+  });
+
   it("deletes the database", async () => {
     const calls: Call[] = [];
     const result = await makeCli(postgresClient({ calls })).run(
