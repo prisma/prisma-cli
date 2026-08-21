@@ -73,6 +73,10 @@ const EXCLUSIONS: Readonly<Record<string, string>> = {
   "migration ref delete": ORM_FAMILY_REASON,
   "migration ref list": ORM_FAMILY_REASON,
   "migration ref set": ORM_FAMILY_REASON,
+  "skills sync":
+    "Copies files from installed packages into the project's skill directories. No management API is involved, and the whole surface is filesystem behavior the unit fixtures drive directly.",
+  "skills list":
+    "Reads the project's installed packages and skill directories. No management API is involved.",
   feedback:
     "Posts a real message to the feedback service the CLI team reads. A per-CI-run post is spam, not a test.",
   "auth login":

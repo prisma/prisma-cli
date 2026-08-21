@@ -23,6 +23,7 @@ import {
   mountedCommands,
   ormCommandFamily,
   platformCommandFamily,
+  skillsCommandFamily,
 } from "../src/cli";
 import { CLI_DOCS_URL } from "../src/cli-name";
 import { agentInstallCommand } from "../src/commands/agent/install";
@@ -159,6 +160,8 @@ const EXPECTED_MOUNT_PATHS: readonly string[] = [
   "service version show",
   "service version start",
   "service version stop",
+  "skills list",
+  "skills sync",
   "telemetry disable",
   "telemetry enable",
   "telemetry status",
@@ -168,6 +171,7 @@ const MOUNTED_FAMILIES = {
   platform: platformCommandFamily,
   composer: composerCommandFamily,
   orm: ormCommandFamily,
+  skills: skillsCommandFamily,
 };
 
 describe("prisma-cli mount coverage", () => {

@@ -68,6 +68,7 @@ import { serviceVersionRollbackCommand } from "./commands/service/version-rollba
 import { serviceVersionShowCommand } from "./commands/service/version-show";
 import { serviceVersionStartCommand } from "./commands/service/version-start";
 import { serviceVersionStopCommand } from "./commands/service/version-stop";
+import { skillsCommandFamily } from "./commands/skills/family";
 import { getCliVersion } from "./lib/version";
 
 export const platformCommandFamily: CommandFamily = defineCommandFamily({
@@ -149,6 +150,13 @@ export const composerCommandFamily: CommandFamily = createComposerFamily();
  */
 export const ormCommandFamily: CommandFamily = ormToolchainFamily;
 
+/**
+ * Skill delivery for AI coding agents: one pair of commands for every
+ * product, defined in this package because the skills travel in the
+ * product packages and only the shell sees all of them.
+ */
+export { skillsCommandFamily };
+
 /** The engine ships the three telemetry commands and the group help
  *  text that belongs to them; both halves are spread in below. */
 const telemetry = telemetryCommandGroup({ docsUrl: CLI_DOCS_URL });
@@ -182,6 +190,7 @@ export const cliGroups: Readonly<
   migration: { brief: "Plan, inspect and scaffold on-disk migrations" },
   "migration ref": { brief: "Manage named refs that point at contracts" },
   orm: { brief: "Initialize a Prisma ORM project" },
+  skills: { brief: "Keep this project's Prisma agent skills current" },
   ...telemetry.groups,
 };
 
@@ -275,6 +284,8 @@ export const mountedCommands: Readonly<Record<string, AnyCommand>> = {
   "agent install": agentInstallCommand,
   "agent update": agentUpdateCommand,
   "agent status": agentStatusCommand,
+  "skills sync": skillsCommandFamily.commands.sync,
+  "skills list": skillsCommandFamily.commands.list,
   feedback: feedbackCommand,
   // The engine's consent surface, mounted whole (no command family).
   ...telemetry.commands,
@@ -288,6 +299,7 @@ export function buildCli(): Cli {
       platformCommandFamily,
       composerCommandFamily,
       ormCommandFamily,
+      skillsCommandFamily,
     ],
     groups: cliGroups,
     commands: mountedCommands,
