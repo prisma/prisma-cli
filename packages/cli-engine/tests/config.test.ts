@@ -1,8 +1,9 @@
 /**
- * The config loader behind Runtime.loadConfig — cwd-only discovery,
- * definePrismaConfig marker semantics with the pinned Prisma 7 fail-early
- * diagnostic, the engine's closed set of section names, and
- * needs.config validation wired end to end through the harness.
+ * The config loader behind Runtime.loadConfig — upward discovery with
+ * the file-level `root` setting, definePrismaConfig marker semantics
+ * with the pinned Prisma 7 fail-early diagnostic, the engine's closed
+ * set of section names, and needs.config validation wired end to end
+ * through the harness.
  */
 import { spawnSync } from "node:child_process";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
@@ -31,6 +32,12 @@ import { afterAll, describe, expect, test } from "vitest";
 const TESTS_DIR = dirname(fileURLToPath(import.meta.url));
 
 const FIXTURES = join(TESTS_DIR, "fixtures", "config");
+
+const MARKED_CONFIG = (greeting: string) =>
+  `import { definePrismaConfig } from "@prisma/cli-engine";
+
+export default definePrismaConfig({ toy: { greeting: "${greeting}" } });
+`;
 
 const EPOCH = () => new Date(0);
 const T0 = "1970-01-01T00:00:00.000Z";
@@ -70,10 +77,11 @@ describe("loadConfig", { timeout: 60_000 }, () => {
     });
   });
 
-  test("discovery is cwd-only: a config in the parent directory is not found", async () => {
-    expect(await loadConfig(join(FIXTURES, "marked", "nested"))).toEqual({
-      path: join(FIXTURES, "marked", "nested", "prisma.config.ts"),
-      sections: {},
+  test("a config only in a parent directory is found by the upward walk", async () => {
+    expect(await loadConfig(join(FIXTURES, "walk", "empty"))).toEqual({
+      path: join(FIXTURES, "walk", "prisma.config.ts"),
+      root: true,
+      sections: { toy: { greeting: "top" } },
       diagnostics: [],
     });
   });
@@ -152,6 +160,137 @@ describe("loadConfig", { timeout: 60_000 }, () => {
     expect(loaded.diagnostics[0].diagnostic.summary).toBe(
       `${join(FIXTURES, "unreadable", "prisma.config.ts")} could not be evaluated: boom at config evaluation time`,
     );
+  });
+});
+
+/**
+ * Fixture trees for the walk carry `root: true` at their top so the
+ * search can never escape into a real ancestor directory — a stray
+ * prisma.config.ts above the repository must not change what these
+ * tests find. Only the topmost-wins and single-config cases run
+ * unanchored, in a fresh temp tree, because any anchor would itself
+ * become the file the walk stops at.
+ */
+describe("discovery walks upward", { timeout: 60_000 }, () => {
+  const WALK = join(FIXTURES, "walk");
+
+  test("root: true in a parent is the anchor even when cwd has its own config", async () => {
+    const loaded = await loadConfig(join(WALK, "middle"));
+    expect(loaded.path).toBe(join(WALK, "prisma.config.ts"));
+    expect(loaded.root).toBe(true);
+    expect(loaded.sections).toEqual({ toy: { greeting: "top" } });
+  });
+
+  test("root: true in cwd stops the walk there, above configs notwithstanding", async () => {
+    const loaded = await loadConfig(join(WALK, "nested-root"));
+    expect(loaded.path).toBe(join(WALK, "nested-root", "prisma.config.ts"));
+    expect(loaded.root).toBe(true);
+    expect(loaded.sections).toEqual({ toy: { greeting: "nested" } });
+  });
+
+  test("with no config in cwd, the walk passes plain configs on its way to a root", async () => {
+    const loaded = await loadConfig(join(WALK, "middle", "leaf"));
+    expect(loaded.path).toBe(join(WALK, "prisma.config.ts"));
+  });
+
+  test("without any root: true, the topmost config found wins", async () => {
+    mkdirSync(SANDBOX_ROOT, { recursive: true });
+    const root = mkdtempSync(join(SANDBOX_ROOT, "walk-"));
+    const parent = join(root, "parent");
+    const child = join(parent, "child");
+    mkdirSync(child, { recursive: true });
+    writeFileSync(
+      join(parent, "prisma.config.ts"),
+      MARKED_CONFIG("from the parent"),
+    );
+    writeFileSync(
+      join(child, "prisma.config.ts"),
+      MARKED_CONFIG("from the child"),
+    );
+    const loaded = await loadConfig(child);
+    expect(loaded.path).toBe(join(parent, "prisma.config.ts"));
+    expect(loaded.root).toBeUndefined();
+    expect(loaded.sections).toEqual({ toy: { greeting: "from the parent" } });
+  });
+
+  test("a single config in cwd behaves as before the walk existed", async () => {
+    mkdirSync(SANDBOX_ROOT, { recursive: true });
+    const root = mkdtempSync(join(SANDBOX_ROOT, "walk-"));
+    writeFileSync(join(root, "prisma.config.ts"), MARKED_CONFIG("all alone"));
+    const loaded = await loadConfig(root);
+    expect(loaded).toEqual({
+      path: join(root, "prisma.config.ts"),
+      sections: { toy: { greeting: "all alone" } },
+      diagnostics: [],
+    });
+  });
+
+  test("--config bypasses the walk: ancestor configs are ignored", async () => {
+    const named = join(FIXTURES, "named", "elsewhere.config.ts");
+    const loaded = await loadConfig(join(WALK, "middle", "leaf"), named);
+    expect(loaded).toEqual({
+      path: named,
+      sections: { toy: { greeting: "from the named file" } },
+      diagnostics: [],
+    });
+  });
+});
+
+describe("the file-level root setting", { timeout: 60_000 }, () => {
+  test("root: false is accepted, surfaced, and does not stop the walk within its own directory load", async () => {
+    const loaded = await loadConfig(join(FIXTURES, "root-false"));
+    expect(loaded.path).toBe(join(FIXTURES, "root-false", "prisma.config.ts"));
+    expect(loaded.root).toBe(false);
+    expect(loaded.sections).toEqual({ toy: { greeting: "unrooted" } });
+    expect(loaded.diagnostics).toEqual([]);
+  });
+
+  test("root never appears among the sections", async () => {
+    const loaded = await loadConfig(join(FIXTURES, "walk", "nested-root"));
+    expect(Object.hasOwn(loaded.sections, "root")).toBe(false);
+  });
+
+  test("a non-boolean root refuses the file with a typed diagnostic", async () => {
+    const path = join(FIXTURES, "root-invalid", "prisma.config.ts");
+    expect(await loadConfig(join(FIXTURES, "root-invalid"))).toEqual({
+      path,
+      sections: {},
+      diagnostics: [
+        {
+          section: null,
+          diagnostic: {
+            code: "CLI.CONFIG_ROOT_INVALID",
+            severity: "error",
+            summary: `${path} sets 'root' to a value that is not a boolean.`,
+            why: "'root' is a file-level setting read during config discovery: 'root: true' stops the upward search at this file. It is not a config section, and only true or false mean anything.",
+            nextActions: [
+              {
+                kind: "user-choice",
+                label: "Set root to true or false, or remove the key.",
+              },
+            ],
+            where: { path },
+          },
+        },
+      ],
+    });
+  });
+
+  test("root is never reported as an unknown section, end to end", async () => {
+    const section = toySection();
+    const show = showCommand(section);
+    const cli = createTestCli({
+      commandFamilies: [
+        defineCommandFamily({ configSection: section, commands: { show } }),
+      ],
+      commands: { show },
+      loadConfig: (configPath) =>
+        loadConfig(join(FIXTURES, "walk", "nested-root"), configPath),
+    });
+    const run = await cli.run(["show"], { isTty: { stdout: true } });
+    expect(run.stderr).not.toContain("CLI.CONFIG_UNKNOWN_SECTION");
+    expect(run.exitCode).toBe(0);
+    expect(run.presented?.data).toEqual({ greeting: "nested" });
   });
 });
 

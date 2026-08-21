@@ -312,6 +312,7 @@ export async function loadConfig(
   for (let dir = base; ; ) {
     const candidate = join(dir, CONFIG_FILE_NAME);
     if (existsSync(candidate)) {
+      // biome-ignore lint/performance/noAwaitInLoops: candidates are read in walk order, and a `root: true` result ends the walk before the next candidate is touched.
       topmost = await loadConfigFile(candidate);
       if (topmost.root === true) {
         return topmost;
@@ -324,6 +325,10 @@ export async function loadConfig(
     dir = parent;
   }
   return (
-    topmost ?? { path: join(base, CONFIG_FILE_NAME), sections: {}, diagnostics: [] }
+    topmost ?? {
+      path: join(base, CONFIG_FILE_NAME),
+      sections: {},
+      diagnostics: [],
+    }
   );
 }
