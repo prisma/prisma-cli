@@ -70,14 +70,10 @@ mimic the contract (stamped `skills/prisma-8/` trees).
 
 ### Slice 3 — prisma/prisma: init wiring (phase 3)
 
-Repo: prisma/prisma. Brief item 8.
-Replace `DEFAULT_SKILL_SOURCES` `skills add` invocations with one direct
-sync run + `"postinstall": "prisma skills sync || exit 0"` via
-`hygiene-package-scripts.ts`; gitignore entries via
-`hygiene-gitignore.ts`; keep `RETIRED_SKILL_NAMES` cleanup; retire the
-`skillInstall` failure path (exit-6 finding); `--skip-skills` = no sync,
-no script. Update
+**AMENDED 2026-08-21 (operator):** no postinstall writing, no root-gitignore entries — see design-notes.md amendments. Init keeps exactly one touchpoint: run `prisma skills sync` once at scaffold time (`--skip-skills` skips it), keep `RETIRED_SKILL_NAMES` cleanup, retire the `skillInstall` failure path. Gitignoring moves into sync itself (nested `.gitignore` per managed dir, slice 2). Update
 `test/integration/test/cli.init-skill-distribution.integration.test.ts`.
+
+Original scope (superseded): replace `DEFAULT_SKILL_SOURCES` `skills add` invocations with one direct sync run + `"postinstall": "prisma skills sync || exit 0"` via `hygiene-package-scripts.ts`; gitignore entries via `hygiene-gitignore.ts`.
 
 - **Builds on:** slice 1 (same repo, folded layout, error-reference
   state), slice 2 (command surface, textual).

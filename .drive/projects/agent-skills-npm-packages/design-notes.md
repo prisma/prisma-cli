@@ -1,5 +1,14 @@
 # Design notes — agent-skills-npm-packages
 
+## Operator amendments, 2026-08-21 (supersede the brief below where they conflict)
+
+1. **No init wiring.** Skills delivery must not hang off `prisma orm init` — the skills tool serves the whole Prisma product family, not the ORM. Init's only remaining touchpoint is running `prisma skills sync` once at scaffold time (`--skip-skills` skips it). This supersedes brief §3 and plan slice 3's original scope.
+2. **Nothing edits the user's package.json.** The postinstall-script mechanism (`"postinstall": "prisma skills sync || exit 0"`, written by init) is dead, and sync must never write or re-add it either — a removed script stays removed. The durable trigger is the per-command staleness check alone: after an upgrade, the next `prisma` command prints the sync advice. Sync's output and the docs may show the postinstall one-liner as advice the user can paste themselves. This supersedes the brief's "Decisions already made" entry "User's root postinstall, with `|| exit 0`".
+3. **Gitignoring is self-contained.** Sync writes a `.gitignore` containing `*` inside each skill directory it manages, instead of anyone editing the project's root `.gitignore`.
+4. **No legacy string mapping.** The `fromLegacyCliError`/`renameAppCopy` rewriter in prisma-cli is deleted; producers emit current command spellings directly. The CLI is pre-rc and owes old spellings nothing (same precedent as prisma-cli#218).
+
+Original brief v2 follows; read it through the amendments above.
+
 Authoritative design: operator brief v2 below ("agreed design, ready to
 implement"), delivered 2026-08-21. It supersedes brief v1 ("draft for
 review"), which differed in three ways v2 explicitly resolves: v1's
