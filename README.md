@@ -28,7 +28,7 @@ pnpm prisma-cli project env list --role preview
 ```
 
 Deployments start from pushing the connected repository, the Console, or
-`prisma-cli composer deploy` — there is no standalone deploy command.
+`prisma-cli deploy`.
 
 ## Local Development
 
@@ -86,10 +86,11 @@ prisma <group> <action>
 ```
 
 The package includes project, environment-variable, service and deployment
-inspection, promotion, rollback, and removal commands, plus the Prisma ORM
-(`contract`, `db`, `migrate`, `migration`, `orm init`) and Composer
-workflows, and the `postgres` and `bucket` resource groups. The product
-model intentionally avoids product-specific namespaces.
+inspection, promotion, rollback, and deletion commands, plus the Prisma ORM
+(`contract`, `db`, `migration`, `orm init`) and Composer
+workflows (root `dev` and `deploy`), and the `postgres` and `bucket`
+resource groups. The product model intentionally avoids product-specific
+namespaces.
 
 ## Documentation
 

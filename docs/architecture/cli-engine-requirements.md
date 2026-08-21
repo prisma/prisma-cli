@@ -155,7 +155,7 @@ references, and nothing about the tree is discovered at run time.
 help without executing product code, and fails at build time when it is wrong.
 The expensive parts — driver stacks, Composer's dependency tree (which imports
 the user's own modules and has crashed at import in the past) — stay out of
-the startup path, so `prisma migrate` can never be taken down by a product it
+the startup path, so `prisma db migrate` can never be taken down by a product it
 isn't using. The split follows the existing design for isolating heavy
 dependency subtrees behind execution-time imports.
 
@@ -214,8 +214,9 @@ and how to install it with the user's own package manager.
 Running the user's own package manager is a different act, and a command
 may do it: adding dependencies to the project the user is working in, or
 running a package's binary once, because the user asked for it. The case
-this exists for is `prisma init`, which scaffolds a project and then
-installs the dependencies it just wrote into `package.json`. A command
+this exists for is a scaffolding command like `prisma orm init`, which
+sets up a project and then installs the dependencies it just wrote into
+`package.json`. A command
 declares that it installs packages, and the work goes through the engine's
 package operations, whose terms are what keep the two apart. The manager
 is the one the user's project already uses, detected rather than imposed.

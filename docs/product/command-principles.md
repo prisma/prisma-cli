@@ -28,14 +28,13 @@ Use the other convention docs for adjacent concerns:
 
 The long-term command surface grows through workflow groups such as:
 
-- `init`
 - `agent`
 - `auth`
 - `project`
 - `branch`
 - `schema`
 - `database`
-- `migrate`
+- `db`
 - `app`
 - `git`
 
@@ -97,6 +96,13 @@ Build and release an app into a target branch.
 ### `logs`
 
 Resolve a deployment and show or stream its logs.
+
+### `delete` and `remove`
+
+`delete` destroys a resource; `remove` detaches one thing from another
+without destroying it. A command that permanently destroys what it
+targets is spelled `delete` (`project delete`, `service delete`,
+`postgres delete`); `remove` is reserved for detachment.
 
 ### `wait`
 

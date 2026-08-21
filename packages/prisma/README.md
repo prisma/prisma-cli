@@ -39,7 +39,7 @@ npx prisma git connect git@github.com:owner/repo.git
 ```
 
 Deployments start from pushing the connected repository, the Console, or
-`prisma composer deploy` — there is no standalone deploy command.
+`prisma deploy`.
 
 With `pnpm`:
 
@@ -70,13 +70,11 @@ npx prisma project env list --role preview
 | `project` | List, create, link, and manage projects and their environment variables. |
 | `git` | Connect or disconnect a project from a GitHub repository; pushes deploy. |
 | `branch` | List Prisma branches for the resolved project. |
-| `postgres` | Create, inspect, restore, and remove Prisma Postgres databases and their connections. |
+| `postgres` | Create, inspect, back up, restore, and delete Prisma Postgres databases and their connections. |
 | `bucket` | Create, list, and delete object-store buckets and their access keys. |
-| `service` | Inspect services: deployments, logs, domains, promote, roll back, remove. |
-| `build` | Stream platform build logs. |
-| `composer` | Deploy, destroy, and develop Composer apps. |
-| `contract`, `db`, `migrate`, `migration`, `format`, `orm init`, `lsp` | The Prisma ORM workflow. |
-| `init` | Write a committed compute config for the project. |
+| `service` | Inspect services: deployments, logs, domains, promote, roll back, delete. |
+| `dev`, `deploy` | Run a Composer app locally; deploy it to the platform. |
+| `contract`, `db`, `migration`, `orm init`, `lsp` | The Prisma ORM workflow. |
 
 Common examples:
 
