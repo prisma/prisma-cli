@@ -34,6 +34,7 @@ asks Opus-4.8-mid; unavailable in this session, using Opus.
 | Slice 3 | Round 4 (CI repair) | SATISFIED — the e2e harness now fakes the package init installs, the test's proof is intact, nothing else touched |
 | Slice 2 | Round 6 (operator amendments) | SATISFIED — the rewriter is gone with no producer left on an old spelling, and amendments 2 and 3 hold; no new findings |
 | Slice 3 | Round 5 (operator amendments) | ANOTHER ROUND NEEDED (amendments 1 and 2 met in code and tests; one new low finding, S3-R5-1, a doc left describing the retired postinstall) |
+| Slice 3 | Round 6 | SATISFIED — S3-R5-1 fixed, the entry now names the staleness notice, and the commit is that one document |
 
 ## Findings log
 
@@ -1055,5 +1056,13 @@ Per the review brief I did not re-run anything; the implementer reports 1037 pas
 **The one finding, S3-R5-1**, is `docs/reference/error-reference.md`, which still tells the reader init writes a postinstall that repeats the sync on every install. `skills/README.md` was corrected in the same commit, so the two documents now disagree.
 
 Per the review brief I did not re-run anything; the implementer reports 1436 CLI tests, 17 of 17 integration, 115 of 115 e2e, and a clean typecheck.
+
+**Slice 3, round 6 — `373493dc`. SATISFIED.** S3-R5-1 is fixed and I have no new findings.
+
+The `CLI.INIT_SKILL_INSTALL_FAILED` entry now says init copies the skills in by running `prisma skills sync` once at scaffold time, and the second paragraph names the per-command staleness notice as what keeps the copies current, including that it names the sync command to run. Both clauses about a postinstall are gone. The rest of the entry — the retirement itself, the old GitHub fetch it describes, and the exit codes — is unchanged and still correct.
+
+The commit is that one file, two lines replaced by two. Nothing else moved.
+
+**Leaving `docs/oss/pr-triage.md` alone is the right call.** That line is part of a checklist for reviewing an incoming pull request for supply-chain risk: it tells a reviewer to read `package.json` script entries closely, naming `preinstall`, `install`, `postinstall` and `prepare` as the ones that run code on install. It is about a class of manifest entry in any pull request, not about anything this project ships, so it stays true whatever init does. Editing it would have been the mistake.
 
 ## Orchestrator notes
