@@ -26,7 +26,7 @@
   intermittent). Fix: a `dependsOn` on the engine's build in turbo.json.
   Origin: slice 2 implementer, 2026-08-21.
 
-- **Windows CI: `credential-manager.test.ts` "holds no lock while the workspace name is fetched" flaked once** (run 32477175789, 2026-08-21; expected 'Workspace A', got undefined). Pre-existing timing-sensitive test, untouched by this project; passed on rerun. Needs an owner if it recurs.
+- **Windows CI: `credential-manager.test.ts` "holds no lock while the workspace name is fetched" flaked once** (run 32477175789, 2026-08-21; expected 'Workspace A', got undefined). Pre-existing timing-sensitive test, untouched by this project; passed on rerun. A second credential-manager Windows flake followed the same day: `credential-manager-processes.test.ts` "exchanges one refresh token once when two processes refresh the same session" failed with "worker refresh failed: API request failed" (run 32497093995, 2026-08-21), on a push touching nothing near credentials. Two distinct timing-sensitive tests in this suite have now flaked on Windows; the suite needs an owner.
 
 - **Windows CI: `skills-sync.test.ts` "does nothing and exits 0 when every copy is current" timed out once at the 5s default** (run 32474645762, 2026-08-21), with a teardown ENOTEMPTY consistent with cleanup racing the timed-out test. First run of the same code passed it; likely a slow runner. If it recurs, give the skills-sync suite a longer per-test timeout on Windows rather than chasing the race.
 
