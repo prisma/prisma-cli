@@ -4,7 +4,7 @@
  * layouts npm and pnpm produce, a workspace with two members, and every
  * state a copy can be in.
  */
-import { mkdir, readFile, rm, stat, writeFile } from "node:fs/promises";
+import { chmod, mkdir, readFile, rm, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { createTestCli } from "@prisma/cli-engine/testing";
 import { describe, expect, it } from "vitest";
@@ -681,6 +681,44 @@ describe("harness directories that already exist", () => {
       "Agent skills are up to date; 1 directory is not managed by this CLI.",
     );
   });
+
+  it.skipIf(process.platform === "win32")(
+    "refuses a SKILL.md that exists but cannot be read",
+    async () => {
+      const root = await makeProjectRoot();
+      await installPackage(root, {
+        name: "@prisma/orm-postgres",
+        version: "8.1.0",
+        skills: ["prisma-8"],
+      });
+      const userSkill = path.join(root, ".claude/skills", "prisma-8");
+      await mkdir(userSkill, { recursive: true });
+      const skillFile = path.join(userSkill, "SKILL.md");
+      await writeFile(skillFile, "---\nname: prisma-8\n---\n\nMine.\n", "utf8");
+      const notes = path.join(userSkill, "notes.md");
+      await writeFile(notes, "# my notes\n", "utf8");
+      await chmod(skillFile, 0o000);
+
+      try {
+        const { exitCode, result } = await runSync(root);
+
+        expect(exitCode).toBe(0);
+        expect(result.refused).toEqual([
+          { skill: "prisma-8", dirs: [".claude/skills"] },
+        ]);
+        expect(result.synced.flatMap((skill) => skill.dirs)).not.toContain(
+          ".claude/skills",
+        );
+        expect(await exists(notes)).toBe(true);
+        expect(await exists(skillFile)).toBe(true);
+      } finally {
+        await chmod(skillFile, 0o644);
+      }
+      expect(await readFile(skillFile, "utf8")).toBe(
+        "---\nname: prisma-8\n---\n\nMine.\n",
+      );
+    },
+  );
 
   it("removes an old CLI's .gitignore from a copy that is already current", async () => {
     const root = await makeProjectRoot();

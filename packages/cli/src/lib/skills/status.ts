@@ -24,9 +24,10 @@ export interface InstalledSourcePackage {
 }
 
 /** "unmanaged": the directory holds a SKILL.md this CLI did not write —
- *  unstamped, or stamped by a package outside the allowlist. Sync never
- *  touches it. A directory without a SKILL.md reads as "absent" so an
- *  interrupted copy is repaired by the next sync. */
+ *  unstamped, unreadable, or stamped by a package outside the
+ *  allowlist. Sync never touches it. A directory without a SKILL.md
+ *  reads as "absent" so an interrupted copy is repaired by the next
+ *  sync. */
 export type SkillTargetState = "synced" | "stale" | "absent" | "unmanaged";
 
 export interface SkillTarget {
@@ -191,12 +192,12 @@ async function readSkillStatus(
 ): Promise<SkillStatus> {
   const targets: SkillTarget[] = [];
   for (const dir of HARNESS_SKILL_DIRS) {
-    const skillDir = path.join(projectRoot, dir, source.skill);
-    const stamp = await readSkillStamp(path.join(skillDir, "SKILL.md"));
+    const skillFile = path.join(projectRoot, dir, source.skill, "SKILL.md");
+    const stamp = await readSkillStamp(skillFile);
     targets.push({
       dir,
       syncedVersion: stamp?.libraryVersion ?? null,
-      state: stampState(stamp, source.version),
+      state: await targetState(skillFile, stamp, source.version),
     });
   }
 
@@ -212,19 +213,31 @@ async function readSkillStatus(
   };
 }
 
-function stampState(
+async function targetState(
+  skillFile: string,
   stamp: SkillStamp | null,
   sourceVersion: string,
-): SkillTargetState {
-  // A null stamp means no readable SKILL.md: nobody's skill, so sync
-  // may (re)write it — this is how an interrupted copy self-heals.
+): Promise<SkillTargetState> {
   if (stamp === null) {
-    return "absent";
+    // Only a SKILL.md that is genuinely missing is nobody's skill, so
+    // sync may (re)write it — this is how an interrupted copy
+    // self-heals. One that exists but cannot be read may be the user's;
+    // sync must refuse it rather than destroy it.
+    return (await pathExists(skillFile)) ? "unmanaged" : "absent";
   }
   if (stamp.library === null || !isSkillSourcePackage(stamp.library)) {
     return "unmanaged";
   }
   return stamp.libraryVersion === sourceVersion ? "synced" : "stale";
+}
+
+async function pathExists(target: string): Promise<boolean> {
+  try {
+    await stat(target);
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 /**
