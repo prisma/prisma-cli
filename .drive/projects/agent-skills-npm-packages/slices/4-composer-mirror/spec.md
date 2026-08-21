@@ -23,7 +23,7 @@ instead of `npx skills add`.
    `"skills"` to `files`). Add a tarball-content test if the repo has a
    publish-surface check pattern; otherwise a test that the packed
    tarball contains the stamped SKILL.md.
-2. **Stamp.** Frontmatter `library: "@prisma/composer"` and
+2. **Stamp.** (Amended: keys live under the spec's `metadata` map, string values.) Frontmatter `library: "@prisma/composer"` and
    `library_version`, stamped by composer's version pipeline (find its
    equivalent of set-version; wire the stamp there, with a test).
 3. **Docs.** Repoint `skills/README.md`, the repo README, and

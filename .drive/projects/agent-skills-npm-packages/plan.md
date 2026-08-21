@@ -15,7 +15,11 @@ dependency only — init writes the string `prisma skills sync`).
 
 - Skill tree ships at `<package>/skills/<skill-name>/` with `SKILL.md` +
   `references/`; skill names: `prisma-8`, `prisma-composer`.
-- Frontmatter keys: `library` (npm package name), `library_version`
+- Frontmatter stamp lives under the spec's `metadata` map (amended
+  2026-08-21 after checking the Agent Skills spec: custom top-level keys
+  are not defined by the spec; extensions belong under `metadata`, a
+  string→string map validated by `skills-ref`):
+  `metadata.library` (npm package name), `metadata.library_version`
   (stamped to the lockstep version by each repo's version pipeline).
 - Anchor packages / allowlist: `@prisma/orm-postgres`,
   `@prisma/orm-sqlite`, `@prisma/orm-mongo`, `@prisma/composer`.

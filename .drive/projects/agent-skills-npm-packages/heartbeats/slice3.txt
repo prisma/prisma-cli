@@ -1,0 +1,5 @@
+2026-08-21T10:02:26Z slice3 start — branch init-skills-wiring off skills-in-tarball-packaging; reading init path
+2026-08-21T10:08:53Z slice3 tasks1-3 done (dc2ad69 hygiene, a5a1b52 init rewiring; 1443 CLI tests pass); next: task4 error-reference retirement + task5 integration test
+2026-08-21T10:11:52Z slice3 paused at 257868b (all 5 tasks implemented); switching to slice1 branch for metadata-stamp amendment
+2026-08-21T10:18:50Z slice3 done — rebased onto amended slice1 (c95e2d0); gate green: 1443 CLI tests, 5 integration tests, typecheck, package lint, clean tree; not pushed
+2026-08-21T10:40:41Z slice3 R1 rework — S3-R1-1 fixed: init installs prisma@next; engine probe, emit spawn, contract:emit script, templates and sync advice all name the prisma bin (26df6a2); gate green; pushed

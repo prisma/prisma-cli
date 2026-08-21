@@ -27,7 +27,7 @@ in), version-stamped, and ships inside the `@prisma/orm-postgres`,
    outdated; the installed version's skill is the source of truth.
    Delete the two standalone skill directories; router routing table
    gains the upgrading entries.
-2. **Stamp.** Add `library` (anchor package name — use
+2. **Stamp.** (Amended: keys live under the spec's `metadata` map — `metadata.library`, `metadata.library_version`, string values.) Add `library` (anchor package name — use
    `@prisma/orm-postgres` as the canonical value in the source tree, or
    decide a better convention and note it) and `library_version`
    frontmatter to `skills/prisma-8/SKILL.md`. Make

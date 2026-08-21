@@ -2,3 +2,7 @@
 2026-08-21T09:36:05Z task1 done — fold committed (29a0ee0) + coverage-check repointed (f95e12f, 78 script tests pass); next: task2 set-version stamping
 2026-08-21T09:40:28Z RECOVERY — .refs/prisma was deleted externally ~11:38, losing branch + 3 commits; re-cloned prisma/prisma at fc3a9ee, re-created branch, redoing tasks 1-3 from context
 2026-08-21T09:44:52Z tasks1-3 redone on fresh clone (a886d2e,6e390c2,87b4376,f705df7); tarball verified to carry 63 stamped skill files; next: task4 docs
+2026-08-21T09:47:08Z task4 docs done, branch pushed to origin (5 commits, no PR); next: validation gate
+2026-08-21T10:00:00Z gate green — coverage check, skill lint, 481 script tests, publish-surface (66), CLI package (1430), init-skill-distribution integration, ratchets, clean-tree, publish-deps all pass; branch pushed (9 commits); slice done
+2026-08-21T10:15:32Z slice1 amendment — stamp moved to metadata.library/library_version (quoted), stampSkillMetadata shared by set-version + sync-package-skills, skill lint rejects non-string metadata; c95e2d0 pushed
+2026-08-21T10:29:12Z slice1 R1 rework — S1-R1-1 fixed: publish-surface test now deletes the staged tree, runs pnpm pack, and reads the skill out of the tarball (900db17); mutation-checked both failure modes; pushed

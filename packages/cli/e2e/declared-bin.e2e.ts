@@ -17,7 +17,11 @@ const execFileAsync = promisify(execFile);
 const packageRoot = path.resolve(import.meta.dirname, "..");
 
 describe("the declared bin", () => {
-  it("maps prisma to the built CLI", () => {
+  // The npm package is `@prisma/cli` and its bin is `prisma-cli`; the
+  // sibling `prisma` package ships the same shell as `prisma`. This
+  // assertion is about what THIS package publishes, so it names
+  // prisma-cli deliberately — do not "fix" it to match CLI_NAME.
+  it("maps prisma-cli to the built CLI", () => {
     expect(packageJson.bin).toEqual({ "prisma-cli": "./dist/cli.js" });
   });
 
