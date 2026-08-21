@@ -43,7 +43,11 @@ export async function maybeWriteSkillsStaleNotice(
     if (await readSkillsCheckDisabled(projectRoot)) {
       return;
     }
-    const status = await readSkillsStatus(runtime.cwd, { orphans: false });
+    const status = await readSkillsStatus(runtime.cwd, {
+      orphans: false,
+      projectRoot,
+      checkDisabled: false,
+    });
     if (status.upToDate) {
       return;
     }

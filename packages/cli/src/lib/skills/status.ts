@@ -72,14 +72,20 @@ export interface SkillsStatusOptions {
   /** Set false to skip the orphan scan; the staleness notice never
    *  reads it. */
   readonly orphans?: boolean;
+  /** A root the caller already resolved, so the ancestor walk is not
+   *  repeated. */
+  readonly projectRoot?: string;
+  /** An opt-out flag the caller already read from that root. */
+  readonly checkDisabled?: boolean;
 }
 
 export async function readSkillsStatus(
   cwd: string,
   options?: SkillsStatusOptions,
 ): Promise<SkillsStatus> {
-  const projectRoot = await findProjectRoot(cwd);
-  const checkDisabled = await readSkillsCheckDisabled(projectRoot);
+  const projectRoot = options?.projectRoot ?? (await findProjectRoot(cwd));
+  const checkDisabled =
+    options?.checkDisabled ?? (await readSkillsCheckDisabled(projectRoot));
   const packages = await findInstalledSourcePackages(projectRoot);
   const sources = await collectSkillSources(packages);
   const skills: SkillStatus[] = [];
