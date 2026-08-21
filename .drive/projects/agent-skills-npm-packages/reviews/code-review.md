@@ -1175,3 +1175,51 @@ The opt-out fix reads the same two things twice. `maybeWriteSkillsStaleNotice` c
 **E — the browser success page's `npx skills add prisma/skills` copy button — escalate to operator, recommend deleting it.** Confirmed still present at `packages/cli/src/auth/login.ts:571` and `:582` (asserted at `tests/auth-login.test.ts:61`). It is the same third-party installer ecosystem the `agent` group wrapped, and it is now the only surface in the product still promoting it. After this PR the CLI's answer to "using an AI coding agent?" is `prisma init`, so the page contradicts the CLI in the one place a brand-new user is most likely to look. It is a separate surface and out of the stated scope, so it is the operator's call whether it dies here or in a follow-up — but it should not survive the group indefinitely.
 
 **ANOTHER ROUND NEEDED** — three defects must be fixed in this PR before the slice is correct: `init` exits 1 on an unwritable `package.json` (INIT-R2-1), it silently destroys a non-object `scripts` value (INIT-R2-2), and it reports "up to date" while dropping the unmanaged-directory refusal the round was built to add (INIT-R2-3).
+
+### Init slice — Round 3 (verification)
+
+**Verification run locally:** `pnpm --filter @prisma/cli test` → 61 files, 911 passed / 1 skipped, exit 0. `pnpm --filter @prisma/cli typecheck` → clean. `pnpm lint` still cannot be run: biome aborts with `fatal runtime error: stack overflow` on every input in this worktree, unchanged from round 2, so lint conformance remains unverified. Everything below was exercised against the built binary (`packages/cli/dist/cli.js`) in throwaway fixture projects with a stub `@prisma/orm-postgres@8.1.0` shipping one skill, not read off the diff.
+
+The login success page's `npx skills add prisma/skills` button is untouched by these seven commits (`packages/cli/src/auth/login.ts:571,582` unchanged); it stays with the operator and is not reviewed further.
+
+#### Per-finding verdicts
+
+**INIT-R2-1 — fixed.** chmod-444 `package.json`: exit 0, `postinstall: {"outcome":"skipped","script":null}`, diagnostic `INIT.PACKAGE_JSON_UNWRITABLE` with the append advice, file bytes unchanged. The skills step still ran and synced. Covered by a test that is skipped on Windows for the right reason.
+
+**INIT-R2-2 — fixed.** `{"scripts": "oops"}`: exit 0, `outcome: "kept"`, diagnostic `INIT.SCRIPTS_NOT_AN_OBJECT`, file byte-identical (verified with `xxd`). `scripts: null` also lands in this branch rather than being overwritten, which is the conservative side.
+
+**INIT-R2-3 — fixed.** With a hand-written `.claude/skills/prisma-8/SKILL.md`: `prisma init` prints `Synced 1 skill; 1 directory is not managed by this CLI.`, an `Unmanaged skill / Left untouched in` table, and the `SKILLS.UNMANAGED_DIRECTORY` diagnostic; `prisma skills sync` prints `Agent skills are up to date; 1 directory is not managed by this CLI.` with the same table and diagnostic, and JSON carries `refused: [{"skill":"prisma-8","dirs":[".claude/skills"]}]`. No unqualified "Agent skills are up to date." appears on either path. `skills list` gained the same clause, which also closes the decision-B presentational over-claim from round 2. The user's file was left byte-for-byte intact.
+
+**INIT-R2-4 — fixed, with one narrow regression (see INIT-R3-2).** A partial copy (`.claude/skills/prisma-8/references/usage.md`, no `SKILL.md`) is now classified `absent` and fully rewritten by the next sync: `synced` lists all four harness dirs, `refused` is empty, the stale partial file is gone, and the stamp reads 8.1.0. A real user-authored `SKILL.md` still reads `unmanaged` and is refused, because `readSkillStamp` returns an empty stamp (not `null`) for any readable file — so the `stamp === null → absent` rule only catches files that cannot be read at all. `findOrphanedSkills` is unaffected: it only walks directories that hold a `SKILL.md`, so the partial tree is never a prune candidate, and the repair path owns it. The `sync.ts:1` header comment now describes the real behavior.
+
+**INIT-R2-5 — fixed.** A project already current at 8.1.0 with a `*` `.gitignore` planted in two managed copies: `skills sync` removed both, `synced` and `pruned` stayed empty, and `SKILL.md` kept the same md5 before and after — cleaned on the no-op path without a resync. See INIT-R3-3 for the side effect this creates.
+
+**INIT-R2-6 — fixed.** BOM'd manifest: exit 0, `outcome: "added"`, output still begins `ef bb bf` and the hook is present.
+
+**INIT-R2-7 — fixed.** CRLF manifest: exit 0, `outcome: "added"`, every line ending in the rewritten file is `\r\n` including the trailing one (verified with `xxd`). Mixed-ending files are normalized to CRLF, which is an acceptable choice for an already-inconsistent file.
+
+**INIT-R2-8 — partly fixed.** The status read is wrapped and returns `null` on throw, `{ orphans: false }` is passed, and both are asserted in the new `tests/agent-setup-tip.test.ts`. But the guard stops one line short: `resolvePrismaCliPackageCommand` at `agent-setup-tip.ts:38` still runs outside the `try`, and it does throw on an unreadable `package.json` — see INIT-R3-1.
+
+**INIT-R2-9 — fixed.** No `setupPromptDismissedAt` remains anywhere in the tree (source, tests, docs, fixtures). `LocalStateStore.read` rebuilds the state from named keys only, so a state file written by an older CLI that still carries `agent: { … }` parses without error; the key is simply dropped the next time the file is written, which is correct now that nothing owns it.
+
+**INIT-R2-10 — fixed.** `docs/product/output-conventions.md` now states the refusal rule, the `SKILLS.UNMANAGED_DIRECTORY` diagnostic, the `refused` array, the `unmanaged` State column value, the "does not count as out of date" rule, the exact non-over-claiming summary line, and the "directory without a `SKILL.md` is treated as absent" rule; it also restores a sentence saying the synced copies are ordinary git-tracked files. `command-principles.md` adds `skills` and `init` to the preview-scope list and the split between cwd's `package.json` and the workspace root. No new prose is hard-wrapped, and none of the banned words appears in any added line.
+
+**INIT-R2-11 — fixed.** `skills-check.ts:46-50` passes the resolved `projectRoot` and `checkDisabled: false`, and `readSkillsStatus` honours both. `checkDisabled: false` is exactly what the second read would have produced, since the function has already returned when the flag is true, and `renderStaleNotice` never reads the field. Behavior unchanged; the duplicate ancestor walk and file read are gone.
+
+#### New findings
+
+**INIT-R3-1 — low — `packages/cli/src/commands/auth/agent-setup-tip.ts:38`**
+
+The tip can still fail a login that succeeded. Only `readSkillsStatus` was wrapped; `resolvePrismaCliPackageCommand` runs after the `try/catch` and walks every ancestor directory reading each `package.json` with `readFileSync`, rethrowing anything that is not ENOENT (`lib/agent/package-manager.ts:89-96`, and `fileExists` at `:121-129` does the same for lockfiles). Reproduced directly: with a chmod-000 `package.json` in the cwd, `resolvePrismaCliPackageCommand` throws `EACCES`. It reaches `login.ts:148` after the credential is stored, which is the exact failure INIT-R2-8 described. Move the resolver call inside the same `try`, or return `null` when it throws.
+
+**INIT-R3-2 — low — `packages/cli/src/lib/skills/status.ts:221-223`**
+
+A `SKILL.md` that exists but cannot be read is now destroyed instead of refused. `stampState` maps `stamp === null` to `absent`, and `readSkillStamp` returns `null` for any read failure, not only for a missing file — so ENOENT, EACCES, and EISDIR are indistinguishable. Reproduced: a user-authored `.claude/skills/prisma-8/` with a chmod-000 `SKILL.md` and a sibling `notes.md` was reported as `synced` (not `refused`) and the whole directory was deleted and replaced with the packaged copy, `notes.md` included. Before the round-2 change this read as `unmanaged`. The fix that restores self-healing without reopening this: have the caller distinguish "no `SKILL.md` entry" from "`SKILL.md` present but unreadable" — stat the path, and treat only a genuinely absent entry as `absent`.
+
+**INIT-R3-3 — nit — `packages/cli/src/lib/skills/sync.ts:62-69`**
+
+The `.gitignore` cleanup is unconditional and permanent. Every `skills sync` issues one `rm` per already-current target forever, and it deletes any `.gitignore` in a managed copy, not just the `*` one an older CLI wrote — including one a user deliberately added to keep the copies out of git. That is a defensible position (the docs now say the copies are ordinary tracked files), but it is undocumented and unbounded. Either check the file's contents before removing it, or note the removal in `docs/product/output-conventions.md` alongside the sentence about git tracking.
+
+#### Verdict
+
+**ANOTHER ROUND NEEDED** — all eleven round-2 findings are addressed and the three that had to be fixed in this PR are verified fixed against the binary, but the round-2 fix for the unmanaged/absent split introduced a path where an unreadable user-authored `SKILL.md` is deleted (INIT-R3-2), and the login tip still has an unguarded throw one line past the new guard (INIT-R3-1); both are small, contained changes.
