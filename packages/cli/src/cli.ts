@@ -262,6 +262,8 @@ export const mountedCommands: Readonly<Record<string, AnyCommand>> = {
   "db update": ormCommandFamily.commands["db update"],
   "db verify": ormCommandFamily.commands["db verify"],
   format: ormCommandFamily.commands.format,
+  // `orm init` keeps this path: only the top-level `init` (the compute
+  // config wizard) was removed, by the 2026-08-21 PM review.
   "orm init": ormCommandFamily.commands.init,
   lsp: ormCommandFamily.commands.lsp,
   migrate: ormCommandFamily.commands.migrate,

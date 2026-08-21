@@ -9,6 +9,9 @@
  * operator on 2026-08-12. Adding to it requires an operator ruling
  * recorded here; giving those commands a real owning family, so the
  * exception set can shrink, is deferred work.
+ *
+ * `orm init` keeps its path: only the top-level `init` (the compute
+ * config wizard) was removed, by the 2026-08-21 PM review.
  */
 import type { AnyCommand, CommandFamily } from "@prisma/cli-engine";
 import { defineCommand, telemetryCommandGroup } from "@prisma/cli-engine";

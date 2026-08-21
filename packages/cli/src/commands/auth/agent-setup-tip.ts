@@ -34,12 +34,7 @@ export async function resolveAgentSetupTipCommand(
     return null;
   }
 
-  const stateDir = await resolveStateDir({
-    stateDir: undefined,
-    env: ctx.env,
-    cwd: ctx.cwd,
-    signal: ctx.signal,
-  });
+  const stateDir = resolveStateDir({ env: ctx.env, cwd: ctx.cwd });
   const stateStore = new LocalStateStore(stateDir, ctx.signal);
 
   const shouldOffer = shouldOfferPrismaAgentSetup(

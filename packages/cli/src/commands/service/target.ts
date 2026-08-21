@@ -71,14 +71,8 @@ export interface ResolvedServiceProjectContext {
   resolution: ProjectResolution;
 }
 
-export async function openServiceStateStore(
-  ctx: ServiceContext,
-): Promise<LocalStateStore> {
-  const stateDir = await resolveStateDir({
-    env: ctx.env,
-    cwd: ctx.cwd,
-    signal: ctx.signal,
-  });
+export function openServiceStateStore(ctx: ServiceContext): LocalStateStore {
+  const stateDir = resolveStateDir({ env: ctx.env, cwd: ctx.cwd });
   return new LocalStateStore(stateDir, ctx.signal);
 }
 
@@ -178,7 +172,6 @@ export async function resolveServiceProjectContext(
   explicitProject: string | undefined,
   options: {
     commandName: string;
-    projectDir?: string;
     branchName?: string;
     envProjectId?: string;
   },
@@ -195,9 +188,6 @@ export async function resolveServiceProjectContext(
     ...(explicitProject !== undefined ? { explicitProject } : {}),
     ...(options.envProjectId !== undefined
       ? { envProjectId: options.envProjectId }
-      : {}),
-    ...(options.projectDir !== undefined
-      ? { projectDir: options.projectDir }
       : {}),
     listProjects: () => Promise.resolve(projects),
     commandName: options.commandName,

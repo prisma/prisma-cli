@@ -101,7 +101,7 @@ export const serviceRemoveCommand = defineCommand({
     ctx.report({ kind: "step-finished", step: "remove", outcome: "ok" });
 
     const diagnostics = await clearRemovedServiceState(
-      await openServiceStateStore(ctx),
+      openServiceStateStore(ctx),
       state.projectId,
       removedService.id,
     );
