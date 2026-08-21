@@ -2102,7 +2102,7 @@ describe("prisma-cli project env list", () => {
     });
   });
 
-  it("labels a local git branch that the platform does not know yet", async () => {
+  it("ignores the local git branch and lists the overview when no scope is passed", async () => {
     const cwd = await pinnedCwd();
     await mkdir(path.join(cwd, ".git"), { recursive: true });
     await writeFile(
@@ -2115,32 +2115,12 @@ describe("prisma-cli project env list", () => {
       { cwd, isTty: { stdout: true } },
     );
 
+    // Nothing is inferred from ambient context: the checkout branch
+    // never selects a scope.
     expect(result.presented?.data).toMatchObject({
-      target: {
-        source: "local-git",
-        branchName: "feature/foo",
-        branchExists: false,
-        envMap: "preview",
-      },
+      scope: { kind: "overview" },
+      target: { source: "overview", envMap: "overview" },
     });
-    expect(
-      blocks(result.presented).find((block) => block.kind === "fields"),
-    ).toEqual({
-      kind: "fields",
-      rows: [
-        {
-          label: "target",
-          value: "branch:feature/foo -> preview (not created yet)",
-        },
-      ],
-    });
-    expect(result.presented?.presentation.next).toEqual([
-      {
-        kind: "run-command",
-        label: "prisma-cli project env add KEY=value --branch feature/foo",
-        command: "prisma-cli project env add KEY=value --branch feature/foo",
-      },
-    ]);
   });
 
   it("suggests adding a variable when the scope is empty", async () => {
@@ -2213,102 +2193,6 @@ describe("prisma-cli project env list", () => {
     expect(resultFrame(result.json).envelope).toMatchObject({
       ok: false,
       error: { code: "CLI.CREDENTIALS_REQUIRED" },
-    });
-  });
-
-  it("targets the preview overrides of a local branch the platform knows", async () => {
-    const cwd = await pinnedCwd();
-    await mkdir(path.join(cwd, ".git"), { recursive: true });
-    await writeFile(
-      path.join(cwd, ".git", "HEAD"),
-      "ref: refs/heads/feature/foo\n",
-      "utf8",
-    );
-    const result = await makeCli(
-      envClient({
-        branches: [
-          {
-            id: "br_feature",
-            gitName: "feature/foo",
-            role: "preview",
-            isDefault: false,
-          },
-        ],
-        variables: [
-          envRow({ id: "env_role", key: "SHARED", class: "preview" }),
-          envRow({
-            id: "env_branch",
-            key: "SHARED",
-            class: "preview",
-            branchId: "br_feature",
-          }),
-        ],
-      }),
-    ).run(["project", "env", "list"], { cwd, isTty: { stdout: true } });
-
-    expect(result.exitCode).toBe(0);
-    expect(result.presented?.data).toMatchObject({
-      scope: {
-        kind: "branch",
-        branchName: "feature/foo",
-        branchId: "br_feature",
-      },
-      target: {
-        source: "local-git",
-        branchName: "feature/foo",
-        branchId: "br_feature",
-        branchRole: "preview",
-        branchExists: true,
-        envMap: "preview",
-      },
-      variables: [{ id: "env_branch", source: "branch:feature/foo" }],
-    });
-    expect(
-      blocks(result.presented).find((block) => block.kind === "fields"),
-    ).toEqual({
-      kind: "fields",
-      rows: [{ label: "target", value: "branch:feature/foo -> preview" }],
-    });
-  });
-
-  it("targets production when the local branch is the production branch", async () => {
-    const cwd = await pinnedCwd();
-    await mkdir(path.join(cwd, ".git"), { recursive: true });
-    await writeFile(
-      path.join(cwd, ".git", "HEAD"),
-      "ref: refs/heads/main\n",
-      "utf8",
-    );
-    const result = await makeCli(
-      envClient({
-        branches: [
-          {
-            id: "br_main",
-            gitName: "main",
-            role: "production",
-            isDefault: true,
-          },
-        ],
-        variables: [envRow()],
-      }),
-    ).run(["project", "env", "list"], { cwd, isTty: { stdout: true } });
-
-    expect(result.exitCode).toBe(0);
-    expect(result.presented?.data).toMatchObject({
-      scope: { kind: "role", role: "production" },
-      target: {
-        source: "local-git",
-        branchName: "main",
-        branchRole: "production",
-        branchExists: true,
-        envMap: "production",
-      },
-    });
-    expect(
-      blocks(result.presented).find((block) => block.kind === "fields"),
-    ).toEqual({
-      kind: "fields",
-      rows: [{ label: "target", value: "branch:main -> production" }],
     });
   });
 });

@@ -112,7 +112,7 @@ export const projectEnvListCommand = defineCommand({
         ctx.api,
         projectId,
         explicit ?? undefined,
-        { cwd: ctx.cwd, signal: ctx.signal },
+        { signal: ctx.signal },
       );
 
       const rows =

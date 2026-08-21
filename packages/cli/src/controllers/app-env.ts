@@ -11,7 +11,6 @@ import {
   type EnvFileAssignment,
   readEnvFileAssignments,
 } from "../lib/app/env-file";
-import { readLocalGitBranch } from "../lib/git/local-branch";
 import type { EnvListTarget, EnvScopeDescriptor } from "../types/app-env";
 import {
   apiCallError,
@@ -178,11 +177,13 @@ export async function resolveScopeToApi(
   };
 }
 
+/** No explicit scope lists the overview of every scope. Nothing is
+ *  inferred from ambient context: what runs is what was named. */
 export async function resolveListScopeToApi(
   client: ManagementApiClient,
   projectId: string,
   explicit: EnvScope | undefined,
-  options: { cwd: string; signal: AbortSignal },
+  options: { signal: AbortSignal },
 ): Promise<ResolvedListScope> {
   if (explicit) {
     const resolved = await resolveScopeToApi(client, projectId, explicit, {
@@ -195,63 +196,6 @@ export async function resolveListScopeToApi(
       target: targetFromExplicitScope(resolved.descriptor),
       apiTarget: resolved.apiTarget,
       addScope: resolved.scope,
-    };
-  }
-
-  const gitBranch = await readLocalGitBranch(options.cwd, options.signal);
-  if (gitBranch) {
-    const branch = (
-      await listBranchesByName(client, projectId, gitBranch, options.signal)
-    )[0];
-    if (!branch) {
-      return {
-        kind: "scoped",
-        descriptor: { kind: "role", role: "preview" },
-        target: {
-          source: "local-git",
-          branchName: gitBranch,
-          branchExists: false,
-          envMap: "preview",
-        },
-        apiTarget: { class: "preview", branchId: null },
-        addScope: { kind: "branch", branchName: gitBranch },
-      };
-    }
-
-    if (branch.role === "production") {
-      return {
-        kind: "scoped",
-        descriptor: { kind: "role", role: "production" },
-        target: {
-          source: "local-git",
-          branchName: branch.gitName,
-          branchId: branch.id,
-          branchRole: branch.role,
-          branchExists: true,
-          envMap: "production",
-        },
-        apiTarget: { class: "production", branchId: null },
-        addScope: { kind: "role", role: "production" },
-      };
-    }
-
-    return {
-      kind: "scoped",
-      descriptor: {
-        kind: "branch",
-        branchName: branch.gitName,
-        branchId: branch.id,
-      },
-      target: {
-        source: "local-git",
-        branchName: branch.gitName,
-        branchId: branch.id,
-        branchRole: branch.role,
-        branchExists: true,
-        envMap: "preview",
-      },
-      apiTarget: { class: "preview", branchId: branch.id },
-      addScope: { kind: "branch", branchName: branch.gitName },
     };
   }
 
