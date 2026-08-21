@@ -170,18 +170,65 @@ function wrapCommandFamily(
  * composer's dynamic executor imports, so mounting costs an unrelated
  * command nothing.
  *
- * Re-wrapped to only `deploy` and `dev`, mounted at the root: `destroy`
- * and `log` were dropped by the 2026-08-21 PM review.
+ * Re-wrapped without `destroy` and `log`, which were dropped by the
+ * 2026-08-21 PM review. Subtraction, not selection: a command composer
+ * adds upstream enters the wrapped family, so mount-coverage's
+ * family-completeness check flags it until the shell mounts it.
  */
+const COMPOSER_DROPPED_COMMANDS = new Set(["destroy", "log"]);
 const composerFamilySource = createComposerFamily();
 export const composerCommandFamily: CommandFamily = wrapCommandFamily(
   composerFamilySource,
-  {
-    deploy: composerFamilySource.commands.deploy,
-    dev: composerFamilySource.commands.dev,
-  },
+  Object.fromEntries(
+    Object.entries(composerFamilySource.commands).filter(
+      ([key]) => !COMPOSER_DROPPED_COMMANDS.has(key),
+    ),
+  ),
   composerFamilySource.redirects.map(toRedirectSpec),
 );
+
+/** The ORM commands whose mount path differs from the family's own
+ *  key. Their shipped help examples spell the family key, so the wrap
+ *  respells them to the mounted path. */
+const ORM_MOUNT_RESPELLINGS: Readonly<Record<string, string>> = {
+  format: "contract format",
+  migrate: "db migrate",
+  "ref list": "migration ref list",
+  "ref set": "migration ref set",
+  "ref delete": "migration ref delete",
+};
+
+function respellHelpExamples(
+  command: AnyCommand,
+  from: string,
+  to: string,
+): AnyCommand {
+  return {
+    ...command,
+    help: {
+      ...command.help,
+      examples: command.help.examples.map((example) =>
+        example === from || example.startsWith(`${from} `)
+          ? `${to}${example.slice(from.length)}`
+          : example,
+      ),
+    },
+  } as AnyCommand;
+}
+
+function respellMovedOrmCommands(
+  commands: Readonly<Record<string, AnyCommand>>,
+): Readonly<Record<string, AnyCommand>> {
+  return Object.fromEntries(
+    Object.entries(commands).map(([key, command]) => {
+      const mountPath = ORM_MOUNT_RESPELLINGS[key];
+      return [
+        key,
+        mountPath ? respellHelpExamples(command, key, mountPath) : command,
+      ];
+    }),
+  );
+}
 
 /**
  * The ORM commands, contributed by orm-toolchain's own package. The
@@ -194,12 +241,13 @@ export const composerCommandFamily: CommandFamily = wrapCommandFamily(
  * Re-wrapped to rewrite the shipped redirects for this shell's tree:
  * the `migration ref` entry is dropped (that spelling is live again as
  * `migration ref list|set|delete`, and mounting it with the redirect in
- * place fails buildCli's collision check), and `migration apply`'s
- * replacement is respelled to the `db migrate` mount.
+ * place fails buildCli's collision check), `migration apply`'s
+ * replacement is respelled to the `db migrate` mount, and the moved
+ * commands' help examples are respelled to their mounted paths.
  */
 export const ormCommandFamily: CommandFamily = wrapCommandFamily(
   ormToolchainFamily,
-  ormToolchainFamily.commands,
+  respellMovedOrmCommands(ormToolchainFamily.commands),
   ormToolchainFamily.redirects
     .filter((redirect) => redirect.from !== "migration ref")
     .map((redirect) =>
