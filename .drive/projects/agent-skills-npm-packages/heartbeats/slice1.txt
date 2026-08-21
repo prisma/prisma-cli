@@ -1,0 +1,4 @@
+2026-08-21T09:32:07Z survey — read brief/plan/spec + repo (skills tree, check-upgrade-coverage, set-version, shell-build, publish-surface); branch skills-in-tarball-packaging created, pnpm install running; next: fold upgrade skills into prisma-8 router
+2026-08-21T09:36:05Z task1 done — fold committed (29a0ee0) + coverage-check repointed (f95e12f, 78 script tests pass); next: task2 set-version stamping
+2026-08-21T09:40:28Z RECOVERY — .refs/prisma was deleted externally ~11:38, losing branch + 3 commits; re-cloned prisma/prisma at fc3a9ee, re-created branch, redoing tasks 1-3 from context
+2026-08-21T09:44:52Z tasks1-3 redone on fresh clone (a886d2e,6e390c2,87b4376,f705df7); tarball verified to carry 63 stamped skill files; next: task4 docs

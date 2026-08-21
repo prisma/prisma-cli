@@ -1,0 +1,2 @@
+2026-08-21T09:31:50Z design-read: read brief/plan/spec + repo conventions; next: implement lib/skills + commands
+2026-08-21T09:39:54Z implement: lib+commands+check landed (cf91519); next: test matrix (npm/pnpm/PnP fixtures, states, off switches)
