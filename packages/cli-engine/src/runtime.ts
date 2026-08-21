@@ -74,9 +74,10 @@ export interface Runtime {
    * the command it is about to run declares a config section, so a run
    * that needs no config never touches the file. `configPath` is the
    * file `--config` named: the loader resolves it against the runtime's
-   * cwd and reports its absence. Absent means look for prisma.config.ts
-   * in cwd, where absence is not an error. The bin wires the real disk
-   * loader; tests hand in fixtures.
+   * cwd and reports its absence. Absent means discover prisma.config.ts
+   * by walking up from cwd (a file with `root: true` stops the walk,
+   * otherwise the topmost found wins), and finding none is not an
+   * error. The bin wires the real disk loader; tests hand in fixtures.
    */
   readonly loadConfig: (configPath?: string) => Promise<LoadedConfig>;
   /**
@@ -184,12 +185,19 @@ export interface HostProcess {
 export interface LoadedConfig {
   /**
    * The file this config came from, absolute: the one `--config` named,
-   * or prisma.config.ts in cwd. A loader that found no file still names
-   * the file it looked for — with no file there are no sections, and
-   * the engine reads the path only to name the file when it reports a
-   * top-level key that is not one of the CLI's sections.
+   * or the prisma.config.ts discovery anchored on. A loader that found
+   * no file still names the one it looked for in cwd — with no file
+   * there are no sections, and the engine reads the path only to name
+   * the file when it reports a top-level key that is not one of the
+   * CLI's sections.
    */
   readonly path: string;
+  /**
+   * The file-level `root` setting, when the file set it. `root: true`
+   * stops discovery's upward walk at this file; the key is reserved,
+   * so it never appears in sections.
+   */
+  readonly root?: boolean;
   /**
    * Raw section values by name; validation happens per command via its
    * command family's section token. The engine, not the loader, checks
