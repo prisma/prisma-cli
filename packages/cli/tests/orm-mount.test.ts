@@ -138,11 +138,11 @@ describe("the ORM family answers from the assembled tree", () => {
     expect(frame.envelope.error.code).toBe("CLI.COMMAND_MOVED");
     expect(frame.envelope.nextActions[0]).toMatchObject({
       kind: "run-command",
-      command: "prisma-test migrate --to <contract>",
+      command: "prisma-test db migrate --to <contract>",
     });
   });
 
-  it("names the four new groups in the root help", async () => {
+  it("names the ORM groups in the root help", async () => {
     const result = await shell().run(["--help"], {
       isTty: { stdout: true },
     });
@@ -152,7 +152,7 @@ describe("the ORM family answers from the assembled tree", () => {
       contract: cliGroups.contract,
       db: cliGroups.db,
       migration: cliGroups.migration,
-      ref: cliGroups.ref,
+      orm: cliGroups.orm,
     })) {
       expect(result.stdout).toContain(group);
       expect(result.stdout).toContain(brief);

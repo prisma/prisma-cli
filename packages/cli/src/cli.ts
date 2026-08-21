@@ -2,8 +2,10 @@ import {
   type AnyCommand,
   type Cli,
   type CommandFamily,
+  type CommandRedirect,
   createCli,
   defineCommandFamily,
+  type RedirectSpec,
   telemetryCommandGroup,
 } from "@prisma/cli-engine";
 import { createComposerFamily } from "@prisma/composer-cli/family";
@@ -25,11 +27,11 @@ import { bucketKeyCreateCommand } from "./commands/bucket/key-create";
 import { bucketKeyDeleteCommand } from "./commands/bucket/key-delete";
 import { bucketKeyListCommand } from "./commands/bucket/key-list";
 import { bucketListCommand } from "./commands/bucket/list";
-import { buildLogsCommand } from "./commands/build/logs";
 import { feedbackCommand } from "./commands/feedback";
 import { gitConnectCommand } from "./commands/git/connect";
 import { gitDisconnectCommand } from "./commands/git/disconnect";
 import { postgresBackupListCommand } from "./commands/postgres/backup-list";
+import { postgresBackupRestoreCommand } from "./commands/postgres/backup-restore";
 import { postgresConnectionCreateCommand } from "./commands/postgres/connection-create";
 import { postgresConnectionDeleteCommand } from "./commands/postgres/connection-delete";
 import { postgresConnectionListCommand } from "./commands/postgres/connection-list";
@@ -37,7 +39,6 @@ import { postgresConnectionRotateCommand } from "./commands/postgres/connection-
 import { postgresCreateCommand } from "./commands/postgres/create";
 import { postgresDeleteCommand } from "./commands/postgres/delete";
 import { postgresListCommand } from "./commands/postgres/list";
-import { postgresRestoreCommand } from "./commands/postgres/restore";
 import { postgresShowCommand } from "./commands/postgres/show";
 import { postgresUsageCommand } from "./commands/postgres/usage";
 import { projectCreateCommand } from "./commands/project/create";
@@ -94,7 +95,7 @@ export const platformCommandFamily: CommandFamily = defineCommandFamily({
     postgresShow: postgresShowCommand,
     postgresCreate: postgresCreateCommand,
     postgresUsage: postgresUsageCommand,
-    postgresRestore: postgresRestoreCommand,
+    postgresBackupRestore: postgresBackupRestoreCommand,
     postgresDelete: postgresDeleteCommand,
     postgresBackupList: postgresBackupListCommand,
     postgresConnectionList: postgresConnectionListCommand,
@@ -128,9 +129,39 @@ export const platformCommandFamily: CommandFamily = defineCommandFamily({
     serviceDomainDelete: serviceDomainDeleteCommand,
     serviceDomainRetry: serviceDomainRetryCommand,
     serviceDomainWait: serviceDomainWaitCommand,
-    buildLogs: buildLogsCommand,
   },
 });
+
+/** A normalized redirect, re-spelled as the input shape
+ *  `defineCommandFamily` takes (optional fields instead of
+ *  `| undefined`). */
+function toRedirectSpec(redirect: CommandRedirect): RedirectSpec {
+  return {
+    from: redirect.from,
+    ...(redirect.flag !== undefined ? { flag: redirect.flag } : {}),
+    replacement: redirect.replacement,
+    ...(redirect.reason !== undefined ? { reason: redirect.reason } : {}),
+  };
+}
+
+/** A family re-wrapped by the shell: the same configSection and docs
+ *  base, but the shell's choice of commands and redirects. */
+function wrapCommandFamily(
+  family: CommandFamily,
+  commands: Readonly<Record<string, AnyCommand>>,
+  redirects: readonly RedirectSpec[],
+): CommandFamily {
+  return defineCommandFamily({
+    ...(family.configSection !== undefined
+      ? { configSection: family.configSection }
+      : {}),
+    commands,
+    ...(family.docsBaseUrl !== undefined
+      ? { docsBaseUrl: family.docsBaseUrl }
+      : {}),
+    redirects,
+  });
+}
 
 /**
  * Composer's commands, contributed by composer's own package and run by
@@ -138,8 +169,19 @@ export const platformCommandFamily: CommandFamily = defineCommandFamily({
  * functions load here; the alchemy and effect constellation stays behind
  * composer's dynamic executor imports, so mounting costs an unrelated
  * command nothing.
+ *
+ * Re-wrapped to only `deploy` and `dev`, mounted at the root: `destroy`
+ * and `log` were dropped by the 2026-08-21 PM review.
  */
-export const composerCommandFamily: CommandFamily = createComposerFamily();
+const composerFamilySource = createComposerFamily();
+export const composerCommandFamily: CommandFamily = wrapCommandFamily(
+  composerFamilySource,
+  {
+    deploy: composerFamilySource.commands.deploy,
+    dev: composerFamilySource.commands.dev,
+  },
+  composerFamilySource.redirects.map(toRedirectSpec),
+);
 
 /**
  * The ORM commands, contributed by orm-toolchain's own package. The
@@ -148,8 +190,27 @@ export const composerCommandFamily: CommandFamily = createComposerFamily();
  * composer's, this family's entry module imports esbuild and arktype
  * statically, so every invocation of this bin pays that import; fixing
  * that is orm-toolchain's move.
+ *
+ * Re-wrapped to rewrite the shipped redirects for this shell's tree:
+ * the `migration ref` entry is dropped (that spelling is live again as
+ * `migration ref list|set|delete`, and mounting it with the redirect in
+ * place fails buildCli's collision check), and `migration apply`'s
+ * replacement is respelled to the `db migrate` mount.
  */
-export const ormCommandFamily: CommandFamily = ormToolchainFamily;
+export const ormCommandFamily: CommandFamily = wrapCommandFamily(
+  ormToolchainFamily,
+  ormToolchainFamily.commands,
+  ormToolchainFamily.redirects
+    .filter((redirect) => redirect.from !== "migration ref")
+    .map((redirect) =>
+      redirect.from === "migration apply"
+        ? toRedirectSpec({
+            ...redirect,
+            replacement: "{bin} db migrate --to <contract>",
+          })
+        : toRedirectSpec(redirect),
+    ),
+);
 
 /** The engine ships the three telemetry commands and the group help
  *  text that belongs to them; both halves are spread in below. */
@@ -164,7 +225,9 @@ export const cliGroups: Readonly<
     brief: "Manage environment variables for the active project",
   },
   postgres: { brief: "Manage Prisma Postgres databases for a project" },
-  "postgres backup": { brief: "Inspect platform-created database backups" },
+  "postgres backup": {
+    brief: "Inspect and restore platform-created database backups",
+  },
   "postgres connection": {
     brief: "Manage one-time-view database connection strings",
   },
@@ -175,16 +238,12 @@ export const cliGroups: Readonly<
   service: { brief: "Manage services and deployments for a project" },
   "service domain": { brief: "Manage custom domains for a service" },
   "service deployment": { brief: "Manage deployments for a service" },
-  build: { brief: "Inspect builds created by a git push or Console" },
-  composer: {
-    brief: "Run and deploy applications composed from Prisma modules",
-  },
   agent: { brief: "Manage Prisma skills for AI coding agents" },
   "auth workspace": { brief: "Manage local workspace sessions" },
   contract: { brief: "Define and emit your application data contract" },
   db: { brief: "Verify, sign and update your database against the contract" },
   migration: { brief: "Plan, inspect and scaffold on-disk migrations" },
-  ref: { brief: "Manage named refs that point at contracts" },
+  "migration ref": { brief: "Manage named refs that point at contracts" },
   orm: { brief: "Initialize a Prisma ORM project" },
   ...telemetry.groups,
 };
@@ -211,9 +270,9 @@ export const mountedCommands: Readonly<Record<string, AnyCommand>> = {
   "postgres show": postgresShowCommand,
   "postgres create": postgresCreateCommand,
   "postgres usage": postgresUsageCommand,
-  "postgres restore": postgresRestoreCommand,
   "postgres delete": postgresDeleteCommand,
   "postgres backup list": postgresBackupListCommand,
+  "postgres backup restore": postgresBackupRestoreCommand,
   "postgres connection list": postgresConnectionListCommand,
   "postgres connection create": postgresConnectionCreateCommand,
   "postgres connection rotate": postgresConnectionRotateCommand,
@@ -245,12 +304,9 @@ export const mountedCommands: Readonly<Record<string, AnyCommand>> = {
   "service domain delete": serviceDomainDeleteCommand,
   "service domain retry": serviceDomainRetryCommand,
   "service domain wait": serviceDomainWaitCommand,
-  // Platform builds are their own group; there is no local build verb.
-  "build logs": buildLogsCommand,
-  "composer deploy": composerCommandFamily.commands.deploy,
-  "composer destroy": composerCommandFamily.commands.destroy,
-  "composer dev": composerCommandFamily.commands.dev,
-  "composer log": composerCommandFamily.commands.log,
+  // Composer's two product verbs, mounted at the root.
+  deploy: composerCommandFamily.commands.deploy,
+  dev: composerCommandFamily.commands.dev,
   // The ORM family. Written out per path: the shell owns the tree
   // (R12), so this map — not the family's own keying — is the source of
   // truth for where each command mounts.
@@ -261,12 +317,12 @@ export const mountedCommands: Readonly<Record<string, AnyCommand>> = {
   "db sign": ormCommandFamily.commands["db sign"],
   "db update": ormCommandFamily.commands["db update"],
   "db verify": ormCommandFamily.commands["db verify"],
-  format: ormCommandFamily.commands.format,
+  "db migrate": ormCommandFamily.commands.migrate,
+  "contract format": ormCommandFamily.commands.format,
   // `orm init` keeps this path: only the top-level `init` (the compute
   // config wizard) was removed, by the 2026-08-21 PM review.
   "orm init": ormCommandFamily.commands.init,
   lsp: ormCommandFamily.commands.lsp,
-  migrate: ormCommandFamily.commands.migrate,
   "migration check": ormCommandFamily.commands["migration check"],
   "migration graph": ormCommandFamily.commands["migration graph"],
   "migration list": ormCommandFamily.commands["migration list"],
@@ -275,9 +331,9 @@ export const mountedCommands: Readonly<Record<string, AnyCommand>> = {
   "migration plan": ormCommandFamily.commands["migration plan"],
   "migration show": ormCommandFamily.commands["migration show"],
   "migration status": ormCommandFamily.commands["migration status"],
-  "ref delete": ormCommandFamily.commands["ref delete"],
-  "ref list": ormCommandFamily.commands["ref list"],
-  "ref set": ormCommandFamily.commands["ref set"],
+  "migration ref delete": ormCommandFamily.commands["ref delete"],
+  "migration ref list": ormCommandFamily.commands["ref list"],
+  "migration ref set": ormCommandFamily.commands["ref set"],
   // Local utilities: no owning package, no config section, no API.
   "agent install": agentInstallCommand,
   "agent update": agentUpdateCommand,
@@ -302,7 +358,7 @@ export function buildCli(): Cli {
       tagline: "The Prisma Developer Platform, from your terminal",
       description:
         "Deploy your app with isolated infrastructure for every branch.",
-      examples: ["auth login", "project list"],
+      examples: ["auth login", "project list", "deploy"],
       docsUrl: CLI_DOCS_URL,
     },
     telemetry: { docsUrl: CLI_DOCS_URL },

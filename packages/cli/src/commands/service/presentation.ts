@@ -174,7 +174,7 @@ export function createPresentations(
       ]),
     ],
     next: () => [
-      runCommandAction("Deploy to the service", "composer deploy"),
+      runCommandAction("Deploy to the service", "deploy"),
       runCommandAction(
         "Show the service",
         `service show --service ${result.service.name}`,

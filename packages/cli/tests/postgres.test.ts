@@ -6,6 +6,7 @@ import { createTestCli, mintTestJwt } from "@prisma/cli-engine/testing";
 import { describe, expect, it } from "vitest";
 
 import { postgresBackupListCommand } from "../src/commands/postgres/backup-list";
+import { postgresBackupRestoreCommand } from "../src/commands/postgres/backup-restore";
 import { postgresConnectionCreateCommand } from "../src/commands/postgres/connection-create";
 import { postgresConnectionDeleteCommand } from "../src/commands/postgres/connection-delete";
 import { postgresConnectionListCommand } from "../src/commands/postgres/connection-list";
@@ -13,7 +14,6 @@ import { postgresConnectionRotateCommand } from "../src/commands/postgres/connec
 import { postgresCreateCommand } from "../src/commands/postgres/create";
 import { postgresDeleteCommand } from "../src/commands/postgres/delete";
 import { postgresListCommand } from "../src/commands/postgres/list";
-import { postgresRestoreCommand } from "../src/commands/postgres/restore";
 import { postgresShowCommand } from "../src/commands/postgres/show";
 import { postgresUsageCommand } from "../src/commands/postgres/usage";
 
@@ -141,7 +141,7 @@ function makeCli(client: ManagementApiClient, signedIn = true) {
       "postgres show": postgresShowCommand,
       "postgres create": postgresCreateCommand,
       "postgres usage": postgresUsageCommand,
-      "postgres restore": postgresRestoreCommand,
+      "postgres backup restore": postgresBackupRestoreCommand,
       "postgres delete": postgresDeleteCommand,
       "postgres backup list": postgresBackupListCommand,
       "postgres connection list": postgresConnectionListCommand,
@@ -1179,7 +1179,7 @@ describe("prisma-cli postgres usage", () => {
 
 const RESTORED = { ...DB_ONE, status: "recovering" };
 
-describe("prisma-cli postgres restore", () => {
+describe("prisma-cli postgres backup restore", () => {
   it("restores the database and points at the show command", async () => {
     const calls: Call[] = [];
     const result = await makeCli(
@@ -1192,7 +1192,16 @@ describe("prisma-cli postgres restore", () => {
         },
       }),
     ).run(
-      ["postgres", "restore", "db_1", "--backup", "bkp_1", "--confirm", "db_1"],
+      [
+        "postgres",
+        "backup",
+        "restore",
+        "db_1",
+        "--backup",
+        "bkp_1",
+        "--confirm",
+        "db_1",
+      ],
       { cwd: await pinnedCwd(), isTty: { stdout: true } },
     );
 
@@ -1248,6 +1257,7 @@ describe("prisma-cli postgres restore", () => {
     ).run(
       [
         "postgres",
+        "backup",
         "restore",
         "db_1",
         "--backup",
@@ -1279,7 +1289,7 @@ describe("prisma-cli postgres restore", () => {
 
   it("requires --backup", async () => {
     const result = await makeCli(postgresClient()).run(
-      ["postgres", "restore", "db_1", "--confirm", "db_1", "--json"],
+      ["postgres", "backup", "restore", "db_1", "--confirm", "db_1", "--json"],
       { cwd: await pinnedCwd() },
     );
 
@@ -1307,7 +1317,7 @@ describe("prisma-cli postgres restore", () => {
 
   it("refuses to restore without consent in a non-interactive run", async () => {
     const result = await makeCli(postgresClient()).run(
-      ["postgres", "restore", "db_1", "--backup", "bkp_1", "--json"],
+      ["postgres", "backup", "restore", "db_1", "--backup", "bkp_1", "--json"],
       { cwd: await pinnedCwd() },
     );
 
@@ -1320,7 +1330,16 @@ describe("prisma-cli postgres restore", () => {
 
   it("refuses to restore when --yes stands in for consent", async () => {
     const result = await makeCli(postgresClient()).run(
-      ["postgres", "restore", "db_1", "--backup", "bkp_1", "--yes", "--json"],
+      [
+        "postgres",
+        "backup",
+        "restore",
+        "db_1",
+        "--backup",
+        "bkp_1",
+        "--yes",
+        "--json",
+      ],
       { cwd: await pinnedCwd() },
     );
 
@@ -1341,7 +1360,7 @@ describe("prisma-cli postgres restore", () => {
           }),
         },
       }),
-    ).run(["postgres", "restore", "db_1", "--backup", "bkp_1"], {
+    ).run(["postgres", "backup", "restore", "db_1", "--backup", "bkp_1"], {
       cwd: await pinnedCwd(),
       answers: ["db_1"],
       isTty: { stdin: true, stdout: true },
@@ -1352,7 +1371,7 @@ describe("prisma-cli postgres restore", () => {
 
   it("fails when the typed answer is not the target database id", async () => {
     const result = await makeCli(postgresClient()).run(
-      ["postgres", "restore", "db_1", "--backup", "bkp_1", "--json"],
+      ["postgres", "backup", "restore", "db_1", "--backup", "bkp_1", "--json"],
       {
         cwd: await pinnedCwd(),
         answers: ["db_2"],
@@ -1378,6 +1397,7 @@ describe("prisma-cli postgres restore", () => {
     ).run(
       [
         "postgres",
+        "backup",
         "restore",
         "db_1",
         "--backup",
@@ -1418,6 +1438,7 @@ describe("prisma-cli postgres restore", () => {
     ).run(
       [
         "postgres",
+        "backup",
         "restore",
         "db_1",
         "--backup",
@@ -1463,6 +1484,7 @@ describe("prisma-cli postgres restore", () => {
     ).run(
       [
         "postgres",
+        "backup",
         "restore",
         "db_1",
         "--backup",
@@ -1478,7 +1500,7 @@ describe("prisma-cli postgres restore", () => {
 
     expect(resultFrame(result.json).envelope).toMatchObject({
       ok: true,
-      commandId: "postgres.restore",
+      commandId: "postgres.backup.restore",
       result: {
         projectId: "proj_1",
         database: { id: "db_1", status: "recovering" },
@@ -1496,6 +1518,7 @@ describe("prisma-cli postgres restore", () => {
   it("requires credentials", async () => {
     const result = await makeCli(postgresClient(), false).run([
       "postgres",
+      "backup",
       "restore",
       "db_1",
       "--backup",

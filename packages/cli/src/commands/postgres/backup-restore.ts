@@ -1,4 +1,4 @@
-/** The `postgres restore` command. */
+/** The `postgres backup restore` command. */
 import {
   type Block,
   defineCommand,
@@ -64,7 +64,7 @@ function restorePresentations(
   };
 }
 
-export const postgresRestoreCommand = defineCommand({
+export const postgresBackupRestoreCommand = defineCommand({
   args: {
     positionals: {
       database: positional.string({
@@ -87,7 +87,9 @@ export const postgresRestoreCommand = defineCommand({
   },
   help: {
     summary: "Restore a database from a backup after exact id confirmation",
-    examples: ["postgres restore db_123 --backup bkp_456 --confirm db_123"],
+    examples: [
+      "postgres backup restore db_123 --backup bkp_456 --confirm db_123",
+    ],
   },
   needs: { credentials: true },
   handler: async (args, ctx) => {
@@ -111,7 +113,11 @@ export const postgresRestoreCommand = defineCommand({
       }
 
       const { provider, target, projectId, projectName } =
-        await resolvePostgresContext(ctx, args.flags, "postgres restore");
+        await resolvePostgresContext(
+          ctx,
+          args.flags,
+          "postgres backup restore",
+        );
       const database = await resolveDatabase(
         provider,
         target,
