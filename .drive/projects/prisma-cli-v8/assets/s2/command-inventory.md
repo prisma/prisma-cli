@@ -699,3 +699,14 @@ Fixture-mode counts are references to `fixturePath` per file (see command sectio
   - `auth logout --workspace X` duplicating `auth workspace logout X` is a compat shim worth collapsing.
   - `project env` is the env surface (moved off `app`); the S2 brief's "app (incl. env…)" reflects the old layout — env controllers still live in files named `app-env*.ts` and types in `types/app-env.ts` even though the commands are `project env *`.
   - Group descriptor `branch` says "View your Platform branches" — read-only group with one verb; fine, but the deploy path creates branches implicitly (POST branches), which the grammar should own explicitly.
+
+---
+
+**2026-08-21 note (PM review, command grammar cleanup):** this
+inventory is a historical grounding document for the S2 ports. The
+mounted tree has since changed: top-level `init` is removed, the six
+destroying `remove` commands are `delete`, `postgres restore` is
+`postgres backup restore`, `migrate`/`format`/`ref *` are `db
+migrate`/`contract format`/`migration ref *`, and composer's `deploy`
+and `dev` are root commands. The regenerated tree lives in
+[`../command-review.md`](../command-review.md).

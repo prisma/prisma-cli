@@ -1606,3 +1606,16 @@ Three ported commands reached directly into `process` for host facts, because no
 ## Ruled during the S7 merge (operator, 2026-08-12)
 
 **Top-level `init` is the platform's compute-config wizard; the ORM's project initializer mounts at `orm init`.** The unified grammar had both families claiming `init` — the S2d contract for the platform wizard, the ORM family's own command key for the initializer — and the collision only became mountable when S7 landed the ORM family. Users of the old ORM CLI who type `prisma init` expecting a schema scaffold now get the compute wizard and must type `orm init`. The `orm` group exists solely for this command until the ORM family grows more residents or the ruling is revisited (TML-3189 holds the final grammar).
+
+## Command grammar cleanup (2026-08-21 PM review)
+
+The grammar cleanup slice supersedes several spellings this record
+documents. Top-level `init` and the compute config
+(`prisma.compute.ts`/`.json`) are removed; service commands take
+parameters only (`--service`/`PRISMA_SERVICE_ID`, `--branch`; the
+picker, remembered selection, and git-branch inference are gone);
+`project remove`, `project env remove`, `postgres remove`, `postgres
+connection remove`, `service remove`, and `service domain remove` are
+renamed to `delete`; `postgres restore` moves to `postgres backup
+restore`. No aliases or redirects for the old spellings. This entry
+records the change; the sections above stay as written for history.

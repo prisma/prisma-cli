@@ -272,3 +272,10 @@ added; the guard remains the required explicit `--stage` /
 `--production` target, exactly as legacy. If destroy deserves a
 confirmation it is a composer product decision, raised upstream rather
 than built at the mount.
+
+## Command grammar cleanup (2026-08-21 PM review)
+
+The `composer` group is dissolved: `composer deploy` and `composer
+dev` mount at the root as `deploy` and `dev`, and `composer destroy`
+and `composer log` are dropped from the mounted tree entirely. The
+sections above describe the family as S3 mounted it.

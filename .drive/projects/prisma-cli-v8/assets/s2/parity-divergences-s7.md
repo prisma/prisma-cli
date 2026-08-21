@@ -42,3 +42,11 @@ imports behind dynamic imports, which is prisma/prisma's change to
 make, not this repo's. Mirrored in
 [`../../deferred.md`](../../deferred.md) under "Upstream, not ours to
 land".
+
+## Command grammar cleanup (2026-08-21 PM review)
+
+The ORM mounts moved: `migrate` → `db migrate`, `format` → `contract
+format`, `ref list|set|delete` → `migration ref list|set|delete`. The
+shipped `migration ref` redirect is dropped at the mount (the spelling
+is live again) and `migration apply`'s replacement is respelled to
+`{bin} db migrate --to <contract>`. Command behaviour is unchanged.
