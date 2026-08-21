@@ -329,6 +329,27 @@ describe("skills sync", () => {
     expect(enabled.result.checkDisabled).toBe(false);
   });
 
+  it("reports the check as disabled when prisma.config.ts turns it off", async () => {
+    const root = await makeProjectRoot();
+    await installPackage(root, {
+      name: "@prisma/orm-postgres",
+      version: "8.1.0",
+      skills: ["prisma-8"],
+    });
+    const cli = createTestCli({
+      commandFamilies: [skillsCommandFamily],
+      commands: SKILLS_COMMANDS,
+      groups: { skills: { brief: "Keep Prisma agent skills current" } },
+      config: { skills: { check: false } },
+      now: () => new Date(0),
+    });
+
+    const run = await cli.run(["skills", "sync"], { cwd: root });
+
+    // The same answer `skills list` gives, from the same setting.
+    expect((run.presented?.data as SkillsSyncResult).checkDisabled).toBe(true);
+  });
+
   it("refuses --disable and --enable together", async () => {
     const root = await makeProjectRoot();
 

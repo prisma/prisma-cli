@@ -5,6 +5,7 @@ import { writeSkillsCheckDisabled } from "../../lib/skills/opt-out";
 import type { InstalledSourcePackage } from "../../lib/skills/status";
 import { readSkillsStatus } from "../../lib/skills/status";
 import { syncSkills } from "../../lib/skills/sync";
+import { skillsConfigSection } from "./config";
 import { syncPresentations } from "./presentation";
 import type { SkillsPackageReport, SkillsSyncResult } from "./results";
 
@@ -64,6 +65,7 @@ export const skillsSyncCommand = defineCommand({
       "Skills come from the Prisma packages the project installs, so they always describe the version in use. Sync copies them into the skill directories the agent harnesses read, and removes copies whose package is gone. It does nothing, and exits 0, when everything is already current.",
     examples: ["skills sync", "skills sync --disable"],
   },
+  needs: { config: skillsConfigSection },
   args: {
     flags: {
       disable: flag.boolean({
@@ -83,11 +85,14 @@ export const skillsSyncCommand = defineCommand({
     const status = await readSkillsStatus(ctx.cwd);
     const outcome = await syncSkills(status);
 
-    let checkDisabled = outcome.checkDisabled;
+    let optedOut = outcome.checkDisabled;
     if (args.flags.disable || args.flags.enable) {
-      checkDisabled = args.flags.disable;
-      await writeSkillsCheckDisabled(outcome.projectRoot, checkDisabled);
+      optedOut = args.flags.disable;
+      await writeSkillsCheckDisabled(outcome.projectRoot, optedOut);
     }
+    // Both switches silence the check, so both must show in the state
+    // this command reports — as `skills list` reports it.
+    const checkDisabled = optedOut || !ctx.config.check;
 
     const result: SkillsSyncResult = {
       projectRoot: outcome.projectRoot,
