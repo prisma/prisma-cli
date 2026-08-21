@@ -33,7 +33,7 @@ Architecture and contributor workflow references:
 - Group commands by developer workflow, not product ownership.
 - No `orm`, `postgres`, or `compute` namespaces in the command surface.
 - Canonical command shape is `prisma <group> <action>`.
-- The shipped groups are `auth`, `project`, `git`, `branch`, `postgres`, `bucket`, `service`, the root `dev` and `deploy` verbs, and the ORM family (`contract`, `db`, `migration`, `orm init`, `lsp`).
+- The shipped groups are `auth`, `project`, `git`, `branch`, `postgres`, `bucket`, `service`, `skills`, the root `init`, `dev` and `deploy` verbs, and the ORM family (`contract`, `db`, `migration`, `orm init`, `lsp`).
 - Preserve the long-term resource model: `workspace -> project -> branch -> { service, database, bucket }`.
 
 The mounted tree in `packages/cli/src/cli.ts` is the authoritative command surface.

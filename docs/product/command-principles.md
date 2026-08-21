@@ -93,6 +93,12 @@ No current branch command uses `use`; branch targeting follows explicit flags or
 
 Build and release an app into a target branch.
 
+### `init`
+
+Prepare the current repository for Prisma development, entirely locally: add the `postinstall` script that keeps the Prisma agent skills in sync (`prisma skills sync || exit 0`), then sync the skills once now.
+
+`init` calls no platform API, never prompts, and never overwrites a `postinstall` script the user wrote — it reports that as a diagnostic and leaves the script alone. Rerunning is safe; each step reports what is already done and the command exits 0.
+
 ### `logs`
 
 Resolve a service version and show or stream its logs.

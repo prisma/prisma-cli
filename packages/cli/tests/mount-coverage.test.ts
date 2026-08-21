@@ -4,12 +4,13 @@
  * anything is published, so a tree that has lost a command cannot be
  * released.
  *
- * The exception set below (the engine's three telemetry commands and
- * `feedback`) was ratified by the operator on 2026-08-12; the
- * `agent install|update|status` entries left it when the operator
- * killed that group on 2026-08-21. Adding to it requires an operator
- * ruling recorded here; giving those commands a real owning family, so
- * the exception set can shrink, is deferred work.
+ * The exception set below (the engine's three telemetry commands,
+ * `feedback`, and `init`) was ratified by the operator on 2026-08-12;
+ * the `agent install|update|status` entries left it and `init` (the
+ * local repository-setup command) entered it when the operator killed
+ * that group on 2026-08-21. Adding to it requires an operator ruling
+ * recorded here; giving those commands a real owning family, so the
+ * exception set can shrink, is deferred work.
  *
  * `orm init` keeps its path: only the top-level `init` (the compute
  * config wizard) was removed, by the 2026-08-21 PM review.
@@ -28,6 +29,7 @@ import {
 } from "../src/cli";
 import { CLI_DOCS_URL } from "../src/cli-name";
 import { feedbackCommand } from "../src/commands/feedback";
+import { initCommand } from "../src/commands/init";
 
 /**
  * Commands that deliberately belong to no family: the engine's consent
@@ -37,6 +39,7 @@ import { feedbackCommand } from "../src/commands/feedback";
 const FAMILYLESS: ReadonlySet<unknown> = new Set([
   ...Object.values(telemetryCommandGroup({ docsUrl: CLI_DOCS_URL }).commands),
   feedbackCommand,
+  initCommand,
 ]);
 
 /** The family commands the tree does not mount, by family key. */
@@ -99,6 +102,7 @@ const EXPECTED_MOUNT_PATHS: readonly string[] = [
   "feedback",
   "git connect",
   "git disconnect",
+  "init",
   "lsp",
   "migration check",
   "migration graph",

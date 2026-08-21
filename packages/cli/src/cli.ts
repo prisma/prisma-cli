@@ -25,6 +25,7 @@ import { bucketListCommand } from "./commands/bucket/list";
 import { feedbackCommand } from "./commands/feedback";
 import { gitConnectCommand } from "./commands/git/connect";
 import { gitDisconnectCommand } from "./commands/git/disconnect";
+import { initCommand } from "./commands/init";
 import { postgresBackupListCommand } from "./commands/postgres/backup-list";
 import { postgresBackupRestoreCommand } from "./commands/postgres/backup-restore";
 import { postgresConnectionCreateCommand } from "./commands/postgres/connection-create";
@@ -277,6 +278,7 @@ export const mountedCommands: Readonly<Record<string, AnyCommand>> = {
   "migration ref list": ormCommandFamily.commands["migration ref list"],
   "migration ref set": ormCommandFamily.commands["migration ref set"],
   // Local utilities: no owning package, no config section, no API.
+  init: initCommand,
   "skills sync": skillsCommandFamily.commands.sync,
   "skills list": skillsCommandFamily.commands.list,
   feedback: feedbackCommand,

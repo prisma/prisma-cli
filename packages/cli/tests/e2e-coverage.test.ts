@@ -73,6 +73,7 @@ const EXCLUSIONS: Readonly<Record<string, string>> = {
   "migration ref delete": ORM_FAMILY_REASON,
   "migration ref list": ORM_FAMILY_REASON,
   "migration ref set": ORM_FAMILY_REASON,
+  init: "Writes a package.json script and syncs skills from installed packages. No management API is involved; its credential-free happy path against the built binary lives in e2e/init.e2e.ts.",
   "skills sync":
     "Copies files from installed packages into the project's skill directories. No management API is involved, and the whole surface is filesystem behavior the unit fixtures drive directly.",
   "skills list":
