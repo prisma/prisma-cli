@@ -142,7 +142,9 @@ export function projectDeleteBlockedError(
       `Project "${projectId}" still has active deployments.`,
     fix: "Delete the project's services first, then retry the deletion.",
     exitCode: 1,
-    nextSteps: [formatPrismaCliCommand(["service", "delete", "<name>"])],
+    nextSteps: [
+      formatPrismaCliCommand(["service", "delete", "--service", "<name>"]),
+    ],
   });
 }
 

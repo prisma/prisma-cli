@@ -4,13 +4,10 @@ import {
   deploymentStartPresentations,
   deploymentStopPresentations,
 } from "./presentation";
-import {
-  requireDeploymentForService,
-  resolveServiceReleaseState,
-} from "./release";
+import { requireDeploymentForService } from "./release";
 import type { ServiceDeploymentRunStateResult } from "./results";
 import type { ServiceContext } from "./target";
-import { toServiceSummary } from "./target";
+import { resolveServiceReadState, toServiceSummary } from "./target";
 
 /**
  * `start` and `stop` are the same command with the direction reversed,
@@ -42,6 +39,7 @@ export interface RunStateArgs {
   deployment: string;
   service?: string | undefined;
   project?: string | undefined;
+  branch?: string | undefined;
 }
 
 export interface RunStateOutcome {
@@ -56,9 +54,10 @@ export async function changeDeploymentRunState(
   verb: RunStateVerb,
 ): Promise<RunStateOutcome> {
   const spec = VERBS[verb];
-  const state = await resolveServiceReleaseState(ctx, {
+  const state = await resolveServiceReadState(ctx, {
     ...(args.service !== undefined ? { serviceName: args.service } : {}),
     ...(args.project !== undefined ? { projectRef: args.project } : {}),
+    ...(args.branch !== undefined ? { branchName: args.branch } : {}),
     commandName: `service deployment ${verb}`,
   });
 
@@ -66,7 +65,10 @@ export async function changeDeploymentRunState(
     .listDeployments(state.service.id, { signal: ctx.signal })
     .catch((error) => {
       throw deployFailedError("Failed to list service deployments", error, [
-        runCommandAction("List deployments", "service deployment list"),
+        runCommandAction(
+          "List deployments",
+          `service deployment list --service ${state.service.name}`,
+        ),
       ]);
     });
   const targetDeployment = requireDeploymentForService(

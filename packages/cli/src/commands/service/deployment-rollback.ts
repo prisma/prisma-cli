@@ -11,18 +11,21 @@ import {
   promoteProgressReporter,
   requireDeploymentForService,
   resolveRollbackTarget,
-  resolveServiceReleaseState,
 } from "./release";
 import type { ServiceRollbackResult } from "./results";
-import { resolveCurrentLiveDeploymentId, toServiceSummary } from "./target";
+import {
+  resolveCurrentLiveDeploymentId,
+  resolveServiceReadState,
+  toServiceSummary,
+} from "./target";
 
 export const serviceDeploymentRollbackCommand = defineCommand({
   help: {
     summary: "Roll back production to a previous deployment",
     examples: [
-      "service deployment rollback",
-      "service deployment rollback --to dep_123",
-      "service deployment rollback --to dep_123 --confirm dep_123",
+      "service deployment rollback --service my-service",
+      "service deployment rollback --service my-service --to dep_123",
+      "service deployment rollback --service my-service --to dep_123 --confirm dep_123",
     ],
   },
   args: {
@@ -31,6 +34,10 @@ export const serviceDeploymentRollbackCommand = defineCommand({
       project: flag.string({
         brief: "Project id or name",
         placeholder: "id-or-name",
+      }),
+      branch: flag.string({
+        brief: "Branch the service lives on (default: the default branch)",
+        placeholder: "name",
       }),
       to: flag.string({
         brief:
@@ -41,9 +48,10 @@ export const serviceDeploymentRollbackCommand = defineCommand({
   },
   needs: { credentials: true },
   handler: async (args, ctx) => {
-    const state = await resolveServiceReleaseState(ctx, {
+    const state = await resolveServiceReadState(ctx, {
       serviceName: args.flags.service,
       projectRef: args.flags.project,
+      branchName: args.flags.branch,
       commandName: "service deployment rollback",
     });
 
@@ -51,7 +59,10 @@ export const serviceDeploymentRollbackCommand = defineCommand({
       .listDeployments(state.service.id, { signal: ctx.signal })
       .catch((error) => {
         throw deployFailedError("Failed to list service deployments", error, [
-          runCommandAction("List deployments", "service deployment list"),
+          runCommandAction(
+            "List deployments",
+            `service deployment list --service ${state.service.name}`,
+          ),
         ]);
       });
     const currentLiveDeploymentId = resolveCurrentLiveDeploymentId(
@@ -67,6 +78,7 @@ export const serviceDeploymentRollbackCommand = defineCommand({
       : resolveRollbackTarget(
           deploymentsResult.deployments,
           currentLiveDeploymentId,
+          state.service.name,
         );
 
     const granted = await ctx.prompt.consent(
@@ -99,7 +111,10 @@ export const serviceDeploymentRollbackCommand = defineCommand({
           outcome: "failed",
         });
         throw deployFailedError("Failed to roll back deployment", error, [
-          runCommandAction("List deployments", "service deployment list"),
+          runCommandAction(
+            "List deployments",
+            `service deployment list --service ${state.service.name}`,
+          ),
         ]);
       }
       ctx.report({ kind: "step-finished", step: "rollback", outcome: "ok" });

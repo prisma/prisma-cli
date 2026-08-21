@@ -1,53 +1,11 @@
 import type { DestroyAppProgress, PromoteProgress } from "@prisma/compute-sdk";
-import type {
-  AppProvider,
-  AppRecord,
-  DeploymentRecord,
-} from "../../lib/app/app-provider";
+import type { DeploymentRecord } from "../../lib/app/app-provider";
 import {
   deploymentNotFoundForServiceError,
   liveDeploymentUnknownError,
   noPreviousDeploymentError,
 } from "./errors";
 import type { ServiceContext } from "./target";
-import { resolveServiceReadState } from "./target";
-
-export interface ServiceReleaseState {
-  provider: AppProvider;
-  projectId: string;
-  service: AppRecord;
-}
-
-/** The read flow for the commands that act on a service which must
- *  already exist: every `service deployment` verb, plus `service
- *  delete`, which is the one that does not sit under that group. */
-export async function resolveServiceReleaseState(
-  ctx: ServiceContext,
-  options: {
-    serviceName?: string;
-    projectRef?: string;
-    branchName?: string;
-    commandName: string;
-  },
-): Promise<ServiceReleaseState> {
-  const state = await resolveServiceReadState(ctx, {
-    ...(options.serviceName !== undefined
-      ? { serviceName: options.serviceName }
-      : {}),
-    ...(options.projectRef !== undefined
-      ? { projectRef: options.projectRef }
-      : {}),
-    ...(options.branchName !== undefined
-      ? { branchName: options.branchName }
-      : {}),
-    commandName: options.commandName,
-  });
-  return {
-    provider: state.provider,
-    projectId: state.projectId,
-    service: state.service,
-  };
-}
 
 export function requireDeploymentForService(
   deployments: DeploymentRecord[],
@@ -70,18 +28,19 @@ export function requireDeploymentForService(
 export function resolveRollbackTarget(
   deployments: DeploymentRecord[],
   currentLiveDeploymentId: string | null,
+  serviceName: string,
 ): DeploymentRecord {
   if (deployments.length === 0) {
-    throw noPreviousDeploymentError();
+    throw noPreviousDeploymentError(serviceName);
   }
   if (currentLiveDeploymentId === null) {
-    throw liveDeploymentUnknownError();
+    throw liveDeploymentUnknownError(serviceName);
   }
   const previousDeployment = deployments.find(
     (deployment) => deployment.id !== currentLiveDeploymentId,
   );
   if (!previousDeployment) {
-    throw noPreviousDeploymentError();
+    throw noPreviousDeploymentError(serviceName);
   }
   return previousDeployment;
 }

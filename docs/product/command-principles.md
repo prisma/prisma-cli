@@ -99,10 +99,7 @@ Resolve a deployment and show or stream its logs.
 
 ### `delete` and `remove`
 
-`delete` destroys a resource; `remove` detaches one thing from another
-without destroying it. A command that permanently destroys what it
-targets is spelled `delete` (`project delete`, `service delete`,
-`postgres delete`); `remove` is reserved for detachment.
+`delete` destroys a resource; `remove` detaches one thing from another without destroying it. A command that permanently destroys what it targets is spelled `delete` (`project delete`, `service delete`, `postgres delete`); `remove` is reserved for detachment.
 
 ### `wait`
 

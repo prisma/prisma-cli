@@ -1,4 +1,3 @@
-import type { AppDomainDnsRecord, AppDomainStatus } from "../../types/app";
 import type { AuthWorkspace } from "../../types/auth";
 import type { BranchKind } from "../../types/branch";
 import type { ProjectSummary } from "../../types/project";
@@ -102,20 +101,36 @@ export interface ServiceDeleteResult {
   deleted: true;
 }
 
+export type ServiceDomainStatus =
+  | "pending_dns"
+  | "verifying"
+  | "verified_routing_blocked"
+  | "provisioning_tls"
+  | "active"
+  | "failed"
+  | "removing";
+
+export interface ServiceDomainDnsRecord {
+  type: string;
+  name: string;
+  value: string;
+  ttl: number | null;
+}
+
 export interface ServiceDomainSummary {
   id: string;
   type: "custom-domain";
   url: string;
   hostname: string;
   serviceId: string;
-  status: AppDomainStatus;
+  status: ServiceDomainStatus;
   foundryStatus: string;
   failureReason: string | null;
   failureCategory: "dns" | "acme" | "storage" | "unknown" | null;
   certExpiresAt: string | null;
   createdAt: string;
   updatedAt: string;
-  dnsRecords: AppDomainDnsRecord[];
+  dnsRecords: ServiceDomainDnsRecord[];
 }
 
 export interface ServiceDomainTarget {
@@ -148,6 +163,6 @@ export interface ServiceDomainRetryResult extends ServiceDomainTarget {
 
 export interface ServiceDomainWaitResult extends ServiceDomainTarget {
   hostname: string;
-  status: AppDomainStatus;
+  status: ServiceDomainStatus;
   liveUrl: string;
 }

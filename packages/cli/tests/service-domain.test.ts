@@ -183,7 +183,7 @@ describe("prisma-cli service domain add", () => {
       {
         kind: "run-command",
         label: "Add the domain",
-        command: "prisma-cli service domain add shop.acme.com",
+        command: "prisma-cli service domain add shop.acme.com --service <name>",
       },
     ]);
   });

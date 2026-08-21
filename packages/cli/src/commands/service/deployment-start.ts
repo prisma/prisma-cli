@@ -6,8 +6,8 @@ export const serviceDeploymentStartCommand = defineCommand({
   help: {
     summary: "Start a stopped deployment",
     examples: [
-      "service deployment start dep_123",
       "service deployment start dep_123 --service my-service",
+      "service deployment start dep_123 --service my-service --branch feature-x",
     ],
   },
   args: {
@@ -16,6 +16,10 @@ export const serviceDeploymentStartCommand = defineCommand({
       project: flag.string({
         brief: "Project id or name",
         placeholder: "id-or-name",
+      }),
+      branch: flag.string({
+        brief: "Branch the service lives on (default: the default branch)",
+        placeholder: "name",
       }),
     },
     positionals: {
@@ -34,6 +38,7 @@ export const serviceDeploymentStartCommand = defineCommand({
           deployment: args.positionals.deployment,
           service: args.flags.service,
           project: args.flags.project,
+          branch: args.flags.branch,
         },
         "start",
       );

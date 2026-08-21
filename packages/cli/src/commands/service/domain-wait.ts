@@ -78,8 +78,8 @@ export const serviceDomainWaitCommand = defineCommand({
   help: {
     summary: "Wait until a custom domain is active or failed",
     examples: [
-      "service domain wait shop.acme.com",
-      "service domain wait shop.acme.com --timeout 30m",
+      "service domain wait shop.acme.com --service my-service",
+      "service domain wait shop.acme.com --service my-service --timeout 30m",
     ],
   },
   args: {

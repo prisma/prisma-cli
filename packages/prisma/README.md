@@ -38,8 +38,7 @@ npx prisma project create my-app
 npx prisma git connect git@github.com:owner/repo.git
 ```
 
-Deployments start from pushing the connected repository, the Console, or
-`prisma deploy`.
+Deployments start from pushing the connected repository, the Console, or `prisma deploy`.
 
 With `pnpm`:
 

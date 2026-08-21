@@ -216,9 +216,4 @@ the stop precondition, the CLI does not pre-empt it.
 
 ## Command grammar cleanup (2026-08-21 PM review)
 
-`service remove` is renamed `service delete` (result field `removed`
-becomes `deleted`; `SERVICE.REMOVE_FAILED` becomes
-`SERVICE.DELETE_FAILED`), and every service command that targets an
-existing service now requires `--service` or `PRISMA_SERVICE_ID` — the
-interactive picker and the remembered selection are gone, and `--branch`
-no longer falls back to the local git branch.
+`service remove` is renamed `service delete` (result field `removed` becomes `deleted`; `SERVICE.REMOVE_FAILED` becomes `SERVICE.DELETE_FAILED`), and every service command that targets an existing service now requires `--service` or `PRISMA_SERVICE_ID` — the interactive picker and the remembered selection are gone, and `--branch` no longer falls back to the local git branch.

@@ -1,40 +1,10 @@
 import { defineCommand, flag } from "@prisma/cli-engine";
-import type { Diagnostic } from "@prisma/cli-engine/protocol";
 import { ok } from "@prisma/cli-engine/protocol";
-import type { LocalStateStore } from "../../adapters/local-state";
-import {
-  branchValueEmptyError,
-  deleteFailedError,
-  userCancelledError,
-} from "./errors";
+import { deleteFailedError, userCancelledError } from "./errors";
 import { deletePresentations } from "./presentation";
-import { destroyProgressReporter, resolveServiceReleaseState } from "./release";
+import { destroyProgressReporter } from "./release";
 import type { ServiceDeleteResult } from "./results";
-import { openServiceStateStore, toServiceSummary } from "./target";
-
-function cleanupWarning(target: string, error: unknown): Diagnostic {
-  const cause = error instanceof Error ? error.message : String(error);
-  return {
-    code: "SERVICE.LOCAL_STATE_CLEANUP_FAILED",
-    severity: "warn",
-    summary: `The service was deleted remotely, but the local ${target} state could not be cleared: ${cause}`,
-    nextActions: [],
-  };
-}
-
-async function clearDeletedServiceState(
-  stateStore: LocalStateStore,
-  projectId: string,
-  serviceId: string,
-): Promise<Diagnostic[]> {
-  const warnings: Diagnostic[] = [];
-  try {
-    await stateStore.clearKnownLiveDeployment(projectId, serviceId);
-  } catch (error) {
-    warnings.push(cleanupWarning("known live deployment", error));
-  }
-  return warnings;
-}
+import { resolveServiceReadState, toServiceSummary } from "./target";
 
 export const serviceDeleteCommand = defineCommand({
   help: {
@@ -59,11 +29,7 @@ export const serviceDeleteCommand = defineCommand({
   },
   needs: { credentials: true },
   handler: async (args, ctx) => {
-    if (args.flags.branch !== undefined && args.flags.branch.trim() === "") {
-      throw branchValueEmptyError();
-    }
-
-    const state = await resolveServiceReleaseState(ctx, {
+    const state = await resolveServiceReadState(ctx, {
       serviceName: args.flags.service,
       projectRef: args.flags.project,
       branchName: args.flags.branch,
@@ -96,23 +62,19 @@ export const serviceDeleteCommand = defineCommand({
       });
     } catch (error) {
       ctx.report({ kind: "step-finished", step: "delete", outcome: "failed" });
-      throw deleteFailedError("Failed to delete service", error);
+      throw deleteFailedError(
+        "Failed to delete service",
+        error,
+        state.service.name,
+      );
     }
     ctx.report({ kind: "step-finished", step: "delete", outcome: "ok" });
-
-    const diagnostics = await clearDeletedServiceState(
-      openServiceStateStore(ctx),
-      state.projectId,
-      deletedService.id,
-    );
 
     const result: ServiceDeleteResult = {
       projectId: state.projectId,
       service: toServiceSummary(deletedService),
       deleted: true,
     };
-    return ok(
-      ctx.present({ data: result, diagnostics }, deletePresentations(result)),
-    );
+    return ok(ctx.present({ data: result }, deletePresentations(result)));
   },
 });

@@ -6,19 +6,16 @@ import {
   userCancelledError,
 } from "./errors";
 import { deploymentDeletePresentations } from "./presentation";
-import {
-  requireDeploymentForService,
-  resolveServiceReleaseState,
-} from "./release";
+import { requireDeploymentForService } from "./release";
 import type { ServiceDeploymentDeleteResult } from "./results";
-import { toServiceSummary } from "./target";
+import { resolveServiceReadState, toServiceSummary } from "./target";
 
 export const serviceDeploymentDeleteCommand = defineCommand({
   help: {
     summary: "Delete a deployment and the artifact it holds",
     examples: [
-      "service deployment delete dep_123",
-      "service deployment delete dep_123 --confirm dep_123",
+      "service deployment delete dep_123 --service my-service",
+      "service deployment delete dep_123 --service my-service --confirm dep_123",
     ],
   },
   args: {
@@ -27,6 +24,10 @@ export const serviceDeploymentDeleteCommand = defineCommand({
       project: flag.string({
         brief: "Project id or name",
         placeholder: "id-or-name",
+      }),
+      branch: flag.string({
+        brief: "Branch the service lives on (default: the default branch)",
+        placeholder: "name",
       }),
     },
     positionals: {
@@ -38,9 +39,10 @@ export const serviceDeploymentDeleteCommand = defineCommand({
   },
   needs: { credentials: true },
   handler: async (args, ctx) => {
-    const state = await resolveServiceReleaseState(ctx, {
+    const state = await resolveServiceReadState(ctx, {
       serviceName: args.flags.service,
       projectRef: args.flags.project,
+      branchName: args.flags.branch,
       commandName: "service deployment delete",
     });
 
@@ -48,7 +50,10 @@ export const serviceDeploymentDeleteCommand = defineCommand({
       .listDeployments(state.service.id, { signal: ctx.signal })
       .catch((error) => {
         throw deployFailedError("Failed to list service deployments", error, [
-          runCommandAction("List deployments", "service deployment list"),
+          runCommandAction(
+            "List deployments",
+            `service deployment list --service ${state.service.name}`,
+          ),
         ]);
       });
     const targetDeployment = requireDeploymentForService(
@@ -78,7 +83,10 @@ export const serviceDeploymentDeleteCommand = defineCommand({
     } catch (error) {
       ctx.report({ kind: "step-finished", step: "delete", outcome: "failed" });
       throw deployFailedError("Failed to delete deployment", error, [
-        runCommandAction("List deployments", "service deployment list"),
+        runCommandAction(
+          "List deployments",
+          `service deployment list --service ${state.service.name}`,
+        ),
       ]);
     }
     ctx.report({ kind: "step-finished", step: "delete", outcome: "ok" });

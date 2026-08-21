@@ -1609,13 +1609,4 @@ Three ported commands reached directly into `process` for host facts, because no
 
 ## Command grammar cleanup (2026-08-21 PM review)
 
-The grammar cleanup slice supersedes several spellings this record
-documents. Top-level `init` and the compute config
-(`prisma.compute.ts`/`.json`) are removed; service commands take
-parameters only (`--service`/`PRISMA_SERVICE_ID`, `--branch`; the
-picker, remembered selection, and git-branch inference are gone);
-`project remove`, `project env remove`, `postgres remove`, `postgres
-connection remove`, `service remove`, and `service domain remove` are
-renamed to `delete`; `postgres restore` moves to `postgres backup
-restore`. No aliases or redirects for the old spellings. This entry
-records the change; the sections above stay as written for history.
+The grammar cleanup slice supersedes several spellings this record documents. Top-level `init` and the compute config (`prisma.compute.ts`/`.json`) are removed; service commands take parameters only (`--service`/`PRISMA_SERVICE_ID`, `--branch`; the picker, remembered selection, and git-branch inference are gone); `project remove`, `project env remove`, `postgres remove`, `postgres connection remove`, `service remove`, and `service domain remove` are renamed to `delete`; `postgres restore` moves to `postgres backup restore`. No aliases or redirects for the old spellings. This entry records the change; the sections above stay as written for history.

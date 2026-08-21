@@ -702,11 +702,4 @@ Fixture-mode counts are references to `fixturePath` per file (see command sectio
 
 ---
 
-**2026-08-21 note (PM review, command grammar cleanup):** this
-inventory is a historical grounding document for the S2 ports. The
-mounted tree has since changed: top-level `init` is removed, the six
-destroying `remove` commands are `delete`, `postgres restore` is
-`postgres backup restore`, `migrate`/`format`/`ref *` are `db
-migrate`/`contract format`/`migration ref *`, and composer's `deploy`
-and `dev` are root commands. The regenerated tree lives in
-[`../command-review.md`](../command-review.md).
+**2026-08-21 note (PM review, command grammar cleanup):** this inventory is a historical grounding document for the S2 ports. The mounted tree has since changed: top-level `init` is removed, the six destroying `remove` commands are `delete`, `postgres restore` is `postgres backup restore`, `migrate`/`format`/`ref *` are `db migrate`/`contract format`/`migration ref *`, and composer's `deploy` and `dev` are root commands. The regenerated tree lives in [`../command-review.md`](../command-review.md).

@@ -14,8 +14,8 @@ export const serviceDomainDeleteCommand = defineCommand({
   help: {
     summary: "Delete a custom domain from the service",
     examples: [
-      "service domain delete shop.acme.com",
-      "service domain delete shop.acme.com --confirm shop.acme.com",
+      "service domain delete shop.acme.com --service my-service",
+      "service domain delete shop.acme.com --service my-service --confirm shop.acme.com",
     ],
   },
   args: domainTargetArgs(),

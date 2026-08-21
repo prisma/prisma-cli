@@ -110,7 +110,4 @@ anything this slice changed.
 
 ## Command grammar cleanup (2026-08-21 PM review)
 
-`service logs` now requires a service target (`--service` or
-`PRISMA_SERVICE_ID`) unless `--deployment` names a deployment id with
-no service target, which resolves globally within the project. The
-picker and remembered selection are gone.
+`service logs` now requires a service target (`--service` or `PRISMA_SERVICE_ID`) unless `--deployment` names a deployment id with no service target, which resolves globally within the project. The picker and remembered selection are gone.

@@ -14,7 +14,10 @@ import {
 export const serviceShowCommand = defineCommand({
   help: {
     summary: "Show the service and its current deployment",
-    examples: ["service show", "service show --service my-service"],
+    examples: [
+      "service show --service my-service",
+      "service show --service my-service --branch feature-x",
+    ],
   },
   args: {
     flags: {
@@ -26,6 +29,10 @@ export const serviceShowCommand = defineCommand({
         brief: "Project id or name",
         placeholder: "id-or-name",
       }),
+      branch: flag.string({
+        brief: "Branch the service lives on (default: the default branch)",
+        placeholder: "name",
+      }),
     },
   },
   needs: { credentials: true },
@@ -33,6 +40,7 @@ export const serviceShowCommand = defineCommand({
     const state = await resolveServiceReadState(ctx, {
       serviceName: args.flags.service,
       projectRef: args.flags.project,
+      branchName: args.flags.branch,
       commandName: "service show",
     });
 
@@ -40,7 +48,10 @@ export const serviceShowCommand = defineCommand({
       .listDeployments(state.service.id, { signal: ctx.signal })
       .catch((error) => {
         throw deployFailedError("Failed to inspect service", error, [
-          runCommandAction("List deployments", "service deployment list"),
+          runCommandAction(
+            "List deployments",
+            `service deployment list --service ${state.service.name}`,
+          ),
         ]);
       });
     const currentLiveDeploymentId = resolveCurrentLiveDeploymentId(

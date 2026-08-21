@@ -161,13 +161,16 @@ function logStreamFailedError(
 function listDeployments(
   ctx: ServiceContext,
   provider: AppProvider,
-  serviceId: string,
+  service: Pick<AppRecord, "id" | "name">,
 ) {
   return provider
-    .listDeployments(serviceId, { signal: ctx.signal })
+    .listDeployments(service.id, { signal: ctx.signal })
     .catch((error): never => {
       throw deployFailedError("Failed to list service deployments", error, [
-        runCommandAction("List deployments", "service deployment list"),
+        runCommandAction(
+          "List deployments",
+          `service deployment list --service ${service.name}`,
+        ),
       ]);
     });
 }
@@ -182,7 +185,7 @@ async function resolveDeploymentInService(
   const deploymentsResult = await listDeployments(
     ctx,
     state.provider,
-    state.service.id,
+    state.service,
   );
   const deployment = requireDeploymentForService(
     deploymentsResult.deployments,
@@ -205,7 +208,10 @@ async function resolveGlobalDeployment(
     .showDeployment(deploymentId, { signal: ctx.signal })
     .catch((error) => {
       throw deployFailedError("Failed to show deployment", error, [
-        runCommandAction("List deployments", "service deployment list"),
+        runCommandAction(
+          "List deployments",
+          "service deployment list --service <name>",
+        ),
       ]);
     });
   if (!shown) {
@@ -237,7 +243,7 @@ async function resolveLiveDeployment(
   const deploymentsResult = await listDeployments(
     ctx,
     state.provider,
-    state.service.id,
+    state.service,
   );
   const currentLiveDeploymentId = resolveCurrentLiveDeploymentId(
     deploymentsResult.app,
@@ -257,6 +263,7 @@ async function resolveLiveDeployment(
     throw noDeploymentsError(
       "No deployments available to read logs from",
       `The service "${deploymentsResult.app.name}" does not have a live deployment.`,
+      deploymentsResult.app.name,
     );
   }
   return { service: deploymentsResult.app, deployment };
@@ -379,13 +386,57 @@ async function followPages(
   }
 }
 
+/**
+ * A globally-unique deployment id is a complete target on its own, so
+ * `--deployment` with no service target (neither --service nor
+ * PRISMA_SERVICE_ID) skips service resolution and checks the deployment
+ * against the resolved project instead. A named service scopes the
+ * lookup to that service.
+ */
+async function resolveLogsTarget(
+  ctx: ServiceContext,
+  flags: {
+    service?: string | undefined;
+    project?: string | undefined;
+    branch?: string | undefined;
+    deployment?: string | undefined;
+  },
+): Promise<{ state: ServiceProjectState; target: LogTarget }> {
+  const explicitDeploymentId = flags.deployment;
+  const serviceRequested = requestedServiceTarget(ctx, flags.service) !== null;
+  const projectOptions = {
+    ...(flags.project !== undefined ? { projectRef: flags.project } : {}),
+    ...(flags.branch !== undefined ? { branchName: flags.branch } : {}),
+    commandName: "service logs",
+  };
+
+  if (explicitDeploymentId !== undefined && !serviceRequested) {
+    const state = await resolveServiceProjectState(ctx, projectOptions);
+    return {
+      state,
+      target: await resolveGlobalDeployment(ctx, state, explicitDeploymentId),
+    };
+  }
+  const readState = await resolveServiceReadState(ctx, {
+    ...(flags.service !== undefined ? { serviceName: flags.service } : {}),
+    ...projectOptions,
+  });
+  return {
+    state: readState,
+    target:
+      explicitDeploymentId !== undefined
+        ? await resolveDeploymentInService(ctx, readState, explicitDeploymentId)
+        : await resolveLiveDeployment(ctx, readState),
+  };
+}
+
 export const serviceLogsCommand = defineSessionCommand({
   help: {
     summary: "Read logs for a deployment of the service",
     examples: [
-      "service logs",
-      "service logs --tail 500",
-      "service logs --follow",
+      "service logs --service my-service",
+      "service logs --service my-service --tail 500",
+      "service logs --service my-service --follow",
       "service logs --deployment dep_123 --from-start",
     ],
   },
@@ -395,6 +446,10 @@ export const serviceLogsCommand = defineSessionCommand({
       project: flag.string({
         brief: "Project id or name",
         placeholder: "id-or-name",
+      }),
+      branch: flag.string({
+        brief: "Branch the service lives on (default: the default branch)",
+        placeholder: "name",
       }),
       deployment: flag.string({
         brief: "Deployment id to read (default: the live deployment)",
@@ -420,43 +475,7 @@ export const serviceLogsCommand = defineSessionCommand({
       throw logsRangeConflictError();
     }
 
-    // A globally-unique deployment id is a complete target on its own,
-    // so `--deployment` with no service target (neither --service nor
-    // PRISMA_SERVICE_ID) skips service resolution and checks the
-    // deployment against the resolved project instead. A named service
-    // scopes the lookup to that service.
-    const explicitDeploymentId = args.flags.deployment;
-    const serviceRequested =
-      requestedServiceTarget(ctx, args.flags.service) !== null;
-    const projectOptions = {
-      ...(args.flags.project !== undefined
-        ? { projectRef: args.flags.project }
-        : {}),
-      commandName: "service logs",
-    };
-
-    let state: ServiceProjectState;
-    let target: LogTarget;
-    if (explicitDeploymentId !== undefined && !serviceRequested) {
-      state = await resolveServiceProjectState(ctx, projectOptions);
-      target = await resolveGlobalDeployment(ctx, state, explicitDeploymentId);
-    } else {
-      const readState = await resolveServiceReadState(ctx, {
-        ...(args.flags.service !== undefined
-          ? { serviceName: args.flags.service }
-          : {}),
-        ...projectOptions,
-      });
-      state = readState;
-      target =
-        explicitDeploymentId !== undefined
-          ? await resolveDeploymentInService(
-              ctx,
-              readState,
-              explicitDeploymentId,
-            )
-          : await resolveLiveDeployment(ctx, readState);
-    }
+    const { state, target } = await resolveLogsTarget(ctx, args.flags);
     const deploymentId = target.deployment.id;
 
     for (const line of [

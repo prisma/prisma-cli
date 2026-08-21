@@ -1,5 +1,4 @@
 import type { CommandContext } from "@prisma/cli-engine";
-import { LocalStateStore } from "../../adapters/local-state";
 import {
   type AppProvider,
   type AppRecord,
@@ -15,12 +14,12 @@ import {
   resolveProjectTarget,
   sortProjects,
 } from "../../lib/project/resolution";
-import { resolveStateDir } from "../../state-dir";
 import type { AuthWorkspace } from "../../types/auth";
 import type { BranchKind } from "../../types/branch";
 import type { ProjectResolution, ProjectSummary } from "../../types/project";
 import {
   branchNotDeployableError,
+  branchValueEmptyError,
   deployFailedError,
   domainCommandError,
   domainHostnameInvalidError,
@@ -69,11 +68,6 @@ export interface ResolvedServiceProjectContext {
     kind: BranchKind;
   };
   resolution: ProjectResolution;
-}
-
-export function openServiceStateStore(ctx: ServiceContext): LocalStateStore {
-  const stateDir = resolveStateDir({ env: ctx.env, cwd: ctx.cwd });
-  return new LocalStateStore(stateDir, ctx.signal);
 }
 
 /** The workspace the run is acting as, from the credential the engine
@@ -167,6 +161,14 @@ async function listWorkspaceProjects(
   );
 }
 
+/** A blank `--branch` names no branch and must never fall through to
+ *  the default-branch behavior of omitting the flag. */
+function requireBranchFlagValue(branchName: string | undefined): void {
+  if (branchName !== undefined && branchName.trim() === "") {
+    throw branchValueEmptyError();
+  }
+}
+
 export async function resolveServiceProjectContext(
   ctx: ServiceContext,
   explicitProject: string | undefined,
@@ -176,6 +178,7 @@ export async function resolveServiceProjectContext(
     envProjectId?: string;
   },
 ): Promise<ResolvedServiceProjectContext> {
+  requireBranchFlagValue(options.branchName);
   const workspace = await requireWorkspace(ctx);
   // Listed here rather than from inside `resolveProjectTarget`, which
   // runs its body in a Result generator: a throw in the callback comes
@@ -538,7 +541,8 @@ export async function resolveServiceDomainTarget(
     commandName: string;
   },
 ): Promise<ResolvedServiceDomainTarget> {
-  const branchName = options.branchName?.trim() || "production";
+  requireBranchFlagValue(options.branchName);
+  const branchName = options.branchName?.trim() ?? "production";
   if (toBranchKind(branchName) !== "production") {
     throw branchNotDeployableError(branchName);
   }

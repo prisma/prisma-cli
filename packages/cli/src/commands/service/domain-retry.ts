@@ -14,7 +14,7 @@ import {
 export const serviceDomainRetryCommand = defineCommand({
   help: {
     summary: "Retry custom domain DNS verification and TLS provisioning",
-    examples: ["service domain retry shop.acme.com"],
+    examples: ["service domain retry shop.acme.com --service my-service"],
   },
   args: domainTargetArgs(),
   needs: { credentials: true },

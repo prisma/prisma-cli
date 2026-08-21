@@ -15,8 +15,8 @@ export const serviceDeploymentListCommand = defineCommand({
   help: {
     summary: "List deployments for the service",
     examples: [
-      "service deployment list",
       "service deployment list --service my-service",
+      "service deployment list --service my-service --branch feature-x",
     ],
   },
   args: {
@@ -29,6 +29,10 @@ export const serviceDeploymentListCommand = defineCommand({
         brief: "Project id or name",
         placeholder: "id-or-name",
       }),
+      branch: flag.string({
+        brief: "Branch the service lives on (default: the default branch)",
+        placeholder: "name",
+      }),
     },
   },
   needs: { credentials: true },
@@ -36,6 +40,7 @@ export const serviceDeploymentListCommand = defineCommand({
     const state = await resolveServiceReadState(ctx, {
       serviceName: args.flags.service,
       projectRef: args.flags.project,
+      branchName: args.flags.branch,
       commandName: "service deployment list",
     });
 

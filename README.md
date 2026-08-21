@@ -27,8 +27,7 @@ pnpm prisma-cli project env add --file .env --role preview
 pnpm prisma-cli project env list --role preview
 ```
 
-Deployments start from pushing the connected repository, the Console, or
-`prisma-cli deploy`.
+Deployments start from pushing the connected repository, the Console, or `prisma-cli deploy`.
 
 ## Local Development
 
@@ -85,12 +84,7 @@ The canonical command shape is:
 prisma <group> <action>
 ```
 
-The package includes project, environment-variable, service and deployment
-inspection, promotion, rollback, and deletion commands, plus the Prisma ORM
-(`contract`, `db`, `migration`, `orm init`) and Composer
-workflows (root `dev` and `deploy`), and the `postgres` and `bucket`
-resource groups. The product model intentionally avoids product-specific
-namespaces.
+The package includes project, environment-variable, service and deployment inspection, promotion, rollback, and deletion commands, plus the Prisma ORM (`contract`, `db`, `migration`, `orm init`) and Composer workflows (root `dev` and `deploy`), and the `postgres` and `bucket` resource groups. The product model intentionally avoids product-specific namespaces.
 
 ## Documentation
 

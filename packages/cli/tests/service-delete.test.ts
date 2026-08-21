@@ -1,5 +1,3 @@
-import { mkdir, readFile, writeFile } from "node:fs/promises";
-import path from "node:path";
 import { describe, expect, it } from "vitest";
 
 import {
@@ -43,13 +41,13 @@ describe("prisma-cli service delete", () => {
       status: "ok",
       text: "Deleted hello-world and every deployment it owned.",
     });
-    // A deletion used to offer `service deploy`; the binary has no such
-    // command, so listing deployments is all that is left to suggest.
+    // The service is gone, so nothing service-scoped can run next;
+    // listing what remains is all that is left to suggest.
     expect(result.presented?.presentation.next).toEqual([
       {
         kind: "run-command",
-        label: "List deployments",
-        command: "prisma-cli service deployment list",
+        label: "List remaining services",
+        command: "prisma-cli service list",
       },
     ]);
   });
@@ -97,47 +95,6 @@ describe("prisma-cli service delete", () => {
       step: "delete",
       outcome: "ok",
     });
-  });
-
-  it("clears the known live deployment from local state", async () => {
-    const harness = await makeServiceCli({ routes: releaseRoutes() });
-
-    // Nothing in the service family writes this key any more, but the
-    // legacy `app` family still does for the same project, so clearing
-    // it on deletion has real effect until that family retires. Seeded
-    // here so the assertion below observes a key that was present.
-    const statePath = path.join(harness.stateDir, "state.json");
-    await mkdir(path.dirname(statePath), { recursive: true });
-    await writeFile(
-      statePath,
-      JSON.stringify({
-        app: { knownLiveDeploymentByProject: { proj_1: { svc_1: "dep_2" } } },
-      }),
-    );
-
-    await harness.cli.run(
-      [
-        "service",
-        "delete",
-        "--project",
-        "acme-app",
-        "--service",
-        "hello-world",
-      ],
-      {
-        cwd: harness.cwd,
-        env: harness.env,
-        isTty: INTERACTIVE,
-        answers: ["hello-world"],
-      },
-    );
-
-    const state = JSON.parse(
-      await readFile(path.join(harness.stateDir, "state.json"), "utf8"),
-    );
-    expect(
-      state.app?.knownLiveDeploymentByProject?.proj_1?.svc_1,
-    ).toBeUndefined();
   });
 
   it("emits the completed json envelope with commandId service.delete", async () => {

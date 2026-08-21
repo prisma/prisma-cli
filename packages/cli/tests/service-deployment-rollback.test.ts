@@ -397,12 +397,13 @@ describe("prisma-cli service deployment rollback", () => {
       {
         kind: "run-command",
         label: "Roll back to a named deployment",
-        command: "prisma-cli service deployment rollback --to <deployment>",
+        command:
+          "prisma-cli service deployment rollback --to <deployment> --service hello-world",
       },
       {
         kind: "run-command",
         label: "List deployments",
-        command: "prisma-cli service deployment list",
+        command: "prisma-cli service deployment list --service hello-world",
       },
     ]);
   });
@@ -479,7 +480,7 @@ describe("prisma-cli service deployment rollback", () => {
       {
         kind: "run-command",
         label: "List deployments",
-        command: "prisma-cli service deployment list",
+        command: "prisma-cli service deployment list --service hello-world",
       },
     ]);
   });

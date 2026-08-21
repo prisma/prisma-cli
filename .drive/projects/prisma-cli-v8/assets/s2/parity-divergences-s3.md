@@ -275,7 +275,4 @@ than built at the mount.
 
 ## Command grammar cleanup (2026-08-21 PM review)
 
-The `composer` group is dissolved: `composer deploy` and `composer
-dev` mount at the root as `deploy` and `dev`, and `composer destroy`
-and `composer log` are dropped from the mounted tree entirely. The
-sections above describe the family as S3 mounted it.
+The `composer` group is dissolved: `composer deploy` and `composer dev` mount at the root as `deploy` and `dev`, and `composer destroy` and `composer log` are dropped from the mounted tree entirely. The sections above describe the family as S3 mounted it.

@@ -19,7 +19,10 @@ import {
 export const serviceOpenCommand = defineCommand({
   help: {
     summary: "Open the service's live URL",
-    examples: ["service open", "service open --service my-service"],
+    examples: [
+      "service open --service my-service",
+      "service open --service my-service --branch feature-x",
+    ],
   },
   args: {
     flags: {
@@ -31,6 +34,10 @@ export const serviceOpenCommand = defineCommand({
         brief: "Project id or name",
         placeholder: "id-or-name",
       }),
+      branch: flag.string({
+        brief: "Branch the service lives on (default: the default branch)",
+        placeholder: "name",
+      }),
     },
   },
   needs: { credentials: true },
@@ -38,6 +45,7 @@ export const serviceOpenCommand = defineCommand({
     const state = await resolveServiceReadState(ctx, {
       serviceName: args.flags.service,
       projectRef: args.flags.project,
+      branchName: args.flags.branch,
       commandName: "service open",
     });
 
@@ -45,7 +53,10 @@ export const serviceOpenCommand = defineCommand({
       .listDeployments(state.service.id, { signal: ctx.signal })
       .catch((error) => {
         throw deployFailedError("Failed to resolve service URL", error, [
-          runCommandAction("Inspect the service", "service show"),
+          runCommandAction(
+            "Inspect the service",
+            `service show --service ${state.service.name}`,
+          ),
         ]);
       });
     const currentLiveDeploymentId = resolveCurrentLiveDeploymentId(
@@ -68,10 +79,11 @@ export const serviceOpenCommand = defineCommand({
       throw noDeploymentsError(
         "No deployments available to open",
         `The service "${deploymentsResult.app.name}" does not have any deployments yet.`,
+        deploymentsResult.app.name,
       );
     }
     if (!deploymentsResult.app.liveUrl) {
-      throw liveUrlUnavailableError();
+      throw liveUrlUnavailableError(deploymentsResult.app.name);
     }
 
     const url = deploymentsResult.app.liveUrl;

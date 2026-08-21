@@ -13,7 +13,7 @@ import {
 export const serviceDomainAddCommand = defineCommand({
   help: {
     summary: "Register a custom domain on the service's production branch",
-    examples: ["service domain add shop.acme.com"],
+    examples: ["service domain add shop.acme.com --service my-service"],
   },
   args: domainTargetArgs(),
   needs: { credentials: true },

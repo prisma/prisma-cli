@@ -49,6 +49,35 @@ describe("prisma-cli service show", () => {
     });
   });
 
+  it("scopes the service lookup to the requested branch", async () => {
+    const branches: string[] = [];
+    const harness = await makeServiceCli({
+      routes: readFlowRoutes({
+        "GET /v1/apps": (init) => {
+          branches.push(init.params?.query?.branchGitName as string);
+          return { data: page([SERVICE]) };
+        },
+      }),
+    });
+
+    const result = await harness.cli.run(
+      [
+        "service",
+        "show",
+        "--project",
+        "acme-app",
+        "--service",
+        "hello-world",
+        "--branch",
+        "staging",
+      ],
+      { cwd: harness.cwd, env: harness.env, isTty: { stdout: true } },
+    );
+
+    expect(result.exitCode).toBe(0);
+    expect(branches).toEqual(["staging"]);
+  });
+
   it("presents no live url while the service has no live deployment", async () => {
     const neverPromoted = {
       id: "svc_1",

@@ -6,18 +6,21 @@ import { promotePresentations } from "./presentation";
 import {
   promoteProgressReporter,
   requireDeploymentForService,
-  resolveServiceReleaseState,
 } from "./release";
 import type { ServicePromoteResult } from "./results";
-import { resolveCurrentLiveDeploymentId, toServiceSummary } from "./target";
+import {
+  resolveCurrentLiveDeploymentId,
+  resolveServiceReadState,
+  toServiceSummary,
+} from "./target";
 
 export const serviceDeploymentPromoteCommand = defineCommand({
   help: {
     summary:
       "Promote a deployment to production by rebuilding with production env vars",
     examples: [
-      "service deployment promote dep_123",
       "service deployment promote dep_123 --service my-service",
+      "service deployment promote dep_123 --service my-service --branch feature-x",
     ],
   },
   args: {
@@ -26,6 +29,10 @@ export const serviceDeploymentPromoteCommand = defineCommand({
       project: flag.string({
         brief: "Project id or name",
         placeholder: "id-or-name",
+      }),
+      branch: flag.string({
+        brief: "Branch the service lives on (default: the default branch)",
+        placeholder: "name",
       }),
     },
     positionals: {
@@ -37,9 +44,10 @@ export const serviceDeploymentPromoteCommand = defineCommand({
   },
   needs: { credentials: true },
   handler: async (args, ctx) => {
-    const state = await resolveServiceReleaseState(ctx, {
+    const state = await resolveServiceReadState(ctx, {
       serviceName: args.flags.service,
       projectRef: args.flags.project,
+      branchName: args.flags.branch,
       commandName: "service deployment promote",
     });
 
@@ -47,7 +55,10 @@ export const serviceDeploymentPromoteCommand = defineCommand({
       .listDeployments(state.service.id, { signal: ctx.signal })
       .catch((error) => {
         throw deployFailedError("Failed to list service deployments", error, [
-          runCommandAction("List deployments", "service deployment list"),
+          runCommandAction(
+            "List deployments",
+            `service deployment list --service ${state.service.name}`,
+          ),
         ]);
       });
     const currentLiveDeploymentId = resolveCurrentLiveDeploymentId(
@@ -77,7 +88,10 @@ export const serviceDeploymentPromoteCommand = defineCommand({
           outcome: "failed",
         });
         throw deployFailedError("Failed to promote deployment", error, [
-          runCommandAction("List deployments", "service deployment list"),
+          runCommandAction(
+            "List deployments",
+            `service deployment list --service ${state.service.name}`,
+          ),
         ]);
       }
       ctx.report({ kind: "step-finished", step: "promote", outcome: "ok" });

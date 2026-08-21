@@ -41,7 +41,7 @@ describe("prisma-cli service open", () => {
       {
         kind: "run-command",
         label: "Inspect the service",
-        command: "prisma-cli service show",
+        command: "prisma-cli service show --service hello-world",
       },
       {
         kind: "run-command",
@@ -136,7 +136,7 @@ describe("prisma-cli service open", () => {
       {
         kind: "run-command",
         label: "Inspect the service",
-        command: "prisma-cli service show",
+        command: "prisma-cli service show --service hello-world",
       },
     ]);
   });

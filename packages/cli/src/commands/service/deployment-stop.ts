@@ -6,8 +6,8 @@ export const serviceDeploymentStopCommand = defineCommand({
   help: {
     summary: "Stop a running deployment",
     examples: [
-      "service deployment stop dep_123",
       "service deployment stop dep_123 --service my-service",
+      "service deployment stop dep_123 --service my-service --branch feature-x",
     ],
   },
   args: {
@@ -16,6 +16,10 @@ export const serviceDeploymentStopCommand = defineCommand({
       project: flag.string({
         brief: "Project id or name",
         placeholder: "id-or-name",
+      }),
+      branch: flag.string({
+        brief: "Branch the service lives on (default: the default branch)",
+        placeholder: "name",
       }),
     },
     positionals: {
@@ -34,6 +38,7 @@ export const serviceDeploymentStopCommand = defineCommand({
           deployment: args.positionals.deployment,
           service: args.flags.service,
           project: args.flags.project,
+          branch: args.flags.branch,
         },
         "stop",
       );

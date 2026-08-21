@@ -186,7 +186,12 @@ export function createPresentations(
 export function showPresentations(result: ServiceShowResult): Presentations {
   const next: NextAction[] = [];
   if (result.liveUrl) {
-    next.push(runCommandAction("Open the live URL", "service open"));
+    next.push(
+      runCommandAction(
+        "Open the live URL",
+        `service open --service ${result.service.name}`,
+      ),
+    );
   }
   const inspectable = result.liveDeployment ?? result.recentDeployments[0];
   if (inspectable) {
@@ -309,7 +314,10 @@ export function openPresentations(
     ],
     stdout: () => [result.url],
     next: () => [
-      runCommandAction("Inspect the service", "service show"),
+      runCommandAction(
+        "Inspect the service",
+        `service show --service ${result.service.name}`,
+      ),
       runCommandAction(
         "Show the live deployment",
         `service deployment show ${liveDeploymentId}`,
@@ -318,9 +326,15 @@ export function openPresentations(
   };
 }
 
-function deploymentNextActions(deploymentId: string): NextAction[] {
+function deploymentNextActions(
+  deploymentId: string,
+  serviceName: string,
+): NextAction[] {
   return [
-    runCommandAction("List deployments", "service deployment list"),
+    runCommandAction(
+      "List deployments",
+      `service deployment list --service ${serviceName}`,
+    ),
     runCommandAction(
       "Show the deployment",
       `service deployment show ${deploymentId}`,
@@ -351,7 +365,8 @@ export function promotePresentations(
           : []),
       ]),
     ],
-    next: () => deploymentNextActions(result.deployment.id),
+    next: () =>
+      deploymentNextActions(result.deployment.id, result.service.name),
   };
 }
 
@@ -382,7 +397,8 @@ export function rollbackPresentations(
           : []),
       ]),
     ],
-    next: () => deploymentNextActions(result.deployment.id),
+    next: () =>
+      deploymentNextActions(result.deployment.id, result.service.name),
   };
 }
 
@@ -408,7 +424,8 @@ export function deploymentStartPresentations(
           : []),
       ]),
     ],
-    next: () => deploymentNextActions(result.deployment.id),
+    next: () =>
+      deploymentNextActions(result.deployment.id, result.service.name),
   };
 }
 
@@ -431,7 +448,8 @@ export function deploymentStopPresentations(
         { label: "status", value: result.deployment.status },
       ]),
     ],
-    next: () => deploymentNextActions(result.deployment.id),
+    next: () =>
+      deploymentNextActions(result.deployment.id, result.service.name),
   };
 }
 
@@ -451,7 +469,10 @@ export function deploymentDeletePresentations(
       ]),
     ],
     next: () => [
-      runCommandAction("List deployments", "service deployment list"),
+      runCommandAction(
+        "List deployments",
+        `service deployment list --service ${result.service.name}`,
+      ),
     ],
   };
 }
@@ -472,9 +493,8 @@ export function deletePresentations(
         { label: "deleted", value: "yes" },
       ]),
     ],
-    next: () => [
-      runCommandAction("List deployments", "service deployment list"),
-    ],
+    // The service is gone, so nothing service-scoped can run next.
+    next: () => [runCommandAction("List remaining services", "service list")],
   };
 }
 

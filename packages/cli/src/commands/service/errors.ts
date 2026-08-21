@@ -171,10 +171,16 @@ export function deployFailedError(
 export function noDeploymentsError(
   summary: string,
   why: string,
+  serviceName: string,
 ): CliStructuredError {
   return new CliStructuredError("SERVICE.NO_DEPLOYMENTS", summary, {
     why,
-    nextActions: [runCommandAction("Inspect the service", "service show")],
+    nextActions: [
+      runCommandAction(
+        "Inspect the service",
+        `service show --service ${serviceName}`,
+      ),
+    ],
   });
 }
 
@@ -189,7 +195,7 @@ export function deploymentNotFoundError(
       nextActions: [
         runCommandAction(
           "Choose an available deployment id",
-          "service deployment list",
+          "service deployment list --service <name>",
         ),
       ],
     },
@@ -263,7 +269,7 @@ export function deploymentNotFoundForServiceError(
       nextActions: [
         runCommandAction(
           "Choose an available deployment id",
-          "service deployment list",
+          `service deployment list --service ${serviceName}`,
         ),
       ],
     },
@@ -291,7 +297,9 @@ export function serviceTargetRequiredError(
   );
 }
 
-export function noPreviousDeploymentError(): CliStructuredError {
+export function noPreviousDeploymentError(
+  serviceName: string,
+): CliStructuredError {
   return new CliStructuredError(
     "SERVICE.NO_PREVIOUS_DEPLOYMENT",
     "No previous deployment available for rollback",
@@ -301,7 +309,10 @@ export function noPreviousDeploymentError(): CliStructuredError {
         adviceAction(
           "Deploy a second version first, or pass --to <deployment-id> for a specific earlier deployment.",
         ),
-        runCommandAction("List deployments", "service deployment list"),
+        runCommandAction(
+          "List deployments",
+          `service deployment list --service ${serviceName}`,
+        ),
       ],
     },
   );
@@ -309,7 +320,9 @@ export function noPreviousDeploymentError(): CliStructuredError {
 
 /** Rolling back without `--to` needs the live deployment: the default
  *  target is defined relative to it. */
-export function liveDeploymentUnknownError(): CliStructuredError {
+export function liveDeploymentUnknownError(
+  serviceName: string,
+): CliStructuredError {
   return new CliStructuredError(
     "SERVICE.LIVE_DEPLOYMENT_UNKNOWN",
     "Cannot determine which deployment is currently live",
@@ -318,9 +331,12 @@ export function liveDeploymentUnknownError(): CliStructuredError {
       nextActions: [
         runCommandAction(
           "Roll back to a named deployment",
-          "service deployment rollback --to <deployment>",
+          `service deployment rollback --to <deployment> --service ${serviceName}`,
         ),
-        runCommandAction("List deployments", "service deployment list"),
+        runCommandAction(
+          "List deployments",
+          `service deployment list --service ${serviceName}`,
+        ),
       ],
     },
   );
@@ -329,46 +345,54 @@ export function liveDeploymentUnknownError(): CliStructuredError {
 export function deleteFailedError(
   summary: string,
   cause: unknown,
+  serviceName: string,
 ): CliStructuredError {
   return new CliStructuredError("SERVICE.DELETE_FAILED", summary, {
     why: cause instanceof Error ? cause.message : String(cause),
     nextActions: [
-      runCommandAction("Inspect the service", "service show"),
-      runCommandAction("List deployments", "service deployment list"),
+      runCommandAction(
+        "Inspect the service",
+        `service show --service ${serviceName}`,
+      ),
+      runCommandAction(
+        "List deployments",
+        `service deployment list --service ${serviceName}`,
+      ),
     ],
     cause,
   });
 }
 
-/** A blank `--branch` must never fall back to the inferred (possibly
- *  production) branch. */
+/** A blank `--branch` names no branch and must never fall through to
+ *  the branch the command targets when the flag is omitted. */
 export function branchValueEmptyError(): CliStructuredError {
   return new CliStructuredError(
     "SERVICE.BRANCH_INVALID",
     "The --branch value cannot be empty",
     {
-      why: "service delete scopes the deletion to the given branch; an empty --branch would silently fall back to the inferred (possibly production) branch.",
+      why: "The command scopes its work to the given branch; an empty --branch names none, and omitting the flag targets the default branch instead.",
       nextActions: [
         adviceAction(
-          "Pass a non-empty branch name, or omit --branch to use the inferred branch.",
-        ),
-        runCommandAction(
-          "Delete on a branch",
-          "service delete --service <name> --branch <branch>",
+          "Pass a non-empty branch name, or omit --branch to target the default branch.",
         ),
       ],
     },
   );
 }
 
-export function liveUrlUnavailableError(): CliStructuredError {
+export function liveUrlUnavailableError(
+  serviceName: string,
+): CliStructuredError {
   return new CliStructuredError(
     "SERVICE.FEATURE_UNAVAILABLE",
     "Live URL is not available for this service",
     {
       why: "Deployments exist, but the provider does not expose a stable live service URL for this service yet.",
       nextActions: [
-        runCommandAction("Inspect the deployment state", "service show"),
+        runCommandAction(
+          "Inspect the deployment state",
+          `service show --service ${serviceName}`,
+        ),
       ],
     },
   );
@@ -388,7 +412,7 @@ export function branchNotDeployableError(
         ),
         runCommandAction(
           "Add on production",
-          "service domain add <hostname> --branch production",
+          "service domain add <hostname> --service <name> --branch production",
         ),
       ],
     },
@@ -408,7 +432,10 @@ export function domainHostnameInvalidError(
         "Custom domains must be valid hostnames without protocol, path, wildcard, or port.",
       nextActions: [
         adviceAction("Pass a hostname like shop.acme.com."),
-        runCommandAction("Add a domain", "service domain add shop.acme.com"),
+        runCommandAction(
+          "Add a domain",
+          "service domain add shop.acme.com --service <name>",
+        ),
       ],
     },
   );
@@ -424,7 +451,10 @@ export function domainNotFoundError(hostname: string): CliStructuredError {
         adviceAction(
           "Check the hostname and the service, or add the domain first.",
         ),
-        runCommandAction("Add the domain", `service domain add ${hostname}`),
+        runCommandAction(
+          "Add the domain",
+          `service domain add ${hostname} --service <name>`,
+        ),
       ],
     },
   );
@@ -471,10 +501,13 @@ export function domainVerificationFailedError(
       why,
       nextActions: [
         ...(guidance ? [adviceAction(renameAppCopy(guidance))] : []),
-        runCommandAction("Show the domain", `service domain show ${hostname}`),
+        runCommandAction(
+          "Show the domain",
+          `service domain show ${hostname} --service <name>`,
+        ),
         runCommandAction(
           "Retry verification",
-          `service domain retry ${hostname}`,
+          `service domain retry ${hostname} --service <name>`,
         ),
       ],
     },
@@ -491,7 +524,10 @@ export function domainVerificationTimeoutError(
     {
       why: `The domain is still "${lastStatus}".`,
       nextActions: [
-        runCommandAction("Show the domain", `service domain show ${hostname}`),
+        runCommandAction(
+          "Show the domain",
+          `service domain show ${hostname} --service <name>`,
+        ),
         adviceAction("Retry wait with a longer --timeout."),
       ],
     },
@@ -507,7 +543,7 @@ export function timeoutInvalidError(value: string): CliStructuredError {
       nextActions: [
         runCommandAction(
           "Wait with a valid timeout",
-          "service domain wait shop.acme.com --timeout 15m",
+          "service domain wait shop.acme.com --service <name> --timeout 15m",
         ),
       ],
     },
@@ -540,7 +576,10 @@ export function domainCommandError(
       why: error instanceof Error ? error.message : String(error),
       meta: debugMeta(error),
       nextActions: [
-        runCommandAction("Show the domain", `service domain show ${hostname}`),
+        runCommandAction(
+          "Show the domain",
+          `service domain show ${hostname} --service <name>`,
+        ),
       ],
       cause: error,
     },
@@ -603,7 +642,10 @@ function domainHostnameRejectedError(
         adviceAction(
           "Pass a valid hostname like shop.acme.com and make sure DNS can be verified.",
         ),
-        runCommandAction("Add a domain", "service domain add shop.acme.com"),
+        runCommandAction(
+          "Add a domain",
+          "service domain add shop.acme.com --service <name>",
+        ),
       ],
     },
   );
@@ -620,7 +662,10 @@ function domainQuotaExceededError(error: DomainApiError): CliStructuredError {
         adviceAction(
           "Delete an existing custom domain before adding another one.",
         ),
-        runCommandAction("Delete a domain", "service domain delete <hostname>"),
+        runCommandAction(
+          "Delete a domain",
+          "service domain delete <hostname> --service <name>",
+        ),
       ],
     },
   );
@@ -663,7 +708,10 @@ function domainRequiresDeploymentError(
         adviceAction(
           "Promote a deployment on the service's production branch, then add the domain again.",
         ),
-        runCommandAction("Add the domain", `service domain add ${hostname}`),
+        runCommandAction(
+          "Add the domain",
+          `service domain add ${hostname} --service <name>`,
+        ),
       ],
     },
   );
@@ -683,7 +731,10 @@ function domainRetryNotEligibleError(
         adviceAction(
           "Wait for the current verification or TLS step to finish, then rerun retry if the domain fails.",
         ),
-        runCommandAction("Show the domain", `service domain show ${hostname}`),
+        runCommandAction(
+          "Show the domain",
+          `service domain show ${hostname} --service <name>`,
+        ),
       ],
     },
   );
@@ -730,7 +781,7 @@ function domainDnsNotConfiguredError(
             ),
             runCommandAction(
               "Add the domain",
-              `service domain add ${hostname}`,
+              `service domain add ${hostname} --service <name>`,
             ),
           ]
         : [

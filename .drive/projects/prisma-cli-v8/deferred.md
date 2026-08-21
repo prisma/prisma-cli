@@ -86,12 +86,7 @@ composer can use it.
   it runs: engine `8.0.0-rc.N` publishes from this repo → orm-toolchain
   and composer bump their engine pins and publish → the rc1 bump PR
   here pins those versions.
-- **The prisma bin's mount makes composer's help examples wrong.**
-  **Closed by the command grammar cleanup (2026-08-21):** `dev` and
-  `deploy` moved to the root, so `{bin} deploy src/service.ts` renders
-  correctly; `destroy` and `log` were dropped entirely. No engine
-  placeholder needed. Recorded in
-  `assets/s2/parity-divergences-s3.md`.
+- **The prisma bin's mount makes composer's help examples wrong.** **Closed by the command grammar cleanup (2026-08-21):** `dev` and `deploy` moved to the root, so `{bin} deploy src/service.ts` renders correctly; `destroy` and `log` were dropped entirely. No engine placeholder needed. Recorded in `assets/s2/parity-divergences-s3.md`.
 
 ## The ORM family does not work through the assembled binary (found 2026-08-13, writing the e2e happy paths)
 
@@ -124,9 +119,7 @@ CLI does not do, and each restarts as engine work if wanted:
   secret handling before it is built.
 - **A `github` group for workspace-level GitHub connections** (#113):
   the engine ships repo-level `git connect|disconnect` only.
-- **Transient-read retry on `build logs` streaming** (#104): moot —
-  the `build` group was removed by the command grammar cleanup
-  (2026-08-21).
+- **Transient-read retry on `build logs` streaming** (#104): moot — the `build` group was removed by the command grammar cleanup (2026-08-21).
 
 ## Ratified-as-shipped at the S2 sign-off (2026-08-12) — the gaps stay real
 
@@ -140,10 +133,7 @@ CLI does not do, and each restarts as engine work if wanted:
   `--follow` polls on a 2s interval rather than holding a socket open.
   The open remainder is the WebSocket live tail, in the closed
   `service logs` entry further down this file.
-- **`build logs` cannot exit 1 on a failed build** — moot: the
-  command was removed with the `build` group by the command grammar
-  cleanup (2026-08-21). The engine gap (a stream settling with a
-  documented non-zero code) remains real for future stream commands.
+- **`build logs` cannot exit 1 on a failed build** — moot: the command was removed with the `build` group by the command grammar cleanup (2026-08-21). The engine gap (a stream settling with a documented non-zero code) remains real for future stream commands.
 - **The crash-recovery feedback action does not port** (the legacy
   crash envelope pre-filled a `feedback` command; the engine's crash
   path has no hook for it).
@@ -453,40 +443,11 @@ Still open:
 
 ## Left open by the command grammar cleanup (2026-08-21)
 
-The cleanup PR removed the compute config and `init`, made service
-commands parameter-only, renamed the six destructive `remove` commands
-to `delete`, moved `postgres restore`/`ref *`/`migrate`/`format`/
-`composer dev|deploy`, and dropped `composer destroy|log` and the
-`build` group. Deliberately left behind:
+The cleanup PR removed the compute config and `init`, made service commands parameter-only, renamed the six destructive `remove` commands to `delete`, moved `postgres restore`/`ref *`/`migrate`/`format`/`composer dev|deploy`, and dropped `composer destroy|log` and the `build` group. Deliberately left behind:
 
-- **`project env` still infers scope from the current git branch.**
-  `controllers/app-env.ts` imports `readLocalGitBranch` — the same
-  ambient context the brief removed from the service commands, but the
-  brief enumerated service commands only. Extending "parameters only"
-  to `project env` is a product call.
-- **`knownLiveDeploymentByProject` has no writer.** `service delete`
-  clears a local-state key nothing sets; pre-existing on `main` at
-  `87ffd44`, not slice fallout. Delete the shape or reinstate the
-  writer.
-- **Upstream family cleanups.** The shell now wraps both external
-  families: composer still ships `destroy`/`log` commands (and their
-  help) that nothing mounts, and orm-toolchain still keys its family
-  `ref *` and ships the `migration ref` → `ref` redirect the wrapper
-  drops, plus a `migration apply` replacement that says `migrate`.
-  Each repo should retire those surfaces so the wrapper shrinks to a
-  pass-through.
-- **`PRISMA_PROJECT_ID` is honoured only by the domain commands**
-  (pre-existing): the other service commands take `--project` and the
-  link file but not the env var. Unify or document.
-- **orm-toolchain's shipped help examples name retired spellings.**
-  Six commands' shipped examples start with the family's own key —
-  `format`, `migrate`, `ref list|set|delete`, and `init` — which the
-  mounts respell to `contract format`, `db migrate`, `migration ref *`
-  and `orm init`. The shell wrapper rewrites the examples (D4-1
-  ruling) until orm-toolchain updates its own.
-- **The deployment-id targeting asymmetry is undocumented.**
-  `service deployment delete|promote|rollback|start|stop` require
-  `--service` even when given a globally-unique deployment id, while
-  `service logs --deployment` without a service target resolves the id
-  globally within the project. Deliberate (per the cleanup plan), but
-  no artifact explains it to a user who meets it. Document or unify.
+- **`project env` still infers scope from the current git branch.** `controllers/app-env.ts` imports `readLocalGitBranch` — the same ambient context the brief removed from the service commands, but the brief enumerated service commands only. Extending "parameters only" to `project env` is a product call.
+- ~~**`knownLiveDeploymentByProject` has no writer.**~~ Closed on the PR branch (2026-08-21): the local-state shape, its store methods, and `service delete`'s cleanup pass were deleted.
+- **Upstream family cleanups.** The shell now wraps both external families: composer still ships `destroy`/`log` commands (and their help) that nothing mounts, and orm-toolchain still keys its family `ref *` and ships the `migration ref` → `ref` redirect the wrapper drops, plus a `migration apply` replacement that says `migrate`. Each repo should retire those surfaces so the wrapper shrinks to a pass-through.
+- **`PRISMA_PROJECT_ID` is honoured only by the domain commands** (pre-existing): the other service commands take `--project` and the link file but not the env var. Unify or document.
+- **orm-toolchain's shipped help examples name retired spellings.** Six commands' shipped examples start with the family's own key — `format`, `migrate`, `ref list|set|delete`, and `init` — which the mounts respell to `contract format`, `db migrate`, `migration ref *` and `orm init`. The shell wrapper rewrites the examples (D4-1 ruling) until orm-toolchain updates its own.
+- **The deployment-id targeting asymmetry is undocumented.** `service deployment delete|promote|rollback|start|stop` require `--service` even when given a globally-unique deployment id, while `service logs --deployment` without a service target resolves the id globally within the project. Deliberate (per the cleanup plan), but no artifact explains it to a user who meets it. Document or unify.
