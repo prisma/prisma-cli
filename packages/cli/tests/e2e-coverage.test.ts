@@ -162,7 +162,7 @@ async function mountedCommands(): Promise<string[]> {
   }
   const block = source.slice(start + marker.length, end);
   // Quoted keys are multi-word paths; bare identifier keys are the
-  // single-word mounts (init, feedback), which the quoted-only scan
+  // single-word mounts (feedback), which the quoted-only scan
   // used to miss entirely.
   return [
     ...block.matchAll(/^\s{2}(?:"([^"]+)"|([A-Za-z][A-Za-z0-9]*)):/gm),

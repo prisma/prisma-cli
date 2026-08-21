@@ -29,7 +29,6 @@ import { buildLogsCommand } from "./commands/build/logs";
 import { feedbackCommand } from "./commands/feedback";
 import { gitConnectCommand } from "./commands/git/connect";
 import { gitDisconnectCommand } from "./commands/git/disconnect";
-import { initCommand } from "./commands/init/init";
 import { postgresBackupListCommand } from "./commands/postgres/backup-list";
 import { postgresConnectionCreateCommand } from "./commands/postgres/connection-create";
 import { postgresConnectionListCommand } from "./commands/postgres/connection-list";
@@ -263,8 +262,6 @@ export const mountedCommands: Readonly<Record<string, AnyCommand>> = {
   "db update": ormCommandFamily.commands["db update"],
   "db verify": ormCommandFamily.commands["db verify"],
   format: ormCommandFamily.commands.format,
-  // Ruled (operator, 2026-08-12): the ORM's project initializer lives at
-  // `orm init`; top-level `init` is the platform's compute-config wizard.
   "orm init": ormCommandFamily.commands.init,
   lsp: ormCommandFamily.commands.lsp,
   migrate: ormCommandFamily.commands.migrate,
@@ -286,10 +283,6 @@ export const mountedCommands: Readonly<Record<string, AnyCommand>> = {
   feedback: feedbackCommand,
   // The engine's consent surface, mounted whole (no command family).
   ...telemetry.commands,
-  // Top-level, and not the platform package's: init writes the local
-  // compute config the service group reads. It joins the compute family
-  // when one exists.
-  init: initCommand,
 };
 
 export function buildCli(): Cli {
@@ -307,7 +300,7 @@ export function buildCli(): Cli {
       tagline: "The Prisma Developer Platform, from your terminal",
       description:
         "Deploy your app with isolated infrastructure for every branch.",
-      examples: ["init", "auth login", "project list"],
+      examples: ["auth login", "project list"],
       docsUrl: CLI_DOCS_URL,
     },
     telemetry: { docsUrl: CLI_DOCS_URL },

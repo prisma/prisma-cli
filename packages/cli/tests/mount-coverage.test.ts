@@ -8,11 +8,7 @@
  * `agent install|update|status`, and `feedback`) was ratified by the
  * operator on 2026-08-12. Adding to it requires an operator ruling
  * recorded here; giving those commands a real owning family, so the
- * exception set can shrink, is deferred work. `init` (the platform's
- * compute-config wizard) joined with S2d: ruled top-level on
- * 2026-08-12, when the ORM's initializer moved to `orm init`; it takes
- * a family when a compute family exists.
-
+ * exception set can shrink, is deferred work.
  */
 import type { AnyCommand, CommandFamily } from "@prisma/cli-engine";
 import { defineCommand, telemetryCommandGroup } from "@prisma/cli-engine";
@@ -30,7 +26,6 @@ import { agentInstallCommand } from "../src/commands/agent/install";
 import { agentStatusCommand } from "../src/commands/agent/status";
 import { agentUpdateCommand } from "../src/commands/agent/update";
 import { feedbackCommand } from "../src/commands/feedback";
-import { initCommand } from "../src/commands/init/init";
 
 /**
  * Commands that deliberately belong to no family: the engine's consent
@@ -43,7 +38,6 @@ const FAMILYLESS: ReadonlySet<unknown> = new Set([
   agentUpdateCommand,
   agentStatusCommand,
   feedbackCommand,
-  initCommand,
 ]);
 
 /** The family commands the tree does not mount, by family key. */
@@ -111,7 +105,6 @@ const EXPECTED_MOUNT_PATHS: readonly string[] = [
   "format",
   "git connect",
   "git disconnect",
-  "init",
   "lsp",
   "migrate",
   "migration check",
