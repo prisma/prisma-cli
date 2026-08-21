@@ -24,6 +24,8 @@
   intermittent). Fix: a `dependsOn` on the engine's build in turbo.json.
   Origin: slice 2 implementer, 2026-08-21.
 
+- **Windows CI: `skills-sync.test.ts` "does nothing and exits 0 when every copy is current" timed out once at the 5s default** (run 32474645762, 2026-08-21), with a teardown ENOTEMPTY consistent with cleanup racing the timed-out test. First run of the same code passed it; likely a slow runner. If it recurs, give the skills-sync suite a longer per-test timeout on Windows rather than chasing the race.
+
 - **`isLikelyGlobalNpmEntrypoint` (update-check.ts:312) matches only
   `prisma-cli` paths**, so a globally-installed `prisma` user gets the
   docs-link fallback instead of a concrete update command. Pre-existing;

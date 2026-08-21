@@ -29,6 +29,8 @@ asks Opus-4.8-mid; unavailable in this session, using Opus.
 | Slice 2 | Round 4 | SATISFIED — both round-3 findings fixed, no new findings, no collateral damage |
 | Slice 1 | Round 2 | SATISFIED — S1-R1-1 fixed by a real pack-and-read-back test, no new findings |
 | Slice 3 | Round 2 | ANOTHER ROUND NEEDED (S3-R1-1 fixed end to end; one new low finding, S3-R2-1, in the quick-reference template init writes) |
+| Slice 3 | Round 3 | SATISFIED — S3-R2-1 fixed in both templates, the comment, and all four snapshots; no new findings |
+| Slice 2 | Round 5 (CI repair) | SATISFIED — the cli-engine revert is exact and both Windows failures were fixture-only; no new findings |
 
 ## Findings log
 
@@ -965,5 +967,34 @@ Every string I was asked to check now names the same binary, and I traced each o
 The two implementer judgement calls are recorded as noted, not as findings: no migration entry for projects created before this change, and the repository-wide `prisma-cli` to `prisma` rename in prisma/prisma deliberately left undone. The second is why a great many `prisma-cli` strings remain in that package (`control-api/`, `orm/db/`, `commands/init/errors.ts`, `orm/config-section.ts`); I checked that they are all in that undone-rename set rather than in the set of strings init writes into a project, which is what this slice owns.
 
 One thing for the orchestrator, not a defect: this branch is stacked on the slice-1 head from before the S1-R1-1 fix (`c95e2d02`), not on `900db17`. A merge of slice 1 followed by slice 3 keeps the fix, so nothing is at risk, but a rebase before opening the PR makes the diff show only slice 3's work.
+
+**Slice 3, round 3 — `d18bc40`. SATISFIED.** S3-R2-1 is fixed and I have no new findings.
+
+Both quick-reference templates now say "a `catalogs` entry for `prisma` or `{{pkg}}`" and "`pnpm dlx prisma@next orm init …`", so the scaffolded document names the package init actually installs and the command spelling that actually exists. The catalogs sentence is now true as well as consistent: init builds its catalog warnings from the packages it is about to install, and `prisma@next` is one of them, so `prisma` is the entry a reader should look for.
+
+The comment in `detect-package-manager.ts` is updated in the same way, including the `bunx` example beside the `pnpm dlx` one.
+
+All four snapshots are refreshed and they match the templates. I checked each of the four rather than sampling: mongo with PSL authoring, mongo with TypeScript, postgres with PSL, postgres with TypeScript. Each carries the same two rewritten lines with the target's own package name interpolated, and nothing else in the snapshots moved. A grep across the templates, the comment, and the snapshot file finds no remaining `@prisma/cli@next` or `prisma-cli`.
+
+Per the review brief I did not re-run the suite; the implementer reports 1443 tests green and a clean typecheck.
+
+**Slice 2, round 5 (CI repair) — `ce4b9ea`, `d8a3aeb`. SATISFIED.** Both repairs do what they claim and neither weakens anything.
+
+**The cli-engine revert is exact.** `git diff origin/main...HEAD -- packages/cli-engine` produces nothing, so the branch no longer changes that package at all. I also checked the wider blast radius: `git diff --name-only origin/main...HEAD -- packages` lists nothing outside `packages/cli`, so the branch touches one package and the engine-version check has nothing to object to.
+
+Losing the two renamed lines is acceptable. Both are doc comments in `execution/help.ts` that use an example invocation to illustrate a rule — one about a bare group invocation being a help request, one showing the shape of a help header. Neither is printed, and the engine renders whichever binary name the host CLI gives it, so the comments were always illustrative rather than authoritative. Publishing 0.2.1 to reword two comments would be a poor trade. The residue is that a reader of `help.ts` sees `prisma-cli` in two examples while the CLI that consumes it says `prisma`; that belongs on the list of deliberate survivals in the PR body, not in a finding.
+
+**The Windows failures were fixture-only, and I verified that rather than accepting it.** I read all seven files in `packages/cli/src/lib/skills/` looking for the three shapes that break on Windows — a hardcoded `/` in a path, a regular expression assuming `/`, and a `startsWith` against a slash-prefixed path. There are exactly two places that mention `/` at all, and both are correct:
+
+- `resolve.ts:58` builds its `node_modules` marker as `${path.sep}node_modules${path.sep}${packageName.split("/").join(path.sep)}`. The forward slash there is the separator inside an npm scoped package name, which is `/` on every platform; it is translated into the platform separator before being compared against a real path.
+- `project-root.ts:168` splits a workspace glob on `/`. Workspace patterns in `package.json` and `pnpm-workspace.yaml` are always written with forward slashes, and each segment is then joined with `path.join`.
+
+Everything else — the harness directories, the package skills directory, the state file, every read, copy and delete in `sync.ts` and `status.ts` — goes through `path.join`. `HARNESS_SKILL_DIRS` is declared with forward slashes but is only ever an argument to `path.join`, which accepts them on Windows. So the claim holds: production code has no separator assumption a Windows user would hit.
+
+**Both tests keep their point.** In `skills-pnp.test.ts` the fake filesystem layer now converts the incoming path to forward-slash form before testing it against the virtual zip prefix. On macOS and Linux that conversion is a no-op, so the existing proof is unchanged; on Windows it lets the remap fire for paths the production code built with `path.join`. What the fixture proves is untouched: a path that does not begin with the virtual prefix is still passed through unremapped, so a sync that built a `node_modules` path itself would read nothing and fail, and the reads still have to go through `node:fs/promises` to be seen at all.
+
+In `skills-workspace-scan.test.ts` only the comparison changed. The test still asserts the exact set of directories the walk read — `packages` and `packages/group`, and nothing else — still caps the whole status read at fewer than twelve directory reads, and still asserts that no `dist` directory was read. That last check compares against `${path.sep}dist`, so it was already separator-aware and stays correct on both platforms. Normalising the recorded paths before comparing them cannot make the assertion pass with a different set of directories, because the set is compared by equality, not by containment.
+
+Per the review brief I did not re-run the suite; the implementer reports 1040 passed with the one known skip and a clean typecheck.
 
 ## Orchestrator notes
