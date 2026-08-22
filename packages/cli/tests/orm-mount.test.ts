@@ -58,7 +58,7 @@ function descriptor(kind: string) {
   };
 }
 
-/** The retired spellings the ORM family's own examples carry. */
+/** Retired spellings upstream must not ship in its help examples. */
 const RETIRED_ORM_SPELLING = /prisma-test (format|migrate|ref|init)(\s|$)/;
 
 function shell(config?: Readonly<Record<string, unknown>>) {

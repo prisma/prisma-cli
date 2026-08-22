@@ -2,10 +2,8 @@ import {
   type AnyCommand,
   type Cli,
   type CommandFamily,
-  type CommandRedirect,
   createCli,
   defineCommandFamily,
-  type RedirectSpec,
   telemetryCommandGroup,
 } from "@prisma/cli-engine";
 import { createComposerFamily } from "@prisma/composer-cli/family";
@@ -116,13 +114,13 @@ export const platformCommandFamily: CommandFamily = defineCommandFamily({
     serviceCreate: serviceCreateCommand,
     serviceShow: serviceShowCommand,
     serviceOpen: serviceOpenCommand,
-    serviceDeploymentList: serviceVersionListCommand,
-    serviceDeploymentShow: serviceVersionShowCommand,
-    serviceDeploymentPromote: serviceVersionPromoteCommand,
-    serviceDeploymentRollback: serviceVersionRollbackCommand,
-    serviceDeploymentStart: serviceVersionStartCommand,
-    serviceDeploymentStop: serviceVersionStopCommand,
-    serviceDeploymentDelete: serviceVersionDeleteCommand,
+    serviceVersionList: serviceVersionListCommand,
+    serviceVersionShow: serviceVersionShowCommand,
+    serviceVersionPromote: serviceVersionPromoteCommand,
+    serviceVersionRollback: serviceVersionRollbackCommand,
+    serviceVersionStart: serviceVersionStartCommand,
+    serviceVersionStop: serviceVersionStopCommand,
+    serviceVersionDelete: serviceVersionDeleteCommand,
     serviceDelete: serviceDeleteCommand,
     serviceDomainAdd: serviceDomainAddCommand,
     serviceDomainShow: serviceDomainShowCommand,
@@ -132,134 +130,24 @@ export const platformCommandFamily: CommandFamily = defineCommandFamily({
   },
 });
 
-/** A normalized redirect, re-spelled as the input shape
- *  `defineCommandFamily` takes (optional fields instead of
- *  `| undefined`). */
-function toRedirectSpec(redirect: CommandRedirect): RedirectSpec {
-  return {
-    from: redirect.from,
-    ...(redirect.flag !== undefined ? { flag: redirect.flag } : {}),
-    replacement: redirect.replacement,
-    ...(redirect.reason !== undefined ? { reason: redirect.reason } : {}),
-  };
-}
-
-/** A family re-wrapped by the shell: the same configSection and docs
- *  base, but the shell's choice of commands and redirects. */
-function wrapCommandFamily(
-  family: CommandFamily,
-  commands: Readonly<Record<string, AnyCommand>>,
-  redirects: readonly RedirectSpec[],
-): CommandFamily {
-  return defineCommandFamily({
-    ...(family.configSection !== undefined
-      ? { configSection: family.configSection }
-      : {}),
-    commands,
-    ...(family.docsBaseUrl !== undefined
-      ? { docsBaseUrl: family.docsBaseUrl }
-      : {}),
-    redirects,
-  });
-}
-
 /**
  * Composer's commands, contributed by composer's own package and run by
- * this process. Only the command definitions and their handler entry
- * functions load here; the alchemy and effect constellation stays behind
- * composer's dynamic executor imports, so mounting costs an unrelated
- * command nothing.
- *
- * Re-wrapped without `destroy` and `log`, which were dropped by the
- * 2026-08-21 PM review. Subtraction, not selection: a command composer
- * adds upstream enters the wrapped family, so mount-coverage's
- * family-completeness check flags it until the shell mounts it.
+ * this process, mounted as shipped. Only the command definitions and
+ * their handler entry functions load here; the alchemy and effect
+ * constellation stays behind composer's dynamic executor imports, so
+ * mounting costs an unrelated command nothing.
  */
-const COMPOSER_DROPPED_COMMANDS = new Set(["destroy", "log"]);
-const composerFamilySource = createComposerFamily();
-export const composerCommandFamily: CommandFamily = wrapCommandFamily(
-  composerFamilySource,
-  Object.fromEntries(
-    Object.entries(composerFamilySource.commands).filter(
-      ([key]) => !COMPOSER_DROPPED_COMMANDS.has(key),
-    ),
-  ),
-  composerFamilySource.redirects.map(toRedirectSpec),
-);
-
-/** The ORM commands whose mount path differs from the family's own
- *  key. Their shipped help examples spell the family key, so the wrap
- *  respells them to the mounted path. */
-const ORM_MOUNT_RESPELLINGS: Readonly<Record<string, string>> = {
-  format: "contract format",
-  init: "orm init",
-  migrate: "db migrate",
-  "ref list": "migration ref list",
-  "ref set": "migration ref set",
-  "ref delete": "migration ref delete",
-};
-
-function respellHelpExamples(
-  command: AnyCommand,
-  from: string,
-  to: string,
-): AnyCommand {
-  return {
-    ...command,
-    help: {
-      ...command.help,
-      examples: command.help.examples.map((example) =>
-        example === from || example.startsWith(`${from} `)
-          ? `${to}${example.slice(from.length)}`
-          : example,
-      ),
-    },
-  } as AnyCommand;
-}
-
-function respellMovedOrmCommands(
-  commands: Readonly<Record<string, AnyCommand>>,
-): Readonly<Record<string, AnyCommand>> {
-  return Object.fromEntries(
-    Object.entries(commands).map(([key, command]) => {
-      const mountPath = ORM_MOUNT_RESPELLINGS[key];
-      return [
-        key,
-        mountPath ? respellHelpExamples(command, key, mountPath) : command,
-      ];
-    }),
-  );
-}
+export const composerCommandFamily: CommandFamily = createComposerFamily();
 
 /**
- * The ORM commands, contributed by orm-toolchain's own package. The
- * family object carries its `orm` config section, its docs base and its
- * redirect table, so nothing here is wired per command. Unlike
- * composer's, this family's entry module imports esbuild and arktype
- * statically, so every invocation of this bin pays that import; fixing
- * that is orm-toolchain's move.
- *
- * Re-wrapped to rewrite the shipped redirects for this shell's tree:
- * the `migration ref` entry is dropped (that spelling is live again as
- * `migration ref list|set|delete`, and mounting it with the redirect in
- * place fails buildCli's collision check), `migration apply`'s
- * replacement is respelled to the `db migrate` mount, and the moved
- * commands' help examples are respelled to their mounted paths.
+ * The ORM commands, contributed by orm-toolchain's own package, mounted
+ * as shipped: the family keys are the mount paths, so the shell adds
+ * nothing. The family object carries its `orm` config section, its docs
+ * base and its redirect table. Unlike composer's, this family's entry
+ * module imports esbuild and arktype statically, so every invocation of
+ * this bin pays that import; fixing that is orm-toolchain's move.
  */
-export const ormCommandFamily: CommandFamily = wrapCommandFamily(
-  ormToolchainFamily,
-  respellMovedOrmCommands(ormToolchainFamily.commands),
-  ormToolchainFamily.redirects
-    .filter((redirect) => redirect.from !== "migration ref")
-    .map((redirect) =>
-      redirect.from === "migration apply"
-        ? toRedirectSpec({
-            ...redirect,
-            replacement: "{bin} db migrate --to <contract>",
-          })
-        : toRedirectSpec(redirect),
-    ),
-);
+export const ormCommandFamily: CommandFamily = ormToolchainFamily;
 
 /** The engine ships the three telemetry commands and the group help
  *  text that belongs to them; both halves are spread in below. */
@@ -366,11 +254,11 @@ export const mountedCommands: Readonly<Record<string, AnyCommand>> = {
   "db sign": ormCommandFamily.commands["db sign"],
   "db update": ormCommandFamily.commands["db update"],
   "db verify": ormCommandFamily.commands["db verify"],
-  "db migrate": ormCommandFamily.commands.migrate,
-  "contract format": ormCommandFamily.commands.format,
+  "db migrate": ormCommandFamily.commands["db migrate"],
+  "contract format": ormCommandFamily.commands["contract format"],
   // `orm init` keeps this path: only the top-level `init` (the compute
   // config wizard) was removed, by the 2026-08-21 PM review.
-  "orm init": ormCommandFamily.commands.init,
+  "orm init": ormCommandFamily.commands["orm init"],
   lsp: ormCommandFamily.commands.lsp,
   "migration check": ormCommandFamily.commands["migration check"],
   "migration graph": ormCommandFamily.commands["migration graph"],
@@ -380,9 +268,9 @@ export const mountedCommands: Readonly<Record<string, AnyCommand>> = {
   "migration plan": ormCommandFamily.commands["migration plan"],
   "migration show": ormCommandFamily.commands["migration show"],
   "migration status": ormCommandFamily.commands["migration status"],
-  "migration ref delete": ormCommandFamily.commands["ref delete"],
-  "migration ref list": ormCommandFamily.commands["ref list"],
-  "migration ref set": ormCommandFamily.commands["ref set"],
+  "migration ref delete": ormCommandFamily.commands["migration ref delete"],
+  "migration ref list": ormCommandFamily.commands["migration ref list"],
+  "migration ref set": ormCommandFamily.commands["migration ref set"],
   // Local utilities: no owning package, no config section, no API.
   "agent install": agentInstallCommand,
   "agent update": agentUpdateCommand,
