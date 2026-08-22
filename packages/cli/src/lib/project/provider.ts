@@ -77,11 +77,11 @@ export function createManagementProjectProvider(
         signal: options.signal,
       });
       if (result.response?.status === 400) {
-        throw projectRemoveBlockedError(options.projectId, result.error);
+        throw projectDeleteBlockedError(options.projectId, result.error);
       }
       if (result.error) {
         throw projectApiError(
-          "Failed to remove project",
+          "Failed to delete project",
           result.response,
           result.error,
         );
@@ -129,20 +129,22 @@ export function projectRenameFailedError(
   });
 }
 
-export function projectRemoveBlockedError(
+export function projectDeleteBlockedError(
   projectId: string,
   error: RawApiErrorBody | undefined,
 ): CliError {
   return new CliError({
-    code: "PROJECT_REMOVE_BLOCKED",
+    code: "PROJECT_DELETE_BLOCKED",
     domain: "project",
-    summary: "Project cannot be removed yet",
+    summary: "Project cannot be deleted yet",
     why:
       error?.error?.message ??
       `Project "${projectId}" still has active deployments.`,
-    fix: "Remove the project's services first, then retry the removal.",
+    fix: "Delete the project's services first, then retry the deletion.",
     exitCode: 1,
-    nextSteps: [formatPrismaCliCommand(["service", "remove", "<name>"])],
+    nextSteps: [
+      formatPrismaCliCommand(["service", "delete", "--service", "<name>"]),
+    ],
   });
 }
 

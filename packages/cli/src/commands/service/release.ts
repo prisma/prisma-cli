@@ -1,70 +1,13 @@
 import type { DestroyAppProgress, PromoteProgress } from "@prisma/compute-sdk";
-import type { LocalStateStore } from "../../adapters/local-state";
-import type {
-  AppProvider,
-  AppRecord,
-  DeploymentRecord,
-} from "../../lib/app/app-provider";
+import type { DeploymentRecord } from "../../lib/app/app-provider";
 import {
-  deploymentNotFoundForServiceError,
-  liveDeploymentUnknownError,
-  noPreviousDeploymentError,
-  releaseTargetRequiredError,
+  liveVersionUnknownError,
+  noPreviousVersionError,
+  versionNotFoundForServiceError,
 } from "./errors";
 import type { ServiceContext } from "./target";
-import { resolveServiceReadState } from "./target";
 
-export interface ServiceReleaseState {
-  provider: AppProvider;
-  stateStore: LocalStateStore;
-  projectId: string;
-  service: AppRecord;
-}
-
-/** The read flow for the commands that act on a service which must
- *  already exist: every `service deployment` verb, plus `service
- *  remove`, which is the one that does not sit under that group. */
-export async function resolveServiceReleaseState(
-  ctx: ServiceContext,
-  options: {
-    serviceName?: string;
-    projectRef?: string;
-    configTarget?: string;
-    branchName?: string;
-    command: "promote" | "rollback" | "remove" | "start" | "stop" | "delete";
-  },
-): Promise<ServiceReleaseState> {
-  const commandName =
-    options.command === "remove"
-      ? "service remove"
-      : `service deployment ${options.command}`;
-  const state = await resolveServiceReadState(ctx, {
-    ...(options.serviceName !== undefined
-      ? { serviceName: options.serviceName }
-      : {}),
-    ...(options.projectRef !== undefined
-      ? { projectRef: options.projectRef }
-      : {}),
-    ...(options.configTarget !== undefined
-      ? { configTarget: options.configTarget }
-      : {}),
-    ...(options.branchName !== undefined
-      ? { branchName: options.branchName }
-      : {}),
-    commandName,
-  });
-  if (!state.selected) {
-    throw releaseTargetRequiredError(commandName);
-  }
-  return {
-    provider: state.provider,
-    stateStore: state.stateStore,
-    projectId: state.projectId,
-    service: state.selected,
-  };
-}
-
-export function requireDeploymentForService(
+export function requireVersionForService(
   deployments: DeploymentRecord[],
   deploymentId: string,
   serviceName: string,
@@ -73,7 +16,7 @@ export function requireDeploymentForService(
     (candidate) => candidate.id === deploymentId,
   );
   if (!deployment) {
-    throw deploymentNotFoundForServiceError(deploymentId, serviceName);
+    throw versionNotFoundForServiceError(deploymentId, serviceName);
   }
   return deployment;
 }
@@ -85,18 +28,19 @@ export function requireDeploymentForService(
 export function resolveRollbackTarget(
   deployments: DeploymentRecord[],
   currentLiveDeploymentId: string | null,
+  serviceName: string,
 ): DeploymentRecord {
   if (deployments.length === 0) {
-    throw noPreviousDeploymentError();
+    throw noPreviousVersionError(serviceName);
   }
   if (currentLiveDeploymentId === null) {
-    throw liveDeploymentUnknownError();
+    throw liveVersionUnknownError(serviceName);
   }
   const previousDeployment = deployments.find(
     (deployment) => deployment.id !== currentLiveDeploymentId,
   );
   if (!previousDeployment) {
-    throw noPreviousDeploymentError();
+    throw noPreviousVersionError(serviceName);
   }
   return previousDeployment;
 }
@@ -171,7 +115,7 @@ export function destroyProgressReporter(
       stopping = deploymentIds.length;
       ctx.report({
         kind: "progress",
-        step: "stop-deployments",
+        step: "stop-versions",
         completed: 0,
         total: stopping,
       });
@@ -180,7 +124,7 @@ export function destroyProgressReporter(
       stopped += 1;
       ctx.report({
         kind: "progress",
-        step: "stop-deployments",
+        step: "stop-versions",
         completed: stopped,
         total: stopping,
       });
@@ -189,7 +133,7 @@ export function destroyProgressReporter(
       deleting = deploymentIds.length;
       ctx.report({
         kind: "progress",
-        step: "delete-deployments",
+        step: "delete-versions",
         completed: 0,
         total: deleting,
       });
@@ -198,7 +142,7 @@ export function destroyProgressReporter(
       deleted += 1;
       ctx.report({
         kind: "progress",
-        step: "delete-deployments",
+        step: "delete-versions",
         completed: deleted,
         total: deleting,
       });
@@ -208,7 +152,7 @@ export function destroyProgressReporter(
         kind: "status",
         subject: serviceName,
         status: "deleted",
-        from: "removing",
+        from: "deleting",
       });
     },
   };

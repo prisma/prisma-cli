@@ -4,10 +4,7 @@ import { ok } from "@prisma/cli-engine/protocol";
 import { LocalStateStore } from "../../adapters/local-state";
 import { resolvePrismaCliPackageCommand } from "../../lib/agent/cli-command";
 import { PRISMA_AGENT_INSTALL_ARGS } from "../../lib/agent/constants";
-import {
-  readPrismaAgentSetupStatus,
-  resolvePrismaAgentSetupCwd,
-} from "../../lib/agent/setup-status";
+import { readPrismaAgentSetupStatus } from "../../lib/agent/setup-status";
 import { formatShellCommand } from "../../shell-command";
 import { resolveStateDir } from "../../state-dir";
 import { statusPresentations } from "./presentation";
@@ -29,12 +26,8 @@ function resolveStatusSource(
   return statusScope === "project" ? "skills-lock" : "unavailable";
 }
 
-async function openStateStore(ctx: AgentContext): Promise<LocalStateStore> {
-  const stateDir = await resolveStateDir({
-    env: ctx.env,
-    cwd: ctx.cwd,
-    signal: ctx.signal,
-  });
+function openStateStore(ctx: AgentContext): LocalStateStore {
+  const stateDir = resolveStateDir({ env: ctx.env, cwd: ctx.cwd });
   return new LocalStateStore(stateDir, ctx.signal);
 }
 
@@ -70,16 +63,16 @@ export const agentStatusCommand = defineCommand({
   },
   handler: async (args, ctx) => {
     const statusScope = args.flags.global ? "global" : "project";
-    const cwd = await resolvePrismaAgentSetupCwd({
-      cwd: ctx.cwd,
-      signal: ctx.signal,
-    });
     const setupStatus = await readPrismaAgentSetupStatus({
-      cwd,
-      stateStore: await openStateStore(ctx),
+      cwd: ctx.cwd,
+      stateStore: openStateStore(ctx),
       signal: ctx.signal,
     });
-    const skillsList = await listInstalledPrismaSkills(ctx, cwd, statusScope);
+    const skillsList = await listInstalledPrismaSkills(
+      ctx,
+      ctx.cwd,
+      statusScope,
+    );
     const skillsInstalled =
       skillsList.status === "ok"
         ? skillsList.skills.length > 0
@@ -98,7 +91,7 @@ export const agentStatusCommand = defineCommand({
     const installCommand = skillsInstalled
       ? null
       : await resolvePrismaCliPackageCommand({
-          cwd,
+          cwd: ctx.cwd,
           signal: ctx.signal,
           args: args.flags.global
             ? [...PRISMA_AGENT_INSTALL_ARGS, "--global"]

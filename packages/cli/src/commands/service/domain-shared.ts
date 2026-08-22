@@ -5,7 +5,7 @@ export function domainTargetArgs() {
   return {
     flags: {
       service: flag.string({
-        brief: "Service name",
+        brief: "Service id or name",
         placeholder: "name",
       }),
       project: flag.string({
@@ -21,11 +21,6 @@ export function domainTargetArgs() {
       hostname: positional.string({
         brief: "Custom domain hostname",
         placeholder: "hostname",
-      }),
-      service: positional.optionalString({
-        brief:
-          "Service target from prisma.compute.ts when the config defines multiple services",
-        placeholder: "service",
       }),
     },
   };

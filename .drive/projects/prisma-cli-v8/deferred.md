@@ -86,14 +86,7 @@ composer can use it.
   it runs: engine `8.0.0-rc.N` publishes from this repo → orm-toolchain
   and composer bump their engine pins and publish → the rc1 bump PR
   here pins those versions.
-- **The prisma bin's mount makes composer's help examples wrong.**
-  Composer writes them as `{bin} deploy src/service.ts`; mounted under
-  the `composer` root the invocation is `prisma composer deploy`, and
-  the engine's `resolveExample` substitutes only `{bin}`. Fix needs both
-  repos: a mount-aware placeholder in the engine (`{command}` → the
-  command's mounted path) and composer's eight example strings — two on
-  each of the four commands — rewritten to use it. Recorded in
-  `assets/s2/parity-divergences-s3.md`.
+- **The prisma bin's mount makes composer's help examples wrong.** **Closed by the command grammar cleanup (2026-08-21):** `dev` and `deploy` moved to the root, so `{bin} deploy src/service.ts` renders correctly; `destroy` and `log` were dropped entirely. No engine placeholder needed. Recorded in `assets/s2/parity-divergences-s3.md`.
 
 ## The ORM family does not work through the assembled binary (found 2026-08-13, writing the e2e happy paths)
 
@@ -126,8 +119,7 @@ CLI does not do, and each restarts as engine work if wanted:
   secret handling before it is built.
 - **A `github` group for workspace-level GitHub connections** (#113):
   the engine ships repo-level `git connect|disconnect` only.
-- **Transient-read retry on `build logs` streaming** (#104): joins the
-  existing streaming follow-ups below.
+- **Transient-read retry on `build logs` streaming** (#104): moot — the `build` group was removed by the command grammar cleanup (2026-08-21).
 
 ## Ratified-as-shipped at the S2 sign-off (2026-08-12) — the gaps stay real
 
@@ -141,8 +133,7 @@ CLI does not do, and each restarts as engine work if wanted:
   `--follow` polls on a 2s interval rather than holding a socket open.
   The open remainder is the WebSocket live tail, in the closed
   `service logs` entry further down this file.
-- **`build logs` cannot exit 1 on a failed build** until the engine
-  grows a way for a stream to settle with a documented non-zero code.
+- **`build logs` cannot exit 1 on a failed build** — moot: the command was removed with the `build` group by the command grammar cleanup (2026-08-21). The engine gap (a stream settling with a documented non-zero code) remains real for future stream commands.
 - **The crash-recovery feedback action does not port** (the legacy
   crash envelope pre-filled a `feedback` command; the engine's crash
   path has no hook for it).
@@ -449,3 +440,17 @@ Still open:
 - **Neither product repo installs its own tarball before publishing.** That is why an uninstallable `@prisma/composer-cli@0.6.0` sat on `latest` unnoticed. prisma-cli's check 3 does exactly this — pack, install into a clean sandbox with `npm --ignore-scripts`, start every declared bin — and is worth porting to both.
 - **The engine-pin check compares for equality, not peer satisfaction.** Both families now declare an exact peer equal to the shell's pin, so equality is correct and stricter today. Widening to range satisfaction belongs with the post-GA move to engine ranges (ADR 0004), not before.
 - **`credential-manager.ts` uses the banned word.** `packages/cli/src/auth/credential-manager.ts` has a private `#repin` method (about the active-workspace marker, a different concept from dependency versions). The operator banned the word outright; renaming it is a mechanical change to a private method, left out of the publish-channel work to keep that diff to one subject.
+
+## Left open by the command grammar cleanup (2026-08-21)
+
+The cleanup PR removed the compute config and `init`, made service commands parameter-only, renamed the six destructive `remove` commands to `delete`, moved `postgres restore`/`ref *`/`migrate`/`format`/`composer dev|deploy`, and dropped `composer destroy|log` and the `build` group. Deliberately left behind:
+
+- **The wire layer still speaks App/Deployment.** The CLI surface says Service/Version (ADR-012), while the adapter (`packages/cli/src/lib/app/app-provider.ts`), compute-sdk names, `/v1/deployments` paths, and `appId` keep platform vocabulary. They rename in pdp-control-plane's coordinated all-surfaces pass, and the adapter is the one file where both vocabularies are allowed to meet until then.
+
+- ~~**`project env` still infers scope from the current git branch.**~~ Closed on the PR branch (2026-08-21, operator ruling): `project env list` with no `--role`/`--branch` lists the overview instead of inferring from the checkout; `readLocalGitBranch` and `lib/git/local-branch.ts` are deleted.
+- ~~**`knownLiveDeploymentByProject` has no writer.**~~ Closed on the PR branch (2026-08-21): the local-state shape, its store methods, and `service delete`'s cleanup pass were deleted.
+- ~~**Upstream family cleanups.**~~ Closed (2026-08-22): composer#253 retired `destroy`/`log` and prisma#30102 rekeyed the ORM family to the mount paths and fixed its redirects; the shell now mounts both families as shipped and the wrapper arithmetic is deleted. Both pins are on released versions: composer-cli 0.12.0, orm-toolchain 8.0.0-rc.5.
+- ~~**`PRISMA_PROJECT_ID` is honoured only by the domain commands**~~ Closed on the PR branch (2026-08-21, operator ruling): the env var served the deleted `app deploy` headless flow and survived only in the domain commands by accident; it is removed entirely. Project targeting is `--project` and the link file.
+- ~~**orm-toolchain's shipped help examples name retired spellings.**~~ Closed (2026-08-22) by prisma#30102: the family keys are the mount paths and the examples follow; `tests/orm-mount.test.ts` now asserts upstream stays clean.
+- ~~**The deployment-id targeting asymmetry is undocumented.**~~ Closed on the PR branch (2026-08-21): every deployment-id command (`promote|start|stop|delete|show`, `logs --deployment`) now resolves the id globally with no service parameter, per the "Subjects are positional" ruling.
+- **`GET /v1/deployments/{id}` omits the parent `appId`.** Verified against `@prisma/management-api-sdk@1.55.0`: the response carries id/status/url/previewDomain/envVars/createdAt and no owning-app pointer, so `showDeployment` finds the owner via `findAppForDeployment` — a scan of every project's service list and each service's deployments — and every id-targeted command pays it per run. The fix is in pdp-control-plane: include `appId` in the deployment representation; the CLI then swaps the scan for one `GET /v1/apps/{appId}`.

@@ -1,8 +1,7 @@
 // biome-ignore-all lint/performance/noAwaitInLoops: API pagination and deployment lookup scans are intentionally sequential.
 // biome-ignore-all lint/performance/useTopLevelRegex: Existing hostname normalization regexes are kept inline for readability.
 // biome-ignore-all lint/style/noNestedTernary: Existing app resolution expression is intentionally compact.
-import path from "node:path";
-import type { PortMapping, StreamRecord } from "@prisma/compute-sdk";
+import type { StreamRecord } from "@prisma/compute-sdk";
 import {
   ApiError,
   CancelledError,
@@ -21,8 +20,6 @@ import {
   listEnvironmentVariables,
   updateEnvironmentVariable,
 } from "./branch-database-api";
-import type { AppBuildSettings, AppBuildType } from "./build";
-import { AppBuildStrategy } from "./build";
 import { envVarNames } from "./env-vars";
 
 export interface AppRecord {
@@ -57,18 +54,6 @@ export interface DeploymentRecord {
   createdAt: string;
   url: string | null;
   live: boolean | null;
-}
-
-export interface DeployRecord {
-  projectId: string;
-  app: AppRecord;
-  deployment: {
-    id: string;
-    status: string;
-    url: string | null;
-    live: boolean;
-  };
-  promoted: boolean;
 }
 
 export interface EnvRecord {
@@ -247,23 +232,6 @@ export interface AppProvider {
     deploymentId: string;
     signal?: AbortSignal;
   }): Promise<DeploymentRecord>;
-  deployApp(options: {
-    cwd: string;
-    projectId: string;
-    branchName?: string;
-    appId?: string;
-    appName?: string;
-    region?: string;
-    entrypoint?: string;
-    buildType?: AppBuildType;
-    buildSettings?: AppBuildSettings;
-    portMapping?: PortMapping;
-    envVars?: Record<string, string>;
-    skipPromote?: boolean;
-    interaction?: unknown;
-    signal?: AbortSignal;
-    progress?: unknown;
-  }): Promise<DeployRecord>;
   updateAppEnv(options: {
     appId: string;
     envVars: Record<string, string>;
@@ -479,7 +447,7 @@ export function createAppProvider(
 
       if (result.error) {
         throw domainApiCallError(
-          "Failed to remove custom domain",
+          "Failed to delete custom domain",
           result.response,
           result.error,
         );
@@ -567,83 +535,6 @@ export function createAppProvider(
         // Liveness is the service record's to state, and this reads the
         // deployment alone.
         live: null,
-      };
-    },
-
-    async deployApp(options) {
-      const resolvedApp = options.appId
-        ? {
-            appId: options.appId,
-            appName: options.appName,
-            region: options.region,
-          }
-        : options.branchName && options.appName
-          ? await createBranchApp(client, {
-              projectId: options.projectId,
-              branchName: options.branchName,
-              appName: options.appName,
-              region: options.region,
-              signal: options.signal,
-            })
-          : {
-              appId: undefined,
-              appName: options.appName,
-              region: options.region,
-            };
-
-      const deployResult = await sdk.deploy({
-        strategy: new AppBuildStrategy({
-          appPath: path.resolve(options.cwd),
-          entrypoint: options.entrypoint,
-          buildType: options.buildType,
-          signal: options.signal,
-          buildSettings: options.buildSettings,
-        }),
-        projectId: options.projectId,
-        appId: resolvedApp.appId,
-        appName: resolvedApp.appName,
-        region: resolvedApp.region,
-        portMapping: options.portMapping,
-        envVars: options.envVars,
-        skipPromote: options.skipPromote,
-        timeoutSeconds: 120,
-        pollIntervalMs: 2000,
-        interaction: options.interaction as never,
-        signal: options.signal,
-        progress: options.progress as never,
-      });
-
-      if (deployResult.isErr()) {
-        throw new Error(deployResult.error.message);
-      }
-
-      const deployed = deployResult.value;
-
-      // On a promotionless deploy the SDK leaves appEndpointDomain null and the
-      // previous deployment serving live, so the live pointer stays on the old
-      // deployment and both URL expressions resolve to the candidate endpoint.
-      return {
-        projectId: deployed.projectId,
-        app: {
-          id: deployed.appId,
-          name: deployed.appName,
-          region: deployed.region ?? null,
-          liveDeploymentId: deployed.promoted
-            ? deployed.deploymentId
-            : deployed.previousDeploymentId,
-          liveUrl: toAbsoluteUrl(deployed.appEndpointDomain ?? null),
-        },
-        deployment: {
-          id: deployed.deploymentId,
-          status: "running",
-          url: toAbsoluteUrl(
-            deployed.appEndpointDomain ??
-              deployed.deploymentEndpointDomain ??
-              null,
-          ),
-          live: deployed.promoted,
-        },
-        promoted: deployed.promoted,
       };
     },
 
@@ -1176,30 +1067,6 @@ function sameHostname(left: string, right: string): boolean {
 
 function normalizeHostnameForComparison(hostname: string): string {
   return hostname.trim().replace(/\.$/, "").toLowerCase();
-}
-
-async function createBranchApp(
-  client: ManagementApiClient,
-  options: {
-    projectId: string;
-    branchName: string;
-    appName: string;
-    region?: string;
-    signal?: AbortSignal;
-  },
-): Promise<{ appId: string; appName: string; region: string | undefined }> {
-  const created = await createComputeService(client, {
-    projectId: options.projectId,
-    branchName: options.branchName,
-    displayName: options.appName,
-    ...(options.region !== undefined ? { region: options.region } : {}),
-    ...(options.signal !== undefined ? { signal: options.signal } : {}),
-  });
-  return {
-    appId: created.service.id,
-    appName: created.service.name,
-    region: created.service.region ?? options.region,
-  };
 }
 
 function apiCallError(

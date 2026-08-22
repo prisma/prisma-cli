@@ -1,5 +1,9 @@
 /** The `project show` command. */
-import { defineCommand, flag, type Presentations } from "@prisma/cli-engine";
+import {
+  defineCommand,
+  type Presentations,
+  positional,
+} from "@prisma/cli-engine";
 import { notOk, ok } from "@prisma/cli-engine/protocol";
 import { shortenHomePath } from "../../lib/fs/home-path";
 import {
@@ -85,7 +89,7 @@ function showPresentations(
             status: "info",
             text:
               result.resolution.projectSource === "explicit"
-                ? "Showing the project named by --project (this directory's own link, if any, is unchanged)."
+                ? "Showing the named project (this directory's own link, if any, is unchanged)."
                 : "This directory is linked to the following platform project.",
           },
       { kind: "fields", rows },
@@ -97,6 +101,7 @@ function showPresentations(
         ? toNextActions(
             buildProjectSetupNextActions({
               commandName: "project show",
+              retryCommand: "prisma-cli project show <id-or-name>",
               suggestedProjectName: result.suggestedProjectName,
               reason:
                 "This directory is not linked to a Prisma Project. Package and directory names can suggest setup defaults, but they do not select a Project.",
@@ -108,16 +113,16 @@ function showPresentations(
 
 export const projectShowCommand = defineCommand({
   args: {
-    flags: {
-      project: flag.string({
-        brief: "Project id or name",
+    positionals: {
+      project: positional.optionalString({
+        brief: "Project id or name (default: the linked project)",
         placeholder: "id-or-name",
       }),
     },
   },
   help: {
     summary: "Show this directory's Project binding",
-    examples: ["project show", "project show --project proj_123 --json"],
+    examples: ["project show", "project show proj_123 --json"],
   },
   needs: { credentials: true },
   handler: async (args, ctx) => {
@@ -126,7 +131,7 @@ export const projectShowCommand = defineCommand({
       const inspected = await inspectProjectBinding({
         context: legacyOperationContext(ctx),
         workspace,
-        explicitProject: args.flags.project,
+        explicitProject: args.positionals.project,
         listProjects: () => listWorkspaceProjects(ctx),
         commandName: "project show",
       });

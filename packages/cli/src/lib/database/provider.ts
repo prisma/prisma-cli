@@ -338,7 +338,7 @@ export function createManagementDatabaseProvider(
       });
       if (result.error) {
         throw await toDatabaseApiError(
-          "Failed to remove database",
+          "Failed to delete database",
           result.response,
           result.error,
           options?.signal,
@@ -407,7 +407,7 @@ export function createManagementDatabaseProvider(
       });
       if (result.error) {
         throw await toDatabaseApiError(
-          "Failed to remove database connection",
+          "Failed to delete database connection",
           result.response,
           result.error,
           options?.signal,

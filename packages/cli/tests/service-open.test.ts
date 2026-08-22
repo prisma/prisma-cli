@@ -4,6 +4,7 @@ import {
   page,
   presentedSummary,
   readFlowRoutes,
+  SERVICE,
   SERVICE_DETAIL,
 } from "./service-testkit";
 
@@ -13,7 +14,7 @@ describe("prisma-cli service open", () => {
     const harness = await makeServiceCli({ openUrl: opener });
 
     const result = await harness.cli.run(
-      ["service", "open", "--project", "acme-app", "--service", "hello-world"],
+      ["service", "open", "--project", "acme-app", "hello-world"],
       { cwd: harness.cwd, env: harness.env, isTty: { stdout: true } },
     );
 
@@ -27,7 +28,7 @@ describe("prisma-cli service open", () => {
     expect(presentedSummary(result.presented)).toEqual({
       kind: "summary",
       status: "info",
-      text: "Resolved the live URL for the selected service.",
+      text: "Resolved the live URL for service hello-world.",
     });
     expect(result.events).toContainEqual({
       kind: "endpoint",
@@ -40,12 +41,12 @@ describe("prisma-cli service open", () => {
       {
         kind: "run-command",
         label: "Inspect the service",
-        command: "prisma-cli service show",
+        command: "prisma-cli service show hello-world",
       },
       {
         kind: "run-command",
-        label: "Show the live deployment",
-        command: "prisma-cli service deployment show dep_2",
+        label: "Show the live version",
+        command: "prisma-cli service version show dep_2",
       },
     ]);
   });
@@ -55,7 +56,7 @@ describe("prisma-cli service open", () => {
     const harness = await makeServiceCli({ openUrl: opener });
 
     const result = await harness.cli.run(
-      ["service", "open", "--project", "acme-app", "--service", "hello-world"],
+      ["service", "open", "--project", "acme-app", "hello-world"],
       {
         cwd: harness.cwd,
         env: harness.env,
@@ -69,7 +70,7 @@ describe("prisma-cli service open", () => {
     expect(presentedSummary(result.presented)).toEqual({
       kind: "summary",
       status: "ok",
-      text: "Opened the live URL for the selected service.",
+      text: "Opened the live URL for service hello-world.",
     });
     expect(result.events).toContainEqual({
       kind: "endpoint",
@@ -86,7 +87,7 @@ describe("prisma-cli service open", () => {
     });
 
     const result = await harness.cli.run(
-      ["service", "open", "--project", "acme-app", "--service", "hello-world"],
+      ["service", "open", "--project", "acme-app", "hello-world"],
       {
         cwd: harness.cwd,
         env: harness.env,
@@ -98,13 +99,21 @@ describe("prisma-cli service open", () => {
     expect(result.presented?.data).toMatchObject({ opened: false });
   });
 
-  it("settles a project with no services as SERVICE.NO_DEPLOYMENTS", async () => {
+  it("settles a service with no deployments as SERVICE.NO_VERSIONS", async () => {
     const harness = await makeServiceCli({
-      routes: readFlowRoutes({ "GET /v1/apps": () => ({ data: page([]) }) }),
+      routes: readFlowRoutes({
+        "GET /v1/apps": () => ({
+          data: page([{ ...SERVICE, latestDeploymentId: null }]),
+        }),
+        "GET /v1/apps/{appId}": () => ({
+          data: { data: { ...SERVICE_DETAIL, latestDeploymentId: null } },
+        }),
+        "GET /v1/apps/{appId}/deployments": () => ({ data: page([]) }),
+      }),
     });
 
     const result = await harness.cli.run(
-      ["service", "open", "--project", "acme-app", "--json"],
+      ["service", "open", "--project", "acme-app", "hello-world", "--json"],
       { cwd: harness.cwd, env: harness.env },
     );
 
@@ -113,13 +122,13 @@ describe("prisma-cli service open", () => {
     if (frame?.kind !== "result" || frame.envelope.ok) {
       throw new Error("expected an errored envelope");
     }
-    expect(frame.envelope.error.code).toBe("SERVICE.NO_DEPLOYMENTS");
+    expect(frame.envelope.error.code).toBe("SERVICE.NO_VERSIONS");
     // No action suggests `service deploy`: the binary does not answer to it.
     expect(frame.envelope.nextActions).toEqual([
       {
         kind: "run-command",
         label: "Inspect the service",
-        command: "prisma-cli service show",
+        command: "prisma-cli service show hello-world",
       },
     ]);
   });
@@ -134,15 +143,7 @@ describe("prisma-cli service open", () => {
     });
 
     const result = await harness.cli.run(
-      [
-        "service",
-        "open",
-        "--project",
-        "acme-app",
-        "--service",
-        "hello-world",
-        "--json",
-      ],
+      ["service", "open", "--project", "acme-app", "hello-world", "--json"],
       { cwd: harness.cwd, env: harness.env },
     );
 
@@ -158,15 +159,7 @@ describe("prisma-cli service open", () => {
     const harness = await makeServiceCli();
 
     const result = await harness.cli.run(
-      [
-        "service",
-        "open",
-        "--project",
-        "acme-app",
-        "--service",
-        "hello-world",
-        "--json",
-      ],
+      ["service", "open", "--project", "acme-app", "hello-world", "--json"],
       { cwd: harness.cwd, env: harness.env },
     );
 

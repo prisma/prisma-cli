@@ -58,7 +58,7 @@ Recommended symbols:
 
 - Human-facing paths should usually be shown relative to the current working directory.
 - Structured output should use the literal machine-meaningful value.
-- Banners are reserved for `init` and similar first-run experiences.
+- Banners are reserved for first-run experiences such as `auth login`.
 - Outside those flows, focus on status, context, result, and next steps.
 
 Human-oriented command output in TTY mode should usually start with a compact header.

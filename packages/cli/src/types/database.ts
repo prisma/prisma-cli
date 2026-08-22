@@ -51,7 +51,7 @@ export interface DatabaseCreateResult {
   connectionString: string;
 }
 
-export interface DatabaseRemoveResult {
+export interface DatabaseDeleteResult {
   projectId: string;
   projectName: string;
   verboseContext?: DatabaseResolvedContext;
@@ -75,7 +75,7 @@ export interface DatabaseConnectionCreateResult {
   connectionString: string;
 }
 
-export interface DatabaseConnectionRemoveResult {
+export interface DatabaseConnectionDeleteResult {
   connection: {
     id: string;
   };

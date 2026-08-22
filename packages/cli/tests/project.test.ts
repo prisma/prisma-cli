@@ -14,13 +14,13 @@ import {
 import { WorkspaceSelectionError } from "../src/auth/token-storage";
 
 import { projectCreateCommand } from "../src/commands/project/create";
+import { projectDeleteCommand } from "../src/commands/project/delete";
 import { projectEnvAddCommand } from "../src/commands/project/env-add";
+import { projectEnvDeleteCommand } from "../src/commands/project/env-delete";
 import { projectEnvListCommand } from "../src/commands/project/env-list";
-import { projectEnvRemoveCommand } from "../src/commands/project/env-remove";
 import { projectEnvUpdateCommand } from "../src/commands/project/env-update";
 import { projectLinkCommand } from "../src/commands/project/link";
 import { projectListCommand } from "../src/commands/project/list";
-import { projectRemoveCommand } from "../src/commands/project/remove";
 import { projectRenameCommand } from "../src/commands/project/rename";
 import { projectShowCommand } from "../src/commands/project/show";
 import { projectTransferCommand } from "../src/commands/project/transfer";
@@ -112,12 +112,12 @@ function makeCli(client: ManagementApiClient, signedIn = true) {
       "project create": projectCreateCommand,
       "project link": projectLinkCommand,
       "project rename": projectRenameCommand,
-      "project remove": projectRemoveCommand,
+      "project delete": projectDeleteCommand,
       "project transfer": projectTransferCommand,
       "project env add": projectEnvAddCommand,
       "project env update": projectEnvUpdateCommand,
       "project env list": projectEnvListCommand,
-      "project env remove": projectEnvRemoveCommand,
+      "project env delete": projectEnvDeleteCommand,
     },
     groups: {
       project: { brief: "Manage and inspect your Prisma projects" },
@@ -396,7 +396,7 @@ describe("prisma-cli project show", () => {
     expect(result.presented?.presentation.next?.at(-1)).toEqual({
       kind: "run-command",
       label: "Retry with an explicit Project",
-      command: "prisma-cli project show --project <id-or-name>",
+      command: "prisma-cli project show <id-or-name>",
     });
     // "Not linked" is prose for a reader; stdout leaves the field empty.
     expect(result.presented?.presentation.stdout).toEqual([
@@ -408,7 +408,7 @@ describe("prisma-cli project show", () => {
 
   it("maps an unknown --project to PROJECT.NOT_FOUND", async () => {
     const result = await makeCli(fakeClient()).run(
-      ["project", "show", "--project", "nope", "--json"],
+      ["project", "show", "nope", "--json"],
       { cwd: await tempCwd() },
     );
 
@@ -429,7 +429,7 @@ describe("prisma-cli project show", () => {
       { ...API_PROJECTS[0], id: "proj_b", name: "Billing" },
     ];
     const result = await makeCli(fakeClient({ projects: duplicates })).run(
-      ["project", "show", "--project", "Billing", "--json"],
+      ["project", "show", "Billing", "--json"],
       { cwd: await tempCwd() },
     );
 
@@ -449,7 +449,7 @@ describe("prisma-cli project show", () => {
     });
   });
 
-  it("maps a pin pointing at a removed project to PROJECT.LOCAL_STATE_STALE", async () => {
+  it("maps a pin pointing at a deleted project to PROJECT.LOCAL_STATE_STALE", async () => {
     const cwd = await tempCwd({ workspaceId: "ws_1", projectId: "proj_gone" });
     const result = await makeCli(fakeClient()).run(
       ["project", "show", "--json"],
@@ -2102,7 +2102,7 @@ describe("prisma-cli project env list", () => {
     });
   });
 
-  it("labels a local git branch that the platform does not know yet", async () => {
+  it("ignores the local git branch and lists the overview when no scope is passed", async () => {
     const cwd = await pinnedCwd();
     await mkdir(path.join(cwd, ".git"), { recursive: true });
     await writeFile(
@@ -2115,32 +2115,12 @@ describe("prisma-cli project env list", () => {
       { cwd, isTty: { stdout: true } },
     );
 
+    // Nothing is inferred from ambient context: the checkout branch
+    // never selects a scope.
     expect(result.presented?.data).toMatchObject({
-      target: {
-        source: "local-git",
-        branchName: "feature/foo",
-        branchExists: false,
-        envMap: "preview",
-      },
+      scope: { kind: "overview" },
+      target: { source: "overview", envMap: "overview" },
     });
-    expect(
-      blocks(result.presented).find((block) => block.kind === "fields"),
-    ).toEqual({
-      kind: "fields",
-      rows: [
-        {
-          label: "target",
-          value: "branch:feature/foo -> preview (not created yet)",
-        },
-      ],
-    });
-    expect(result.presented?.presentation.next).toEqual([
-      {
-        kind: "run-command",
-        label: "prisma-cli project env add KEY=value --branch feature/foo",
-        command: "prisma-cli project env add KEY=value --branch feature/foo",
-      },
-    ]);
   });
 
   it("suggests adding a variable when the scope is empty", async () => {
@@ -2215,110 +2195,14 @@ describe("prisma-cli project env list", () => {
       error: { code: "CLI.CREDENTIALS_REQUIRED" },
     });
   });
-
-  it("targets the preview overrides of a local branch the platform knows", async () => {
-    const cwd = await pinnedCwd();
-    await mkdir(path.join(cwd, ".git"), { recursive: true });
-    await writeFile(
-      path.join(cwd, ".git", "HEAD"),
-      "ref: refs/heads/feature/foo\n",
-      "utf8",
-    );
-    const result = await makeCli(
-      envClient({
-        branches: [
-          {
-            id: "br_feature",
-            gitName: "feature/foo",
-            role: "preview",
-            isDefault: false,
-          },
-        ],
-        variables: [
-          envRow({ id: "env_role", key: "SHARED", class: "preview" }),
-          envRow({
-            id: "env_branch",
-            key: "SHARED",
-            class: "preview",
-            branchId: "br_feature",
-          }),
-        ],
-      }),
-    ).run(["project", "env", "list"], { cwd, isTty: { stdout: true } });
-
-    expect(result.exitCode).toBe(0);
-    expect(result.presented?.data).toMatchObject({
-      scope: {
-        kind: "branch",
-        branchName: "feature/foo",
-        branchId: "br_feature",
-      },
-      target: {
-        source: "local-git",
-        branchName: "feature/foo",
-        branchId: "br_feature",
-        branchRole: "preview",
-        branchExists: true,
-        envMap: "preview",
-      },
-      variables: [{ id: "env_branch", source: "branch:feature/foo" }],
-    });
-    expect(
-      blocks(result.presented).find((block) => block.kind === "fields"),
-    ).toEqual({
-      kind: "fields",
-      rows: [{ label: "target", value: "branch:feature/foo -> preview" }],
-    });
-  });
-
-  it("targets production when the local branch is the production branch", async () => {
-    const cwd = await pinnedCwd();
-    await mkdir(path.join(cwd, ".git"), { recursive: true });
-    await writeFile(
-      path.join(cwd, ".git", "HEAD"),
-      "ref: refs/heads/main\n",
-      "utf8",
-    );
-    const result = await makeCli(
-      envClient({
-        branches: [
-          {
-            id: "br_main",
-            gitName: "main",
-            role: "production",
-            isDefault: true,
-          },
-        ],
-        variables: [envRow()],
-      }),
-    ).run(["project", "env", "list"], { cwd, isTty: { stdout: true } });
-
-    expect(result.exitCode).toBe(0);
-    expect(result.presented?.data).toMatchObject({
-      scope: { kind: "role", role: "production" },
-      target: {
-        source: "local-git",
-        branchName: "main",
-        branchRole: "production",
-        branchExists: true,
-        envMap: "production",
-      },
-    });
-    expect(
-      blocks(result.presented).find((block) => block.kind === "fields"),
-    ).toEqual({
-      kind: "fields",
-      rows: [{ label: "target", value: "branch:main -> production" }],
-    });
-  });
 });
 
-describe("prisma-cli project env remove", () => {
-  it("removes the variable from the scope", async () => {
+describe("prisma-cli project env delete", () => {
+  it("deletes the variable from the scope", async () => {
     const writes: unknown[] = [];
     const result = await makeCli(
       envClient({ writes, variables: [envRow()] }),
-    ).run(["project", "env", "remove", "STRIPE_KEY", "--role", "production"], {
+    ).run(["project", "env", "delete", "STRIPE_KEY", "--role", "production"], {
       cwd: await pinnedCwd(),
       isTty: { stdout: true },
     });
@@ -2329,7 +2213,7 @@ describe("prisma-cli project env remove", () => {
       {
         kind: "summary",
         status: "info",
-        text: "Removing the environment variable from the scope.",
+        text: "Deleting the environment variable from the scope.",
       },
       {
         kind: "fields",
@@ -2347,7 +2231,7 @@ describe("prisma-cli project env remove", () => {
       [
         "project",
         "env",
-        "remove",
+        "delete",
         "STRIPE_KEY",
         "--role",
         "production",
@@ -2382,7 +2266,7 @@ describe("prisma-cli project env remove", () => {
       [
         "project",
         "env",
-        "remove",
+        "delete",
         "STRIPE_KEY",
         "--role",
         "production",
@@ -2395,7 +2279,7 @@ describe("prisma-cli project env remove", () => {
 
     expect(resultFrame(result.json).envelope).toMatchObject({
       ok: true,
-      commandId: "project.env.remove",
+      commandId: "project.env.delete",
       result: {
         projectId: "proj_1",
         scope: { kind: "role", role: "production" },
@@ -2408,7 +2292,7 @@ describe("prisma-cli project env remove", () => {
     const result = await makeCli(envClient(), false).run([
       "project",
       "env",
-      "remove",
+      "delete",
       "STRIPE_KEY",
       "--role",
       "production",
@@ -2422,7 +2306,7 @@ describe("prisma-cli project env remove", () => {
     });
   });
 
-  it("removes a variable from a branch scope", async () => {
+  it("deletes a variable from a branch scope", async () => {
     const writes: unknown[] = [];
     const result = await makeCli(
       envClient({
@@ -2440,7 +2324,7 @@ describe("prisma-cli project env remove", () => {
         ],
       }),
     ).run(
-      ["project", "env", "remove", "STRIPE_KEY", "--branch", "feature/foo"],
+      ["project", "env", "delete", "STRIPE_KEY", "--branch", "feature/foo"],
       { cwd: await pinnedCwd() },
     );
 
@@ -2453,7 +2337,7 @@ describe("prisma-cli project env remove", () => {
       [
         "project",
         "env",
-        "remove",
+        "delete",
         "STRIPE_KEY",
         "--role",
         "preview",
@@ -2470,14 +2354,14 @@ describe("prisma-cli project env remove", () => {
       error: {
         code: "PROJECT.USAGE_ERROR",
         summary:
-          "prisma-cli project env remove accepts either --role or --branch",
+          "prisma-cli project env delete accepts either --role or --branch",
       },
     });
   });
 
   it("requires an explicit scope", async () => {
     const result = await makeCli(envClient()).run(
-      ["project", "env", "remove", "STRIPE_KEY", "--json"],
+      ["project", "env", "delete", "STRIPE_KEY", "--json"],
       { cwd: await pinnedCwd() },
     );
 
@@ -2487,17 +2371,17 @@ describe("prisma-cli project env remove", () => {
       ok: false,
       error: {
         code: "PROJECT.USAGE_ERROR",
-        summary: "prisma-cli project env remove requires --role or --branch",
+        summary: "prisma-cli project env delete requires --role or --branch",
       },
     });
   });
 });
 
-describe("prisma-cli project remove", () => {
-  it("removes the project and clears a pin that points at it", async () => {
+describe("prisma-cli project delete", () => {
+  it("deletes the project and clears a pin that points at it", async () => {
     const cwd = await tempCwd({ workspaceId: "ws_1", projectId: "proj_1" });
     const result = await makeCli(fakeClient()).run(
-      ["project", "remove", "proj_1", "--confirm", "proj_1"],
+      ["project", "delete", "proj_1", "--confirm", "proj_1"],
       { cwd, isTty: { stdout: true } },
     );
 
@@ -2507,7 +2391,7 @@ describe("prisma-cli project remove", () => {
       localPin: { cleared: true },
     });
     expect(blocks(result.presented)).toEqual([
-      { kind: "summary", status: "ok", text: "Removing project." },
+      { kind: "summary", status: "ok", text: "Deleting project." },
       {
         kind: "fields",
         rows: [
@@ -2519,7 +2403,7 @@ describe("prisma-cli project remove", () => {
       {
         kind: "list",
         items: [
-          "The project, its databases, and its apps were removed.",
+          "The project, its databases, and its apps were deleted.",
           "This directory's local project binding was cleared.",
         ],
       },
@@ -2538,7 +2422,7 @@ describe("prisma-cli project remove", () => {
       await chmod(path.join(cwd, ".prisma"), 0o555);
       try {
         const result = await makeCli(fakeClient()).run(
-          ["project", "remove", "proj_1", "--confirm", "proj_1"],
+          ["project", "delete", "proj_1", "--confirm", "proj_1"],
           { cwd },
         );
 
@@ -2551,7 +2435,7 @@ describe("prisma-cli project remove", () => {
             code: "PROJECT.LOCAL_STATE_WRITE_FAILED",
             severity: "warn",
             summary:
-              "The local pin .prisma/local.json points at the removed project but could not be deleted.",
+              "The local pin .prisma/local.json points at the deleted project but could not be deleted.",
             nextActions: [],
           },
         ]);
@@ -2561,9 +2445,9 @@ describe("prisma-cli project remove", () => {
     },
   );
 
-  it("refuses to remove without consent in a non-interactive run", async () => {
+  it("refuses to delete without consent in a non-interactive run", async () => {
     const result = await makeCli(fakeClient()).run(
-      ["project", "remove", "proj_1", "--json"],
+      ["project", "delete", "proj_1", "--json"],
       { cwd: await tempCwd() },
     );
 
@@ -2574,9 +2458,9 @@ describe("prisma-cli project remove", () => {
     });
   });
 
-  it("refuses to remove when --yes stands in for consent", async () => {
+  it("refuses to delete when --yes stands in for consent", async () => {
     const result = await makeCli(fakeClient()).run(
-      ["project", "remove", "proj_1", "--yes", "--json"],
+      ["project", "delete", "proj_1", "--yes", "--json"],
       { cwd: await tempCwd() },
     );
 
@@ -2587,9 +2471,9 @@ describe("prisma-cli project remove", () => {
     });
   });
 
-  it("removes the project when the typed answer is the project id", async () => {
+  it("deletes the project when the typed answer is the project id", async () => {
     const result = await makeCli(fakeClient()).run(
-      ["project", "remove", "proj_1"],
+      ["project", "delete", "proj_1"],
       {
         cwd: await tempCwd(),
         answers: ["proj_1"],
@@ -2603,7 +2487,7 @@ describe("prisma-cli project remove", () => {
 
   it("fails when the typed answer is not the project id", async () => {
     const result = await makeCli(fakeClient()).run(
-      ["project", "remove", "proj_1", "--json"],
+      ["project", "delete", "proj_1", "--json"],
       {
         cwd: await tempCwd(),
         answers: ["nope"],
@@ -2618,7 +2502,7 @@ describe("prisma-cli project remove", () => {
     });
   });
 
-  it("maps a blocked removal to PROJECT.REMOVE_BLOCKED", async () => {
+  it("maps a blocked deletion to PROJECT.DELETE_BLOCKED", async () => {
     const result = await makeCli(
       fakeClient({
         del: () => ({
@@ -2626,7 +2510,7 @@ describe("prisma-cli project remove", () => {
           response: new Response(null, { status: 400 }),
         }),
       }),
-    ).run(["project", "remove", "proj_1", "--confirm", "proj_1", "--json"], {
+    ).run(["project", "delete", "proj_1", "--confirm", "proj_1", "--json"], {
       cwd: await tempCwd(),
     });
 
@@ -2634,8 +2518,8 @@ describe("prisma-cli project remove", () => {
     expect(resultFrame(result.json).envelope).toMatchObject({
       ok: false,
       error: {
-        code: "PROJECT.REMOVE_BLOCKED",
-        summary: "Project cannot be removed yet",
+        code: "PROJECT.DELETE_BLOCKED",
+        summary: "Project cannot be deleted yet",
         why: "Project still has deployments.",
       },
     });
@@ -2643,7 +2527,7 @@ describe("prisma-cli project remove", () => {
 
   it("maps an unknown positional to PROJECT.NOT_FOUND", async () => {
     const result = await makeCli(fakeClient()).run(
-      ["project", "remove", "nope", "--confirm", "nope", "--json"],
+      ["project", "delete", "nope", "--confirm", "nope", "--json"],
       { cwd: await tempCwd() },
     );
 
@@ -2660,7 +2544,7 @@ describe("prisma-cli project remove", () => {
       { ...API_PROJECTS[0], id: "proj_b", name: "Billing" },
     ];
     const result = await makeCli(fakeClient({ projects: duplicates })).run(
-      ["project", "remove", "Billing", "--confirm", "Billing", "--json"],
+      ["project", "delete", "Billing", "--confirm", "Billing", "--json"],
       { cwd: await tempCwd() },
     );
 
@@ -2671,9 +2555,9 @@ describe("prisma-cli project remove", () => {
     });
   });
 
-  it("returns the remove result unchanged in json mode", async () => {
+  it("returns the delete result unchanged in json mode", async () => {
     const result = await makeCli(fakeClient()).run(
-      ["project", "remove", "proj_1", "--confirm", "proj_1", "--json"],
+      ["project", "delete", "proj_1", "--confirm", "proj_1", "--json"],
       { cwd: await tempCwd() },
     );
 
@@ -2681,7 +2565,7 @@ describe("prisma-cli project remove", () => {
 
     expect(resultFrame(result.json).envelope).toMatchObject({
       ok: true,
-      commandId: "project.remove",
+      commandId: "project.delete",
       result: {
         workspace: { id: WORKSPACE_ID, name: "Acme Inc" },
         project: { id: "proj_1", name: "Billing" },
@@ -2694,7 +2578,7 @@ describe("prisma-cli project remove", () => {
   it("requires credentials", async () => {
     const result = await makeCli(fakeClient(), false).run([
       "project",
-      "remove",
+      "delete",
       "proj_1",
       "--confirm",
       "proj_1",

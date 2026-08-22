@@ -1,4 +1,3 @@
-import type { AppDomainDnsRecord, AppDomainStatus } from "../../types/app";
 import type { AuthWorkspace } from "../../types/auth";
 import type { BranchKind } from "../../types/branch";
 import type { ProjectSummary } from "../../types/project";
@@ -8,7 +7,7 @@ export interface ServiceSummary {
   name: string;
 }
 
-export interface ServiceDeploymentSummary {
+export interface ServiceVersionSummary {
   id: string;
   status: string;
   url: string | null;
@@ -17,13 +16,13 @@ export interface ServiceDeploymentSummary {
 }
 
 /** A service as `service list` and `service create` report it. `liveUrl`
- *  is null until a deployment is promoted: the endpoint domain a service
+ *  is null until a version is promoted: the endpoint domain a service
  *  carries before that does not resolve. */
 export interface ServiceListEntry {
   id: string;
   name: string;
   region: string | null;
-  liveDeploymentId: string | null;
+  liveVersionId: string | null;
   liveUrl: string | null;
 }
 
@@ -45,21 +44,21 @@ export interface ServiceCreateResult {
 
 export interface ServiceShowResult {
   projectId: string;
-  service: ServiceSummary | null;
-  liveDeployment: ServiceDeploymentSummary | null;
+  service: ServiceSummary;
+  liveVersion: ServiceVersionSummary | null;
   liveUrl: string | null;
-  recentDeployments: ServiceDeploymentSummary[];
+  recentVersions: ServiceVersionSummary[];
 }
 
-export interface ServiceDeploymentListResult {
+export interface ServiceVersionListResult {
   projectId: string;
-  service: ServiceSummary | null;
-  deployments: ServiceDeploymentSummary[];
+  service: ServiceSummary;
+  versions: ServiceVersionSummary[];
 }
 
-export interface ServiceDeploymentShowResult {
+export interface ServiceVersionShowResult {
   service: ServiceSummary | null;
-  deployment: ServiceDeploymentSummary;
+  version: ServiceVersionSummary;
 }
 
 export interface ServiceOpenResult {
@@ -69,37 +68,54 @@ export interface ServiceOpenResult {
   opened: boolean;
 }
 
+/** Targeted by version id alone, so no project is resolved. */
 export interface ServicePromoteResult {
+  service: ServiceSummary;
+  version: ServiceVersionSummary;
+}
+
+export interface ServiceRollbackResult {
   projectId: string;
   service: ServiceSummary;
-  deployment: ServiceDeploymentSummary;
+  version: ServiceVersionSummary;
+  previousLiveVersionId: string | null;
 }
 
-export interface ServiceRollbackResult extends ServicePromoteResult {
-  previousLiveDeploymentId: string | null;
-}
-
-/** What `service deployment start` and `stop` report. `alreadyInState`
- *  is true when the deployment already had the status the command asks
+/** What `service version start` and `stop` report. `alreadyInState`
+ *  is true when the version already had the status the command asks
  *  for, so the run made no call. */
-export interface ServiceDeploymentRunStateResult {
-  projectId: string;
+export interface ServiceVersionRunStateResult {
   service: ServiceSummary;
-  deployment: ServiceDeploymentSummary;
+  version: ServiceVersionSummary;
   alreadyInState: boolean;
 }
 
-export interface ServiceDeploymentDeleteResult {
-  projectId: string;
+export interface ServiceVersionDeleteResult {
   service: ServiceSummary;
-  deploymentId: string;
+  versionId: string;
   deleted: true;
 }
 
-export interface ServiceRemoveResult {
+export interface ServiceDeleteResult {
   projectId: string;
   service: ServiceSummary;
-  removed: true;
+  deleted: true;
+}
+
+export type ServiceDomainStatus =
+  | "pending_dns"
+  | "verifying"
+  | "verified_routing_blocked"
+  | "provisioning_tls"
+  | "active"
+  | "failed"
+  | "removing";
+
+export interface ServiceDomainDnsRecord {
+  type: string;
+  name: string;
+  value: string;
+  ttl: number | null;
 }
 
 export interface ServiceDomainSummary {
@@ -108,14 +124,14 @@ export interface ServiceDomainSummary {
   url: string;
   hostname: string;
   serviceId: string;
-  status: AppDomainStatus;
+  status: ServiceDomainStatus;
   foundryStatus: string;
   failureReason: string | null;
   failureCategory: "dns" | "acme" | "storage" | "unknown" | null;
   certExpiresAt: string | null;
   createdAt: string;
   updatedAt: string;
-  dnsRecords: AppDomainDnsRecord[];
+  dnsRecords: ServiceDomainDnsRecord[];
 }
 
 export interface ServiceDomainTarget {
@@ -137,9 +153,9 @@ export interface ServiceDomainShowResult extends ServiceDomainTarget {
   domain: ServiceDomainSummary;
 }
 
-export interface ServiceDomainRemoveResult extends ServiceDomainTarget {
+export interface ServiceDomainDeleteResult extends ServiceDomainTarget {
   hostname: string;
-  removed: true;
+  deleted: true;
 }
 
 export interface ServiceDomainRetryResult extends ServiceDomainTarget {
@@ -148,6 +164,6 @@ export interface ServiceDomainRetryResult extends ServiceDomainTarget {
 
 export interface ServiceDomainWaitResult extends ServiceDomainTarget {
   hostname: string;
-  status: AppDomainStatus;
+  status: ServiceDomainStatus;
   liveUrl: string;
 }

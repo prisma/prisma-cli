@@ -90,7 +90,7 @@ describe("prisma-cli service — the workspace comes from the engine session", (
     const harness = await makeServiceCli({ routes: workspaceRoutes() });
 
     const result = await harness.cli.run(
-      ["service", "show", "--project", "acme-app", "--service", "hello-world"],
+      ["service", "show", "--project", "acme-app", "hello-world"],
       { cwd: harness.cwd, env: harness.env },
     );
 
@@ -110,7 +110,7 @@ describe("prisma-cli service — the workspace comes from the engine session", (
     const harness = await makeServiceCli({ routes: prefixedWorkspaceRoutes() });
 
     const result = await harness.cli.run(
-      ["service", "show", "--project", "acme-app", "--service", "hello-world"],
+      ["service", "show", "--project", "acme-app", "hello-world"],
       { cwd: harness.cwd, env: harness.env },
     );
 
@@ -134,7 +134,7 @@ describe("prisma-cli service — the workspace comes from the engine session", (
     });
 
     const result = await harness.cli.run(
-      ["service", "show", "--project", "acme-app", "--json"],
+      ["service", "show", "--project", "acme-app", "hello-world", "--json"],
       { cwd: harness.cwd, env: harness.env },
     );
 
@@ -152,15 +152,7 @@ describe("prisma-cli service — the workspace comes from the engine session", (
     const harness = await makeServiceCli({ routes: workspaceRoutes() });
 
     const result = await harness.cli.run(
-      [
-        "service",
-        "show",
-        "--project",
-        "no-such-app",
-        "--service",
-        "hello-world",
-        "--json",
-      ],
+      ["service", "show", "--project", "no-such-app", "hello-world", "--json"],
       { cwd: harness.cwd, env: harness.env },
     );
 
@@ -292,15 +284,7 @@ describe("prisma-cli service — the workspace comes from the engine session", (
     });
 
     const result = await harness.cli.run(
-      [
-        "service",
-        "show",
-        "--project",
-        "acme-app",
-        "--service",
-        "hello-world",
-        "--json",
-      ],
+      ["service", "show", "--project", "acme-app", "hello-world", "--json"],
       { cwd: harness.cwd, env: harness.env },
     );
 

@@ -171,7 +171,7 @@ These codes are the minimum stable set for the MVP:
 - `PROJECT_LINK_TARGET_REQUIRED`
 - `PROJECT_CREATE_FAILED`
 - `PROJECT_RENAME_FAILED`
-- `PROJECT_REMOVE_BLOCKED`
+- `PROJECT_DELETE_BLOCKED`
 - `PROJECT_TRANSFER_REJECTED`
 - `PROJECT_API_ERROR`
 - `TRANSFER_RECIPIENT_REQUIRED`
@@ -183,16 +183,6 @@ These codes are the minimum stable set for the MVP:
 - `LOCAL_STATE_WRITE_FAILED`
 - `LOCAL_STATE_STALE`
 - `BRANCH_NOT_DEPLOYABLE`
-- `COMPUTE_CONFIG_INVALID`
-- `COMPUTE_CONFIG_TARGET_REQUIRED`
-- `COMPUTE_CONFIG_TARGET_UNKNOWN`
-- `BUILD_SETTINGS_MIGRATION_REQUIRED`
-- `BUILD_SETTINGS_UNSUPPORTED`
-- `FRAMEWORK_NOT_DETECTED`
-- `INIT_CONFIG_EXISTS`
-- `INIT_CONVERT_UNSUPPORTED`
-- `INIT_CONVERT_INCOMPLETE`
-- `INIT_DETECTION_FAILED`
 - `DEPLOYMENT_NOT_FOUND`
 - `NO_DEPLOYMENTS`
 - `NO_PREVIOUS_DEPLOYMENT`
@@ -208,7 +198,7 @@ These codes are the minimum stable set for the MVP:
 - `DOMAIN_RETRY_NOT_ELIGIBLE`
 - `DOMAIN_VERIFICATION_FAILED`
 - `DOMAIN_VERIFICATION_TIMEOUT`
-- `REMOVE_FAILED`
+- `DELETE_FAILED`
 - `FEATURE_UNAVAILABLE`
 - `REPO_PROVIDER_UNSUPPORTED`
 - `REPO_INSTALLATION_REQUIRED`
@@ -253,7 +243,7 @@ Recommended meanings:
 - `PROJECT_LINK_TARGET_REQUIRED`: `project link` needs the user to choose an existing Project or create a new one
 - `PROJECT_CREATE_FAILED`: Project creation failed before deployment or linking could continue
 - `PROJECT_RENAME_FAILED`: the platform rejected the new project name
-- `PROJECT_REMOVE_BLOCKED`: project removal is blocked while it still has active deployments
+- `PROJECT_DELETE_BLOCKED`: project deletion is blocked while it still has active deployments
 - `PROJECT_TRANSFER_REJECTED`: the platform rejected the transfer, for example an invalid or expired recipient token
 - `PROJECT_API_ERROR`: project Management API request failed without a more specific CLI error code
 - `TRANSFER_RECIPIENT_REQUIRED`: project transfer needs --to-workspace or --recipient-token
@@ -265,16 +255,6 @@ Recommended meanings:
 - `LOCAL_STATE_WRITE_FAILED`: the CLI could not save local Project binding state such as `.prisma/local.json` or the matching `.gitignore` entry; callers should fix directory permissions or filesystem state before retrying
 - `LOCAL_STATE_STALE`: local Project pin no longer matches platform data and continuing would be ambiguous
 - `BRANCH_NOT_DEPLOYABLE`: command tried to deploy to a non-deployable branch context
-- `COMPUTE_CONFIG_INVALID`: `prisma.compute.ts` failed to load or validate
-- `COMPUTE_CONFIG_TARGET_REQUIRED`: a multi-app compute config needs an `[app]` target and none was given or inferred
-- `COMPUTE_CONFIG_TARGET_UNKNOWN`: the `[app]` target matches no configured app
-- `BUILD_SETTINGS_MIGRATION_REQUIRED`: a legacy `prisma.app.json` contains custom build settings that must move into the `build` block of `prisma.compute.ts`
-- `BUILD_SETTINGS_UNSUPPORTED`: a compute config `build` block targets a framework whose SDK strategy does not consume committed build settings
-- `FRAMEWORK_NOT_DETECTED`: app deploy could not detect a supported Beta framework and no explicit framework/build type was provided
-- `INIT_CONFIG_EXISTS`: a compute config already exists in this directory or an ancestor; init never overwrites or merges
-- `INIT_CONVERT_UNSUPPORTED`: `init --format json` found an existing TypeScript config; TypeScript configs may contain logic, so converting them to JSON automatically would be lossy and the rewrite is manual
-- `INIT_CONVERT_INCOMPLETE`: a conversion wrote prisma.compute.ts but could not delete prisma.compute.json, and rolling back the write also failed; both files exist and one must be deleted by hand
-- `INIT_DETECTION_FAILED`: no supported framework detected and no --framework passed; `meta.frameworks` lists the valid values
 - `DEPLOYMENT_NOT_FOUND`: requested deployment id does not exist
 - `NO_DEPLOYMENTS`: command resolved a branch or app but found no deployments
 - `NO_PREVIOUS_DEPLOYMENT`: rollback could not find an earlier deployment for the selected app
@@ -290,7 +270,7 @@ Recommended meanings:
 - `DOMAIN_RETRY_NOT_ELIGIBLE`: requested custom domain is not in a state where verification can be retried
 - `DOMAIN_VERIFICATION_FAILED`: custom-domain verification reached a terminal failed state
 - `DOMAIN_VERIFICATION_TIMEOUT`: custom-domain verification did not reach a terminal state before the requested timeout
-- `REMOVE_FAILED`: app removal could not complete remotely
+- `DELETE_FAILED`: service deletion could not complete remotely
 - `FEATURE_UNAVAILABLE`: the command exists in the CLI model, but the current preview cannot support it yet
 - `REPO_PROVIDER_UNSUPPORTED`: repository connection received a non-GitHub repository URL
 - `REPO_INSTALLATION_REQUIRED`: repository connection needs a GitHub App installation before the project can be linked

@@ -18,18 +18,9 @@ export interface LocalState {
   branch: {
     active: string;
   };
-  app: {
-    selectedByProject: Record<string, SelectedAppState>;
-    knownLiveDeploymentByProject: Record<string, Record<string, string>>;
-  };
   agent: {
     setupPromptDismissedAt: string | null;
   };
-}
-
-export interface SelectedAppState {
-  id: string;
-  name: string;
 }
 
 export interface RememberedProjectState {
@@ -47,10 +38,6 @@ const DEFAULT_STATE: LocalState = {
   },
   branch: {
     active: "preview",
-  },
-  app: {
-    selectedByProject: {},
-    knownLiveDeploymentByProject: {},
   },
   agent: {
     setupPromptDismissedAt: null,
@@ -91,11 +78,6 @@ export class LocalStateStore {
         },
         branch: {
           active: parsed.branch?.active ?? DEFAULT_STATE.branch.active,
-        },
-        app: {
-          selectedByProject: parsed.app?.selectedByProject ?? {},
-          knownLiveDeploymentByProject:
-            parsed.app?.knownLiveDeploymentByProject ?? {},
         },
         agent: {
           setupPromptDismissedAt: parsed.agent?.setupPromptDismissedAt ?? null,
@@ -186,79 +168,6 @@ export class LocalStateStore {
   async clearRepositoryConnection(projectId: string): Promise<LocalState> {
     const state = await this.read();
     delete state.project.repositoryConnectionsByProject[projectId];
-    await this.write(state);
-    return state;
-  }
-
-  async readSelectedApp(projectId: string): Promise<SelectedAppState | null> {
-    const state = await this.read();
-    return state.app.selectedByProject[projectId] ?? null;
-  }
-
-  async setSelectedApp(
-    projectId: string,
-    app: SelectedAppState,
-  ): Promise<LocalState> {
-    const state = await this.read();
-    state.app.selectedByProject[projectId] = app;
-    await this.write(state);
-    return state;
-  }
-
-  async clearSelectedApp(
-    projectId: string,
-    appId: string,
-  ): Promise<LocalState> {
-    const state = await this.read();
-    const selectedApp = state.app.selectedByProject[projectId];
-
-    if (!selectedApp || selectedApp.id !== appId) {
-      return state;
-    }
-
-    delete state.app.selectedByProject[projectId];
-    await this.write(state);
-    return state;
-  }
-
-  async readKnownLiveDeployment(
-    projectId: string,
-    appId: string,
-  ): Promise<string | null> {
-    const state = await this.read();
-    return state.app.knownLiveDeploymentByProject[projectId]?.[appId] ?? null;
-  }
-
-  async setKnownLiveDeployment(
-    projectId: string,
-    appId: string,
-    deploymentId: string,
-  ): Promise<LocalState> {
-    const state = await this.read();
-    state.app.knownLiveDeploymentByProject[projectId] ??= {};
-    state.app.knownLiveDeploymentByProject[projectId][appId] = deploymentId;
-    await this.write(state);
-    return state;
-  }
-
-  async clearKnownLiveDeployment(
-    projectId: string,
-    appId: string,
-  ): Promise<LocalState> {
-    const state = await this.read();
-    const projectDeployments =
-      state.app.knownLiveDeploymentByProject[projectId];
-
-    if (!projectDeployments || !(appId in projectDeployments)) {
-      return state;
-    }
-
-    delete projectDeployments[appId];
-
-    if (Object.keys(projectDeployments).length === 0) {
-      delete state.app.knownLiveDeploymentByProject[projectId];
-    }
-
     await this.write(state);
     return state;
   }

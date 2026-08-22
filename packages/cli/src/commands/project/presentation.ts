@@ -15,7 +15,7 @@ export const CONNECT_REPO_NEXT_ACTION: NextAction = {
   command: `${CLI_NAME} git connect`,
 };
 
-/** The legacy local-pin warnings of `project remove` / `project
+/** The legacy local-pin warnings of `project delete` / `project
  *  transfer`: the operation succeeded, so they are warn diagnostics
  *  under the pinned local-state code, never errors. */
 export function localPinDiagnostics(warnings: readonly string[]): Diagnostic[] {

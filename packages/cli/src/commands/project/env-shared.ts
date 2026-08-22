@@ -43,7 +43,7 @@ export interface EnvScopeFlags {
 
 export function requireEnvScope(
   flags: EnvScopeFlags,
-  command: "add" | "update" | "remove",
+  command: "add" | "update" | "delete",
 ): EnvScope {
   const scope = resolveEnvScope(
     { roleName: flags.role, branchName: flags.branch },

@@ -139,9 +139,8 @@ async function pickProject(
 }
 
 /** The link itself, without the command around it: resolve the named
- *  Project or pick one, then bind `ctx.cwd` to it. `init`'s link step
- *  runs this, so there is one picker and one pin writer. */
-export async function linkDirectoryToProject(
+ *  Project or pick one, then bind `ctx.cwd` to it. */
+async function linkDirectoryToProject(
   ctx: ProjectCommandContext,
   projectRef: string | undefined,
 ): Promise<ProjectSetupResult> {

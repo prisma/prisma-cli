@@ -3,7 +3,6 @@ import { defineCommand, flag } from "@prisma/cli-engine";
 import { ok } from "@prisma/cli-engine/protocol";
 import { resolvePrismaCliPackageCommand } from "../../lib/agent/cli-command";
 import { PRISMA_AGENT_STATUS_ARGS } from "../../lib/agent/constants";
-import { resolvePrismaAgentSetupCwd } from "../../lib/agent/setup-status";
 import { installPresentations } from "./presentation";
 import type { AgentInstallResult } from "./results";
 import { buildSkillsInstallCommand, runSkillsInstall } from "./skills-cli";
@@ -49,10 +48,6 @@ export async function runAgentSkillsInstall(
   ctx: CommandContext,
   operation: "install" | "update",
 ) {
-  const cwd = await resolvePrismaAgentSetupCwd({
-    cwd: ctx.cwd,
-    signal: ctx.signal,
-  });
   const command = await buildSkillsInstallCommand(
     ctx,
     {
@@ -62,11 +57,11 @@ export async function runAgentSkillsInstall(
       copy: flags.copy,
       global: flags.global,
     },
-    cwd,
+    ctx.cwd,
   );
 
   if (!flags.dryRun) {
-    await runSkillsInstall(ctx, command, cwd);
+    await runSkillsInstall(ctx, command, ctx.cwd);
   }
 
   const result: AgentInstallResult = {
@@ -79,7 +74,7 @@ export async function runAgentSkillsInstall(
   const statusCommand = flags.dryRun
     ? null
     : await resolvePrismaCliPackageCommand({
-        cwd,
+        cwd: ctx.cwd,
         signal: ctx.signal,
         args: flags.global
           ? [...PRISMA_AGENT_STATUS_ARGS, "--global"]

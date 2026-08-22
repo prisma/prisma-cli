@@ -156,10 +156,7 @@ export interface ResolveProjectOptions {
   context: ProjectResolutionContext;
   workspace: AuthWorkspace;
   explicitProject?: string;
-  envProjectId?: string;
   commandName?: string;
-  /** Directory holding `.prisma/local.json`. Defaults to the invocation directory. */
-  projectDir?: string;
   listProjects(): Promise<ProjectCandidate[]>;
 }
 
@@ -167,15 +164,10 @@ export async function resolveProjectTarget(
   options: ResolveProjectOptions,
 ): Promise<Result<ResolvedProjectTarget, ProjectResolutionError>> {
   return Result.gen(async function* () {
-    const localPin = yield* Result.await(
-      readImplicitLocalPin(options, { allowEnvProjectId: true }),
-    );
+    const localPin = yield* Result.await(readImplicitLocalPin(options));
     const projects = await options.listProjects();
     const target = yield* Result.await(
-      resolveBoundProjectTarget(options, projects, {
-        allowEnvProjectId: true,
-        localPin,
-      }),
+      resolveBoundProjectTarget(options, projects, { localPin }),
     );
 
     if (target) {
@@ -197,15 +189,10 @@ export async function inspectProjectBinding(
   options: ResolveProjectOptions,
 ): Promise<Result<ProjectShowResult, ProjectResolutionError>> {
   return Result.gen(async function* () {
-    const localPin = yield* Result.await(
-      readImplicitLocalPin(options, { allowEnvProjectId: false }),
-    );
+    const localPin = yield* Result.await(readImplicitLocalPin(options));
     const projects = await options.listProjects();
     const target = yield* Result.await(
-      resolveBoundProjectTarget(options, projects, {
-        allowEnvProjectId: false,
-        localPin,
-      }),
+      resolveBoundProjectTarget(options, projects, { localPin }),
     );
 
     if (target) {
@@ -431,13 +418,20 @@ export function buildProjectSetupNextActions(
     suggestedProjectName?: string;
     createCommand?: string;
     reason?: string;
+    /** The explicit-target retry line, for commands whose grammar the
+     *  generic `--project <id-or-name>` template does not fit. */
+    retryCommand?: string;
   } = {},
 ): NextAction[] {
   const recoveryCommands = buildProjectRecoveryCommands(options.commandName);
   const linkCommand =
     recoveryCommands[0] ?? "prisma-cli project link <id-or-name>";
-  const retryCommand = recoveryCommands[1];
-  const commands = ["prisma-cli project list", ...recoveryCommands];
+  const retryCommand = options.retryCommand ?? recoveryCommands[1];
+  const commands = [
+    "prisma-cli project list",
+    linkCommand,
+    ...(retryCommand ? [retryCommand] : []),
+  ];
 
   const actions: NextAction[] = [
     {
@@ -559,9 +553,14 @@ function resolveExplicitProject(
   projects: ProjectCandidate[],
   workspace: AuthWorkspace,
 ): Result<ProjectCandidate, ProjectNotFoundError | ProjectAmbiguousError> {
-  const matches = projects.filter(
-    (project) => project.id === projectRef || project.name === projectRef,
-  );
+  // The stable id is primary and the name is the fallback, so a project
+  // named like another project's id can never shadow it or make it
+  // ambiguous.
+  const byId = projects.filter((project) => project.id === projectRef);
+  const matches =
+    byId.length > 0
+      ? byId
+      : projects.filter((project) => project.name === projectRef);
   if (matches.length === 1) {
     return Result.ok(matches[0]);
   }
@@ -590,7 +589,6 @@ async function resolveBoundProjectTarget(
   options: ResolveProjectOptions,
   projects: ProjectCandidate[],
   settings: {
-    allowEnvProjectId: boolean;
     localPin: LocalResolutionPinReadResult | null;
   },
 ): Promise<Result<BoundProjectShowResult | null, ProjectResolutionError>> {
@@ -607,23 +605,6 @@ async function resolveBoundProjectTarget(
       resolvedTarget(options.workspace, projectResult.value, "explicit", {
         targetName: options.explicitProject,
         targetNameSource: "explicit",
-      }),
-    );
-  }
-
-  if (settings.allowEnvProjectId && options.envProjectId) {
-    const project = projects.find(
-      (candidate) => candidate.id === options.envProjectId,
-    );
-    if (!project) {
-      return Result.err(
-        new ProjectNotFoundError(options.envProjectId, options.workspace),
-      );
-    }
-    return Result.ok(
-      resolvedTarget(options.workspace, project, "env", {
-        targetName: options.envProjectId,
-        targetNameSource: "env",
       }),
     );
   }
@@ -676,21 +657,15 @@ async function resolveBoundProjectTarget(
 
 async function readImplicitLocalPin(
   options: ResolveProjectOptions,
-  settings: {
-    allowEnvProjectId: boolean;
-  },
 ): Promise<
   Result<LocalResolutionPinReadResult | null, ProjectResolutionError>
 > {
-  if (
-    options.explicitProject ||
-    (settings.allowEnvProjectId && options.envProjectId)
-  ) {
+  if (options.explicitProject) {
     return Result.ok(null);
   }
 
   const localPinResult = await readLocalResolutionPin(
-    options.projectDir ?? options.context.runtime.cwd,
+    options.context.runtime.cwd,
     options.context.runtime.signal,
   );
   if (localPinResult.isErr()) {

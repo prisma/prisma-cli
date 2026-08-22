@@ -78,8 +78,8 @@ export const serviceDomainWaitCommand = defineCommand({
   help: {
     summary: "Wait until a custom domain is active or failed",
     examples: [
-      "service domain wait shop.acme.com",
-      "service domain wait shop.acme.com --timeout 30m",
+      "service domain wait shop.acme.com --service my-service",
+      "service domain wait shop.acme.com --service my-service --timeout 30m",
     ],
   },
   args: {
@@ -101,7 +101,6 @@ export const serviceDomainWaitCommand = defineCommand({
       serviceName: args.flags.service,
       projectRef: args.flags.project,
       branchName: args.flags.branch,
-      configTarget: args.positionals.service,
       commandName: `service domain wait ${hostname}`,
     });
     const domain = await resolveDomainByHostname(
