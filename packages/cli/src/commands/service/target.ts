@@ -28,7 +28,6 @@ import {
   fromLegacyCliError,
   projectNotFoundError,
   runCommandAction,
-  selectedServiceMissingError,
   serviceSelectionInvalidError,
   serviceTargetRequiredError,
   versionDetachedError,
@@ -46,7 +45,6 @@ import type {
 /** A hostname's optional root dot, and one DNS label. */
 const TRAILING_DOT = /\.$/;
 const DNS_LABEL = /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/;
-const PRISMA_SERVICE_ID_ENV_VAR = "PRISMA_SERVICE_ID";
 
 export type ServiceContext = Pick<
   CommandContext,
@@ -89,14 +87,6 @@ export async function requireWorkspace(
     id: credential.workspaceId,
     name: credential.workspaceName ?? credential.workspaceId,
   };
-}
-
-function readServiceEnvOverride(
-  ctx: ServiceContext,
-  name: string,
-): string | undefined {
-  const value = ctx.env[name]?.trim();
-  return value ? value : undefined;
 }
 
 /** What project resolution reads: where the command was invoked, and
@@ -261,62 +251,32 @@ export async function listServices(
     });
 }
 
-export interface RequestedServiceTarget {
-  kind: "name" | "id";
-  value: string;
-}
-
-/** The service target the run was given, if any: the service name
- *  argument wins, then PRISMA_SERVICE_ID (a service id). */
-export function requestedServiceTarget(
-  ctx: ServiceContext,
-  explicitServiceName: string | undefined,
-): RequestedServiceTarget | null {
-  if (explicitServiceName) {
-    return { kind: "name", value: explicitServiceName };
-  }
-  const envServiceId = readServiceEnvOverride(ctx, PRISMA_SERVICE_ID_ENV_VAR);
-  if (envServiceId) {
-    return { kind: "id", value: envServiceId };
-  }
-  return null;
-}
-
-/** As `requestedServiceTarget`, but no target refuses — service
- *  commands never infer, remember, or prompt for one. */
-export function requireRequestedServiceTarget(
-  ctx: ServiceContext,
-  explicitServiceName: string | undefined,
+/** The service argument, required: service commands never infer,
+ *  remember, or prompt for a target. */
+export function requireServiceArgument(
+  serviceRef: string | undefined,
   commandName: string,
-): RequestedServiceTarget {
-  const requested = requestedServiceTarget(ctx, explicitServiceName);
-  if (!requested) {
+): string {
+  if (!serviceRef) {
     throw serviceTargetRequiredError(commandName);
   }
-  return requested;
+  return serviceRef;
 }
 
+/** Matches the service argument against the branch's services: the
+ *  stable platform id is primary, the name is the fallback. An id
+ *  match always wins, so a service named like another service's id
+ *  cannot shadow it. */
 export function matchRequestedService(
-  requested: RequestedServiceTarget,
+  serviceRef: string,
   services: AppRecord[],
   projectId: string,
 ): AppRecord {
-  if (requested.kind === "name") {
-    const matched = services.find(
-      (service) => service.name === requested.value,
-    );
-    if (!matched) {
-      throw serviceSelectionInvalidError(requested.value, projectId);
-    }
-    return matched;
-  }
-  const matched = services.find((service) => service.id === requested.value);
+  const matched =
+    services.find((service) => service.id === serviceRef) ??
+    services.find((service) => service.name === serviceRef);
   if (!matched) {
-    throw selectedServiceMissingError(
-      PRISMA_SERVICE_ID_ENV_VAR,
-      requested.value,
-      projectId,
-    );
+    throw serviceSelectionInvalidError(serviceRef, projectId);
   }
   return matched;
 }
@@ -533,8 +493,7 @@ export async function resolveServiceReadState(
     commandName: string;
   },
 ): Promise<ServiceReadState> {
-  const requested = requireRequestedServiceTarget(
-    ctx,
+  const requested = requireServiceArgument(
     options.serviceName,
     options.commandName,
   );
@@ -570,8 +529,7 @@ export async function resolveServiceDomainTarget(
     throw branchNotDeployableError(branchName);
   }
 
-  const requested = requireRequestedServiceTarget(
-    ctx,
+  const requested = requireServiceArgument(
     options.serviceName,
     options.commandName,
   );

@@ -5,7 +5,7 @@ export function domainTargetArgs() {
   return {
     flags: {
       service: flag.string({
-        brief: "Service name",
+        brief: "Service id or name",
         placeholder: "name",
       }),
       project: flag.string({

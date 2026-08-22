@@ -294,7 +294,7 @@ describe("prisma-cli service delete", () => {
     expect(frame.envelope.error.code).toBe("SERVICE.DELETE_FAILED");
   });
 
-  it("requires a service or PRISMA_SERVICE_ID, interactive terminals included", async () => {
+  it("requires a service argument, interactive terminals included", async () => {
     const harness = await makeServiceCli({
       routes: releaseRoutes({ "GET /v1/apps": () => ({ data: page([]) }) }),
     });
@@ -316,11 +316,7 @@ describe("prisma-cli service delete", () => {
     expect(frame.envelope.nextActions).toEqual([
       {
         kind: "user-choice",
-        label: "Pass the service name as the first argument.",
-      },
-      {
-        kind: "user-choice",
-        label: "Or set PRISMA_SERVICE_ID to a service id.",
+        label: "Pass the service id or name as the first argument.",
       },
       // Not `service version list`: that command resolves a service
       // before it lists anything, so it fails the same way this did.

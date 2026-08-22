@@ -553,9 +553,14 @@ function resolveExplicitProject(
   projects: ProjectCandidate[],
   workspace: AuthWorkspace,
 ): Result<ProjectCandidate, ProjectNotFoundError | ProjectAmbiguousError> {
-  const matches = projects.filter(
-    (project) => project.id === projectRef || project.name === projectRef,
-  );
+  // The stable id is primary and the name is the fallback, so a project
+  // named like another project's id can never shadow it or make it
+  // ambiguous.
+  const byId = projects.filter((project) => project.id === projectRef);
+  const matches =
+    byId.length > 0
+      ? byId
+      : projects.filter((project) => project.name === projectRef);
   if (matches.length === 1) {
     return Result.ok(matches[0]);
   }

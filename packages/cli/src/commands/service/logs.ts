@@ -16,7 +16,6 @@ import type { ServiceVersionSummary } from "./results";
 import type { ServiceContext, ServiceReadState } from "./target";
 import {
   applyLiveVersionHint,
-  requestedServiceTarget,
   resolveCurrentLiveVersionId,
   resolveServiceReadState,
   resolveVersionSubject,
@@ -91,7 +90,7 @@ function logsFailedError(
 ): CliStructuredError {
   return new CliStructuredError(
     "SERVICE.LOGS_FAILED",
-    `Failed to read logs for deployment ${deploymentId}`,
+    `Failed to read logs for version ${deploymentId}`,
     {
       why: `The Management API returned HTTP ${status}.`,
       meta: { status },
@@ -117,7 +116,7 @@ function logsFailedError(
 function logsIncompleteError(deploymentId: string): CliStructuredError {
   return new CliStructuredError(
     "SERVICE.LOGS_INCOMPLETE",
-    `Incomplete log page for deployment ${deploymentId}`,
+    `Incomplete log page for version ${deploymentId}`,
     {
       why: "The response ended without the record that closes a page, so the lines shown may be only part of it.",
       nextActions: [adviceAction("Rerun the command to read the page again.")],
@@ -133,7 +132,7 @@ function logStreamFailedError(
 ): CliStructuredError {
   return new CliStructuredError(
     "SERVICE.LOGS_FAILED",
-    `Log stream failed for deployment ${deploymentId}`,
+    `Log stream failed for version ${deploymentId}`,
     {
       why: record.message,
       meta: {
@@ -290,7 +289,7 @@ function requireResumeCursor(
   if (cursor === null) {
     throw new CliStructuredError(
       "SERVICE.LOGS_NO_CURSOR",
-      `Cannot follow logs for deployment ${deploymentId}`,
+      `Cannot follow logs for version ${deploymentId}`,
       {
         why: "The log page ended without a resume cursor, so there is no point to continue reading from.",
         nextActions: [
@@ -340,11 +339,10 @@ async function followPages(
 }
 
 /**
- * A globally-unique deployment id is a complete target on its own, so
- * `--version-id` with no service target (neither a service argument nor
- * PRISMA_SERVICE_ID) resolves it directly, the way `service version
- * show` does — no project resolution at all. A named service scopes the
- * lookup to that service.
+ * A globally-unique version id is a complete target on its own, so
+ * `--version-id` with no service argument resolves it directly, the
+ * way `service version show` does — no project resolution at all. A
+ * service argument scopes the lookup to that service.
  */
 async function resolveLogsTarget(
   ctx: ServiceContext,
@@ -356,8 +354,7 @@ async function resolveLogsTarget(
   },
 ): Promise<{ projectId: string | null; target: LogTarget }> {
   const explicitVersionId = options.versionId;
-  const serviceRequested =
-    requestedServiceTarget(ctx, options.service) !== null;
+  const serviceRequested = options.service !== undefined;
 
   if (explicitVersionId !== undefined && !serviceRequested) {
     const subject = await resolveVersionSubject(ctx, explicitVersionId);
@@ -394,7 +391,7 @@ export const serviceLogsCommand = defineSessionCommand({
   args: {
     positionals: {
       service: positional.optionalString({
-        brief: "Service name",
+        brief: "Service id or name",
         placeholder: "service",
       }),
     },

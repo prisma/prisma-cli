@@ -119,7 +119,7 @@ export function serviceSelectionInvalidError(
     {
       why: `The service "${serviceName}" could not be found in resolved project "${projectId}".`,
       nextActions: [
-        adviceAction("Pass the name of an existing service."),
+        adviceAction("Pass the id or name of an existing service."),
         // Not `service version list`: that command has to resolve a
         // service before it can list anything, so it fails the same way.
         runCommandAction("List services", "service list"),
@@ -262,8 +262,7 @@ export function serviceTargetRequiredError(
     {
       why: "Service commands act only on an explicitly named service, and this run named none.",
       nextActions: [
-        adviceAction("Pass the service name as the first argument."),
-        adviceAction("Or set PRISMA_SERVICE_ID to a service id."),
+        adviceAction("Pass the service id or name as the first argument."),
         // Not `service version list`: it resolves a service first, so
         // it cannot help a run that could not resolve one.
         runCommandAction("List services", "service list"),
@@ -424,24 +423,6 @@ export function domainNotFoundError(hostname: string): CliStructuredError {
           "Add the domain",
           `service domain add ${hostname} --service <name>`,
         ),
-      ],
-    },
-  );
-}
-
-export function selectedServiceMissingError(
-  envVarName: string,
-  serviceId: string,
-  projectId: string,
-): CliStructuredError {
-  return new CliStructuredError(
-    "SERVICE.SELECTION_INVALID",
-    "The requested service does not exist in the resolved project",
-    {
-      why: `The service "${serviceId}" from ${envVarName} could not be found in resolved project "${projectId}".`,
-      nextActions: [
-        adviceAction(`Unset ${envVarName}, or pass a service name.`),
-        runCommandAction("List services", "service list"),
       ],
     },
   );

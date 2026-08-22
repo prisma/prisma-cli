@@ -46,7 +46,7 @@ export const serviceVersionRollbackCommand = defineCommand({
     },
     positionals: {
       service: positional.optionalString({
-        brief: "Service name",
+        brief: "Service id or name",
         placeholder: "service",
       }),
     },

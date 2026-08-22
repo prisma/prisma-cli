@@ -103,7 +103,7 @@ Resolve a service version and show or stream its logs.
 
 ### Subjects are positional
 
-A command that operates on a subject resource takes that resource's identifier as its first positional argument (`service show my-api`, `postgres delete db_123`, `service version promote cpv_123`) — the established convention across CLIs. Flags never name the subject; they scope or qualify it (`--project`, `--branch`, `--role`). When the subject's identifier is globally unique — a service version id, a bucket id — the id alone is the complete target, and the command asks for no redundant parent scope.
+A command that operates on a subject resource takes that resource's identifier as its first positional argument (`service show my-api`, `postgres delete db_123`, `service version promote cpv_123`) — the established convention across CLIs. Flags never name the subject; they scope or qualify it (`--project`, `--branch`, `--role`). The argument primarily targets the stable platform id, with the display name as a secondary fallback: an id match always wins, and a resource named like another resource's id can never shadow it. Environment variables never target a subject. When the subject's identifier is globally unique — a service version id, a bucket id — the id alone is the complete target, and the command asks for no redundant parent scope.
 
 ### `wait`
 

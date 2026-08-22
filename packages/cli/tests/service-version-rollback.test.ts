@@ -540,7 +540,7 @@ describe("prisma-cli service version rollback", () => {
     expect(frame.envelope.error.code).toBe("SERVICE.DEPLOY_FAILED");
   });
 
-  it("requires a service or PRISMA_SERVICE_ID", async () => {
+  it("requires a service argument", async () => {
     const harness = await makeServiceCli({
       routes: releaseRoutes({ "GET /v1/apps": () => ({ data: page([]) }) }),
     });

@@ -209,7 +209,7 @@ describe("prisma-cli service logs", () => {
     expect(dataLines(result.events)).toEqual(["from dep_1"]);
   });
 
-  it("refuses without --service or PRISMA_SERVICE_ID as SERVICE.TARGET_REQUIRED", async () => {
+  it("refuses without a service argument as SERVICE.TARGET_REQUIRED", async () => {
     const harness = await makeServiceCli({
       routes: logRoutes([[end(null)]], []),
     });
@@ -271,7 +271,7 @@ describe("prisma-cli service logs", () => {
     expect(frame.envelope.error.summary).toContain('for service "hello-world"');
   });
 
-  it("scopes --version to the PRISMA_SERVICE_ID service like --service", async () => {
+  it("scopes --version-id to the service named by an id argument", async () => {
     const harness = await makeServiceCli({
       routes: logRoutes([[end(null)]], []),
     });
@@ -280,16 +280,14 @@ describe("prisma-cli service logs", () => {
       [
         "service",
         "logs",
+        "svc_1",
         "--version-id",
         "dep_missing",
         "--project",
         "acme-app",
         "--json",
       ],
-      {
-        cwd: harness.cwd,
-        env: { ...harness.env, PRISMA_SERVICE_ID: "svc_1" },
-      },
+      { cwd: harness.cwd, env: harness.env },
     );
 
     expect(result.exitCode).toBe(2);

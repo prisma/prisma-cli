@@ -229,7 +229,7 @@ describe("prisma-cli service domain add", () => {
     expect(frame.envelope.error.code).toBe("SERVICE.BRANCH_NOT_DEPLOYABLE");
   });
 
-  it("honors the PRISMA_SERVICE_ID environment override", async () => {
+  it("accepts a service id in --service", async () => {
     const harness = await makeServiceCli({
       routes: domainRoutes({
         "POST /v1/apps/{appId}/domains": (init) => {
@@ -240,17 +240,23 @@ describe("prisma-cli service domain add", () => {
     });
 
     const result = await harness.cli.run(
-      ["service", "domain", "add", "shop.acme.com", "--project", "acme-app"],
-      {
-        cwd: harness.cwd,
-        env: { ...harness.env, PRISMA_SERVICE_ID: "svc_1" },
-      },
+      [
+        "service",
+        "domain",
+        "add",
+        "shop.acme.com",
+        "--service",
+        "svc_1",
+        "--project",
+        "acme-app",
+      ],
+      { cwd: harness.cwd, env: harness.env },
     );
 
     expect(result.exitCode).toBe(0);
   });
 
-  it("rejects a PRISMA_SERVICE_ID the project does not have as SERVICE.SELECTION_INVALID", async () => {
+  it("rejects a service id the project does not have as SERVICE.SELECTION_INVALID", async () => {
     const harness = await makeServiceCli({ routes: domainRoutes() });
 
     const result = await harness.cli.run(
@@ -259,14 +265,13 @@ describe("prisma-cli service domain add", () => {
         "domain",
         "add",
         "shop.acme.com",
+        "--service",
+        "svc_missing",
         "--project",
         "acme-app",
         "--json",
       ],
-      {
-        cwd: harness.cwd,
-        env: { ...harness.env, PRISMA_SERVICE_ID: "svc_missing" },
-      },
+      { cwd: harness.cwd, env: harness.env },
     );
 
     expect(result.exitCode).toBe(2);
@@ -278,7 +283,7 @@ describe("prisma-cli service domain add", () => {
     expect(frame.envelope.nextActions).toEqual([
       {
         kind: "user-choice",
-        label: "Unset PRISMA_SERVICE_ID, or pass a service name.",
+        label: "Pass the id or name of an existing service.",
       },
       {
         kind: "run-command",
@@ -288,7 +293,7 @@ describe("prisma-cli service domain add", () => {
     ]);
   });
 
-  it("requires a service or PRISMA_SERVICE_ID", async () => {
+  it("requires a service", async () => {
     const harness = await makeServiceCli({
       routes: domainRoutes({ "GET /v1/apps": () => ({ data: page([]) }) }),
     });

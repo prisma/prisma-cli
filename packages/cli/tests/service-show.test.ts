@@ -7,6 +7,7 @@ import {
   page,
   readFlowRoutes,
   SERVICE,
+  SERVICE_DETAIL,
 } from "./service-testkit";
 
 describe("prisma-cli service show", () => {
@@ -120,15 +121,12 @@ describe("prisma-cli service show", () => {
     ).rejects.toMatchObject({ code: "ENOENT" });
   });
 
-  it("resolves the service by id from PRISMA_SERVICE_ID", async () => {
+  it("resolves the service by its stable id as the argument", async () => {
     const harness = await makeServiceCli();
 
     const result = await harness.cli.run(
-      ["service", "show", "--project", "acme-app"],
-      {
-        cwd: harness.cwd,
-        env: { ...harness.env, PRISMA_SERVICE_ID: "svc_1" },
-      },
+      ["service", "show", "--project", "acme-app", "svc_1"],
+      { cwd: harness.cwd, env: harness.env },
     );
 
     expect(result.exitCode).toBe(0);
@@ -213,11 +211,13 @@ describe("prisma-cli service show", () => {
     expect(frame.envelope.error.code).toBe("SERVICE.SELECTION_INVALID");
   });
 
-  it("prefers --service over PRISMA_SERVICE_ID", async () => {
+  it("prefers an id match over a name match for the same argument", async () => {
+    // A service named exactly like another service's id: the stable id
+    // must win, so the argument "svc_1" targets svc_1, not the impostor.
     const second = {
       ...SERVICE,
       id: "svc_2",
-      name: "api",
+      name: "svc_1",
       latestDeploymentId: null,
       appEndpointDomain: null,
     };
@@ -225,40 +225,24 @@ describe("prisma-cli service show", () => {
       routes: readFlowRoutes({
         "GET /v1/apps": () => ({ data: page([SERVICE, second]) }),
         "GET /v1/apps/{appId}": (init) => {
-          expect(init.params?.path?.appId).toBe("svc_2");
-          return {
-            data: {
-              data: {
-                id: "svc_2",
-                name: "api",
-                projectId: "proj_1",
-                region: { id: null },
-                latestDeploymentId: null,
-                appEndpointDomain: null,
-              },
-            },
-          };
+          expect(init.params?.path?.appId).toBe("svc_1");
+          return { data: { data: SERVICE_DETAIL } };
         },
-        "GET /v1/apps/{appId}/deployments": () => ({ data: page([]) }),
       }),
     });
 
     const result = await harness.cli.run(
-      ["service", "show", "--project", "acme-app", "api"],
-      {
-        cwd: harness.cwd,
-        env: { ...harness.env, PRISMA_SERVICE_ID: "svc_1" },
-        isTty: { stdout: true },
-      },
+      ["service", "show", "--project", "acme-app", "svc_1"],
+      { cwd: harness.cwd, env: harness.env, isTty: { stdout: true } },
     );
 
     expect(result.exitCode).toBe(0);
     expect(result.presented?.data).toMatchObject({
-      service: { id: "svc_2", name: "api" },
+      service: { id: "svc_1", name: "hello-world" },
     });
   });
 
-  it("refuses without --service or PRISMA_SERVICE_ID, interactive terminals included", async () => {
+  it("refuses without a service argument, interactive terminals included", async () => {
     const harness = await makeServiceCli();
 
     const result = await harness.cli.run(

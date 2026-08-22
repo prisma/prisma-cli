@@ -75,7 +75,7 @@ describe("prisma-cli service version list", () => {
     });
   });
 
-  it("refuses without --service or PRISMA_SERVICE_ID", async () => {
+  it("refuses without a service argument", async () => {
     const harness = await makeServiceCli({
       routes: readFlowRoutes({ "GET /v1/apps": () => ({ data: page([]) }) }),
     });

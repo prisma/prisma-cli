@@ -120,9 +120,14 @@ export async function resolveDatabase(
     branchName,
     signal,
   });
-  const matches = databases.filter(
-    (database) => database.id === ref || database.name === ref,
-  );
+  // The stable id is primary and the name is the fallback, so a
+  // database named like another database's id can never shadow it or
+  // make it ambiguous.
+  const byId = databases.filter((database) => database.id === ref);
+  const matches =
+    byId.length > 0
+      ? byId
+      : databases.filter((database) => database.name === ref);
 
   if (matches.length === 0) {
     throw databaseNotFoundError(ref, target.project.name, branchName);
