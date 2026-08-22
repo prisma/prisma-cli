@@ -2344,8 +2344,7 @@ describe("prisma project env delete", () => {
       ok: false,
       error: {
         code: "PROJECT.USAGE_ERROR",
-        summary:
-          "prisma project env delete accepts either --role or --branch",
+        summary: "prisma project env delete accepts either --role or --branch",
       },
     });
   });

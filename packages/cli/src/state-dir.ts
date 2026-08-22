@@ -11,9 +11,7 @@ export interface StateDirInputs {
   readonly signal: AbortSignal;
 }
 
-export async function resolveStateDir(
-  inputs: StateDirInputs,
-): Promise<string> {
+export async function resolveStateDir(inputs: StateDirInputs): Promise<string> {
   const explicitStateDir = inputs.stateDir ?? inputs.env.PRISMA_CLI_STATE_DIR;
   if (explicitStateDir) {
     return explicitStateDir;

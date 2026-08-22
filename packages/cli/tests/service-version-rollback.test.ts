@@ -386,8 +386,7 @@ describe("prisma service version rollback", () => {
       {
         kind: "run-command",
         label: "Roll back to a named version",
-        command:
-          "prisma service version rollback hello-world --to <version>",
+        command: "prisma service version rollback hello-world --to <version>",
       },
       {
         kind: "run-command",

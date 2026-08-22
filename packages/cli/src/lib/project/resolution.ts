@@ -421,8 +421,7 @@ export function buildProjectSetupNextActions(
   } = {},
 ): NextAction[] {
   const recoveryCommands = buildProjectRecoveryCommands(options.commandName);
-  const linkCommand =
-    recoveryCommands[0] ?? "prisma project link <id-or-name>";
+  const linkCommand = recoveryCommands[0] ?? "prisma project link <id-or-name>";
   const retryCommand = options.retryCommand ?? recoveryCommands[1];
   const commands = [
     "prisma project list",
