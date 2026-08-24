@@ -48,10 +48,13 @@ interface InitEnvelope {
   };
 }
 
-async function runInit(cwd: string): Promise<InitEnvelope> {
+async function runInit(
+  cwd: string,
+  argv: readonly string[] = [],
+): Promise<InitEnvelope> {
   const { stdout } = await execFileAsync(
     process.execPath,
-    [CLI_BINARY, "init", "--json"],
+    [CLI_BINARY, "init", "--json", ...argv],
     {
       cwd,
       env: {
@@ -131,6 +134,30 @@ describe("prisma init", () => {
       await readFile(path.join(workdir, "package.json"), "utf8"),
     ) as { scripts?: Record<string, string> };
     expect(manifest.scripts?.postinstall).toBe("prisma skills sync || exit 0");
+  });
+
+  it("records --skills=none as an empty agents list and syncs nothing", async () => {
+    const noneDir = await mkdtemp(path.join(os.tmpdir(), "prisma-e2e-none-"));
+    await writeFile(
+      path.join(noneDir, "package.json"),
+      `${JSON.stringify({ name: "e2e-none-fixture", version: "0.0.0" }, null, 2)}\n`,
+      "utf8",
+    );
+    const envelope = await runInit(noneDir, ["--skills=none"]);
+
+    expect(envelope.ok).toBe(true);
+    expect(envelope.result.config.outcome).toBe("created");
+    expect(envelope.result.skills.outcome).toBe("skipped");
+    expect(envelope.diagnostics).toEqual([]);
+    const scaffold = await readFile(
+      path.join(noneDir, "prisma.config.ts"),
+      "utf8",
+    );
+    expect(scaffold).toContain("agents: [],");
+    for (const dir of [".claude", ".cursor", ".agents", ".devin"]) {
+      expect(existsSync(path.join(noneDir, dir))).toBe(false);
+    }
+    await rm(noneDir, { recursive: true, force: true });
   });
 
   it("scaffolds a config the engine's real loader accepts without diagnostics", async () => {
