@@ -330,6 +330,25 @@ describe("skills sync", () => {
     ).toBe(true);
   });
 
+  it("summarizes a prune-only run as removal, not as an empty state", async () => {
+    const root = await makeProjectRoot();
+    await seedSyncedSkill(root, ".claude/skills", {
+      skill: "prisma-8",
+      library: "@prisma/orm-postgres",
+      version: "8.1.0",
+    });
+
+    const run = await makeCli().run(["skills", "sync"], {
+      cwd: root,
+      isTty: { stdout: true, stderr: true },
+    });
+
+    expect(run.exitCode).toBe(0);
+    expect(run.stderr).toContain("Removed 1 skill.");
+    expect(run.stderr).not.toContain("are installed");
+    expect(run.stderr).not.toContain("ship agent skills");
+  });
+
   it("keeps a skill still shipped by another installed package", async () => {
     const root = await makeProjectRoot();
     await installPackage(root, {

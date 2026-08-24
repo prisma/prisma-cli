@@ -24,14 +24,19 @@ function unmanagedClause(count: number): string {
 }
 
 function syncSummary(result: SkillsSyncResult): string {
-  if (result.agents.length === 0) {
-    return "No agents are configured to sync skills for.";
-  }
-  if (result.packages.length === 0) {
-    return "No Prisma packages with agent skills are installed.";
-  }
-  if (result.skills.length === 0) {
-    return "No Prisma dependencies in your project ship agent skills to sync.";
+  // The empty-state sentences hold only when this run also removed
+  // nothing; a prune is work done, and its summary must match the
+  // Removed table rendered beneath it.
+  if (result.pruned.length === 0) {
+    if (result.agents.length === 0) {
+      return "No agents are configured to sync skills for.";
+    }
+    if (result.packages.length === 0) {
+      return "No Prisma packages with agent skills are installed.";
+    }
+    if (result.skills.length === 0) {
+      return "No Prisma dependencies in your project ship agent skills to sync.";
+    }
   }
   const refusedDirs = result.refused.reduce(
     (count, skill) => count + skill.dirs.length,
@@ -39,6 +44,10 @@ function syncSummary(result: SkillsSyncResult): string {
   );
   if (result.synced.length === 0 && result.pruned.length === 0) {
     return `Agent skills are up to date${unmanagedClause(refusedDirs)}.`;
+  }
+  const removed = `${result.pruned.length} skill${result.pruned.length === 1 ? "" : "s"}`;
+  if (result.synced.length === 0 && result.pruned.length > 0) {
+    return `Removed ${removed}${unmanagedClause(refusedDirs)}.`;
   }
   const synced = `${result.synced.length} skill${result.synced.length === 1 ? "" : "s"}`;
   const base =
