@@ -26,6 +26,7 @@
  */
 import { existsSync, realpathSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import type { Diagnostic } from "./protocol";
 import type { LoadedConfig } from "./runtime";
 import { PRISMA_CONFIG_VERSION } from "./runtime";
@@ -189,7 +190,11 @@ const EVALUATE_ONE_FILE_ONLY = {
  * exact path and must not answer with another.
  */
 async function evaluateConfigFile(path: string): Promise<unknown> {
-  const c12 = await import("c12");
+  // Imported via its realpath: under pnpm symlink layouts c12's own
+  // dependencies are only reachable from its real location in the store.
+  const c12 = await import(
+    pathToFileURL(realpathSync(fileURLToPath(import.meta.resolve("c12")))).href
+  );
   const result = await c12.loadConfig({
     name: "prisma",
     configFile: path,
