@@ -25,9 +25,13 @@ isolateModuleResolution();
 
 const HARNESS_SKILL_DIRS = agentSkillDirs(DEFAULT_AGENTS);
 
-function makeCli() {
+/** `config` is what evaluating prisma.config.ts yields, section by
+ *  section — the test CLI never reads the fixture's file, so any test
+ *  whose config file matters supplies its evaluated form here. */
+function makeCli(config?: Record<string, unknown>) {
   return createTestCli({
     commands: { init: initCommand },
+    config,
     now: () => new Date(0),
   });
 }
@@ -35,12 +39,13 @@ function makeCli() {
 async function runInit(
   cwd: string,
   argv: readonly string[] = [],
+  config?: Record<string, unknown>,
 ): Promise<{
   exitCode: number;
   result: InitResult;
   diagnosticCodes: string[];
 }> {
-  const run = await makeCli().run(["init", ...argv], { cwd });
+  const run = await makeCli(config).run(["init", ...argv], { cwd });
   return {
     exitCode: run.exitCode,
     result: run.presented?.data as InitResult,
@@ -129,7 +134,9 @@ describe("init", () => {
     await runInit(root);
     const before = await readFile(path.join(root, "package.json"), "utf8");
 
-    const { exitCode, result, diagnosticCodes } = await runInit(root);
+    const { exitCode, result, diagnosticCodes } = await runInit(root, [], {
+      skills: { agents: [...DEFAULT_AGENTS] },
+    });
 
     expect(exitCode).toBe(0);
     expect(result.postinstall.outcome).toBe("exists");
@@ -297,7 +304,11 @@ describe("init", () => {
     });
     await runInit(root);
 
-    const { exitCode, result, diagnosticCodes } = await runInit(root);
+    // The rerun evaluates the scaffold the first run wrote; the test
+    // CLI stubs config loading, so its evaluated form is passed in.
+    const { exitCode, result, diagnosticCodes } = await runInit(root, [], {
+      skills: { agents: [...DEFAULT_AGENTS] },
+    });
 
     expect(exitCode).toBe(0);
     expect(result.postinstall.outcome).toBe("exists");
@@ -410,6 +421,45 @@ describe("init", () => {
     expect(result.config).toEqual({ outcome: "exists", agents: null });
     expect(diagnosticCodes).toContain("INIT.CONFIG_KEPT");
     expect(await readFile(configPath, "utf8")).toBe(before);
+  });
+
+  it("still advises when the file's text merely mentions skills and agents", async () => {
+    // `skills:` and `agents:` both appear, but skills.agents is not
+    // set: a text match would go quiet, the evaluated config does not.
+    const root = await makeProjectRoot("init-");
+    const configPath = path.join(root, "prisma.config.ts");
+    await writeFile(
+      configPath,
+      'export default definePrismaConfig({\n  skills: { check: false },\n  // agents: ["claude"]\n});\n',
+      "utf8",
+    );
+
+    const { exitCode, result, diagnosticCodes } = await runInit(root, [], {
+      skills: { check: false },
+    });
+
+    expect(exitCode).toBe(0);
+    expect(result.config).toEqual({ outcome: "exists", agents: null });
+    expect(diagnosticCodes).toContain("INIT.CONFIG_KEPT");
+  });
+
+  it("stays quiet for a config that sets skills.agents in a spelling no text match sees", async () => {
+    // Shorthand properties: the file never spells `agents:`, yet the
+    // evaluated config carries skills.agents.
+    const root = await makeProjectRoot("init-");
+    await writeFile(
+      path.join(root, "prisma.config.ts"),
+      'const agents = ["claude"];\nconst skills = { agents };\nexport default definePrismaConfig({ skills });\n',
+      "utf8",
+    );
+
+    const { exitCode, result, diagnosticCodes } = await runInit(root, [], {
+      skills: { agents: ["claude"] },
+    });
+
+    expect(exitCode).toBe(0);
+    expect(result.config).toEqual({ outcome: "exists", agents: null });
+    expect(diagnosticCodes).toEqual([]);
   });
 
   it("shows the exact snippet for the agents the user asked for", async () => {

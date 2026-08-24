@@ -324,12 +324,10 @@ export function renderConfigScaffold(agents: readonly AgentName[]): string {
   ].join("\n");
 }
 
-const SKILLS_KEY = /\bskills\s*:/;
-const AGENTS_KEY = /\bagents\s*:/;
-
 async function scaffoldConfigStep(
   cwd: string,
   agents: readonly AgentName[],
+  agentsConfigured: boolean,
 ): Promise<Step<InitConfigReport>> {
   const configPath = path.join(cwd, "prisma.config.ts");
 
@@ -340,17 +338,17 @@ async function scaffoldConfigStep(
     existing = null;
   }
   if (existing !== null) {
-    // A file that already spells out skills.agents needs no advice; a
-    // rerun after init's own scaffold stays clean. Anything else gets
-    // the exact snippet to add, and the file itself is never edited.
-    const hasAgentsSection =
-      SKILLS_KEY.test(existing) && AGENTS_KEY.test(existing);
+    // A config that already sets skills.agents — the engine evaluated
+    // it, so this is the file's meaning, not a text match — needs no
+    // advice; a rerun after init's own scaffold stays clean. Anything
+    // else gets the exact snippet to add, and the file itself is never
+    // edited.
     return {
       report: { outcome: "exists", agents: null },
-      line: hasAgentsSection
+      line: agentsConfigured
         ? summary("info", "prisma.config.ts already configures skills.agents.")
         : summary("warn", "prisma.config.ts already exists; left untouched."),
-      diagnostics: hasAgentsSection ? [] : [configKeptDiagnostic(agents)],
+      diagnostics: agentsConfigured ? [] : [configKeptDiagnostic(agents)],
     };
   }
 
@@ -554,7 +552,11 @@ export const initCommand = defineCommand({
     const config =
       skillsFlag.kind === "skip"
         ? SKIPPED_CONFIG
-        : await scaffoldConfigStep(ctx.cwd, skillsFlag.agents);
+        : await scaffoldConfigStep(
+            ctx.cwd,
+            skillsFlag.agents,
+            ctx.config.agentsConfigured,
+          );
     const skills =
       skillsFlag.kind === "skip"
         ? SKIPPED_SKILLS

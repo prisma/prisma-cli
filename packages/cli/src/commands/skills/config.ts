@@ -17,9 +17,18 @@ export interface SkillsConfig {
   /** The agent harnesses whose skill directories sync writes and list
    *  reports. Absent means every known agent. */
   readonly agents: readonly AgentName[];
+  /** Whether the config spells out `skills.agents` itself, as opposed
+   *  to `agents` holding the default set. Init uses this to tell "the
+   *  scaffold is already in place" from "the file exists but says
+   *  nothing about agents". */
+  readonly agentsConfigured: boolean;
 }
 
-const DEFAULT: SkillsConfig = { check: true, agents: DEFAULT_AGENTS };
+const DEFAULT: SkillsConfig = {
+  check: true,
+  agents: DEFAULT_AGENTS,
+  agentsConfigured: false,
+};
 
 export const SKILLS_CONFIG_SECTION_NAME = "skills";
 
@@ -175,7 +184,11 @@ export const skillsConfigSection = defineConfigSection<SkillsConfig>({
     }
     return {
       ok: true,
-      value: { check: check ?? true, agents: agents.agents },
+      value: {
+        check: check ?? true,
+        agents: agents.agents,
+        agentsConfigured: rawAgents !== undefined,
+      },
       diagnostics: [],
     };
   },
