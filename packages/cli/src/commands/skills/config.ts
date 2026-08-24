@@ -126,6 +126,11 @@ function validateAgents(
  * when the section does not validate. Used by code that runs outside a
  * command handler (the staleness check, the post-login tip), which has
  * no ctx.config.
+ *
+ * Null deliberately collapses "no config" and "config invalid": both
+ * callers fall back to the default agent set, so a broken config never
+ * silences the check. The commands that consume the config surface the
+ * validation error themselves.
  */
 export function readSkillsConfig(loaded: {
   readonly sections: Readonly<Record<string, unknown>>;
