@@ -1,20 +1,29 @@
 /**
- * `prisma init` needs no credential: it edits package.json and syncs
- * skills from installed packages, so it runs here whether or not the
- * real-API suite has a token. Covered as an e2e-coverage EXCLUSIONS
- * entry, because `describeCommand` skips without credentials and this
- * must not.
+ * `prisma init` needs no credential: it edits package.json, scaffolds
+ * prisma.config.ts and syncs skills from installed packages, so it runs
+ * here whether or not the real-API suite has a token. Covered as an
+ * e2e-coverage EXCLUSIONS entry, because `describeCommand` skips
+ * without credentials and this must not.
  */
 import { execFile } from "node:child_process";
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { existsSync } from "node:fs";
+import { mkdir, mkdtemp, readFile, rm, symlink, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
+import { loadConfig } from "@prisma/cli-engine";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import { CLI_BINARY } from "./harness";
 
 const execFileAsync = promisify(execFile);
+
+/** The built `prisma` package, so the scaffold's `prisma/config` import
+ *  resolves in the fixture exactly as it does in a user project. */
+const PRISMA_PACKAGE_DIR = path.resolve(
+  import.meta.dirname,
+  "../../prisma",
+);
 
 interface InitEnvelope {
   readonly ok: boolean;
@@ -22,6 +31,10 @@ interface InitEnvelope {
     readonly postinstall: {
       readonly outcome: string;
       readonly script: string | null;
+    };
+    readonly config: {
+      readonly outcome: string;
+      readonly agents: readonly string[] | null;
     };
     readonly skills: {
       readonly outcome: string;
@@ -63,11 +76,24 @@ describe("prisma init", () => {
   let workdir: string;
 
   beforeAll(async () => {
+    if (!existsSync(path.join(PRISMA_PACKAGE_DIR, "dist", "config.js"))) {
+      throw new Error(
+        "packages/prisma is not built; run `pnpm --filter prisma build` before the e2e suite so the scaffold's prisma/config import can resolve.",
+      );
+    }
     workdir = await mkdtemp(path.join(os.tmpdir(), "prisma-e2e-init-"));
     await writeFile(
       path.join(workdir, "package.json"),
       `${JSON.stringify({ name: "e2e-init-fixture", version: "0.0.0" }, null, 2)}\n`,
       "utf8",
+    );
+    // The install a user project would have: node_modules/prisma
+    // resolving to the built package.
+    await mkdir(path.join(workdir, "node_modules"), { recursive: true });
+    await symlink(
+      PRISMA_PACKAGE_DIR,
+      path.join(workdir, "node_modules", "prisma"),
+      "dir",
     );
   });
 
@@ -75,7 +101,7 @@ describe("prisma init", () => {
     await rm(workdir, { recursive: true, force: true });
   });
 
-  it("adds the postinstall hook and finds no skills to sync", async () => {
+  it("adds the postinstall hook, scaffolds the config, and finds no skills to sync", async () => {
     const envelope = await runInit(workdir);
 
     expect(envelope.ok).toBe(true);
@@ -83,6 +109,13 @@ describe("prisma init", () => {
     expect(envelope.result.postinstall.script).toBe(
       "prisma skills sync || exit 0",
     );
+    expect(envelope.result.config.outcome).toBe("created");
+    expect(envelope.result.config.agents).toEqual([
+      "claude",
+      "cursor",
+      "agents",
+      "devin",
+    ]);
     // No allowlisted Prisma package is installed here, so the sync has
     // nothing to do and says so instead of failing.
     expect(envelope.result.skills.outcome).toBe("up-to-date");
@@ -94,11 +127,41 @@ describe("prisma init", () => {
     expect(manifest.scripts?.postinstall).toBe("prisma skills sync || exit 0");
   });
 
-  it("reruns idempotently", async () => {
+  it("scaffolds a config the engine's real loader accepts without diagnostics", async () => {
+    // The full round trip: the file init wrote, evaluated by the same
+    // loader every command uses, importing definePrismaConfig through
+    // the published prisma/config subpath.
+    const loaded = await loadConfig(workdir);
+
+    expect(loaded.diagnostics).toEqual([]);
+    expect(loaded.sections.skills).toEqual({
+      agents: ["claude", "cursor", "agents", "devin"],
+    });
+  });
+
+  // A rerun with the config still present cannot run against the built
+  // binary yet: the binary fails to evaluate ANY prisma.config.ts in
+  // this repository's development layout ("Cannot find package 'pathe'
+  // imported from .../cli-engine/node_modules/c12/dist/index.mjs" —
+  // c12 resolves through the pnpm symlink without reaching its store
+  // siblings). This predates the config scaffold: a binary built from
+  // commit 7532706 fails the same way on a hand-written config with no
+  // imports. The config-exists rerun is covered by tests/init.test.ts;
+  // this rerun removes the config first so it exercises the binary's
+  // idempotency for the other steps and the scaffold's recreation.
+  it("reruns safely: the hook is kept and a removed config is recreated", async () => {
+    await rm(path.join(workdir, "prisma.config.ts"));
     const envelope = await runInit(workdir);
 
     expect(envelope.ok).toBe(true);
     expect(envelope.result.postinstall.outcome).toBe("exists");
+    expect(envelope.result.config.outcome).toBe("created");
     expect(envelope.result.skills.outcome).toBe("up-to-date");
+
+    const reloaded = await loadConfig(workdir);
+    expect(reloaded.diagnostics).toEqual([]);
+    expect(reloaded.sections.skills).toEqual({
+      agents: ["claude", "cursor", "agents", "devin"],
+    });
   });
 });
