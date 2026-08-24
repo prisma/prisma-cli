@@ -31,10 +31,6 @@ describe("conformance: import purity", () => {
         label: "@prisma/cli-engine",
         output,
         manifest,
-        // c12 is reached via import.meta.resolve plus a realpath'd
-        // dynamic import (see config-loader.ts), which the lexer
-        // rightly does not count as an import of the bare specifier.
-        allowedUnimported: ["c12"],
         // Anti-vacuity: a run that swept the wrong directory would
         // otherwise report a clean sweep of nothing.
         requiredSpecifiers: ["@stricli/core"],
