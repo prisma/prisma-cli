@@ -2,9 +2,11 @@ import { readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import type { Block, Presentations } from "@prisma/cli-engine";
 import { defineCommand, flag } from "@prisma/cli-engine";
-import type { Diagnostic } from "@prisma/cli-engine/protocol";
+import type { Diagnostic, NextAction } from "@prisma/cli-engine/protocol";
 import { CliStructuredError, notOk, ok } from "@prisma/cli-engine/protocol";
 import { CLI_NAME } from "../cli-name";
+import { resolveInstallCommandSync } from "../lib/agent/package-manager";
+import { getCliVersion } from "../lib/version";
 import {
   type AgentName,
   isKnownAgent,
@@ -25,11 +27,17 @@ export const POSTINSTALL_SCRIPT = "prisma skills sync || exit 0";
 
 export type InitPostinstallOutcome = "added" | "exists" | "kept" | "skipped";
 
+export type InitDependencyOutcome = "added" | "declared" | "skipped";
+
 export interface InitPostinstallReport {
   readonly outcome: InitPostinstallOutcome;
   /** The postinstall script package.json holds after init; null when
    *  the step was skipped or nothing was written. */
   readonly script: string | null;
+  /** The prisma dev dependency: "declared" when any dependency field
+   *  already names prisma, "skipped" when the manifest edit did not
+   *  happen. */
+  readonly dependency: InitDependencyOutcome;
 }
 
 export type InitSkillsOutcome = "synced" | "up-to-date" | "failed" | "skipped";
@@ -56,10 +64,11 @@ export interface InitResult {
 
 interface Step<TReport> {
   readonly report: TReport;
-  /** The step's one human line; null when the skills sync ran, whose
+  /** The step's human lines; null when the skills sync ran, whose
    *  outcome renders through the shared sync presentation instead. */
-  readonly line: Block | null;
+  readonly lines: readonly Block[] | null;
   readonly diagnostics: readonly Diagnostic[];
+  readonly next?: readonly NextAction[];
 }
 
 function summary(status: "ok" | "info" | "warn", text: string): Block {
@@ -96,13 +105,26 @@ function unreadablePackageJsonDiagnostic(): Diagnostic {
   };
 }
 
-function unwritablePackageJsonDiagnostic(): Diagnostic {
+function addDependencyAdvice(version: string): NextAction {
+  return {
+    kind: "user-choice",
+    label: `Add "prisma": "${version}" to devDependencies yourself, then run your package manager's install.`,
+  };
+}
+
+function unwritablePackageJsonDiagnostic(
+  hookNeeded: boolean,
+  dependencyNeeded: boolean,
+  version: string,
+): Diagnostic {
   return {
     code: "INIT.PACKAGE_JSON_UNWRITABLE",
     severity: "warn",
-    summary:
-      "package.json could not be written, so the postinstall hook was not added.",
-    nextActions: [APPEND_ADVICE],
+    summary: "package.json could not be written, so init left it unchanged.",
+    nextActions: [
+      ...(hookNeeded ? [APPEND_ADVICE] : []),
+      ...(dependencyNeeded ? [addDependencyAdvice(version)] : []),
+    ],
   };
 }
 
@@ -213,6 +235,22 @@ function renderManifest(
   return `${bom}${rewritten}${source.endsWith("\n") ? eol : ""}`;
 }
 
+const DEPENDENCY_FIELDS = [
+  "dependencies",
+  "devDependencies",
+  "optionalDependencies",
+  "peerDependencies",
+] as const;
+
+/** A declaration in any field, at any version or range, counts — init
+ *  never second-guesses a version the user chose. */
+function declaresPrisma(manifest: Record<string, unknown>): boolean {
+  return DEPENDENCY_FIELDS.some((field) => {
+    const value = manifest[field];
+    return isPlainObject(value) && Object.hasOwn(value, "prisma");
+  });
+}
+
 async function addPostinstallHook(
   cwd: string,
 ): Promise<Step<InitPostinstallReport>> {
@@ -223,8 +261,10 @@ async function addPostinstallHook(
     raw = await readFile(manifestPath, "utf8");
   } catch {
     return {
-      report: { outcome: "skipped", script: null },
-      line: summary("warn", "No package.json here; postinstall hook skipped."),
+      report: { outcome: "skipped", script: null, dependency: "skipped" },
+      lines: [
+        summary("warn", "No package.json here; postinstall hook skipped."),
+      ],
       diagnostics: [noPackageJsonDiagnostic()],
     };
   }
@@ -236,22 +276,32 @@ async function addPostinstallHook(
   const manifest = parseManifestObject(source);
   if (manifest === null) {
     return {
-      report: { outcome: "skipped", script: null },
-      line: summary(
-        "warn",
-        "package.json could not be parsed; postinstall hook skipped.",
-      ),
+      report: { outcome: "skipped", script: null, dependency: "skipped" },
+      lines: [
+        summary(
+          "warn",
+          "package.json could not be parsed; postinstall hook skipped.",
+        ),
+      ],
       diagnostics: [unreadablePackageJsonDiagnostic()],
     };
   }
 
+  const dependencyDeclared = declaresPrisma(manifest);
+  // A manifest init keeps its hands off also gets no dependency added.
+  const keptDependency: InitDependencyOutcome = dependencyDeclared
+    ? "declared"
+    : "skipped";
+
   if (manifest.scripts !== undefined && !isPlainObject(manifest.scripts)) {
     return {
-      report: { outcome: "kept", script: null },
-      line: summary(
-        "warn",
-        "The scripts field in package.json is not an object; left untouched.",
-      ),
+      report: { outcome: "kept", script: null, dependency: keptDependency },
+      lines: [
+        summary(
+          "warn",
+          "The scripts field in package.json is not an object; left untouched.",
+        ),
+      ],
       diagnostics: [scriptsNotAnObjectDiagnostic()],
     };
   }
@@ -259,29 +309,53 @@ async function addPostinstallHook(
   const scripts = (manifest.scripts as Record<string, unknown>) ?? {};
   const existing = scripts.postinstall;
 
-  if (existing === POSTINSTALL_SCRIPT) {
-    return {
-      report: { outcome: "exists", script: POSTINSTALL_SCRIPT },
-      line: summary("info", "The postinstall hook is already in package.json."),
-      diagnostics: [],
-    };
-  }
-
-  if (existing !== undefined) {
+  if (existing !== undefined && existing !== POSTINSTALL_SCRIPT) {
     return {
       report: {
         outcome: "kept",
         script: typeof existing === "string" ? existing : null,
+        dependency: keptDependency,
       },
-      line: summary(
-        "warn",
-        "package.json has its own postinstall script; left untouched.",
-      ),
+      lines: [
+        summary(
+          "warn",
+          "package.json has its own postinstall script; left untouched.",
+        ),
+      ],
       diagnostics: [foreignPostinstallDiagnostic()],
     };
   }
 
-  manifest.scripts = { ...scripts, postinstall: POSTINSTALL_SCRIPT };
+  const hookNeeded = existing === undefined;
+  const dependencyNeeded = !dependencyDeclared;
+  const alreadyHooked = summary(
+    "info",
+    "The postinstall hook is already in package.json.",
+  );
+
+  if (!hookNeeded && !dependencyNeeded) {
+    return {
+      report: {
+        outcome: "exists",
+        script: POSTINSTALL_SCRIPT,
+        dependency: "declared",
+      },
+      lines: [alreadyHooked],
+      diagnostics: [],
+    };
+  }
+
+  const version = getCliVersion();
+  if (hookNeeded) {
+    manifest.scripts = { ...scripts, postinstall: POSTINSTALL_SCRIPT };
+  }
+  if (dependencyNeeded) {
+    const devDependencies = isPlainObject(manifest.devDependencies)
+      ? manifest.devDependencies
+      : {};
+    manifest.devDependencies = { ...devDependencies, prisma: version };
+  }
+
   try {
     await writeFile(
       manifestPath,
@@ -290,21 +364,49 @@ async function addPostinstallHook(
     );
   } catch {
     return {
-      report: { outcome: "skipped", script: null },
-      line: summary(
-        "warn",
-        "package.json could not be written; postinstall hook skipped.",
-      ),
-      diagnostics: [unwritablePackageJsonDiagnostic()],
+      report: {
+        outcome: hookNeeded ? "skipped" : "exists",
+        script: hookNeeded ? null : POSTINSTALL_SCRIPT,
+        dependency: "skipped",
+      },
+      lines: [summary("warn", "package.json could not be written; left unchanged.")],
+      diagnostics: [
+        unwritablePackageJsonDiagnostic(hookNeeded, dependencyNeeded, version),
+      ],
     };
   }
 
   return {
-    report: { outcome: "added", script: POSTINSTALL_SCRIPT },
-    line: summary(
-      "ok",
-      `Added "postinstall": "${POSTINSTALL_SCRIPT}" to package.json.`,
-    ),
+    report: {
+      outcome: hookNeeded ? "added" : "exists",
+      script: POSTINSTALL_SCRIPT,
+      dependency: dependencyNeeded ? "added" : "declared",
+    },
+    lines: [
+      hookNeeded
+        ? summary(
+            "ok",
+            `Added "postinstall": "${POSTINSTALL_SCRIPT}" to package.json.`,
+          )
+        : alreadyHooked,
+      ...(dependencyNeeded
+        ? [
+            summary(
+              "ok",
+              `Added "prisma": "${version}" to devDependencies in package.json.`,
+            ),
+          ]
+        : []),
+    ],
+    next: dependencyNeeded
+      ? [
+          {
+            kind: "run-command",
+            label: "Install the added prisma dev dependency",
+            command: resolveInstallCommandSync(cwd),
+          },
+        ]
+      : [],
     diagnostics: [],
   };
 }
@@ -345,9 +447,11 @@ async function scaffoldConfigStep(
     // edited.
     return {
       report: { outcome: "exists", agents: null },
-      line: agentsConfigured
-        ? summary("info", "prisma.config.ts already configures skills.agents.")
-        : summary("warn", "prisma.config.ts already exists; left untouched."),
+      lines: [
+        agentsConfigured
+          ? summary("info", "prisma.config.ts already configures skills.agents.")
+          : summary("warn", "prisma.config.ts already exists; left untouched."),
+      ],
       diagnostics: agentsConfigured ? [] : [configKeptDiagnostic(agents)],
     };
   }
@@ -362,17 +466,16 @@ async function scaffoldConfigStep(
   } catch {
     return {
       report: { outcome: "skipped", agents: null },
-      line: summary("warn", "prisma.config.ts could not be written; skipped."),
+      lines: [summary("warn", "prisma.config.ts could not be written; skipped.")],
       diagnostics: [configUnwritableDiagnostic(agents)],
     };
   }
 
   return {
     report: { outcome: "created", agents },
-    line: summary(
-      "ok",
-      `Created prisma.config.ts with ${configSnippet(agents)}.`,
-    ),
+    lines: [
+      summary("ok", `Created prisma.config.ts with ${configSnippet(agents)}.`),
+    ],
     diagnostics: [],
   };
 }
@@ -401,7 +504,7 @@ async function syncSkillsStep(
             : "up-to-date",
         sync: result,
       },
-      line: null,
+      lines: null,
       diagnostics: [
         ...versionConflictDiagnostics(outcome.packages),
         ...unmanagedDirectoryDiagnostics(outcome.refused),
@@ -410,21 +513,21 @@ async function syncSkillsStep(
   } catch (cause) {
     return {
       report: { outcome: "failed", sync: null },
-      line: summary("warn", "The agent skills could not be synced."),
+      lines: [summary("warn", "The agent skills could not be synced.")],
       diagnostics: [skillsSyncFailedDiagnostic(cause)],
     };
   }
 }
 
 const SKIPPED_POSTINSTALL: Step<InitPostinstallReport> = {
-  report: { outcome: "skipped", script: null },
-  line: summary("info", "Skipped the postinstall hook (--no-postinstall)."),
+  report: { outcome: "skipped", script: null, dependency: "skipped" },
+  lines: [summary("info", "Skipped the postinstall hook (--no-postinstall).")],
   diagnostics: [],
 };
 
 const SKIPPED_SKILLS: Step<InitSkillsReport> = {
   report: { outcome: "skipped", sync: null },
-  line: summary("info", "Skipped the skills sync (--skills=none)."),
+  lines: [summary("info", "Skipped the skills sync (--skills=none).")],
   diagnostics: [],
 };
 
@@ -500,7 +603,7 @@ function initPresentations(
 ): Presentations {
   return {
     json: () => result,
-    next: () => [],
+    next: () => postinstall.next ?? [],
     stdout: () => [],
     human: (ui) => {
       const skillsBlocks =
@@ -508,9 +611,9 @@ function initPresentations(
           ? []
           : syncPresentations(result.skills.sync).human(ui);
       return [
-        ...(postinstall.line === null ? [] : [postinstall.line]),
-        ...(config.line === null ? [] : [config.line]),
-        ...(skills.line === null ? skillsBlocks : [skills.line]),
+        ...(postinstall.lines ?? []),
+        ...(config.lines ?? []),
+        ...(skills.lines ?? skillsBlocks),
       ];
     },
   };
