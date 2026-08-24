@@ -71,6 +71,10 @@ async function importPurity(): Promise<readonly Finding[]> {
     label: "@prisma/cli-engine",
     output: await sweepBuiltOutput(join(ENGINE_DIR, "dist")),
     manifest: await manifest(ENGINE_DIR),
+    // c12 is reached via import.meta.resolve plus a realpath'd dynamic
+    // import (see config-loader.ts), which the lexer rightly does not
+    // count as an import of the bare specifier.
+    allowedUnimported: ["c12"],
     requiredSpecifiers: ["@stricli/core"],
   });
   return [...shell, ...unscoped, ...engine];
@@ -95,7 +99,12 @@ async function tarball(): Promise<readonly Finding[]> {
       packages: [
         { name: "@prisma/cli", dir: CLI_DIR },
         { name: "prisma", dir: PRISMA_DIR },
-        { name: "@prisma/cli-engine", dir: ENGINE_DIR },
+        {
+          name: "@prisma/cli-engine",
+          dir: ENGINE_DIR,
+          // Same excuse as check 1: c12 arrives via import.meta.resolve.
+          allowedUnimported: ["c12"],
+        },
       ],
       shellPackage: "@prisma/cli",
       enginePackage: "@prisma/cli-engine",

@@ -79,7 +79,16 @@ export interface PinException extends Suppression {
 }
 
 export interface TarballInput {
-  readonly packages: readonly { name: string; dir: string }[];
+  readonly packages: readonly {
+    name: string;
+    dir: string;
+    /**
+     * Declared dependencies this package reaches without a static
+     * import (`import.meta.resolve` and friends), handed through to
+     * check 3a's import purity over the packed files.
+     */
+    allowedUnimported?: readonly string[];
+  }[];
   readonly shellPackage: string;
   readonly enginePackage: string;
   /** Command-family packages the shell mounts; must be shell deps. */
@@ -131,7 +140,13 @@ export async function checkTarball(
     const manifest = await io.readPackedManifest(result.tarball);
     packed.set(pkg.name, { tarball: result.tarball, manifest });
     findings.push(
-      ...(await packedImportPurity(pkg.name, result.tarball, manifest, io)),
+      ...(await packedImportPurity(
+        pkg.name,
+        result.tarball,
+        manifest,
+        io,
+        pkg.allowedUnimported,
+      )),
     );
   }
 
@@ -186,6 +201,7 @@ async function packedImportPurity(
   tarball: string,
   manifest: PackedManifest,
   io: TarballIo,
+  allowedUnimported?: readonly string[],
 ): Promise<readonly Finding[]> {
   const files = await io.readPackedFiles(tarball);
   const imports = [];
@@ -197,6 +213,7 @@ async function packedImportPurity(
     label: name,
     output: { files: [...files.keys()], imports },
     manifest,
+    ...(allowedUnimported === undefined ? {} : { allowedUnimported }),
   });
 }
 
