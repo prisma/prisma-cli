@@ -31,6 +31,7 @@ const PRISMA_PACKAGE_DIR = path.resolve(import.meta.dirname, "../../prisma");
 
 interface InitEnvelope {
   readonly ok: boolean;
+  readonly diagnostics: readonly { readonly code: string }[];
   readonly result: {
     readonly postinstall: {
       readonly outcome: string;
@@ -124,6 +125,7 @@ describe("prisma init", () => {
     // nothing to do and says so instead of failing.
     expect(envelope.result.skills.outcome).toBe("up-to-date");
     expect(envelope.result.skills.sync?.packages).toEqual([]);
+    expect(envelope.diagnostics).toEqual([]);
 
     const manifest = JSON.parse(
       await readFile(path.join(workdir, "package.json"), "utf8"),
@@ -150,6 +152,11 @@ describe("prisma init", () => {
     expect(envelope.result.postinstall.outcome).toBe("exists");
     expect(envelope.result.config.outcome).toBe("exists");
     expect(envelope.result.skills.outcome).toBe("up-to-date");
+    // The first run's own scaffold already configures skills.agents, so
+    // the rerun is quiet: no "config kept, add this yourself" advice.
+    expect(envelope.diagnostics.map((d) => d.code)).not.toContain(
+      "INIT.CONFIG_KEPT",
+    );
 
     const reloaded = await loadConfig(workdir);
     expect(reloaded.diagnostics).toEqual([]);

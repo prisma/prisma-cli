@@ -26,7 +26,7 @@ const NOTICE = "Prisma agent skills are out of date";
 /** What definePrismaConfig produces, written out: a fixture project has
  *  no node_modules the config file could import the engine from. */
 function configSource(skills: {
-  check?: boolean;
+  check?: unknown;
   agents?: readonly string[];
 }): string {
   return `export default ${JSON.stringify({
@@ -254,7 +254,7 @@ describe("the skills check off switches", () => {
       "a global flag before the group",
       ["--config", "prisma.config.ts", "skills", "list"],
     ],
-    ["init, whose run includes a sync", ["init"]],
+    ["init, which syncs or was told not to", ["init"]],
   ])("stays silent for the commands that fix it (%s)", async (_name, argv) => {
     const proc = makeProcess({ cwd: await makeStaleProject(), argv });
 
@@ -328,6 +328,22 @@ describe("the skills check off switches", () => {
     await writeFile(
       path.join(root, "prisma.config.ts"),
       configSource({ check: true }),
+      "utf8",
+    );
+    const proc = makeProcess({ cwd: root });
+
+    await main(proc, stubCli());
+
+    expect(proc.stderrText).toContain(NOTICE);
+  });
+
+  it("still reports when the config's skills section fails validation", async () => {
+    // A broken config must not silence the check: the invalid section
+    // reads as null and the check falls back to the defaults.
+    const root = await makeStaleProject();
+    await writeFile(
+      path.join(root, "prisma.config.ts"),
+      configSource({ check: "yes" }),
       "utf8",
     );
     const proc = makeProcess({ cwd: root });
