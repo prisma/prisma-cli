@@ -106,6 +106,10 @@ export interface TarballInput {
 
 const EXACT_VERSION = /^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/;
 
+/** Package-name characters that cannot appear in a directory name. */
+const SANDBOX_NAME_UNSAFE = /[@/]/g;
+const LEADING_DASH = /^-/;
+
 /**
  * Check 3: the tarballs a registry would receive. 3a — packed output
  * imports only what the packed manifest declares. 3b — the root tarball
@@ -306,7 +310,7 @@ async function sandboxFindings(
 ): Promise<readonly Finding[]> {
   const sandboxDir = join(
     input.sandboxDir,
-    packageName.replace(/[@/]/g, "-").replace(/^-/, ""),
+    packageName.replace(SANDBOX_NAME_UNSAFE, "-").replace(LEADING_DASH, ""),
   );
   // Transitive: a sibling reached only through another sibling still
   // needs its override, or the install falls back to the registry.

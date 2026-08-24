@@ -616,14 +616,15 @@ describe("sibling manifests and per-package sandboxes (the rc.8 class)", () => {
     overrides: Partial<TarballIo> = {},
   ): TarballIo {
     return fakeIo({
-      readPackedManifest: (tarball) =>
-        Promise.resolve(
-          tarball.includes("cli-engine")
-            ? ENGINE_MANIFEST
-            : tarball.includes("prisma-wrapper")
-              ? wrapperManifest
-              : SHELL_MANIFEST,
-        ),
+      readPackedManifest: (tarball) => {
+        if (tarball.includes("cli-engine")) {
+          return Promise.resolve(ENGINE_MANIFEST);
+        }
+        if (tarball.includes("prisma-wrapper")) {
+          return Promise.resolve(wrapperManifest);
+        }
+        return Promise.resolve(SHELL_MANIFEST);
+      },
       readPackedFiles: (tarball) =>
         Promise.resolve(
           tarball.includes("prisma-wrapper")
