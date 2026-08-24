@@ -9,7 +9,7 @@ import {
 
 const INTERACTIVE = { stdin: true, stdout: true, stderr: true };
 
-describe("prisma-cli service delete", () => {
+describe("prisma service delete", () => {
   it("deletes the service once consent is granted", async () => {
     const harness = await makeServiceCli({ routes: releaseRoutes() });
 
@@ -40,7 +40,7 @@ describe("prisma-cli service delete", () => {
       {
         kind: "run-command",
         label: "List remaining services",
-        command: "prisma-cli service list",
+        command: "prisma service list",
       },
     ]);
   });
@@ -323,7 +323,7 @@ describe("prisma-cli service delete", () => {
       {
         kind: "run-command",
         label: "List services",
-        command: "prisma-cli service list",
+        command: "prisma service list",
       },
     ]);
   });

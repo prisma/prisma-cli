@@ -164,7 +164,7 @@ function blocks(presented: unknown) {
   return value?.presentation.human ?? [];
 }
 
-describe("prisma-cli project list", () => {
+describe("prisma project list", () => {
   it("lists the workspace projects and reports the linked binding", async () => {
     const cwd = await tempCwd({ workspaceId: "ws_1", projectId: "proj_1" });
     const result = await makeCli(fakeClient()).run(["project", "list"], {
@@ -213,24 +213,21 @@ describe("prisma-cli project list", () => {
         kind: "user-choice",
         label:
           "Ask the user whether to link an existing Project or create a new one",
-        commands: [
-          "prisma-cli project list",
-          "prisma-cli project link <id-or-name>",
-        ],
+        commands: ["prisma project list", "prisma project link <id-or-name>"],
         reason:
           "This directory is not linked to a Prisma Project. Project list shows available Projects, but none is selected for this directory.",
       },
       {
         kind: "run-command",
         label: "Link the chosen Project",
-        command: "prisma-cli project link <id-or-name>",
+        command: "prisma project link <id-or-name>",
         reason:
           "Linking writes the durable local Project binding for this directory.",
       },
       {
         kind: "run-command",
         label: "Create and link a new Project",
-        command: "prisma-cli project create <name>",
+        command: "prisma project create <name>",
         reason:
           "Use this when the user wants a new Prisma Project instead of an existing one.",
       },
@@ -339,7 +336,7 @@ describe("prisma-cli project list", () => {
   });
 });
 
-describe("prisma-cli project show", () => {
+describe("prisma project show", () => {
   it("shows the bound project for a pinned directory", async () => {
     const cwd = await tempCwd({ workspaceId: "ws_1", projectId: "proj_1" });
     const result = await makeCli(fakeClient()).run(["project", "show"], {
@@ -396,7 +393,7 @@ describe("prisma-cli project show", () => {
     expect(result.presented?.presentation.next?.at(-1)).toEqual({
       kind: "run-command",
       label: "Retry with an explicit Project",
-      command: "prisma-cli project show <id-or-name>",
+      command: "prisma project show <id-or-name>",
     });
     // "Not linked" is prose for a reader; stdout leaves the field empty.
     expect(result.presented?.presentation.stdout).toEqual([
@@ -520,7 +517,7 @@ describe("prisma-cli project show", () => {
   });
 });
 
-describe("prisma-cli project create", () => {
+describe("prisma project create", () => {
   it("creates the project, writes the pin and ignores it in git", async () => {
     const cwd = await tempCwd();
     const created = {
@@ -558,8 +555,8 @@ describe("prisma-cli project create", () => {
     expect(result.presented?.presentation.next).toEqual([
       {
         kind: "run-command",
-        label: "prisma-cli git connect",
-        command: "prisma-cli git connect",
+        label: "prisma git connect",
+        command: "prisma git connect",
       },
     ]);
   });
@@ -606,13 +603,13 @@ describe("prisma-cli project create", () => {
           },
           {
             kind: "run-command",
-            label: "prisma-cli project list",
-            command: "prisma-cli project list",
+            label: "prisma project list",
+            command: "prisma project list",
           },
           {
             kind: "run-command",
-            label: "prisma-cli project link <id-or-name>",
-            command: "prisma-cli project link <id-or-name>",
+            label: "prisma project link <id-or-name>",
+            command: "prisma project link <id-or-name>",
           },
         ],
       },
@@ -684,8 +681,8 @@ describe("prisma-cli project create", () => {
       nextActions: [
         {
           kind: "run-command",
-          label: "prisma-cli git connect",
-          command: "prisma-cli git connect",
+          label: "prisma git connect",
+          command: "prisma git connect",
         },
       ],
     });
@@ -706,7 +703,7 @@ describe("prisma-cli project create", () => {
   });
 });
 
-describe("prisma-cli project link", () => {
+describe("prisma project link", () => {
   it("links the directory to the project named by the positional", async () => {
     const cwd = await tempCwd();
     const result = await makeCli(fakeClient()).run(
@@ -884,7 +881,7 @@ describe("prisma-cli project link", () => {
   });
 });
 
-describe("prisma-cli project rename", () => {
+describe("prisma project rename", () => {
   it("renames the pinned project", async () => {
     const cwd = await tempCwd({ workspaceId: "ws_1", projectId: "proj_1" });
     const result = await makeCli(
@@ -1007,7 +1004,7 @@ describe("prisma-cli project rename", () => {
   });
 });
 
-describe("prisma-cli project workspace requirement", () => {
+describe("prisma project workspace requirement", () => {
   it("names the workspace of the engine's pinned credential", async () => {
     const workspace = await resolveActiveWorkspace({
       activeCredential: async () => ({
@@ -1054,12 +1051,12 @@ describe("prisma-cli project workspace requirement", () => {
       nextActions: [
         {
           kind: "user-choice",
-          label: "Run prisma-cli auth login and choose a workspace.",
+          label: "Run prisma auth login and choose a workspace.",
         },
         {
           kind: "run-command",
-          label: "prisma-cli auth login",
-          command: "prisma-cli auth login",
+          label: "prisma auth login",
+          command: "prisma auth login",
         },
       ],
     });
@@ -1203,7 +1200,7 @@ async function pinnedCwd() {
   return await tempCwd({ workspaceId: "ws_1", projectId: "proj_1" });
 }
 
-describe("prisma-cli project env add", () => {
+describe("prisma project env add", () => {
   it("creates a variable in the role scope", async () => {
     const writes: unknown[] = [];
     const result = await makeCli(envClient({ writes })).run(
@@ -1330,7 +1327,7 @@ describe("prisma-cli project env add", () => {
       ok: false,
       error: {
         code: "PROJECT.USAGE_ERROR",
-        summary: "prisma-cli project env add accepts either --role or --branch",
+        summary: "prisma project env add accepts either --role or --branch",
       },
     });
   });
@@ -1347,7 +1344,7 @@ describe("prisma-cli project env add", () => {
       ok: false,
       error: {
         code: "PROJECT.USAGE_ERROR",
-        summary: "prisma-cli project env add requires --role or --branch",
+        summary: "prisma project env add requires --role or --branch",
       },
     });
   });
@@ -1374,8 +1371,7 @@ describe("prisma-cli project env add", () => {
       ok: false,
       error: {
         code: "PROJECT.USAGE_ERROR",
-        summary:
-          "prisma-cli project env add accepts either KEY=VALUE or --file",
+        summary: "prisma project env add accepts either KEY=VALUE or --file",
       },
     });
   });
@@ -1447,12 +1443,12 @@ describe("prisma-cli project env add", () => {
           {
             kind: "user-choice",
             label:
-              "Use `prisma-cli project env update` to change an existing variable's value.",
+              "Use `prisma project env update` to change an existing variable's value.",
           },
           {
             kind: "run-command",
             command:
-              "prisma-cli project env update STRIPE_KEY=<new-value> --role production",
+              "prisma project env update STRIPE_KEY=<new-value> --role production",
           },
         ],
       },
@@ -1511,15 +1507,15 @@ describe("prisma-cli project env add", () => {
           },
           {
             kind: "run-command",
-            label: "prisma-cli project env list --role preview",
-            command: "prisma-cli project env list --role preview",
+            label: "prisma project env list --role preview",
+            command: "prisma project env list --role preview",
           },
           {
             kind: "run-command",
             label:
-              "prisma-cli project env add --file <remaining.env> --role preview",
+              "prisma project env add --file <remaining.env> --role preview",
             command:
-              "prisma-cli project env add --file <remaining.env> --role preview",
+              "prisma project env add --file <remaining.env> --role preview",
           },
         ],
       },
@@ -1559,17 +1555,15 @@ describe("prisma-cli project env add", () => {
           {
             kind: "run-command",
             label:
-              "prisma-cli project env update --file .env.existing --role production",
+              "prisma project env update --file .env.existing --role production",
             command:
-              "prisma-cli project env update --file .env.existing --role production",
+              "prisma project env update --file .env.existing --role production",
             reason: 'existing keys: "STRIPE_KEY"',
           },
           {
             kind: "run-command",
-            label:
-              "prisma-cli project env add --file .env.new --role production",
-            command:
-              "prisma-cli project env add --file .env.new --role production",
+            label: "prisma project env add --file .env.new --role production",
+            command: "prisma project env add --file .env.new --role production",
             reason: "new keys only",
           },
         ],
@@ -1603,12 +1597,12 @@ describe("prisma-cli project env add", () => {
         nextActions: [
           {
             kind: "user-choice",
-            label: "Run prisma-cli auth login.",
+            label: "Run prisma auth login.",
           },
           {
             kind: "run-command",
-            label: "prisma-cli auth login",
-            command: "prisma-cli auth login",
+            label: "prisma auth login",
+            command: "prisma auth login",
           },
         ],
       },
@@ -1660,7 +1654,7 @@ describe("prisma-cli project env add", () => {
   });
 });
 
-describe("prisma-cli project env update", () => {
+describe("prisma project env update", () => {
   it("replaces the value of an existing variable", async () => {
     const writes: unknown[] = [];
     const result = await makeCli(
@@ -1760,17 +1754,16 @@ describe("prisma-cli project env update", () => {
           },
           {
             kind: "run-command",
-            label: "prisma-cli project env add --file .env.new --role preview",
-            command:
-              "prisma-cli project env add --file .env.new --role preview",
+            label: "prisma project env add --file .env.new --role preview",
+            command: "prisma project env add --file .env.new --role preview",
             reason: 'missing keys: "A", "B"',
           },
           {
             kind: "run-command",
             label:
-              "prisma-cli project env update --file .env.existing --role preview",
+              "prisma project env update --file .env.existing --role preview",
             command:
-              "prisma-cli project env update --file .env.existing --role preview",
+              "prisma project env update --file .env.existing --role preview",
             reason: "existing keys only",
           },
         ],
@@ -1948,8 +1941,7 @@ describe("prisma-cli project env update", () => {
       ok: false,
       error: {
         code: "PROJECT.USAGE_ERROR",
-        summary:
-          "prisma-cli project env update accepts either --role or --branch",
+        summary: "prisma project env update accepts either --role or --branch",
       },
     });
   });
@@ -1966,7 +1958,7 @@ describe("prisma-cli project env update", () => {
       ok: false,
       error: {
         code: "PROJECT.USAGE_ERROR",
-        summary: "prisma-cli project env update requires --role or --branch",
+        summary: "prisma project env update requires --role or --branch",
       },
     });
   });
@@ -1993,8 +1985,7 @@ describe("prisma-cli project env update", () => {
       ok: false,
       error: {
         code: "PROJECT.USAGE_ERROR",
-        summary:
-          "prisma-cli project env update accepts either KEY=VALUE or --file",
+        summary: "prisma project env update accepts either KEY=VALUE or --file",
       },
     });
   });
@@ -2043,7 +2034,7 @@ describe("prisma-cli project env update", () => {
   });
 });
 
-describe("prisma-cli project env list", () => {
+describe("prisma project env list", () => {
   it("lists the variables of an explicit role scope", async () => {
     const result = await makeCli(
       envClient({
@@ -2137,8 +2128,8 @@ describe("prisma-cli project env list", () => {
     expect(result.presented?.presentation.next).toEqual([
       {
         kind: "run-command",
-        label: "prisma-cli project env add KEY=value --role preview",
-        command: "prisma-cli project env add KEY=value --role preview",
+        label: "prisma project env add KEY=value --role preview",
+        command: "prisma project env add KEY=value --role preview",
       },
     ]);
   });
@@ -2197,7 +2188,7 @@ describe("prisma-cli project env list", () => {
   });
 });
 
-describe("prisma-cli project env delete", () => {
+describe("prisma project env delete", () => {
   it("deletes the variable from the scope", async () => {
     const writes: unknown[] = [];
     const result = await makeCli(
@@ -2250,11 +2241,11 @@ describe("prisma-cli project env delete", () => {
           {
             kind: "user-choice",
             label:
-              "Run prisma-cli project env list with the same scope to see the available variables.",
+              "Run prisma project env list with the same scope to see the available variables.",
           },
           {
             kind: "run-command",
-            command: "prisma-cli project env list --role production",
+            command: "prisma project env list --role production",
           },
         ],
       },
@@ -2353,8 +2344,7 @@ describe("prisma-cli project env delete", () => {
       ok: false,
       error: {
         code: "PROJECT.USAGE_ERROR",
-        summary:
-          "prisma-cli project env delete accepts either --role or --branch",
+        summary: "prisma project env delete accepts either --role or --branch",
       },
     });
   });
@@ -2371,13 +2361,13 @@ describe("prisma-cli project env delete", () => {
       ok: false,
       error: {
         code: "PROJECT.USAGE_ERROR",
-        summary: "prisma-cli project env delete requires --role or --branch",
+        summary: "prisma project env delete requires --role or --branch",
       },
     });
   });
 });
 
-describe("prisma-cli project delete", () => {
+describe("prisma project delete", () => {
   it("deletes the project and clears a pin that points at it", async () => {
     const cwd = await tempCwd({ workspaceId: "ws_1", projectId: "proj_1" });
     const result = await makeCli(fakeClient()).run(
@@ -2592,7 +2582,7 @@ describe("prisma-cli project delete", () => {
   });
 });
 
-describe("prisma-cli project transfer", () => {
+describe("prisma project transfer", () => {
   it("transfers to a locally authenticated workspace and rewrites the pin", async () => {
     vi.mocked(resolveRecipientWorkspaceSession).mockResolvedValue({
       workspace: { id: "ws_2", name: "Prisma Labs" },
@@ -2643,8 +2633,8 @@ describe("prisma-cli project transfer", () => {
     expect(result.presented?.presentation.next).toEqual([
       {
         kind: "run-command",
-        label: "prisma-cli auth workspace use 'Prisma Labs'",
-        command: "prisma-cli auth workspace use 'Prisma Labs'",
+        label: "prisma auth workspace use 'Prisma Labs'",
+        command: "prisma auth workspace use 'Prisma Labs'",
       },
     ]);
   });
@@ -2710,7 +2700,7 @@ describe("prisma-cli project transfer", () => {
           {
             kind: "run-command",
             command:
-              "prisma-cli project transfer <project> --to-workspace <id-or-name> --confirm <project-id>",
+              "prisma project transfer <project> --to-workspace <id-or-name> --confirm <project-id>",
           },
         ],
       },

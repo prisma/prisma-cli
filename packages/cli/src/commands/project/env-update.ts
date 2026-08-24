@@ -151,10 +151,10 @@ export const projectEnvUpdateCommand = defineCommand({
           domain: "app",
           summary: `Variable "${input.key}" not found in ${formatScopeLabel(scope)}`,
           why: "No variable with this key exists in the targeted scope.",
-          fix: "Use `prisma-cli project env add` to create a new variable.",
+          fix: "Use `prisma project env add` to create a new variable.",
           exitCode: 1,
           nextSteps: [
-            `prisma-cli project env add ${input.key}=<value> ${formatScopeFlag(scope)}`,
+            `prisma project env add ${input.key}=<value> ${formatScopeFlag(scope)}`,
           ],
         });
       }

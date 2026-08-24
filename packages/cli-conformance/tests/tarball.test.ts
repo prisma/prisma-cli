@@ -320,6 +320,52 @@ describe("checkTarball", () => {
     expect(undeclared[0]?.summary).toContain("left-pad");
   });
 
+  test("3a: a package's allowedUnimported excuses a dependency reached without a static import", async () => {
+    // The engine declares colorette but its packed files never import
+    // it — the import.meta.resolve shape.
+    const io = fakeIo({
+      readPackedFiles: (tarball) =>
+        Promise.resolve(
+          new Map(
+            tarball.includes("cli-engine")
+              ? [["dist/index.js", 'import "@stricli/core";\n']]
+              : [
+                  [
+                    "dist/cli.js",
+                    'import "colorette";\nimport "@prisma/cli-engine";\n',
+                  ],
+                  ["dist/v8/cli.js", 'import "@prisma/composer/family";\n'],
+                ],
+          ),
+        ),
+    });
+
+    const bare = await checkTarball(input(), io);
+    expect(
+      bare.some(
+        (f) =>
+          f.kind === "unimported-dependency" &&
+          f.subject === "@prisma/cli-engine" &&
+          f.summary.includes("colorette"),
+      ),
+    ).toBe(true);
+
+    const excused = await checkTarball(
+      input({
+        packages: [
+          { name: "@prisma/cli", dir: "packages/cli" },
+          {
+            name: "@prisma/cli-engine",
+            dir: "packages/cli-engine",
+            allowedUnimported: ["colorette"],
+          },
+        ],
+      }),
+      io,
+    );
+    expect(excused.some((f) => f.kind === "unimported-dependency")).toBe(false);
+  });
+
   test("a failed pack is its own finding and stops that package's checks", async () => {
     const io = fakeIo({
       pack: (pkgDir) =>

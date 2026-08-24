@@ -95,7 +95,10 @@ async function tarball(): Promise<readonly Finding[]> {
       packages: [
         { name: "@prisma/cli", dir: CLI_DIR },
         { name: "prisma", dir: PRISMA_DIR },
-        { name: "@prisma/cli-engine", dir: ENGINE_DIR },
+        {
+          name: "@prisma/cli-engine",
+          dir: ENGINE_DIR,
+        },
       ],
       shellPackage: "@prisma/cli",
       enginePackage: "@prisma/cli-engine",

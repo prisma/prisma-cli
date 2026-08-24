@@ -45,7 +45,7 @@ export const bucketKeyDeleteCommand = defineCommand({
           "Bucket id and key id required",
           "Bucket key deletion needs both a bucket id and a key id.",
           "Pass the bucket id and key id.",
-          ["prisma-cli bucket key list <bucketId>"],
+          ["prisma bucket key list <bucketId>"],
           "bucket",
         );
       }

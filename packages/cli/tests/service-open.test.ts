@@ -8,7 +8,7 @@ import {
   SERVICE_DETAIL,
 } from "./service-testkit";
 
-describe("prisma-cli service open", () => {
+describe("prisma service open", () => {
   it("reports the live URL as an endpoint event and opens nothing when the session is not interactive", async () => {
     const opener = vi.fn();
     const harness = await makeServiceCli({ openUrl: opener });
@@ -41,12 +41,12 @@ describe("prisma-cli service open", () => {
       {
         kind: "run-command",
         label: "Inspect the service",
-        command: "prisma-cli service show hello-world",
+        command: "prisma service show hello-world",
       },
       {
         kind: "run-command",
         label: "Show the live version",
-        command: "prisma-cli service version show dep_2",
+        command: "prisma service version show dep_2",
       },
     ]);
   });
@@ -128,7 +128,7 @@ describe("prisma-cli service open", () => {
       {
         kind: "run-command",
         label: "Inspect the service",
-        command: "prisma-cli service show hello-world",
+        command: "prisma service show hello-world",
       },
     ]);
   });

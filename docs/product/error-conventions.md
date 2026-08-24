@@ -66,7 +66,7 @@ Examples:
 - unexpected `undefined`
 - internal serialization or state invariant broken
 
-Bugs should fail fast and preserve stack traces. Catch them only at the outermost boundary for crash formatting. At that boundary, `--json` runs still emit the standard error envelope with code `UNEXPECTED_ERROR`, and both output modes point at `prisma-cli feedback` pre-filled with the failing command and error line (`--quiet` suppresses the human hint; expected failures never carry the feedback suggestion).
+Bugs should fail fast and preserve stack traces. Catch them only at the outermost boundary for crash formatting. At that boundary, `--json` runs still emit the standard error envelope with code `UNEXPECTED_ERROR`, and both output modes point at `prisma feedback` pre-filled with the failing command and error line (`--quiet` suppresses the human hint; expected failures never carry the feedback suggestion).
 
 ## Boundary Handling
 
@@ -107,7 +107,7 @@ This is usually a missing env var, a failed DB connection,
 or a crash on startup.
 
 See what happened
-prisma-cli app logs --deployment <id>
+prisma app logs --deployment <id>
 
 URL
 https://cv-...
@@ -231,7 +231,7 @@ These codes are the minimum stable set for the MVP:
 Recommended meanings:
 
 - `USAGE_ERROR`: invalid arguments or invalid command combination
-- `UNEXPECTED_ERROR`: the CLI crashed on an unexpected fault; the envelope carries a `recover` next action suggesting `prisma-cli feedback`
+- `UNEXPECTED_ERROR`: the CLI crashed on an unexpected fault; the envelope carries a `recover` next action suggesting `prisma feedback`
 - `FEEDBACK_SEND_FAILED`: the feedback service was unreachable, timed out, or returned a non-2xx response
 - `AUTH_REQUIRED`: command needs an authenticated session
 - `AUTH_CONFIG_INVALID`: environment auth configuration is present but unusable, such as an empty `PRISMA_SERVICE_TOKEN`

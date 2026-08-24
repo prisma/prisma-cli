@@ -18,4 +18,16 @@ export default defineConfig([
     noExternal: ["@prisma/cli", "@repo/cli-telemetry"],
     outDir: "dist",
   },
+  // The `prisma/config` subpath for user prisma.config.ts files.
+  // The engine stays external; only this entry ships types.
+  {
+    entry: {
+      config: "src/config.ts",
+    },
+    format: ["esm"],
+    dts: true,
+    clean: false,
+    fixedExtension: false,
+    outDir: "dist",
+  },
 ]);

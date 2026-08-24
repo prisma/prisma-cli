@@ -584,9 +584,9 @@ export function normalizeCreatedDatabase(
       domain: "database",
       summary: "Created database did not return a connection string",
       why: "The Management API created the database but did not include the one-time connection payload.",
-      fix: "Create a connection explicitly with prisma-cli database connection create <database>.",
+      fix: "Create a connection explicitly with prisma database connection create <database>.",
       exitCode: 1,
-      nextSteps: [`prisma-cli database connection create ${database.id}`],
+      nextSteps: [`prisma database connection create ${database.id}`],
     });
   }
 
@@ -609,9 +609,7 @@ export function normalizeCreatedConnection(
       why: "Database connection strings are one-time-view secrets, but the Management API did not include one in this create response.",
       fix: "Create another database connection and store the returned URL immediately.",
       exitCode: 1,
-      nextSteps: [
-        `prisma-cli database connection create ${fallbackDatabaseId}`,
-      ],
+      nextSteps: [`prisma database connection create ${fallbackDatabaseId}`],
     });
   }
 

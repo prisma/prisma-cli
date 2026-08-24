@@ -69,6 +69,7 @@
       "includes": [
         "packages/cli-engine/src/exports/**",
         "packages/cli-telemetry/src/exports/**",
+        "packages/prisma/src/config.ts",
         "packages/cli/src/shell/cli-command.ts",
         "packages/cli/src/shell/command-arguments.ts",
         "packages/cli/src/shell/errors.ts",

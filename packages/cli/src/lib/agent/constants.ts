@@ -1,9 +1,0 @@
-export const PRISMA_SKILLS_SOURCE = "prisma/skills";
-export const PRISMA_SKILLS_LOCK_FILENAME = "skills-lock.json";
-export const SKILLS_CLI_PACKAGE = "skills@latest";
-export const DEFAULT_PRISMA_AGENT_SKILLS = ["*"];
-export const PRISMA_COMPUTE_AGENT_SKILL = "prisma-compute";
-export const DEFAULT_PRISMA_AGENT_TARGETS = ["codex", "claude-code"];
-export const PRISMA_AGENT_INSTALL_ARGS = ["agent", "install"] as const;
-export const PRISMA_AGENT_UPDATE_ARGS = ["agent", "update"] as const;
-export const PRISMA_AGENT_STATUS_ARGS = ["agent", "status"] as const;

@@ -110,7 +110,7 @@ export async function resolveDatabase(
       "Database id or name required",
       "This command needs a database id or name.",
       "Pass a database id or name.",
-      ["prisma-cli database list"],
+      ["prisma database list"],
       "database",
     );
   }
@@ -165,7 +165,7 @@ function databaseRemovedDuringResolutionError(
     why: `"${database.name}" (${database.id}) was listed for project "${projectName}", but reading it returned 404. It was most likely removed while this command was running.`,
     fix: "Re-run the command, or list the project's databases to see what is there now.",
     exitCode: 1,
-    nextSteps: ["prisma-cli database list"],
+    nextSteps: ["prisma database list"],
   });
 }
 
@@ -212,9 +212,9 @@ function databaseNotFoundError(
     domain: "database",
     summary: "Database not found",
     why: `No database matched "${databaseRef}"${scope}.`,
-    fix: "Pass a database id or name from prisma-cli database list.",
+    fix: "Pass a database id or name from prisma database list.",
     exitCode: 1,
-    nextSteps: ["prisma-cli database list"],
+    nextSteps: ["prisma database list"],
   });
 }
 
@@ -232,7 +232,7 @@ function databaseAmbiguousError(
       : `Multiple databases matched "${databaseRef}".`,
     fix: "Pass the database id, or pass --branch <git-name> to narrow the match.",
     exitCode: 1,
-    nextSteps: ["prisma-cli database list"],
+    nextSteps: ["prisma database list"],
     meta: {
       matches: matches.map((database) => ({
         id: database.id,

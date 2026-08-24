@@ -81,7 +81,7 @@ export const projectEnvAddCommand = defineCommand({
       "project env add --file .env --role preview",
       "project env add DATABASE_URL=postgresql://branch --branch feature/foo",
       "project env add --file .env.local --branch feature/foo",
-      "API_URL=https://api.example prisma-cli project env add API_URL --project proj_123 --role preview",
+      "API_URL=https://api.example prisma project env add API_URL --project proj_123 --role preview",
     ],
   },
   needs: { credentials: true },
@@ -157,10 +157,10 @@ export const projectEnvAddCommand = defineCommand({
           domain: "app",
           summary: `Variable "${input.key}" already exists in ${formatScopeLabel(scope)}`,
           why: "A variable with this key already exists in the targeted scope.",
-          fix: "Use `prisma-cli project env update` to change an existing variable's value.",
+          fix: "Use `prisma project env update` to change an existing variable's value.",
           exitCode: 1,
           nextSteps: [
-            `prisma-cli project env update ${input.key}=<new-value> ${formatScopeFlag(scope)}`,
+            `prisma project env update ${input.key}=<new-value> ${formatScopeFlag(scope)}`,
           ],
         });
       }

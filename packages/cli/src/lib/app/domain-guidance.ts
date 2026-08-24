@@ -24,19 +24,19 @@ export function formatDomainFailureFix(
 
   if (domain.failureCategory === "dns") {
     if (dnsRecord) {
-      return `Add ${dnsRecord.type} ${dnsRecord.name} -> ${dnsRecord.value}, then run prisma-cli app domain retry ${domain.hostname}.`;
+      return `Add ${dnsRecord.type} ${dnsRecord.name} -> ${dnsRecord.value}, then run prisma service domain retry ${domain.hostname}.`;
     }
 
-    return `DNS verification failed, but the platform did not return a DNS record. Run prisma-cli app domain show ${domain.hostname} later, then retry when the DNS target is available.`;
+    return `DNS verification failed, but the platform did not return a DNS record. Run prisma service domain show ${domain.hostname} later, then retry when the DNS target is available.`;
   }
 
   if (domain.failureCategory === "acme") {
-    return `Retry TLS issuance with prisma-cli app domain retry ${domain.hostname}. Contact support if it fails again.`;
+    return `Retry TLS issuance with prisma service domain retry ${domain.hostname}. Contact support if it fails again.`;
   }
 
   if (domain.failureCategory === "storage") {
-    return `Retry provisioning with prisma-cli app domain retry ${domain.hostname}. Contact support if it fails again.`;
+    return `Retry provisioning with prisma service domain retry ${domain.hostname}. Contact support if it fails again.`;
   }
 
-  return `Run prisma-cli app domain retry ${domain.hostname}. Contact support if it fails again.`;
+  return `Run prisma service domain retry ${domain.hostname}. Contact support if it fails again.`;
 }

@@ -10,7 +10,7 @@ import {
   SERVICE_DETAIL,
 } from "./service-testkit";
 
-describe("prisma-cli service show", () => {
+describe("prisma service show", () => {
   it("presents the selected service with live deployment, url, and recent deployments", async () => {
     const harness = await makeServiceCli();
 
@@ -277,7 +277,7 @@ describe("prisma-cli service show", () => {
     expect(frame.envelope.nextActions).toContainEqual({
       kind: "run-command",
       label: "List services",
-      command: "prisma-cli service list",
+      command: "prisma service list",
     });
   });
 });

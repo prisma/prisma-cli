@@ -57,7 +57,7 @@ export const bucketKeyListCommand = defineCommand({
           "Bucket id required",
           "Bucket key listing needs a bucket id.",
           "Pass the bucket id.",
-          ["prisma-cli bucket list"],
+          ["prisma bucket list"],
           "bucket",
         );
       }

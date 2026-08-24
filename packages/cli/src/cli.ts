@@ -9,9 +9,6 @@ import {
 import { createComposerFamily } from "@prisma/composer-cli/family";
 import { ormCommandFamily as ormToolchainFamily } from "@prisma/orm-toolchain/cli";
 import { CLI_DOCS_URL, CLI_NAME } from "./cli-name";
-import { agentInstallCommand } from "./commands/agent/install";
-import { agentStatusCommand } from "./commands/agent/status";
-import { agentUpdateCommand } from "./commands/agent/update";
 import { authLoginCommand } from "./commands/auth/login";
 import { authLogoutCommand } from "./commands/auth/logout";
 import { authWhoamiCommand } from "./commands/auth/whoami";
@@ -28,6 +25,7 @@ import { bucketListCommand } from "./commands/bucket/list";
 import { feedbackCommand } from "./commands/feedback";
 import { gitConnectCommand } from "./commands/git/connect";
 import { gitDisconnectCommand } from "./commands/git/disconnect";
+import { initCommand } from "./commands/init";
 import { postgresBackupListCommand } from "./commands/postgres/backup-list";
 import { postgresBackupRestoreCommand } from "./commands/postgres/backup-restore";
 import { postgresConnectionCreateCommand } from "./commands/postgres/connection-create";
@@ -68,6 +66,7 @@ import { serviceVersionRollbackCommand } from "./commands/service/version-rollba
 import { serviceVersionShowCommand } from "./commands/service/version-show";
 import { serviceVersionStartCommand } from "./commands/service/version-start";
 import { serviceVersionStopCommand } from "./commands/service/version-stop";
+import { skillsCommandFamily } from "./commands/skills/family";
 import { getCliVersion } from "./lib/version";
 
 export const platformCommandFamily: CommandFamily = defineCommandFamily({
@@ -149,6 +148,13 @@ export const composerCommandFamily: CommandFamily = createComposerFamily();
  */
 export const ormCommandFamily: CommandFamily = ormToolchainFamily;
 
+/**
+ * Skill delivery for AI coding agents: one pair of commands for every
+ * product, defined in this package because the skills travel in the
+ * product packages and only the shell sees all of them.
+ */
+export { skillsCommandFamily };
+
 /** The engine ships the three telemetry commands and the group help
  *  text that belongs to them; both halves are spread in below. */
 const telemetry = telemetryCommandGroup({ docsUrl: CLI_DOCS_URL });
@@ -175,13 +181,13 @@ export const cliGroups: Readonly<
   service: { brief: "Manage services and their versions for a project" },
   "service domain": { brief: "Manage custom domains for a service" },
   "service version": { brief: "Manage the versions of a service" },
-  agent: { brief: "Manage Prisma skills for AI coding agents" },
   "auth workspace": { brief: "Manage local workspace sessions" },
   contract: { brief: "Define and emit your application data contract" },
   db: { brief: "Verify, sign and update your database against the contract" },
   migration: { brief: "Plan, inspect and scaffold on-disk migrations" },
   "migration ref": { brief: "Manage named refs that point at contracts" },
   orm: { brief: "Initialize a Prisma ORM project" },
+  skills: { brief: "Keep this project's Prisma agent skills current" },
   ...telemetry.groups,
 };
 
@@ -272,9 +278,9 @@ export const mountedCommands: Readonly<Record<string, AnyCommand>> = {
   "migration ref list": ormCommandFamily.commands["migration ref list"],
   "migration ref set": ormCommandFamily.commands["migration ref set"],
   // Local utilities: no owning package, no config section, no API.
-  "agent install": agentInstallCommand,
-  "agent update": agentUpdateCommand,
-  "agent status": agentStatusCommand,
+  init: initCommand,
+  "skills sync": skillsCommandFamily.commands.sync,
+  "skills list": skillsCommandFamily.commands.list,
   feedback: feedbackCommand,
   // The engine's consent surface, mounted whole (no command family).
   ...telemetry.commands,
@@ -288,6 +294,7 @@ export function buildCli(): Cli {
       platformCommandFamily,
       composerCommandFamily,
       ormCommandFamily,
+      skillsCommandFamily,
     ],
     groups: cliGroups,
     commands: mountedCommands,

@@ -51,7 +51,7 @@ function createRoutes(overrides: Routes = {}): CreateHarness {
   };
 }
 
-describe("prisma-cli service create", () => {
+describe("prisma service create", () => {
   it("creates the service and presents it with no live url", async () => {
     const created = createRoutes();
     const harness = await makeServiceCli({ routes: created.routes });

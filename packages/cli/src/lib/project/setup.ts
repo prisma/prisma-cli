@@ -85,7 +85,7 @@ function localStateWriteFailedError(
     debug: formatDebugDetails(error.cause),
     meta: options.meta,
     exitCode: 1,
-    nextSteps: ["prisma-cli project link <id-or-name>"],
+    nextSteps: ["prisma project link <id-or-name>"],
   });
 }
 
@@ -107,7 +107,7 @@ export function projectSetupNameRequiredError(command: string): CliError {
     "Project create requires a name",
     "The project name must be a non-empty value.",
     "Pass a Project name explicitly.",
-    [`prisma-cli ${command} my-app`],
+    [`prisma ${command} my-app`],
     "project",
   );
 }

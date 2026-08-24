@@ -28,7 +28,7 @@ Use the other convention docs for adjacent concerns:
 
 The long-term command surface grows through workflow groups such as:
 
-- `agent`
+- `skills`
 - `auth`
 - `project`
 - `branch`
@@ -38,7 +38,7 @@ The long-term command surface grows through workflow groups such as:
 - `app`
 - `git`
 
-The preview implements only `agent`, `auth`, `project`, `git`, `branch`, `database`, `bucket`, and `app`.
+The preview implements only `auth`, `project`, `git`, `branch`, `database`, `bucket`, `app`, `skills`, and `init`.
 
 ## Stable Nouns
 
@@ -92,6 +92,14 @@ No current branch command uses `use`; branch targeting follows explicit flags or
 ### `deploy`
 
 Build and release an app into a target branch.
+
+### `init`
+
+Prepare the current repository for Prisma development, entirely locally: add the `postinstall` script that keeps the Prisma agent skills in sync (`prisma skills sync || exit 0`), scaffold a `prisma.config.ts` recording which agents get skills, then sync the skills once now.
+
+The scaffolded config imports `definePrismaConfig` from `prisma/config` and spells out `skills: { agents: [...] }`. The agents come from the `--skills` flag (`--skills=claude,cursor`, validated against the known agent names), or the default set when the flag is absent. `--skills=none` records the choice rather than merely skipping: the scaffold is written with `skills: { agents: [] }` — the committed record that no agent skills are wanted — and the sync is skipped on that run; with `agents: []` in place, later syncs, `skills list`, and the staleness notice all treat the project as having no skills to manage. There is no harness detection: the config is the only authority on which agents a project uses.
+
+`init` calls no platform API, never prompts, and never edits a file the user already owns: a `postinstall` script the user wrote and an existing `prisma.config.ts` are both left alone and reported as diagnostics — the config diagnostic shows the exact `skills: { agents: [...] }` snippet to add by hand. Everything lands in the current directory: the hook in its `package.json`, the config beside it, the skill copies in the agent directories under it. Rerunning is safe; each step reports what is already done and the command exits 0.
 
 ### `logs`
 

@@ -101,7 +101,7 @@ function showPresentations(
         ? toNextActions(
             buildProjectSetupNextActions({
               commandName: "project show",
-              retryCommand: "prisma-cli project show <id-or-name>",
+              retryCommand: "prisma project show <id-or-name>",
               suggestedProjectName: result.suggestedProjectName,
               reason:
                 "This directory is not linked to a Prisma Project. Package and directory names can suggest setup defaults, but they do not select a Project.",

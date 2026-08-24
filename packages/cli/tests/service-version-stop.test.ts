@@ -65,7 +65,7 @@ function stopRoutes(
     }),
   };
 }
-describe("prisma-cli service version stop", () => {
+describe("prisma service version stop", () => {
   it("stops a running deployment and reports it stopped", async () => {
     const stop = stopRoutes();
     const harness = await makeServiceCli({ routes: stop.routes });

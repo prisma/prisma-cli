@@ -27,7 +27,7 @@ function domainRoutes(overrides: Routes = {}): Routes {
 
 const TARGET_ARGS = ["--project", "acme-app", "--service", "hello-world"];
 
-describe("prisma-cli service domain add", () => {
+describe("prisma service domain add", () => {
   it("registers the domain and presents the target with dns records", async () => {
     const harness = await makeServiceCli({
       routes: domainRoutes({
@@ -183,7 +183,7 @@ describe("prisma-cli service domain add", () => {
       {
         kind: "run-command",
         label: "Add the domain",
-        command: "prisma-cli service domain add shop.acme.com --service <name>",
+        command: "prisma service domain add shop.acme.com --service <name>",
       },
     ]);
   });
@@ -288,7 +288,7 @@ describe("prisma-cli service domain add", () => {
       {
         kind: "run-command",
         label: "List services",
-        command: "prisma-cli service list",
+        command: "prisma service list",
       },
     ]);
   });
@@ -321,7 +321,7 @@ describe("prisma-cli service domain add", () => {
     expect(frame.envelope.nextActions).toContainEqual({
       kind: "run-command",
       label: "List services",
-      command: "prisma-cli service list",
+      command: "prisma service list",
     });
   });
 
@@ -341,7 +341,7 @@ describe("prisma-cli service domain add", () => {
   });
 });
 
-describe("prisma-cli service domain show", () => {
+describe("prisma service domain show", () => {
   it("presents the domain detail", async () => {
     const harness = await makeServiceCli({
       routes: domainRoutes({
@@ -432,7 +432,7 @@ describe("prisma-cli service domain show", () => {
   });
 });
 
-describe("prisma-cli service domain retry", () => {
+describe("prisma service domain retry", () => {
   it("retries verification and presents the refreshed domain", async () => {
     const harness = await makeServiceCli({
       routes: domainRoutes({
@@ -529,7 +529,7 @@ describe("prisma-cli service domain retry", () => {
   });
 });
 
-describe("prisma-cli service domain delete", () => {
+describe("prisma service domain delete", () => {
   /** `deletedIds` collects the id of every domain the run deleted. */
   function deleteRoutes(deletedIds: string[] = []): Routes {
     return domainRoutes({

@@ -34,7 +34,7 @@ export async function readEnvFileAssignments(
       `Failed to read env file "${filePath}"`,
       error instanceof Error ? error.message : "The file could not be read.",
       "Pass a readable dotenv file path.",
-      [`prisma-cli project env ${command} --file .env --role preview`],
+      [`prisma project env ${command} --file .env --role preview`],
       "app",
     );
   }

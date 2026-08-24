@@ -197,7 +197,7 @@ function blocks(presented: unknown) {
 
 const PLAN_LIMIT_BODY = { error: { code: "planLimitReached" } };
 
-describe("prisma-cli postgres list", () => {
+describe("prisma postgres list", () => {
   it("lists the project's databases sorted by branch, name and id", async () => {
     const result = await makeCli(postgresClient()).run(["postgres", "list"], {
       cwd: await pinnedCwd(),
@@ -448,7 +448,7 @@ describe("prisma-cli postgres list", () => {
   });
 });
 
-describe("prisma-cli postgres show", () => {
+describe("prisma postgres show", () => {
   it("shows a database addressed by id", async () => {
     const result = await makeCli(
       postgresClient({
@@ -570,11 +570,11 @@ describe("prisma-cli postgres show", () => {
         nextActions: [
           {
             kind: "user-choice",
-            label: "Pass a database id or name from prisma-cli postgres list.",
+            label: "Pass a database id or name from prisma postgres list.",
           },
           {
             kind: "run-command",
-            command: "prisma-cli postgres list",
+            command: "prisma postgres list",
           },
         ],
       },
@@ -659,7 +659,7 @@ const CREATED_DATABASE = {
   ],
 };
 
-describe("prisma-cli postgres create", () => {
+describe("prisma postgres create", () => {
   it("prints the one-time URL on stdout and masks it in the card", async () => {
     const calls: Call[] = [];
     const result = await makeCli(
@@ -737,7 +737,7 @@ describe("prisma-cli postgres create", () => {
           { kind: "user-choice", label: "Pass a database name." },
           {
             kind: "run-command",
-            command: "prisma-cli postgres create <name>",
+            command: "prisma postgres create <name>",
           },
         ],
       },
@@ -768,11 +768,11 @@ describe("prisma-cli postgres create", () => {
           {
             kind: "user-choice",
             label:
-              "Create a connection explicitly with prisma-cli postgres connection create <database>.",
+              "Create a connection explicitly with prisma postgres connection create <database>.",
           },
           {
             kind: "run-command",
-            command: "prisma-cli postgres connection create db_new",
+            command: "prisma postgres connection create db_new",
           },
         ],
       },
@@ -889,7 +889,7 @@ const USAGE_BODY = {
   generatedAt: "2026-07-01T00:00:00.000Z",
 };
 
-describe("prisma-cli postgres usage", () => {
+describe("prisma postgres usage", () => {
   it("shows the usage card", async () => {
     const result = await makeCli(
       postgresClient({
@@ -988,7 +988,7 @@ describe("prisma-cli postgres usage", () => {
           {
             kind: "run-command",
             command:
-              "prisma-cli postgres usage <database> --from 2026-06-01 --to 2026-06-30",
+              "prisma postgres usage <database> --from 2026-06-01 --to 2026-06-30",
           },
         ],
       },
@@ -1179,7 +1179,7 @@ describe("prisma-cli postgres usage", () => {
 
 const RESTORED = { ...DB_ONE, status: "recovering" };
 
-describe("prisma-cli postgres backup restore", () => {
+describe("prisma postgres backup restore", () => {
   it("restores the database and points at the show command", async () => {
     const calls: Call[] = [];
     const result = await makeCli(
@@ -1239,8 +1239,8 @@ describe("prisma-cli postgres backup restore", () => {
     expect(result.presented?.presentation.next).toEqual([
       {
         kind: "run-command",
-        label: "prisma-cli postgres show db_1",
-        command: "prisma-cli postgres show db_1",
+        label: "prisma postgres show db_1",
+        command: "prisma postgres show db_1",
       },
     ]);
   });
@@ -1304,11 +1304,11 @@ describe("prisma-cli postgres backup restore", () => {
           {
             kind: "user-choice",
             label:
-              "Pass --backup <backup-id> from prisma-cli postgres backup list <database>.",
+              "Pass --backup <backup-id> from prisma postgres backup list <database>.",
           },
           {
             kind: "run-command",
-            command: "prisma-cli postgres backup list <database>",
+            command: "prisma postgres backup list <database>",
           },
         ],
       },
@@ -1421,7 +1421,7 @@ describe("prisma-cli postgres backup restore", () => {
             label:
               "Wait for the database to become ready, then retry the restore.",
           },
-          { kind: "run-command", command: "prisma-cli postgres show db_1" },
+          { kind: "run-command", command: "prisma postgres show db_1" },
         ],
       },
     });
@@ -1460,12 +1460,11 @@ describe("prisma-cli postgres backup restore", () => {
         nextActions: [
           {
             kind: "user-choice",
-            label:
-              "Pass a backup id from prisma-cli postgres backup list db_1.",
+            label: "Pass a backup id from prisma postgres backup list db_1.",
           },
           {
             kind: "run-command",
-            command: "prisma-cli postgres backup list db_1",
+            command: "prisma postgres backup list db_1",
           },
         ],
       },
@@ -1509,7 +1508,7 @@ describe("prisma-cli postgres backup restore", () => {
       nextActions: [
         {
           kind: "run-command",
-          command: "prisma-cli postgres show db_1",
+          command: "prisma postgres show db_1",
         },
       ],
     });
@@ -1536,7 +1535,7 @@ describe("prisma-cli postgres backup restore", () => {
   });
 });
 
-describe("prisma-cli postgres delete", () => {
+describe("prisma postgres delete", () => {
   it("reports a refused deletion as a failure to delete", async () => {
     const result = await makeCli(
       postgresClient({
@@ -1738,7 +1737,7 @@ const BACKUP_BODY = {
   pagination: { hasMore: false },
 };
 
-describe("prisma-cli postgres backup list", () => {
+describe("prisma postgres backup list", () => {
   it("lists the backups with sizes and retention", async () => {
     const result = await makeCli(
       postgresClient({
@@ -1853,7 +1852,7 @@ describe("prisma-cli postgres backup list", () => {
           { kind: "user-choice", label: "Pass a --limit between 1 and 100." },
           {
             kind: "run-command",
-            command: "prisma-cli postgres backup list <database> --limit 50",
+            command: "prisma postgres backup list <database> --limit 50",
           },
         ],
       },
@@ -1936,7 +1935,7 @@ describe("prisma-cli postgres backup list", () => {
   });
 });
 
-describe("prisma-cli postgres connection list", () => {
+describe("prisma postgres connection list", () => {
   it("lists the connection metadata", async () => {
     const result = await makeCli(
       postgresClient({
@@ -2045,7 +2044,7 @@ const CREATED_CONNECTION = {
   endpoints: { pooled: { connectionString: "postgres://pooled/db" } },
 };
 
-describe("prisma-cli postgres connection create", () => {
+describe("prisma postgres connection create", () => {
   it("names the connection after the CLI when --name is omitted", async () => {
     const calls: Call[] = [];
     const result = await makeCli(
@@ -2138,7 +2137,7 @@ describe("prisma-cli postgres connection create", () => {
           },
           {
             kind: "run-command",
-            command: "prisma-cli postgres connection create db_1",
+            command: "prisma postgres connection create db_1",
           },
         ],
       },
@@ -2196,7 +2195,7 @@ const ROTATED_CONNECTION = {
   connectionString: "postgres://rotated/db",
 };
 
-describe("prisma-cli postgres connection rotate", () => {
+describe("prisma postgres connection rotate", () => {
   it("rotates the credentials and prints the new URL", async () => {
     const result = await makeCli(
       postgresClient({
@@ -2272,7 +2271,7 @@ describe("prisma-cli postgres connection rotate", () => {
           {
             kind: "run-command",
             command:
-              "prisma-cli postgres connection rotate <connection-id> --confirm <connection-id>",
+              "prisma postgres connection rotate <connection-id> --confirm <connection-id>",
           },
         ],
       },
@@ -2462,7 +2461,7 @@ describe("prisma-cli postgres connection rotate", () => {
   });
 });
 
-describe("prisma-cli postgres connection delete", () => {
+describe("prisma postgres connection delete", () => {
   it("deletes the connection", async () => {
     const calls: Call[] = [];
     const result = await makeCli(postgresClient({ calls })).run(
@@ -2510,7 +2509,7 @@ describe("prisma-cli postgres connection delete", () => {
           {
             kind: "run-command",
             command:
-              "prisma-cli postgres connection delete <connection-id> --confirm <connection-id>",
+              "prisma postgres connection delete <connection-id> --confirm <connection-id>",
           },
         ],
       },

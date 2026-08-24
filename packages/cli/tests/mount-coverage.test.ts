@@ -5,8 +5,10 @@
  * released.
  *
  * The exception set below (the engine's three telemetry commands,
- * `agent install|update|status`, and `feedback`) was ratified by the
- * operator on 2026-08-12. Adding to it requires an operator ruling
+ * `feedback`, and `init`) was ratified by the operator on 2026-08-12;
+ * the `agent install|update|status` entries left it and `init` (the
+ * local repository-setup command) entered it when the operator killed
+ * that group on 2026-08-21. Adding to it requires an operator ruling
  * recorded here; giving those commands a real owning family, so the
  * exception set can shrink, is deferred work.
  *
@@ -23,12 +25,11 @@ import {
   mountedCommands,
   ormCommandFamily,
   platformCommandFamily,
+  skillsCommandFamily,
 } from "../src/cli";
 import { CLI_DOCS_URL } from "../src/cli-name";
-import { agentInstallCommand } from "../src/commands/agent/install";
-import { agentStatusCommand } from "../src/commands/agent/status";
-import { agentUpdateCommand } from "../src/commands/agent/update";
 import { feedbackCommand } from "../src/commands/feedback";
+import { initCommand } from "../src/commands/init";
 
 /**
  * Commands that deliberately belong to no family: the engine's consent
@@ -37,10 +38,8 @@ import { feedbackCommand } from "../src/commands/feedback";
  */
 const FAMILYLESS: ReadonlySet<unknown> = new Set([
   ...Object.values(telemetryCommandGroup({ docsUrl: CLI_DOCS_URL }).commands),
-  agentInstallCommand,
-  agentUpdateCommand,
-  agentStatusCommand,
   feedbackCommand,
+  initCommand,
 ]);
 
 /** The family commands the tree does not mount, by family key. */
@@ -76,9 +75,6 @@ function unownedMountPaths(
  * adding its path here.
  */
 const EXPECTED_MOUNT_PATHS: readonly string[] = [
-  "agent install",
-  "agent status",
-  "agent update",
   "auth login",
   "auth logout",
   "auth whoami",
@@ -106,6 +102,7 @@ const EXPECTED_MOUNT_PATHS: readonly string[] = [
   "feedback",
   "git connect",
   "git disconnect",
+  "init",
   "lsp",
   "migration check",
   "migration graph",
@@ -159,6 +156,8 @@ const EXPECTED_MOUNT_PATHS: readonly string[] = [
   "service version show",
   "service version start",
   "service version stop",
+  "skills list",
+  "skills sync",
   "telemetry disable",
   "telemetry enable",
   "telemetry status",
@@ -168,9 +167,10 @@ const MOUNTED_FAMILIES = {
   platform: platformCommandFamily,
   composer: composerCommandFamily,
   orm: ormCommandFamily,
+  skills: skillsCommandFamily,
 };
 
-describe("prisma-cli mount coverage", () => {
+describe("prisma mount coverage", () => {
   it("mounts exactly the expected command paths", () => {
     expect(Object.keys(mountedCommands).sort()).toEqual(EXPECTED_MOUNT_PATHS);
   });

@@ -311,7 +311,7 @@ function envFileApplyFailedError(
     fix: "Inspect the target scope, then retry the remaining keys once the API issue is resolved.",
     exitCode: 1,
     nextSteps: [
-      `prisma-cli project env list ${formatScopeFlag(scope)}`,
+      `prisma project env list ${formatScopeFlag(scope)}`,
       retryStepForApplyFailure(command, filePath, scope, writtenKeys),
     ],
     meta: {
@@ -329,14 +329,14 @@ function retryStepForApplyFailure(
   writtenKeys: string[],
 ): string {
   if (command === "update") {
-    return `prisma-cli project env update --file ${filePath} ${formatScopeFlag(scope)}`;
+    return `prisma project env update --file ${filePath} ${formatScopeFlag(scope)}`;
   }
 
   if (writtenKeys.length === 0) {
-    return `prisma-cli project env add --file ${filePath} ${formatScopeFlag(scope)}`;
+    return `prisma project env add --file ${filePath} ${formatScopeFlag(scope)}`;
   }
 
-  return `prisma-cli project env add --file <remaining.env> ${formatScopeFlag(scope)}`;
+  return `prisma project env add --file <remaining.env> ${formatScopeFlag(scope)}`;
 }
 
 function splitFileNextSteps(
@@ -353,17 +353,17 @@ function splitFileNextSteps(
   if (options.first === "update-existing") {
     return [
       `# existing keys: ${formatKeyList(options.existingKeys)}`,
-      `prisma-cli project env update --file ${existingFile} ${scopeFlag}`,
+      `prisma project env update --file ${existingFile} ${scopeFlag}`,
       "# new keys only",
-      `prisma-cli project env add --file ${newFile} ${scopeFlag}`,
+      `prisma project env add --file ${newFile} ${scopeFlag}`,
     ];
   }
 
   return [
     `# missing keys: ${formatKeyList(options.missingKeys)}`,
-    `prisma-cli project env add --file ${newFile} ${scopeFlag}`,
+    `prisma project env add --file ${newFile} ${scopeFlag}`,
     "# existing keys only",
-    `prisma-cli project env update --file ${existingFile} ${scopeFlag}`,
+    `prisma project env update --file ${existingFile} ${scopeFlag}`,
   ];
 }
 

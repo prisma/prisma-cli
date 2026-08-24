@@ -1,21 +1,15 @@
 /**
- * Port of the legacy shell's post-login agent-setup tip (the real-mode
- * path of `resolveAgentSetupTipCommand` in controllers/auth.ts). The
- * legacy --json / --quiet / stderr-TTY suppressions do not translate:
- * the engine's format selection already keeps the tip line out of json
- * output, and handlers cannot read TTY-ness or the interactive flag —
- * both recorded in the S2 parity divergence list. CI suppression is
- * kept via ctx.env.
+ * The post-login skills tip. Login is the moment a developer sets a
+ * project up, so it points at `skills sync` when the project's synced
+ * agent skills do not match its installed Prisma packages. Silent in
+ * CI, in a directory with no skill-bearing Prisma packages, when the
+ * copies are current, and when the check is opted out.
  */
-import { LocalStateStore } from "../../adapters/local-state";
 import { resolvePrismaCliPackageCommand } from "../../lib/agent/cli-command";
-import { PRISMA_AGENT_INSTALL_ARGS } from "../../lib/agent/constants";
-import {
-  isLikelyProjectDirectory,
-  readPrismaAgentSetupStatus,
-  shouldOfferPrismaAgentSetup,
-} from "../../lib/agent/setup-status";
-import { resolveStateDir } from "../../state-dir";
+import { readSkillsStatus } from "../../lib/skills/status";
+import { readProjectSkillsConfig } from "../skills/config";
+
+const SKILLS_SYNC_ARGS = ["skills", "sync"] as const;
 
 export interface AgentSetupTipContext {
   readonly cwd: string;
@@ -30,27 +24,31 @@ export async function resolveAgentSetupTipCommand(
     return null;
   }
 
-  if (!(await isLikelyProjectDirectory({ cwd: ctx.cwd, signal: ctx.signal }))) {
-    return null;
-  }
-
-  const stateDir = resolveStateDir({ env: ctx.env, cwd: ctx.cwd });
-  const stateStore = new LocalStateStore(stateDir, ctx.signal);
-
-  const shouldOffer = shouldOfferPrismaAgentSetup(
-    await readPrismaAgentSetupStatus({
+  // The tip resolves after the credential is stored: a project the
+  // status scan or command resolver cannot read must not fail a login
+  // that succeeded.
+  try {
+    const config = await readProjectSkillsConfig(ctx.cwd);
+    if (config !== null && !config.check) {
+      return null;
+    }
+    const status = await readSkillsStatus(ctx.cwd, {
+      orphans: false,
+      agents: config?.agents,
+    });
+    if (
+      status.packages.length === 0 ||
+      status.upToDate ||
+      status.checkDisabled
+    ) {
+      return null;
+    }
+    return await resolvePrismaCliPackageCommand({
       cwd: ctx.cwd,
-      stateStore,
       signal: ctx.signal,
-    }),
-  );
-  if (!shouldOffer) {
+      args: SKILLS_SYNC_ARGS,
+    });
+  } catch {
     return null;
   }
-
-  return await resolvePrismaCliPackageCommand({
-    cwd: ctx.cwd,
-    signal: ctx.signal,
-    args: PRISMA_AGENT_INSTALL_ARGS,
-  });
 }

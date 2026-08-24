@@ -57,13 +57,13 @@ export const projectCreateCommand = defineCommand({
           }
           throw projectCreateFailedError(error, name, workspace, {
             nextSteps: [
-              "prisma-cli project list",
-              "prisma-cli project link <id-or-name>",
+              "prisma project list",
+              "prisma project link <id-or-name>",
             ],
             permissionFix:
               "Grant the token permission to create Projects in this workspace, or link an existing Project.",
             fallbackFix:
-              "Retry the command, or choose an existing Project with prisma-cli project link <id-or-name>.",
+              "Retry the command, or choose an existing Project with prisma project link <id-or-name>.",
           });
         });
 

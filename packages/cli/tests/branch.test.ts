@@ -130,7 +130,7 @@ function blocks(presented: unknown) {
   return value?.presentation.human ?? [];
 }
 
-describe("prisma-cli branch list", () => {
+describe("prisma branch list", () => {
   it("lists production branches first, then the rest alphabetically", async () => {
     const result = await makeCli(branchClient()).run(["branch", "list"], {
       cwd: await pinnedCwd(),
@@ -263,7 +263,7 @@ describe("prisma-cli branch list", () => {
       error: {
         code: "PROJECT.SETUP_REQUIRED",
         summary: "Choose a Project before running this command",
-        why: "This directory is not linked to a Prisma Project, and prisma-cli branch list will not choose one from package or directory names.",
+        why: "This directory is not linked to a Prisma Project, and prisma branch list will not choose one from package or directory names.",
       },
     });
   });

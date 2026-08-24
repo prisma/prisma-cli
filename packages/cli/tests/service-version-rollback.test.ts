@@ -39,7 +39,7 @@ function unknownLiveDeploymentRoutes(overrides: Routes = {}): Routes {
   });
 }
 
-describe("prisma-cli service version rollback", () => {
+describe("prisma service version rollback", () => {
   it("rolls back to the deployment before the live one by default", async () => {
     const harness = await makeServiceCli({ routes: releaseRoutes() });
 
@@ -386,13 +386,12 @@ describe("prisma-cli service version rollback", () => {
       {
         kind: "run-command",
         label: "Roll back to a named version",
-        command:
-          "prisma-cli service version rollback hello-world --to <version>",
+        command: "prisma service version rollback hello-world --to <version>",
       },
       {
         kind: "run-command",
         label: "List versions",
-        command: "prisma-cli service version list hello-world",
+        command: "prisma service version list hello-world",
       },
     ]);
   });
@@ -467,7 +466,7 @@ describe("prisma-cli service version rollback", () => {
       {
         kind: "run-command",
         label: "List versions",
-        command: "prisma-cli service version list hello-world",
+        command: "prisma service version list hello-world",
       },
     ]);
   });

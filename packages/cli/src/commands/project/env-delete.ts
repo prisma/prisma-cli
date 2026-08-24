@@ -93,9 +93,9 @@ export const projectEnvDeleteCommand = defineCommand({
           domain: "app",
           summary: `Variable "${key}" not found in ${formatScopeLabel(scope)}`,
           why: "No variable with this key exists in the targeted scope, so there is nothing to delete.",
-          fix: "Run prisma-cli project env list with the same scope to see the available variables.",
+          fix: "Run prisma project env list with the same scope to see the available variables.",
           exitCode: 1,
-          nextSteps: [`prisma-cli project env list ${formatScopeFlag(scope)}`],
+          nextSteps: [`prisma project env list ${formatScopeFlag(scope)}`],
         });
       }
 

@@ -43,14 +43,13 @@ const PROJECT_CODE_MAP: Readonly<Record<string, `${string}.${string}`>> = {
 const PACKAGE_RUNNER_PREFIX = /^\S+(?: -y)? @prisma\/cli@\S+ /;
 const COMMENT_PREFIX = /^#\s*/;
 
-/** Legacy command strings are `prisma-cli …`, except one `prisma auth
- *  login` copy bug and the package-runner formatter's output. */
+/** Ported command strings already name this binary; what still needs
+ *  porting is the package-runner spelling the legacy formatter emitted
+ *  (`npx -y @prisma/cli@next auth login`), which becomes a plain
+ *  invocation. Anything else is passed through untouched. */
 export function portCommandString(command: string): string {
   if (command.startsWith(`${CLI_NAME} `)) {
     return command;
-  }
-  if (command.startsWith("prisma ")) {
-    return `${CLI_NAME} ${command.slice("prisma ".length)}`;
   }
   return command.replace(PACKAGE_RUNNER_PREFIX, `${CLI_NAME} `);
 }
