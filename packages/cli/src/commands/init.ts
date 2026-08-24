@@ -425,7 +425,9 @@ async function writeHookAndDependency(edit: {
       report: {
         outcome: hookNeeded ? "skipped" : "exists",
         script: hookNeeded ? null : POSTINSTALL_SCRIPT,
-        dependency: "skipped",
+        // A failed write skips only what the write would have added; a
+        // dependency the manifest already declares stays declared.
+        dependency: dependencyEdit ? "skipped" : block.kept,
       },
       lines: [
         summary("warn", "package.json could not be written; left unchanged."),
@@ -473,6 +475,27 @@ function dependencyBlock(
   };
 }
 
+/** Detection walks ancestor package.json and lockfiles, and runs after
+ *  the manifest edit already landed — a directory it cannot read must
+ *  not fail the init, and guessing npm would name the wrong manager, so
+ *  the fallback advice names none. The same guard the post-login tip
+ *  puts around this walk. */
+function installAddedDependencyAction(cwd: string): NextAction {
+  try {
+    return {
+      kind: "run-command",
+      label: "Install the added prisma dev dependency",
+      command: resolveInstallCommandSync(cwd),
+    };
+  } catch {
+    return {
+      kind: "user-choice",
+      label:
+        "Run your package manager's install to fetch the added prisma dev dependency.",
+    };
+  }
+}
+
 function manifestEditedStep(
   edit: { cwd: string; hookNeeded: boolean },
   dependencyEdit: boolean,
@@ -507,15 +530,7 @@ function manifestEditedStep(
         : []),
       ...block.lines,
     ],
-    next: dependencyEdit
-      ? [
-          {
-            kind: "run-command",
-            label: "Install the added prisma dev dependency",
-            command: resolveInstallCommandSync(edit.cwd),
-          },
-        ]
-      : [],
+    next: dependencyEdit ? [installAddedDependencyAction(edit.cwd)] : [],
     diagnostics: block.diagnostics,
   };
 }

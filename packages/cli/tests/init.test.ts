@@ -211,6 +211,72 @@ describe("init", () => {
     },
   );
 
+  it.skipIf(process.platform === "win32")(
+    "an unwritable package.json that already declares prisma reports the dependency declared",
+    async () => {
+      const root = await makeProjectRoot("init-");
+      const manifestPath = path.join(root, "package.json");
+      await writeFile(
+        manifestPath,
+        `${JSON.stringify(
+          { name: "fixture-project", devDependencies: { prisma: "^7.0.0" } },
+          null,
+          2,
+        )}\n`,
+        "utf8",
+      );
+      await chmod(manifestPath, 0o444);
+
+      const { exitCode, result, diagnosticCodes } = await runInit(root, [
+        "--skills=none",
+      ]);
+      await chmod(manifestPath, 0o644);
+
+      expect(exitCode).toBe(0);
+      expect(result.postinstall).toEqual({
+        outcome: "skipped",
+        script: null,
+        dependency: "declared",
+      });
+      expect(diagnosticCodes).toContain("INIT.PACKAGE_JSON_UNWRITABLE");
+    },
+  );
+
+  it.skipIf(process.platform === "win32")(
+    "an unreadable ancestor package.json does not fail init after the edit landed",
+    async () => {
+      const root = await makeProjectRoot("init-");
+      const ancestorManifest = path.join(root, "package.json");
+      const app = path.join(root, "app");
+      await mkdir(app);
+      await writeFile(
+        path.join(app, "package.json"),
+        `${JSON.stringify({ name: "nested-app" }, null, 2)}\n`,
+        "utf8",
+      );
+      // The install-command detection walks ancestors; this one throws
+      // EACCES instead of ENOENT.
+      await chmod(ancestorManifest, 0o000);
+
+      const run = await makeCli().run(["init", "--skills=none"], { cwd: app });
+      await chmod(ancestorManifest, 0o644);
+      const result = run.presented?.data as InitResult;
+
+      expect(run.exitCode).toBe(0);
+      expect(result.postinstall.dependency).toBe("added");
+      expect((await readManifest(app)).devDependencies).toEqual({
+        prisma: getCliVersion(),
+      });
+      expect(run.presented?.presentation.next).toEqual([
+        {
+          kind: "user-choice",
+          label:
+            "Run your package manager's install to fetch the added prisma dev dependency.",
+        },
+      ]);
+    },
+  );
+
   it("leaves a non-object scripts value untouched", async () => {
     const root = await makeProjectRoot("init-");
     await writeFile(
