@@ -4,14 +4,16 @@ import path from "node:path";
 
 import { compareVersionStrings } from "../semver-order";
 import {
-  HARNESS_SKILL_DIRS,
+  type AgentName,
+  agentSkillDirs,
+  DEFAULT_AGENTS,
   isSkillSourcePackage,
   PACKAGE_SKILLS_DIR,
   SKILL_SOURCE_PACKAGES,
 } from "./allowlist";
 import { readSkillStamp, type SkillStamp } from "./frontmatter";
 import { readSkillsCheckDisabled } from "./opt-out";
-import { findProjectRoot, workspaceMemberDirs } from "./project-root";
+import { workspaceMemberDirs } from "./project-root";
 import { type ResolvedPackage, resolvePackage } from "./resolve";
 
 export interface InstalledSourcePackage {
@@ -63,19 +65,13 @@ export interface SkillsStatus {
   readonly upToDate: boolean;
 }
 
-/** The first skill that is stale or was never synced — what the check
- *  names in its one line. */
-export function firstOutdatedSkill(status: SkillsStatus): SkillStatus | null {
-  return status.skills.find((skill) => !skill.upToDate) ?? null;
-}
-
 export interface SkillsStatusOptions {
   /** Set false to skip the orphan scan; the staleness notice never
    *  reads it. */
   readonly orphans?: boolean;
-  /** A root the caller already resolved, so the ancestor walk is not
-   *  repeated. */
-  readonly projectRoot?: string;
+  /** The agents whose skill directories the status covers; every known
+   *  agent when absent. */
+  readonly agents?: readonly AgentName[];
   /** An opt-out flag the caller already read from that root. */
   readonly checkDisabled?: boolean;
 }
@@ -84,14 +80,15 @@ export async function readSkillsStatus(
   cwd: string,
   options?: SkillsStatusOptions,
 ): Promise<SkillsStatus> {
-  const projectRoot = options?.projectRoot ?? (await findProjectRoot(cwd));
+  const projectRoot = path.resolve(cwd);
+  const dirs = agentSkillDirs(options?.agents ?? DEFAULT_AGENTS);
   const checkDisabled =
     options?.checkDisabled ?? (await readSkillsCheckDisabled(projectRoot));
   const packages = await findInstalledSourcePackages(projectRoot);
   const sources = await collectSkillSources(packages);
   const skills: SkillStatus[] = [];
   for (const source of sources.values()) {
-    skills.push(await readSkillStatus(projectRoot, source));
+    skills.push(await readSkillStatus(projectRoot, dirs, source));
   }
   skills.sort((left, right) => left.skill.localeCompare(right.skill));
 
@@ -103,7 +100,7 @@ export async function readSkillsStatus(
     orphans:
       options?.orphans === false
         ? []
-        : await findOrphanedSkills(projectRoot, new Set(sources.keys())),
+        : await findOrphanedSkills(projectRoot, dirs, new Set(sources.keys())),
     upToDate: skills.every((skill) => skill.upToDate),
   };
 }
@@ -188,10 +185,11 @@ export async function collectSkillSources(
 
 async function readSkillStatus(
   projectRoot: string,
+  dirs: readonly string[],
   source: SkillSource,
 ): Promise<SkillStatus> {
   const targets: SkillTarget[] = [];
-  for (const dir of HARNESS_SKILL_DIRS) {
+  for (const dir of dirs) {
     const skillFile = path.join(projectRoot, dir, source.skill, "SKILL.md");
     const stamp = await readSkillStamp(skillFile);
     targets.push({
@@ -249,11 +247,12 @@ async function missingFromDisk(target: string): Promise<boolean> {
  */
 export async function findOrphanedSkills(
   projectRoot: string,
+  dirs: readonly string[],
   provided: ReadonlySet<string>,
 ): Promise<OrphanedSkill[]> {
   const orphans = new Map<string, { library: string | null; dirs: string[] }>();
 
-  for (const dir of HARNESS_SKILL_DIRS) {
+  for (const dir of dirs) {
     const harnessDir = path.join(projectRoot, dir);
     for (const skill of await skillDirectories(harnessDir)) {
       if (provided.has(skill)) {

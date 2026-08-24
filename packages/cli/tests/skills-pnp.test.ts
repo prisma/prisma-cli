@@ -123,7 +123,7 @@ describe("a Yarn PnP project", () => {
           ".claude/skills",
           ".cursor/skills",
           ".agents/skills",
-          ".windsurf/skills",
+          ".devin/skills",
         ],
       },
     ]);

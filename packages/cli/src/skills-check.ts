@@ -8,14 +8,13 @@
  * It never changes the exit code, never writes to stdout, and is not
  * conditioned on a TTY: agents run without one and are who this is for.
  */
-import { loadConfig } from "@prisma/cli-engine";
-import { skillsConfigSection } from "./commands/skills/config";
+import { readProjectSkillsConfig } from "./commands/skills/config";
+import { agentSkillDirs, DEFAULT_AGENTS } from "./lib/skills/allowlist";
 import { readSkillsCheckDisabled } from "./lib/skills/opt-out";
-import { findProjectRoot } from "./lib/skills/project-root";
 import {
-  firstOutdatedSkill,
   readSkillsStatus,
   type SkillsStatus,
+  type SkillStatus,
 } from "./lib/skills/status";
 import { getCliName } from "./lib/version";
 
@@ -39,22 +38,31 @@ export async function maybeWriteSkillsStaleNotice(
     // The persisted opt-out is one small file; reading it first spares
     // an opted-out project the package and directory scans, and the
     // notice never reads the orphan list.
-    const projectRoot = await findProjectRoot(runtime.cwd);
-    if (await readSkillsCheckDisabled(projectRoot)) {
+    if (await readSkillsCheckDisabled(runtime.cwd)) {
       return;
     }
+    // Read over every known agent's directory first: the configured
+    // agents are always a subset of the known set, so a project that is
+    // current across the full set is current for any config, and the
+    // config file — a TypeScript transpile, far more than everything
+    // else the check does — is evaluated at most once, and only when
+    // the full set already reads as out of date.
     const status = await readSkillsStatus(runtime.cwd, {
       orphans: false,
-      projectRoot,
       checkDisabled: false,
     });
     if (status.upToDate) {
       return;
     }
-    if (await isDisabledInConfig(runtime)) {
+    const config = await readProjectSkillsConfig(
+      runtime.cwd,
+      configPathFromArgv(runtime.argv),
+    );
+    if (config !== null && !config.check) {
       return;
     }
-    const notice = renderStaleNotice(status);
+    const dirs = agentSkillDirs(config?.agents ?? DEFAULT_AGENTS);
+    const notice = renderStaleNotice(status, dirs);
     if (notice !== null) {
       runtime.stderr.write(notice);
     }
@@ -65,14 +73,34 @@ export async function maybeWriteSkillsStaleNotice(
   }
 }
 
-export function renderStaleNotice(status: SkillsStatus): string | null {
-  const outdated = firstOutdatedSkill(status);
+/** The first skill with a stale or never-synced copy in one of the
+ *  configured directories — what the check names in its one line. */
+function firstOutdatedSkillIn(
+  status: SkillsStatus,
+  dirs: readonly string[],
+): SkillStatus | null {
+  return (
+    status.skills.find((skill) =>
+      skill.targets.some(
+        (target) =>
+          dirs.includes(target.dir) &&
+          (target.state === "stale" || target.state === "absent"),
+      ),
+    ) ?? null
+  );
+}
+
+export function renderStaleNotice(
+  status: SkillsStatus,
+  dirs: readonly string[],
+): string | null {
+  const outdated = firstOutdatedSkillIn(status, dirs);
   if (outdated === null) {
     return null;
   }
 
   const synced = outdated.targets.find(
-    (target) => target.state === "stale",
+    (target) => dirs.includes(target.dir) && target.state === "stale",
   )?.syncedVersion;
   return (
     `Prisma agent skills are out of date (installed ${outdated.library} ` +
@@ -159,23 +187,4 @@ function configPathFromArgv(argv: readonly string[]): string | undefined {
     }
   }
   return undefined;
-}
-
-/**
- * `skills: { check: false }` in prisma.config.ts. Read last and only
- * when the project is already known to be out of date, because
- * evaluating that file costs a TypeScript transpile — far more than
- * everything else the check does.
- */
-async function isDisabledInConfig(
-  runtime: SkillsCheckRuntime,
-): Promise<boolean> {
-  const loaded = await loadConfig(
-    runtime.cwd,
-    configPathFromArgv(runtime.argv),
-  );
-  const section = skillsConfigSection.validate(
-    loaded.sections[skillsConfigSection.name],
-  );
-  return section.ok && !section.value.check;
 }

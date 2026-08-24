@@ -7,6 +7,7 @@
  */
 import { resolvePrismaCliPackageCommand } from "../../lib/agent/cli-command";
 import { readSkillsStatus } from "../../lib/skills/status";
+import { readProjectSkillsConfig } from "../skills/config";
 
 const SKILLS_SYNC_ARGS = ["skills", "sync"] as const;
 
@@ -27,7 +28,14 @@ export async function resolveAgentSetupTipCommand(
   // status scan or command resolver cannot read must not fail a login
   // that succeeded.
   try {
-    const status = await readSkillsStatus(ctx.cwd, { orphans: false });
+    const config = await readProjectSkillsConfig(ctx.cwd);
+    if (config !== null && !config.check) {
+      return null;
+    }
+    const status = await readSkillsStatus(ctx.cwd, {
+      orphans: false,
+      agents: config?.agents,
+    });
     if (
       status.packages.length === 0 ||
       status.upToDate ||

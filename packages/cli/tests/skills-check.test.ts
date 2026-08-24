@@ -24,7 +24,10 @@ const NOTICE = "Prisma agent skills are out of date";
 
 /** What definePrismaConfig produces, written out: a fixture project has
  *  no node_modules the config file could import the engine from. */
-function configSource(skills: { check: boolean }): string {
+function configSource(skills: {
+  check?: boolean;
+  agents?: readonly string[];
+}): string {
   return `export default ${JSON.stringify({
     $prismaConfig: PRISMA_CONFIG_VERSION,
     skills,
@@ -119,7 +122,7 @@ async function makeSyncedProject(): Promise<string> {
     ".claude/skills",
     ".cursor/skills",
     ".agents/skills",
-    ".windsurf/skills",
+    ".devin/skills",
   ]) {
     await seedSyncedSkill(root, dir, {
       skill: "prisma-8",
@@ -302,6 +305,52 @@ describe("the skills check off switches", () => {
     await writeFile(
       path.join(root, "prisma.config.ts"),
       configSource({ check: true }),
+      "utf8",
+    );
+    const proc = makeProcess({ cwd: root });
+
+    await main(proc, stubCli());
+
+    expect(proc.stderrText).toContain(NOTICE);
+  });
+
+  it("stays silent when only a directory outside the configured agents is stale", async () => {
+    // .claude holds the stale copy; the config narrows the project to
+    // cursor, whose directory sync would create, so nothing the config
+    // cares about is out of date.
+    const root = await makeProjectRoot("check-");
+    await installPackage(root, {
+      name: "@prisma/orm-postgres",
+      version: "8.1.0",
+      skills: ["prisma-8"],
+    });
+    await seedSyncedSkill(root, ".claude/skills", {
+      skill: "prisma-8",
+      library: "@prisma/orm-postgres",
+      version: "8.0.0",
+    });
+    await seedSyncedSkill(root, ".cursor/skills", {
+      skill: "prisma-8",
+      library: "@prisma/orm-postgres",
+      version: "8.1.0",
+    });
+    await writeFile(
+      path.join(root, "prisma.config.ts"),
+      configSource({ agents: ["cursor"] }),
+      "utf8",
+    );
+    const proc = makeProcess({ cwd: root });
+
+    await main(proc, stubCli());
+
+    expect(proc.stderrText).toBe("");
+  });
+
+  it("still reports a stale copy inside the configured agents", async () => {
+    const root = await makeStaleProject();
+    await writeFile(
+      path.join(root, "prisma.config.ts"),
+      configSource({ agents: ["claude"] }),
       "utf8",
     );
     const proc = makeProcess({ cwd: root });

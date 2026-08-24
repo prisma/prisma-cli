@@ -13,7 +13,9 @@ export const skillsListCommand = defineCommand({
   },
   needs: { config: skillsConfigSection },
   handler: async (_args, ctx) => {
-    const status = await readSkillsStatus(ctx.cwd);
+    const status = await readSkillsStatus(ctx.cwd, {
+      agents: ctx.config.agents,
+    });
     const result: SkillsListResult = {
       projectRoot: status.projectRoot,
       packages: packageReports(status.packages),

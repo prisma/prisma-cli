@@ -1,14 +1,25 @@
-import { defineConfigSection } from "@prisma/cli-engine";
+import { existsSync } from "node:fs";
+import path from "node:path";
+import { defineConfigSection, loadConfig } from "@prisma/cli-engine";
 import type { Diagnostic } from "@prisma/cli-engine/protocol";
+import {
+  type AgentName,
+  DEFAULT_AGENTS,
+  isKnownAgent,
+  KNOWN_AGENTS,
+} from "../../lib/skills/allowlist";
 
 export interface SkillsConfig {
   /** Whether other commands may report out-of-date agent skills.
    *  `skills: { check: false }` in prisma.config.ts silences it for
    *  everyone working in the project. */
   readonly check: boolean;
+  /** The agent harnesses whose skill directories sync writes and list
+   *  reports. Absent means every known agent. */
+  readonly agents: readonly AgentName[];
 }
 
-const DEFAULT: SkillsConfig = { check: true };
+const DEFAULT: SkillsConfig = { check: true, agents: DEFAULT_AGENTS };
 
 export const SKILLS_CONFIG_SECTION_NAME = "skills";
 
@@ -40,8 +51,96 @@ function invalidCheck(value: unknown): Diagnostic {
   };
 }
 
+function invalidAgents(value: unknown): Diagnostic {
+  return {
+    code: "SKILLS.CONFIG_INVALID",
+    severity: "error",
+    summary: `skills.agents must be an array of agent names, and is ${describe(value)}.`,
+    nextActions: [
+      {
+        kind: "user-choice",
+        label: `List the agents to install skills for (${KNOWN_AGENTS.join(", ")}), or remove skills.agents to install for all of them.`,
+      },
+    ],
+  };
+}
+
+function unknownAgent(name: string): Diagnostic {
+  return {
+    code: "SKILLS.CONFIG_INVALID",
+    severity: "error",
+    summary: `skills.agents names '${name}', which this CLI does not know. The known agents are ${KNOWN_AGENTS.join(", ")}.`,
+    nextActions: [
+      {
+        kind: "user-choice",
+        label: `Remove '${name}' from skills.agents, or update the CLI if a newer version knows it.`,
+      },
+    ],
+  };
+}
+
 function describe(value: unknown): string {
   return value === null ? "null" : typeof value;
+}
+
+function validateAgents(
+  raw: unknown,
+): { ok: true; agents: readonly AgentName[] } | { ok: false; diagnostic: Diagnostic } {
+  if (raw === undefined) {
+    return { ok: true, agents: DEFAULT_AGENTS };
+  }
+  if (!Array.isArray(raw)) {
+    return { ok: false, diagnostic: invalidAgents(raw) };
+  }
+  const agents: AgentName[] = [];
+  for (const entry of raw) {
+    if (typeof entry !== "string" || !isKnownAgent(entry)) {
+      return {
+        ok: false,
+        diagnostic:
+          typeof entry === "string" ? unknownAgent(entry) : invalidAgents(entry),
+      };
+    }
+    if (!agents.includes(entry)) {
+      agents.push(entry);
+    }
+  }
+  return { ok: true, agents };
+}
+
+/**
+ * The validated skills section of an already-loaded config, or null
+ * when the section does not validate. Used by code that runs outside a
+ * command handler (the staleness check, the post-login tip), which has
+ * no ctx.config.
+ */
+export function readSkillsConfig(loaded: {
+  readonly sections: Readonly<Record<string, unknown>>;
+}): SkillsConfig | null {
+  const section = skillsConfigSection.validate(
+    loaded.sections[SKILLS_CONFIG_SECTION_NAME],
+  );
+  return section.ok ? section.value : null;
+}
+
+/**
+ * The project's skills settings from prisma.config.ts, or null when no
+ * config file exists — decided with one stat, so a project without a
+ * config never pays the file's TypeScript transpile — or the section
+ * does not validate.
+ */
+export async function readProjectSkillsConfig(
+  cwd: string,
+  configPath?: string,
+): Promise<SkillsConfig | null> {
+  const file =
+    configPath === undefined
+      ? path.join(cwd, "prisma.config.ts")
+      : path.resolve(cwd, configPath);
+  if (!existsSync(file)) {
+    return null;
+  }
+  return readSkillsConfig(await loadConfig(cwd, configPath));
 }
 
 export const skillsConfigSection = defineConfigSection<SkillsConfig>({
@@ -56,14 +155,24 @@ export const skillsConfigSection = defineConfigSection<SkillsConfig>({
     // Reading a property can throw — a config file is user code, and
     // may hand over an object whose getter does.
     let check: unknown;
+    let rawAgents: unknown;
     try {
       check = (raw as { check?: unknown }).check;
+      rawAgents = (raw as { agents?: unknown }).agents;
     } catch {
       return { ok: false, diagnostics: [invalidSection(raw)] };
     }
     if (check !== undefined && typeof check !== "boolean") {
       return { ok: false, diagnostics: [invalidCheck(check)] };
     }
-    return { ok: true, value: { check: check ?? true }, diagnostics: [] };
+    const agents = validateAgents(rawAgents);
+    if (!agents.ok) {
+      return { ok: false, diagnostics: [agents.diagnostic] };
+    }
+    return {
+      ok: true,
+      value: { check: check ?? true, agents: agents.agents },
+      diagnostics: [],
+    };
   },
 });

@@ -14,7 +14,10 @@ import type {
   SkillsListResult,
   SkillsSyncResult,
 } from "../src/commands/skills/results";
-import { HARNESS_SKILL_DIRS } from "../src/lib/skills/allowlist";
+import {
+  agentSkillDirs,
+  DEFAULT_AGENTS,
+} from "../src/lib/skills/allowlist";
 import {
   installPackage,
   isolateModuleResolution,
@@ -27,6 +30,7 @@ import {
 import { mountsFor } from "./service-testkit";
 
 const SKILLS_COMMANDS = mountsFor(["skills"]);
+const HARNESS_SKILL_DIRS = agentSkillDirs(DEFAULT_AGENTS);
 
 isolateModuleResolution();
 
@@ -338,7 +342,7 @@ describe("skills sync", () => {
     );
   });
 
-  it("syncs into the workspace root when run from inside a member", async () => {
+  it("anchors at the directory it runs in, never a directory above it", async () => {
     const root = await makeProjectRoot();
     await writeWorkspaceConfig(root, ["apps/*"]);
     await writeMember(root, "apps/web");
@@ -348,15 +352,96 @@ describe("skills sync", () => {
       skills: ["prisma-8"],
       member: "apps/web",
     });
+    const member = path.join(root, "apps/web");
 
-    const { exitCode, result } = await runSync(path.join(root, "apps/web"));
+    const { exitCode, result } = await runSync(member);
 
     expect(exitCode).toBe(0);
-    expect(result.projectRoot).toBe(root);
-    expect(await stampOf(root, ".claude/skills", "prisma-8")).toBe("8.1.0");
-    expect(await exists(path.join(root, "apps/web", ".claude", "skills"))).toBe(
-      false,
+    expect(result.projectRoot).toBe(member);
+    expect(await stampOf(member, ".claude/skills", "prisma-8")).toBe("8.1.0");
+    expect(await exists(path.join(root, ".claude", "skills"))).toBe(false);
+  });
+
+  it("syncs from a bun layout: package.json workspaces, a bun lockfile, plain node_modules", async () => {
+    const root = await makeProjectRoot();
+    await rm(path.join(root, "package.json"));
+    await writeFile(
+      path.join(root, "package.json"),
+      `${JSON.stringify({ name: "bun-root", workspaces: ["apps/*"] })}\n`,
+      "utf8",
     );
+    await writeFile(path.join(root, "bun.lock"), "{}\n", "utf8");
+    await writeMember(root, "apps/web");
+    await installPackage(root, {
+      name: "@prisma/orm-postgres",
+      version: "8.1.0",
+      skills: ["prisma-8"],
+      member: "apps/web",
+    });
+
+    const { exitCode, result } = await runSync(root);
+
+    expect(exitCode).toBe(0);
+    expect(result.packages).toEqual([
+      {
+        package: "@prisma/orm-postgres",
+        version: "8.1.0",
+        conflictingVersions: [],
+      },
+    ]);
+    expect(await stampOf(root, ".claude/skills", "prisma-8")).toBe("8.1.0");
+  });
+
+  it("writes only the directories the config's agents list names", async () => {
+    const root = await makeProjectRoot();
+    await installPackage(root, {
+      name: "@prisma/orm-postgres",
+      version: "8.1.0",
+      skills: ["prisma-8"],
+    });
+    const cli = createTestCli({
+      commandFamilies: [skillsCommandFamily],
+      commands: SKILLS_COMMANDS,
+      groups: { skills: { brief: "Keep Prisma agent skills current" } },
+      config: { skills: { agents: ["claude", "cursor"] } },
+      now: () => new Date(0),
+    });
+
+    const run = await cli.run(["skills", "sync"], { cwd: root });
+    const result = run.presented?.data as SkillsSyncResult;
+
+    expect(run.exitCode).toBe(0);
+    expect(result.synced[0]?.dirs).toEqual([".claude/skills", ".cursor/skills"]);
+    expect(await exists(path.join(root, ".agents"))).toBe(false);
+    expect(await exists(path.join(root, ".devin"))).toBe(false);
+
+    const list = await cli.run(["skills", "list"], { cwd: root });
+    const listed = list.presented?.data as SkillsListResult;
+    expect(listed.skills[0]?.targets.map((target) => target.dir)).toEqual([
+      ".claude/skills",
+      ".cursor/skills",
+    ]);
+    expect(listed.upToDate).toBe(true);
+  });
+
+  it("refuses a config naming an agent this CLI does not know", async () => {
+    const root = await makeProjectRoot();
+    const cli = createTestCli({
+      commandFamilies: [skillsCommandFamily],
+      commands: SKILLS_COMMANDS,
+      groups: { skills: { brief: "Keep Prisma agent skills current" } },
+      config: { skills: { agents: ["claude", "zed"] } },
+      now: () => new Date(0),
+    });
+
+    const run = await cli.run(["skills", "sync"], {
+      cwd: root,
+      isTty: { stdout: true, stderr: true },
+    });
+
+    expect(run.exitCode).not.toBe(0);
+    expect(run.stderr).toContain("'zed'");
+    expect(run.stderr).toContain("claude, cursor, agents, devin");
   });
 
   it("persists the opt-out with --disable and lifts it with --enable", async () => {
@@ -474,7 +559,7 @@ describe("skills list", () => {
       { dir: ".claude/skills", syncedVersion: "8.0.0", state: "stale" },
       { dir: ".cursor/skills", syncedVersion: "8.2.0", state: "synced" },
       { dir: ".agents/skills", syncedVersion: null, state: "absent" },
-      { dir: ".windsurf/skills", syncedVersion: null, state: "absent" },
+      { dir: ".devin/skills", syncedVersion: null, state: "absent" },
     ]);
     expect(result.checkDisabled).toBe(false);
   });
@@ -597,7 +682,7 @@ describe("harness directories that already exist", () => {
     expect(result.synced[0]?.dirs).toEqual([
       ".cursor/skills",
       ".agents/skills",
-      ".windsurf/skills",
+      ".devin/skills",
     ]);
     expect(run.stderr).toContain(
       ".claude/skills/prisma-8 is not managed by this CLI, so it was left untouched.",

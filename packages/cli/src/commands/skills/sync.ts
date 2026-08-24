@@ -103,7 +103,9 @@ export const skillsSyncCommand = defineCommand({
       return notOk(bothSwitchesError());
     }
 
-    const status = await readSkillsStatus(ctx.cwd);
+    const status = await readSkillsStatus(ctx.cwd, {
+      agents: ctx.config.agents,
+    });
     const outcome = await syncSkills(status);
 
     let optedOut = outcome.checkDisabled;

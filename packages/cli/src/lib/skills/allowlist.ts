@@ -24,15 +24,37 @@ export const SKILL_SOURCE_PACKAGES: readonly string[] = [
  *  trees, one directory per skill. */
 export const PACKAGE_SKILLS_DIR = "skills";
 
-/** The project-root directories each agent harness reads its skills
- *  from. Sync writes all four whether or not the harness is in use, so
- *  a harness adopted later finds the skills already there. */
-export const HARNESS_SKILL_DIRS: readonly string[] = [
-  ".claude/skills",
-  ".cursor/skills",
-  ".agents/skills",
-  ".windsurf/skills",
-];
+/**
+ * The agent harnesses this CLI can install skills for, each mapped to
+ * the project-relative directory that harness reads its skills from.
+ * There is no harness detection anywhere: which of these a project uses
+ * comes from `skills: { agents: [...] }` in prisma.config.ts, and every
+ * one of them when the config says nothing.
+ */
+export const AGENT_SKILL_DIRS = {
+  claude: ".claude/skills",
+  cursor: ".cursor/skills",
+  agents: ".agents/skills",
+  devin: ".devin/skills",
+} as const;
+
+export type AgentName = keyof typeof AGENT_SKILL_DIRS;
+
+export const KNOWN_AGENTS = Object.keys(AGENT_SKILL_DIRS) as AgentName[];
+
+/** Without a config, sync writes every known agent's directory, so a
+ *  harness adopted later finds the skills already there. */
+export const DEFAULT_AGENTS: readonly AgentName[] = KNOWN_AGENTS;
+
+export function isKnownAgent(name: string): name is AgentName {
+  return name in AGENT_SKILL_DIRS;
+}
+
+export function agentSkillDirs(
+  agents: readonly AgentName[],
+): readonly string[] {
+  return agents.map((agent) => AGENT_SKILL_DIRS[agent]);
+}
 
 export function isSkillSourcePackage(name: string): boolean {
   return SKILL_SOURCE_PACKAGES.includes(name);

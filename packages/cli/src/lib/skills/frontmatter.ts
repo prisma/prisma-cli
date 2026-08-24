@@ -27,6 +27,10 @@ const STAMP_KEYS = new Map<string, keyof SkillStamp>([
  * — so the stamp is read there and nowhere else. A file without
  * frontmatter, without a `metadata` map, or without those entries
  * reports nulls rather than failing.
+ *
+ * Contract: this reads only the stamp this CLI writes. A file it
+ * cannot read classifies as unmanaged, which sync refuses to touch, so
+ * a parse bug can never delete user files.
  */
 export function parseSkillStamp(source: string): SkillStamp {
   const lines = source.split(LINE_BREAK);
