@@ -116,25 +116,25 @@ async function tarball(): Promise<readonly Finding[]> {
       // that is not on the registry, so the engine publishes first and
       // the mismatch is real until both families release against it.
       // The entries expire with the versions they name, and the PR
-      // that pins the families' 0.2.1 releases removes them; while
+      // that pins the families' 0.2.2 releases removes them; while
       // they stand, a release could ship the two-engine install they
       // describe, which is why they must not outlive the transition.
       exceptions: [
         {
           familyPackage: "@prisma/composer-cli",
           familyPin: "0.2.0",
-          shellPin: "0.2.1",
-          reason: "engine 0.2.1 must publish before composer-cli can peer it",
+          shellPin: "0.2.2",
+          reason: "engine 0.2.2 must publish before composer-cli can peer it",
           removeWhen:
-            "composer-cli releases peering 0.2.1 and the follow-up bump PR pins that release",
+            "composer-cli releases peering 0.2.2 and the follow-up bump PR pins that release",
         },
         {
           familyPackage: "@prisma/orm-toolchain",
           familyPin: "0.2.0",
-          shellPin: "0.2.1",
-          reason: "engine 0.2.1 must publish before orm-toolchain can peer it",
+          shellPin: "0.2.2",
+          reason: "engine 0.2.2 must publish before orm-toolchain can peer it",
           removeWhen:
-            "orm-toolchain releases peering 0.2.1 and the follow-up bump PR pins that release",
+            "orm-toolchain releases peering 0.2.2 and the follow-up bump PR pins that release",
         },
       ],
       channel: CHANNEL,
