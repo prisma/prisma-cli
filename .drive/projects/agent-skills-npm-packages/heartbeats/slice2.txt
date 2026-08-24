@@ -1,8 +1,0 @@
-2026-08-21T09:31:50Z design-read: read brief/plan/spec + repo conventions; next: implement lib/skills + commands
-2026-08-21T09:39:54Z implement: lib+commands+check landed (cf91519); next: test matrix (npm/pnpm/PnP fixtures, states, off switches)
-2026-08-21T09:49:39Z tests: full matrix green (66 files/1030 tests), lint+typecheck clean, pushed to bot; next: docs (output conventions + command surface)
-2026-08-21T09:55:54Z done: gate green (build, typecheck, pnpm test 8/8, conformance, grammar); docs updated; 4 commits pushed to bot
-2026-08-21T10:09:22Z review-r1: fixed S2-R1-1 (bounded ** walk + read-count test) and S2-R1-2 (sync honors skills.check); gate green; not pushed
-2026-08-21T10:20:10Z review-r1 complete: S2-R1-1, S2-R1-2, CLI_NAME->prisma rename, metadata stamp; gate green; pushed dfaed85
-2026-08-21T10:36:05Z review-r2: restored docs URL, added legacy-mapper both-spellings test; gate green; pushed 75a8f30
-2026-08-21T10:41:17Z review-r3: dead branch + e2e test name; suites green; pushed

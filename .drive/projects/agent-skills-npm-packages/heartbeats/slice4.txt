@@ -1,5 +1,0 @@
-2026-08-21T09:32:38Z slice4 phase=stamp done=frontmatter+set-version+tests next=packaging
-2026-08-21T09:35:01Z slice4 phase=packaging done=prepack-staging+tarball-check+CI next=docs
-2026-08-21T09:37:56Z slice4 phase=docs done=README+skills/README+getting-started+website next=gate-complete
-2026-08-21T10:03:27Z slice4 phase=recovery done=branch-restored-at-.refs/composer-identical-SHA-gate-rerun-green next=push-blocked-awaiting-operator
-2026-08-21T10:14:35Z slice4 phase=review-round-2 done=metadata-stamp+mdc-rule+hero-revert+authoring-rule pushed=eecf6f06 next=await-review
