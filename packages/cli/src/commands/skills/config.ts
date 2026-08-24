@@ -85,7 +85,9 @@ function describe(value: unknown): string {
 
 function validateAgents(
   raw: unknown,
-): { ok: true; agents: readonly AgentName[] } | { ok: false; diagnostic: Diagnostic } {
+):
+  | { ok: true; agents: readonly AgentName[] }
+  | { ok: false; diagnostic: Diagnostic } {
   if (raw === undefined) {
     return { ok: true, agents: DEFAULT_AGENTS };
   }
@@ -98,7 +100,9 @@ function validateAgents(
       return {
         ok: false,
         diagnostic:
-          typeof entry === "string" ? unknownAgent(entry) : invalidAgents(entry),
+          typeof entry === "string"
+            ? unknownAgent(entry)
+            : invalidAgents(entry),
       };
     }
     if (!agents.includes(entry)) {

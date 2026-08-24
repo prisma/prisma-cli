@@ -14,10 +14,7 @@ import {
   initCommand,
   POSTINSTALL_SCRIPT,
 } from "../src/commands/init";
-import {
-  agentSkillDirs,
-  DEFAULT_AGENTS,
-} from "../src/lib/skills/allowlist";
+import { agentSkillDirs, DEFAULT_AGENTS } from "../src/lib/skills/allowlist";
 import {
   installPackage,
   isolateModuleResolution,
@@ -364,9 +361,9 @@ describe("init", () => {
       outcome: "created",
       agents: ["claude", "cursor"],
     });
-    expect(await readFile(path.join(root, "prisma.config.ts"), "utf8")).toContain(
-      'agents: ["claude", "cursor"]',
-    );
+    expect(
+      await readFile(path.join(root, "prisma.config.ts"), "utf8"),
+    ).toContain('agents: ["claude", "cursor"]');
     expect(result.skills.sync?.synced[0]?.dirs).toEqual([
       ".claude/skills",
       ".cursor/skills",
@@ -402,7 +399,7 @@ describe("init", () => {
   it("never edits an existing prisma.config.ts, and says what to add", async () => {
     const root = await makeProjectRoot("init-");
     const configPath = path.join(root, "prisma.config.ts");
-    const before = 'export default { $prismaConfig: 1 };\n';
+    const before = "export default { $prismaConfig: 1 };\n";
     await writeFile(configPath, before, "utf8");
 
     const { exitCode, result, diagnosticCodes } = await runInit(root, [

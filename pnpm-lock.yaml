@@ -197,6 +197,9 @@ importers:
 
   packages/prisma:
     dependencies:
+      '@manypkg/tools':
+        specifier: ^2.1.2
+        version: 2.1.2
       '@prisma/cli-engine':
         specifier: workspace:0.2.0
         version: link:../cli-engine

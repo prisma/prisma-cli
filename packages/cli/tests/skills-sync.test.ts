@@ -14,10 +14,7 @@ import type {
   SkillsListResult,
   SkillsSyncResult,
 } from "../src/commands/skills/results";
-import {
-  agentSkillDirs,
-  DEFAULT_AGENTS,
-} from "../src/lib/skills/allowlist";
+import { agentSkillDirs, DEFAULT_AGENTS } from "../src/lib/skills/allowlist";
 import {
   installPackage,
   isolateModuleResolution,
@@ -411,7 +408,10 @@ describe("skills sync", () => {
     const result = run.presented?.data as SkillsSyncResult;
 
     expect(run.exitCode).toBe(0);
-    expect(result.synced[0]?.dirs).toEqual([".claude/skills", ".cursor/skills"]);
+    expect(result.synced[0]?.dirs).toEqual([
+      ".claude/skills",
+      ".cursor/skills",
+    ]);
     expect(await exists(path.join(root, ".agents"))).toBe(false);
     expect(await exists(path.join(root, ".devin"))).toBe(false);
 

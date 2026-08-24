@@ -324,6 +324,9 @@ export function renderConfigScaffold(agents: readonly AgentName[]): string {
   ].join("\n");
 }
 
+const SKILLS_KEY = /\bskills\s*:/;
+const AGENTS_KEY = /\bagents\s*:/;
+
 async function scaffoldConfigStep(
   cwd: string,
   agents: readonly AgentName[],
@@ -341,7 +344,7 @@ async function scaffoldConfigStep(
     // rerun after init's own scaffold stays clean. Anything else gets
     // the exact snippet to add, and the file itself is never edited.
     const hasAgentsSection =
-      /\bskills\s*:/.test(existing) && /\bagents\s*:/.test(existing);
+      SKILLS_KEY.test(existing) && AGENTS_KEY.test(existing);
     return {
       report: { outcome: "exists", agents: null },
       line: hasAgentsSection

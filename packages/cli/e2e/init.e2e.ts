@@ -7,7 +7,14 @@
  */
 import { execFile } from "node:child_process";
 import { existsSync } from "node:fs";
-import { mkdir, mkdtemp, readFile, rm, symlink, writeFile } from "node:fs/promises";
+import {
+  mkdir,
+  mkdtemp,
+  readFile,
+  rm,
+  symlink,
+  writeFile,
+} from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
@@ -20,10 +27,7 @@ const execFileAsync = promisify(execFile);
 
 /** The built `prisma` package, so the scaffold's `prisma/config` import
  *  resolves in the fixture exactly as it does in a user project. */
-const PRISMA_PACKAGE_DIR = path.resolve(
-  import.meta.dirname,
-  "../../prisma",
-);
+const PRISMA_PACKAGE_DIR = path.resolve(import.meta.dirname, "../../prisma");
 
 interface InitEnvelope {
   readonly ok: boolean;

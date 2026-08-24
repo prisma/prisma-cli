@@ -13,8 +13,8 @@ import { agentSkillDirs, DEFAULT_AGENTS } from "./lib/skills/allowlist";
 import { readSkillsCheckDisabled } from "./lib/skills/opt-out";
 import {
   readSkillsStatus,
-  type SkillsStatus,
   type SkillStatus,
+  type SkillsStatus,
 } from "./lib/skills/status";
 import { getCliName } from "./lib/version";
 
