@@ -171,13 +171,13 @@ describe("loadConfig", { timeout: 60_000 }, () => {
         diagnostic: {
           code: "CLI.CONFIG_UNREADABLE",
           severity: "error",
-          summary: `${path} could not be evaluated: it imports 'prisma/config', and the prisma package is not installed in this project.`,
-          why: "The config file imports definePrismaConfig from the prisma npm package, which resolves from the project's node_modules. Running the CLI through npx does not install that package into the project.",
+          summary: `${path} could not be evaluated: the 'prisma/config' entry point could not be resolved from this project.`,
+          why: "The config file imports definePrismaConfig from the prisma npm package's 'prisma/config' entry point, which resolves from the project's node_modules. The package may be missing there — running the CLI through npx installs nothing into the project — or an installed version may be too old to provide the entry point.",
           nextActions: [
             {
               kind: "user-choice",
               label:
-                "Install the prisma package as a dev dependency (for example: npm install --save-dev prisma), then run the command again.",
+                "Install the prisma package matching this CLI's version as a dev dependency (for example: npm install --save-dev prisma), then run the command again.",
             },
           ],
           where: { path },
@@ -190,10 +190,19 @@ describe("loadConfig", { timeout: 60_000 }, () => {
     const loaded = await loadConfig(join(FIXTURES, "missing-prisma-cause"));
     expect(loaded.diagnostics).toHaveLength(1);
     expect(loaded.diagnostics[0].diagnostic.summary).toContain(
-      "the prisma package is not installed",
+      "the 'prisma/config' entry point could not be resolved",
     );
     expect(loaded.diagnostics[0].diagnostic.nextActions[0].label).toContain(
-      "Install the prisma package as a dev dependency",
+      "Install the prisma package matching this CLI's version as a dev dependency",
+    );
+  });
+
+  test("a cyclic cause chain still evaluates to the generic diagnostic instead of hanging", async () => {
+    const loaded = await loadConfig(join(FIXTURES, "cyclic-cause"));
+    expect(loaded.diagnostics).toHaveLength(1);
+    expect(loaded.diagnostics[0].diagnostic.code).toBe("CLI.CONFIG_UNREADABLE");
+    expect(loaded.diagnostics[0].diagnostic.summary).toContain(
+      "cyclic evaluation failure",
     );
   });
 });

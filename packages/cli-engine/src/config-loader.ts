@@ -150,11 +150,15 @@ const MISSING_PRISMA_CONFIG_MESSAGES = [
   "Cannot find package 'prisma/config'",
 ];
 
+/** The walk is depth-limited so a cyclic `cause` chain terminates. */
+const CAUSE_CHAIN_LIMIT = 10;
+
 function importsMissingPrismaPackage(cause: unknown): boolean {
+  let error: unknown = cause;
   for (
-    let error: unknown = cause;
-    error instanceof Error;
-    error = error.cause
+    let depth = 0;
+    depth < CAUSE_CHAIN_LIMIT && error instanceof Error;
+    depth += 1, error = error.cause
   ) {
     const message = error.message;
     if (MISSING_PRISMA_CONFIG_MESSAGES.some((text) => message.includes(text))) {
@@ -164,17 +168,17 @@ function importsMissingPrismaPackage(cause: unknown): boolean {
   return false;
 }
 
-function prismaNotInstalledDiagnostic(path: string): Diagnostic {
+function prismaConfigUnresolvedDiagnostic(path: string): Diagnostic {
   return {
     code: "CLI.CONFIG_UNREADABLE",
     severity: "error",
-    summary: `${path} could not be evaluated: it imports 'prisma/config', and the prisma package is not installed in this project.`,
-    why: "The config file imports definePrismaConfig from the prisma npm package, which resolves from the project's node_modules. Running the CLI through npx does not install that package into the project.",
+    summary: `${path} could not be evaluated: the 'prisma/config' entry point could not be resolved from this project.`,
+    why: "The config file imports definePrismaConfig from the prisma npm package's 'prisma/config' entry point, which resolves from the project's node_modules. The package may be missing there — running the CLI through npx installs nothing into the project — or an installed version may be too old to provide the entry point.",
     nextActions: [
       {
         kind: "user-choice",
         label:
-          "Install the prisma package as a dev dependency (for example: npm install --save-dev prisma), then run the command again.",
+          "Install the prisma package matching this CLI's version as a dev dependency (for example: npm install --save-dev prisma), then run the command again.",
       },
     ],
     where: { path },
@@ -308,7 +312,7 @@ export async function loadConfig(
     return fileLevelConfig(
       path,
       importsMissingPrismaPackage(cause)
-        ? prismaNotInstalledDiagnostic(path)
+        ? prismaConfigUnresolvedDiagnostic(path)
         : unreadableDiagnostic(path, cause),
     );
   }
