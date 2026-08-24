@@ -1,244 +1,71 @@
-// biome-ignore-all lint/performance/noAwaitInLoops: the ancestor walk stops at the first directory that answers, and each glob segment is expanded from the directories the previous segment matched.
-import { readdir, readFile, stat } from "node:fs/promises";
+import { readFile } from "node:fs/promises";
 import path from "node:path";
-import { unquote } from "./unquote";
-
-/**
- * The directory the harness skill directories belong to: the workspace
- * root when there is one, otherwise the repository root, otherwise the
- * nearest package. Walking stops at the filesystem root.
- */
-export async function findProjectRoot(cwd: string): Promise<string> {
-  let gitRoot: string | null = null;
-  let nearestPackage: string | null = null;
-
-  for (const dir of ancestors(cwd)) {
-    if (await exists(path.join(dir, "pnpm-workspace.yaml"))) {
-      return dir;
-    }
-    if (await hasWorkspacesField(path.join(dir, "package.json"))) {
-      return dir;
-    }
-    if (gitRoot === null && (await exists(path.join(dir, ".git")))) {
-      gitRoot = dir;
-    }
-    if (
-      nearestPackage === null &&
-      (await exists(path.join(dir, "package.json")))
-    ) {
-      nearestPackage = dir;
-    }
-  }
-
-  return gitRoot ?? nearestPackage ?? path.resolve(cwd);
-}
+import { PnpmTool, YarnTool } from "@manypkg/tools";
 
 /**
  * The workspace member directories declared by the root's workspace
- * config, expanded from its globs. This reads the declared globs and
- * never walks node_modules: a package is resolvable from a member
- * directory only because the user declared that member.
+ * config, expanded from its globs by @manypkg/tools. Enumeration reads
+ * the declared globs from plain files (pnpm-workspace.yaml or
+ * package.json) and its glob expansion ignores node_modules, so a
+ * package is resolvable from a member directory only because the user
+ * declared that member — never because something was found by scanning.
  *
- * Only directories holding a package.json come back — a member always
- * has one — so a `**` pattern answers with packages rather than with
- * every directory in the tree.
+ * PnpmTool covers pnpm; YarnTool reads the package.json `workspaces`
+ * field in both its array and `{ packages }` forms, which is how npm,
+ * Yarn (Plug'n'Play included — the globs live in plain files), and bun
+ * all declare their members. Only directories holding a package.json
+ * come back.
  */
 export async function workspaceMemberDirs(root: string): Promise<string[]> {
-  const patterns = [
-    ...(await pnpmWorkspacePatterns(path.join(root, "pnpm-workspace.yaml"))),
-    ...(await packageJsonWorkspacePatterns(path.join(root, "package.json"))),
-  ];
-
   const dirs = new Set<string>();
-  for (const pattern of patterns) {
-    if (pattern.startsWith("!")) {
-      continue;
+  if (await hasPnpmWorkspace(root)) {
+    for (const dir of await memberDirsVia(PnpmTool, root)) {
+      dirs.add(dir);
     }
-    for (const dir of await expandPattern(root, pattern)) {
+  }
+  if (await hasPackageJsonWorkspaces(root)) {
+    for (const dir of await memberDirsVia(YarnTool, root)) {
       dirs.add(dir);
     }
   }
   dirs.delete(path.resolve(root));
-
-  const members: string[] = [];
-  for (const dir of [...dirs].sort()) {
-    if (await exists(path.join(dir, "package.json"))) {
-      members.push(dir);
-    }
-  }
-  return members;
+  return [...dirs].sort();
 }
 
-const LINE_BREAK = /\r?\n/;
-const PACKAGES_KEY = /^packages\s*:/;
-const SEQUENCE_ENTRY = /^\s+-\s+(.+?)\s*$/;
-const REGEX_METACHARACTER = /[.*+?^${}()|[\]\\]/g;
-
-function* ancestors(from: string): Generator<string> {
-  let dir = path.resolve(from);
-  for (;;) {
-    yield dir;
-    const parent = path.dirname(dir);
-    if (parent === dir) {
-      return;
-    }
-    dir = parent;
-  }
+interface WorkspaceTool {
+  getPackages(directory: string): Promise<{
+    packages: readonly { dir: string }[];
+  }>;
 }
 
-async function exists(target: string): Promise<boolean> {
+async function memberDirsVia(
+  tool: WorkspaceTool,
+  root: string,
+): Promise<string[]> {
   try {
-    await stat(target);
+    const { packages } = await tool.getPackages(root);
+    return packages.map((pkg) => path.resolve(pkg.dir));
+  } catch {
+    return [];
+  }
+}
+
+async function hasPnpmWorkspace(root: string): Promise<boolean> {
+  try {
+    await readFile(path.join(root, "pnpm-workspace.yaml"), "utf8");
     return true;
   } catch {
     return false;
   }
 }
 
-async function hasWorkspacesField(manifestPath: string): Promise<boolean> {
-  const manifest = await readJson(manifestPath);
-  return manifest?.workspaces !== undefined;
-}
-
-async function readJson(
-  target: string,
-): Promise<Record<string, unknown> | null> {
+async function hasPackageJsonWorkspaces(root: string): Promise<boolean> {
   try {
-    return JSON.parse(await readFile(target, "utf8")) as Record<
-      string,
-      unknown
-    >;
-  } catch {
-    return null;
-  }
-}
-
-/**
- * The `packages:` list of a pnpm-workspace.yaml. Read line by line
- * rather than with a YAML parser: the CLI ships no YAML dependency, and
- * the only shape pnpm accepts here is a top-level sequence of strings.
- */
-async function pnpmWorkspacePatterns(target: string): Promise<string[]> {
-  let source: string;
-  try {
-    source = await readFile(target, "utf8");
-  } catch {
-    return [];
-  }
-
-  const patterns: string[] = [];
-  let inPackages = false;
-  for (const line of source.split(LINE_BREAK)) {
-    if (PACKAGES_KEY.test(line)) {
-      inPackages = true;
-      continue;
-    }
-    if (!inPackages) {
-      continue;
-    }
-    const entry = SEQUENCE_ENTRY.exec(line);
-    if (entry?.[1]) {
-      patterns.push(unquote(entry[1]));
-      continue;
-    }
-    if (line.trim() !== "") {
-      inPackages = false;
-    }
-  }
-  return patterns;
-}
-
-async function packageJsonWorkspacePatterns(target: string): Promise<string[]> {
-  const manifest = await readJson(target);
-  const workspaces = manifest?.workspaces;
-  const patterns = Array.isArray(workspaces)
-    ? workspaces
-    : (workspaces as { packages?: unknown })?.packages;
-  return Array.isArray(patterns)
-    ? patterns.filter((entry): entry is string => typeof entry === "string")
-    : [];
-}
-
-/**
- * Expands one workspace glob into existing directories. `*` matches one
- * path segment and `**` any depth, which covers every pattern shape
- * workspace configs use.
- */
-async function expandPattern(root: string, pattern: string): Promise<string[]> {
-  const segments = pattern.split("/").filter((segment) => segment !== "");
-  let current = [path.resolve(root)];
-
-  for (const segment of segments) {
-    const next: string[] = [];
-    for (const dir of current) {
-      next.push(...(await matchSegment(dir, segment)));
-    }
-    current = next;
-  }
-  return current;
-}
-
-async function matchSegment(dir: string, segment: string): Promise<string[]> {
-  if (segment === "**") {
-    return descendants(dir);
-  }
-  if (!segment.includes("*")) {
-    const candidate = path.join(dir, segment);
-    return (await isDirectory(candidate)) ? [candidate] : [];
-  }
-  const matcher = segmentMatcher(segment);
-  return (await subdirectories(dir)).filter((child) =>
-    matcher.test(path.basename(child)),
-  );
-}
-
-/**
- * The directories `**` can reach, bounded twice over: the walk stops at
- * a directory that holds a package.json, because that directory is the
- * member and everything below it is that package's own contents, and it
- * never enters a dot-directory. Without those bounds a `packages/**`
- * workspace — an ordinary pattern — makes this walk the whole working
- * tree, and every command pays for it through the staleness check.
- */
-async function descendants(dir: string): Promise<string[]> {
-  const found: string[] = [dir];
-  if (await exists(path.join(dir, "package.json"))) {
-    return found;
-  }
-  for (const child of await subdirectories(dir)) {
-    found.push(...(await descendants(child)));
-  }
-  return found;
-}
-
-async function subdirectories(dir: string): Promise<string[]> {
-  try {
-    const entries = await readdir(dir, { withFileTypes: true });
-    return entries
-      .filter(
-        (entry) =>
-          entry.isDirectory() &&
-          entry.name !== "node_modules" &&
-          !entry.name.startsWith("."),
-      )
-      .map((entry) => path.join(dir, entry.name));
-  } catch {
-    return [];
-  }
-}
-
-async function isDirectory(target: string): Promise<boolean> {
-  try {
-    return (await stat(target)).isDirectory();
+    const manifest = JSON.parse(
+      await readFile(path.join(root, "package.json"), "utf8"),
+    ) as { workspaces?: unknown };
+    return manifest.workspaces !== undefined;
   } catch {
     return false;
   }
-}
-
-function segmentMatcher(segment: string): RegExp {
-  const source = segment
-    .split("*")
-    .map((part) => part.replace(REGEX_METACHARACTER, "\\$&"))
-    .join("[^/]*");
-  return new RegExp(`^${source}$`);
 }

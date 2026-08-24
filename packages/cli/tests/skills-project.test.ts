@@ -1,69 +1,16 @@
 /**
- * Where sync decides the project is, and how it reads a skill's version
- * stamp. Both are the inputs every other behavior rests on.
+ * How sync enumerates a workspace's members, and how it reads a skill's
+ * version stamp. Both are the inputs every other behavior rests on.
+ * There is no project-root discovery to test: every skills surface
+ * anchors at the directory the command runs in.
  */
 import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 
 import { parseSkillStamp } from "../src/lib/skills/frontmatter";
-import {
-  findProjectRoot,
-  workspaceMemberDirs,
-} from "../src/lib/skills/project-root";
+import { workspaceMemberDirs } from "../src/lib/skills/project-root";
 import { makeProjectRoot, writeMember } from "./helpers/skills-fixture";
-
-async function nested(root: string, relative: string): Promise<string> {
-  const dir = path.join(root, relative);
-  await mkdir(dir, { recursive: true });
-  return dir;
-}
-
-describe("finding the project root", () => {
-  it("stops at a pnpm workspace above the working directory", async () => {
-    const root = await makeProjectRoot();
-    await writeFile(
-      path.join(root, "pnpm-workspace.yaml"),
-      'packages:\n  - "apps/*"\n',
-      "utf8",
-    );
-    await writeMember(root, "apps/web");
-
-    expect(await findProjectRoot(path.join(root, "apps/web"))).toBe(root);
-  });
-
-  it("stops at a package.json declaring workspaces", async () => {
-    const root = await makeProjectRoot();
-    await writeFile(
-      path.join(root, "package.json"),
-      `${JSON.stringify({ name: "root", workspaces: ["packages/*"] })}\n`,
-      "utf8",
-    );
-    const deep = await nested(root, "packages/api/src");
-
-    expect(await findProjectRoot(deep)).toBe(root);
-  });
-
-  it("falls back to the repository root when nothing declares a workspace", async () => {
-    const root = await makeProjectRoot();
-    await mkdir(path.join(root, ".git"), { recursive: true });
-    const deep = await nested(root, "services/api");
-    await writeFile(
-      path.join(deep, "package.json"),
-      `${JSON.stringify({ name: "api" })}\n`,
-      "utf8",
-    );
-
-    expect(await findProjectRoot(deep)).toBe(root);
-  });
-
-  it("falls back to the nearest package when there is no repository", async () => {
-    const root = await makeProjectRoot();
-    const deep = await nested(root, "src/lib");
-
-    expect(await findProjectRoot(deep)).toBe(root);
-  });
-});
 
 describe("enumerating workspace members", () => {
   it("expands the globs a pnpm workspace declares", async () => {
@@ -85,6 +32,39 @@ describe("enumerating workspace members", () => {
     ]);
   });
 
+  it("expands the workspaces field of package.json (npm, Yarn, bun)", async () => {
+    const root = await makeProjectRoot();
+    await writeFile(
+      path.join(root, "package.json"),
+      `${JSON.stringify({ name: "root", workspaces: ["packages/*"] })}\n`,
+      "utf8",
+    );
+    await writeMember(root, "packages/one");
+    await writeMember(root, "packages/two");
+
+    expect(await workspaceMemberDirs(root)).toEqual([
+      path.join(root, "packages/one"),
+      path.join(root, "packages/two"),
+    ]);
+  });
+
+  it("reads the Yarn object form of the workspaces field", async () => {
+    const root = await makeProjectRoot();
+    await writeFile(
+      path.join(root, "package.json"),
+      `${JSON.stringify({
+        name: "root",
+        workspaces: { packages: ["packages/*"] },
+      })}\n`,
+      "utf8",
+    );
+    await writeMember(root, "packages/one");
+
+    expect(await workspaceMemberDirs(root)).toEqual([
+      path.join(root, "packages/one"),
+    ]);
+  });
+
   it("answers a ** glob with the packages, not with every directory", async () => {
     const root = await makeProjectRoot();
     await writeFile(
@@ -94,18 +74,33 @@ describe("enumerating workspace members", () => {
     );
     await writeMember(root, "packages/one");
     await writeMember(root, "packages/group/two");
-    // A package's own contents are not workspace members, and the walk
-    // must not descend into them: this is what keeps the staleness
-    // check proportional to the members rather than to the tree.
     await mkdir(path.join(root, "packages/one/dist/chunks/inner"), {
       recursive: true,
     });
     await mkdir(path.join(root, "packages/one/src"), { recursive: true });
-    await mkdir(path.join(root, "packages/.cache/build"), { recursive: true });
 
     expect(await workspaceMemberDirs(root)).toEqual([
       path.join(root, "packages/group/two"),
       path.join(root, "packages/one"),
+    ]);
+  });
+
+  it("never lists a directory inside node_modules as a member", async () => {
+    const root = await makeProjectRoot();
+    await writeFile(
+      path.join(root, "package.json"),
+      `${JSON.stringify({ name: "root", workspaces: ["**"] })}\n`,
+      "utf8",
+    );
+    await writeMember(root, "apps/web");
+    // A dependency's own package.json must never make it a workspace
+    // member: membership comes from the declared globs, and the glob
+    // expansion refuses node_modules outright.
+    await writeMember(root, "node_modules/@acme/toolkit");
+    await writeMember(root, "apps/web/node_modules/@acme/other");
+
+    expect(await workspaceMemberDirs(root)).toEqual([
+      path.join(root, "apps/web"),
     ]);
   });
 
