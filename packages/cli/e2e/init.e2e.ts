@@ -36,6 +36,7 @@ interface InitEnvelope {
     readonly postinstall: {
       readonly outcome: string;
       readonly script: string | null;
+      readonly dependency: string;
     };
     readonly config: {
       readonly outcome: string;
@@ -117,6 +118,9 @@ describe("prisma init", () => {
     expect(envelope.result.postinstall.script).toBe(
       "prisma skills sync || exit 0",
     );
+    // The fixture's node_modules carries prisma via a symlink, but its
+    // package.json declares nothing, so init records the dependency.
+    expect(envelope.result.postinstall.dependency).toBe("added");
     expect(envelope.result.config.outcome).toBe("created");
     expect(envelope.result.config.agents).toEqual([
       "claude",
@@ -132,8 +136,18 @@ describe("prisma init", () => {
 
     const manifest = JSON.parse(
       await readFile(path.join(workdir, "package.json"), "utf8"),
-    ) as { scripts?: Record<string, string> };
+    ) as {
+      scripts?: Record<string, string>;
+      devDependencies?: Record<string, string>;
+    };
     expect(manifest.scripts?.postinstall).toBe("prisma skills sync || exit 0");
+    const cliManifest = JSON.parse(
+      await readFile(
+        path.resolve(import.meta.dirname, "..", "package.json"),
+        "utf8",
+      ),
+    ) as { version: string };
+    expect(manifest.devDependencies).toEqual({ prisma: cliManifest.version });
   });
 
   it("records --skills=none as an empty agents list and syncs nothing", async () => {
@@ -189,6 +203,7 @@ describe("prisma init", () => {
 
     expect(envelope.ok).toBe(true);
     expect(envelope.result.postinstall.outcome).toBe("exists");
+    expect(envelope.result.postinstall.dependency).toBe("declared");
     expect(envelope.result.config.outcome).toBe("created");
     expect(envelope.result.skills.outcome).toBe("up-to-date");
     expect(envelope.diagnostics.map((d) => d.code)).not.toContain(
