@@ -143,23 +143,12 @@ describe("prisma init", () => {
     });
   });
 
-  // A rerun with the config still present cannot run against the built
-  // binary yet: the binary fails to evaluate ANY prisma.config.ts in
-  // this repository's development layout ("Cannot find package 'pathe'
-  // imported from .../cli-engine/node_modules/c12/dist/index.mjs" —
-  // c12 resolves through the pnpm symlink without reaching its store
-  // siblings). This predates the config scaffold: a binary built from
-  // commit 7532706 fails the same way on a hand-written config with no
-  // imports. The config-exists rerun is covered by tests/init.test.ts;
-  // this rerun removes the config first so it exercises the binary's
-  // idempotency for the other steps and the scaffold's recreation.
-  it("reruns safely: the hook is kept and a removed config is recreated", async () => {
-    await rm(path.join(workdir, "prisma.config.ts"));
+  it("reruns safely: the hook and the existing config are kept", async () => {
     const envelope = await runInit(workdir);
 
     expect(envelope.ok).toBe(true);
     expect(envelope.result.postinstall.outcome).toBe("exists");
-    expect(envelope.result.config.outcome).toBe("created");
+    expect(envelope.result.config.outcome).toBe("exists");
     expect(envelope.result.skills.outcome).toBe("up-to-date");
 
     const reloaded = await loadConfig(workdir);
