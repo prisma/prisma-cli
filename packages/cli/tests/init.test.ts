@@ -14,8 +14,8 @@ import {
   initCommand,
   POSTINSTALL_SCRIPT,
 } from "../src/commands/init";
-import { getCliVersion } from "../src/lib/version";
 import { agentSkillDirs, DEFAULT_AGENTS } from "../src/lib/skills/allowlist";
+import { getCliVersion } from "../src/lib/version";
 import {
   installPackage,
   isolateModuleResolution,
@@ -597,11 +597,12 @@ describe("init", () => {
       expect(result.postinstall.dependency).toBe("declared");
       const manifest = await readManifest(root);
       expect(manifest[field]).toEqual({ prisma: "^7.0.0" });
-      for (const other of DECLARING_FIELDS) {
-        if (other !== field) {
-          expect(manifest[other]).toBeUndefined();
-        }
-      }
+      const others = DECLARING_FIELDS.filter((name) => name !== field);
+      expect(others.map((name) => manifest[name])).toEqual([
+        undefined,
+        undefined,
+        undefined,
+      ]);
     });
   }
 

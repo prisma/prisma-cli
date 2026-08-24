@@ -6,7 +6,6 @@ import type { Diagnostic, NextAction } from "@prisma/cli-engine/protocol";
 import { CliStructuredError, notOk, ok } from "@prisma/cli-engine/protocol";
 import { CLI_NAME } from "../cli-name";
 import { resolveInstallCommandSync } from "../lib/agent/package-manager";
-import { getCliVersion } from "../lib/version";
 import {
   type AgentName,
   isKnownAgent,
@@ -14,6 +13,7 @@ import {
 } from "../lib/skills/allowlist";
 import { readSkillsStatus } from "../lib/skills/status";
 import { syncSkills } from "../lib/skills/sync";
+import { getCliVersion } from "../lib/version";
 import { skillsConfigSection } from "./skills/config";
 import { syncPresentations } from "./skills/presentation";
 import type { SkillsSyncResult } from "./skills/results";
@@ -326,8 +326,31 @@ async function addPostinstallHook(
     };
   }
 
-  const hookNeeded = existing === undefined;
-  const dependencyNeeded = !dependencyDeclared;
+  return writeHookAndDependency({
+    cwd,
+    manifestPath,
+    manifest,
+    scripts,
+    source,
+    bom,
+    crlf,
+    hookNeeded: existing === undefined,
+    dependencyNeeded: !dependencyDeclared,
+  });
+}
+
+async function writeHookAndDependency(edit: {
+  cwd: string;
+  manifestPath: string;
+  manifest: Record<string, unknown>;
+  scripts: Record<string, unknown>;
+  source: string;
+  bom: string;
+  crlf: boolean;
+  hookNeeded: boolean;
+  dependencyNeeded: boolean;
+}): Promise<Step<InitPostinstallReport>> {
+  const { manifest, hookNeeded, dependencyNeeded } = edit;
   const alreadyHooked = summary(
     "info",
     "The postinstall hook is already in package.json.",
@@ -347,7 +370,7 @@ async function addPostinstallHook(
 
   const version = getCliVersion();
   if (hookNeeded) {
-    manifest.scripts = { ...scripts, postinstall: POSTINSTALL_SCRIPT };
+    manifest.scripts = { ...edit.scripts, postinstall: POSTINSTALL_SCRIPT };
   }
   if (dependencyNeeded) {
     const devDependencies = isPlainObject(manifest.devDependencies)
@@ -358,8 +381,8 @@ async function addPostinstallHook(
 
   try {
     await writeFile(
-      manifestPath,
-      renderManifest(manifest, source, bom, crlf),
+      edit.manifestPath,
+      renderManifest(manifest, edit.source, edit.bom, edit.crlf),
       "utf8",
     );
   } catch {
@@ -369,13 +392,24 @@ async function addPostinstallHook(
         script: hookNeeded ? null : POSTINSTALL_SCRIPT,
         dependency: "skipped",
       },
-      lines: [summary("warn", "package.json could not be written; left unchanged.")],
+      lines: [
+        summary("warn", "package.json could not be written; left unchanged."),
+      ],
       diagnostics: [
         unwritablePackageJsonDiagnostic(hookNeeded, dependencyNeeded, version),
       ],
     };
   }
 
+  return manifestEditedStep(edit, alreadyHooked, version);
+}
+
+function manifestEditedStep(
+  edit: { cwd: string; hookNeeded: boolean; dependencyNeeded: boolean },
+  alreadyHooked: Block,
+  version: string,
+): Step<InitPostinstallReport> {
+  const { hookNeeded, dependencyNeeded } = edit;
   return {
     report: {
       outcome: hookNeeded ? "added" : "exists",
@@ -403,7 +437,7 @@ async function addPostinstallHook(
           {
             kind: "run-command",
             label: "Install the added prisma dev dependency",
-            command: resolveInstallCommandSync(cwd),
+            command: resolveInstallCommandSync(edit.cwd),
           },
         ]
       : [],
@@ -449,7 +483,10 @@ async function scaffoldConfigStep(
       report: { outcome: "exists", agents: null },
       lines: [
         agentsConfigured
-          ? summary("info", "prisma.config.ts already configures skills.agents.")
+          ? summary(
+              "info",
+              "prisma.config.ts already configures skills.agents.",
+            )
           : summary("warn", "prisma.config.ts already exists; left untouched."),
       ],
       diagnostics: agentsConfigured ? [] : [configKeptDiagnostic(agents)],
@@ -466,7 +503,9 @@ async function scaffoldConfigStep(
   } catch {
     return {
       report: { outcome: "skipped", agents: null },
-      lines: [summary("warn", "prisma.config.ts could not be written; skipped.")],
+      lines: [
+        summary("warn", "prisma.config.ts could not be written; skipped."),
+      ],
       diagnostics: [configUnwritableDiagnostic(agents)],
     };
   }

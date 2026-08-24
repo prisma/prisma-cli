@@ -148,7 +148,9 @@ function parsePackageManager(value: unknown): AgentPackageManager | null {
  *  init writes the version into the manifest, so a plain install is
  *  right for every manager. */
 export function resolveInstallCommandSync(cwd: string): string {
-  return installCommandForPackageManager(detectPackageManagerSync(cwd) ?? "npm");
+  return installCommandForPackageManager(
+    detectPackageManagerSync(cwd) ?? "npm",
+  );
 }
 
 function installCommandForPackageManager(
