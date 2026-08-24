@@ -240,6 +240,10 @@ describe("the skills check off switches", () => {
     ["PRISMA_SKILLS_CHECK=0", { env: { PRISMA_SKILLS_CHECK: "0" } }],
     ["CI", { env: { CI: "1" } }],
     ["GITHUB_ACTIONS", { env: { GITHUB_ACTIONS: "true" } }],
+    [
+      "TEAMCITY_VERSION (no CI variable)",
+      { env: { TEAMCITY_VERSION: "2025.1" } },
+    ],
   ])("stays silent under %s", async (_name, overrides) => {
     const proc = makeProcess({ cwd: await makeStaleProject(), ...overrides });
 

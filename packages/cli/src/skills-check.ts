@@ -8,6 +8,7 @@
  * It never changes the exit code, never writes to stdout, and is not
  * conditioned on a TTY: agents run without one and are who this is for.
  */
+import { detectCI } from "@prisma/cli-engine";
 import { readProjectSkillsConfig } from "./commands/skills/config";
 import { agentSkillDirs, DEFAULT_AGENTS } from "./lib/skills/allowlist";
 import { readSkillsCheckDisabled } from "./lib/skills/opt-out";
@@ -152,7 +153,7 @@ function isSuppressedByInvocation(runtime: SkillsCheckRuntime): boolean {
   if (env[SKILLS_CHECK_ENV_VAR] === "0") {
     return true;
   }
-  if (env.CI || env.GITHUB_ACTIONS) {
+  if (detectCI(env)) {
     return true;
   }
 
