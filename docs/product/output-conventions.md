@@ -155,6 +155,61 @@ Current MVP commands map to patterns like this:
 
 No current MVP command uses `verify` or `inspect`, but new commands must still choose one existing pattern rather than inventing a new one casually.
 
+### Workspace session identity
+
+An OAuth login authorizes one workspace and stores one local workspace session.
+Running `auth login` again may add another session, including a session owned by
+a different Prisma user. Therefore, `auth workspace list` describes the
+workspace sessions authorized on this machine; it must not present them as the
+complete list of workspaces visible in Console for the currently selected user.
+
+At login, the CLI resolves the authorizing user through `/v1/me` and persists
+only its safe id, email, and name alongside the session. This lookup is
+best-effort and never prevents login. Existing state remains compatible; when
+stored metadata is unavailable, the CLI falls back to identity claims in the
+access token. Session-list and session-selection commands also attempt this
+enrichment for older records and cache successful results. This is an explicit
+best-effort operation; the credential manager's ordinary `sessions()` read
+remains local-only.
+
+Human workspace-session output shows the user email next to every workspace
+when one is known. Selection prompts use the same identity so a user can
+distinguish same-named workspaces and sessions belonging to different
+accounts. When no email is known, output falls back to the user's name and then
+id. Tables render the standard unknown-value marker when no user identity is
+available, while selection prompts omit an identity they do not know.
+
+Structured workspace-session output includes a nullable `user` object on every
+item. Its `context.scope` is `"local-sessions"`, making it explicit that the
+collection is not a complete remote membership list:
+
+```json
+{
+  "context": {
+    "scope": "local-sessions"
+  },
+  "items": [
+    {
+      "workspaceId": "workspace_123",
+      "workspaceName": "Acme Inc",
+      "user": {
+        "id": "usr_123",
+        "email": "developer@example.com",
+        "name": null
+      },
+      "current": true,
+      "expiresAt": "2026-08-19T09:10:49.000Z"
+    }
+  ]
+}
+```
+
+The `user` object is `null` when neither stored metadata nor token claims carry
+a user identity. Individual user fields use `null` when unavailable. Token
+material never reaches either output mode. `auth workspace list` always offers
+`auth login` as the structured next action: it authorizes the first workspace
+when the list is empty and another workspace when sessions already exist.
+
 ### One-Time Secret Output
 
 Commands that create one-time-view secrets may write the raw secret value to

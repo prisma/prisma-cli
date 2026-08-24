@@ -5,14 +5,21 @@ import {
   type Session,
 } from "@prisma/cli-engine";
 import { type NextAction, ok } from "@prisma/cli-engine/protocol";
+import { sessionsForDisplay } from "../../auth/credential-manager";
 import { environmentCredentialInForce } from "../../auth/service-token";
 import { CLI_NAME } from "../../cli-name";
 import { ENVIRONMENT_CREDENTIAL_NOTICE } from "./credential-card";
-import { sessionLabel } from "./session-ref";
+import { sessionLabel, sessionUser, sessionUserLabel } from "./session-ref";
 
 const LOGIN_NEXT_ACTION: NextAction = {
   kind: "run-command",
-  label: "Sign in",
+  label: "Authorize a workspace",
+  command: `${CLI_NAME} auth login`,
+};
+
+const AUTHORIZE_ANOTHER_NEXT_ACTION: NextAction = {
+  kind: "run-command",
+  label: "Authorize another workspace",
   command: `${CLI_NAME} auth login`,
 };
 
@@ -25,12 +32,14 @@ export interface WorkspaceListResult {
 export function serializeWorkspaceList(result: WorkspaceListResult) {
   return {
     context: {
+      scope: "local-sessions" as const,
       environmentCredentialInForce: result.environmentCredentialInForce,
       currentWorkspaceId: result.selectedWorkspaceId ?? null,
     },
     items: result.sessions.map((session) => ({
       workspaceId: session.workspaceId,
       workspaceName: session.workspaceName ?? null,
+      user: sessionUser(session),
       current: session.workspaceId === result.selectedWorkspaceId,
       expiresAt: session.expiresAt?.toISOString() ?? null,
     })),
@@ -39,9 +48,10 @@ export function serializeWorkspaceList(result: WorkspaceListResult) {
 }
 
 function listPresentations(result: WorkspaceListResult): Presentations {
-  const columns = ["name", "id", "status"];
+  const columns = ["workspace", "user", "id", "status"];
   const rows = result.sessions.map((session) => [
     sessionLabel(session),
+    sessionUserLabel(session) ?? "",
     session.workspaceId,
     session.workspaceId === result.selectedWorkspaceId ? "current" : "",
   ]);
@@ -73,18 +83,21 @@ function listPresentations(result: WorkspaceListResult): Presentations {
     ],
     stdout: () => rows.map((row) => row.join("  ").trimEnd()),
     json: () => serializeWorkspaceList(result),
-    next: () => (result.sessions.length === 0 ? [LOGIN_NEXT_ACTION] : []),
+    next: () =>
+      result.sessions.length === 0
+        ? [LOGIN_NEXT_ACTION]
+        : [AUTHORIZE_ANOTHER_NEXT_ACTION],
   };
 }
 
 export const authWorkspaceListCommand = defineCommand({
   managesCredentials: true,
   help: {
-    summary: "List your workspace sessions",
+    summary: "List workspace sessions authorized on this machine",
     examples: ["auth workspace list", "auth workspace list --json"],
   },
   handler: async (_args, ctx) => {
-    const stored = await ctx.credentialManager.sessions();
+    const stored = await sessionsForDisplay(ctx.credentialManager);
     const result: WorkspaceListResult = {
       sessions: stored.sessions,
       selectedWorkspaceId: stored.selectedWorkspaceId,

@@ -14,13 +14,19 @@ import { environmentCredentialInForce } from "../../auth/service-token";
 import { CLI_NAME } from "../../cli-name";
 import { resolveAgentSetupTipCommand } from "./agent-setup-tip";
 import { ENVIRONMENT_CREDENTIAL_NOTICE } from "./credential-card";
-import { sessionLabel } from "./session-ref";
+import {
+  type SessionUser,
+  sessionLabel,
+  sessionUser,
+  sessionUserLabel,
+} from "./session-ref";
 
 const TITLE = "Starting an authenticated CLI session.";
 const LOGIN_STEP = "Sign in via your browser";
 
 export interface LoginResult {
   readonly workspace: { readonly id: string; readonly name: string | null };
+  readonly user: SessionUser | null;
   readonly environmentCredentialInForce: boolean;
 }
 
@@ -77,8 +83,10 @@ function presentationsFor(
   },
   result: LoginResult,
 ): Presentations {
+  const user = sessionUserLabel(spec.session);
   const rows = [
     { label: "status", value: "signed in" },
+    ...(user === undefined ? [] : [{ label: "user", value: user }]),
     { label: "workspace", value: sessionLabel(spec.session) },
   ];
   return {
@@ -151,6 +159,7 @@ export const authLoginCommand = defineCommand({
         id: session.workspaceId,
         name: session.workspaceName ?? null,
       },
+      user: sessionUser(session),
       environmentCredentialInForce: environmentSession,
     };
     return ok(
