@@ -499,7 +499,9 @@ describe("skills sync", () => {
     expect(result.agents).toEqual([]);
     expect(result.synced).toEqual([]);
     expect(result.pruned).toEqual([]);
-    expect(run.stderr).toContain("No agents are configured to sync skills for.");
+    expect(run.stderr).toContain(
+      "No agents are configured to sync skills for.",
+    );
     expect(run.stderr).not.toContain("up to date");
     for (const dir of HARNESS_SKILL_DIRS) {
       expect(await exists(path.join(root, dir))).toBe(false);
@@ -763,7 +765,9 @@ describe("skills list", () => {
       true,
     );
     expect(result.upToDate).toBe(true);
-    expect(run.stderr).toContain("No agents are configured to sync skills for.");
+    expect(run.stderr).toContain(
+      "No agents are configured to sync skills for.",
+    );
   });
 
   it("reads nothing and changes nothing", async () => {
