@@ -152,6 +152,49 @@ describe("loadConfig", { timeout: 60_000 }, () => {
     expect(loaded.diagnostics[0].diagnostic.summary).toBe(
       `${join(FIXTURES, "unreadable", "prisma.config.ts")} could not be evaluated: boom at config evaluation time`,
     );
+    // An unrelated evaluation failure keeps the generic guidance.
+    expect(loaded.diagnostics[0].diagnostic.nextActions).toEqual([
+      {
+        kind: "user-choice",
+        label: "Fix the error in the file, then run the command again.",
+      },
+    ]);
+  });
+
+  test("a config whose 'prisma/config' import cannot resolve says to install prisma", async () => {
+    const path = join(FIXTURES, "missing-prisma", "prisma.config.ts");
+    const loaded = await loadConfig(join(FIXTURES, "missing-prisma"));
+    expect(loaded.sections).toEqual({});
+    expect(loaded.diagnostics).toEqual([
+      {
+        section: null,
+        diagnostic: {
+          code: "CLI.CONFIG_UNREADABLE",
+          severity: "error",
+          summary: `${path} could not be evaluated: it imports 'prisma/config', and the prisma package is not installed in this project.`,
+          why: "The config file imports definePrismaConfig from the prisma npm package, which resolves from the project's node_modules. Running the CLI through npx does not install that package into the project.",
+          nextActions: [
+            {
+              kind: "user-choice",
+              label:
+                "Install the prisma package as a dev dependency (for example: npm install --save-dev prisma), then run the command again.",
+            },
+          ],
+          where: { path },
+        },
+      },
+    ]);
+  });
+
+  test("Node's 'Cannot find package' wording is recognised anywhere in the error chain", async () => {
+    const loaded = await loadConfig(join(FIXTURES, "missing-prisma-cause"));
+    expect(loaded.diagnostics).toHaveLength(1);
+    expect(loaded.diagnostics[0].diagnostic.summary).toContain(
+      "the prisma package is not installed",
+    );
+    expect(loaded.diagnostics[0].diagnostic.nextActions[0].label).toContain(
+      "Install the prisma package as a dev dependency",
+    );
   });
 });
 

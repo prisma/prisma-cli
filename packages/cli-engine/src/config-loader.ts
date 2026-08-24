@@ -142,6 +142,45 @@ function missingNamedFileDiagnostic(path: string): Diagnostic {
   };
 }
 
+/** jiti reports an unresolvable import as "Cannot find module", Node's
+ *  own resolver as "Cannot find package"; either can appear in the
+ *  evaluation error chain depending on how the file is loaded. */
+const MISSING_PRISMA_CONFIG_MESSAGES = [
+  "Cannot find module 'prisma/config'",
+  "Cannot find package 'prisma/config'",
+];
+
+function importsMissingPrismaPackage(cause: unknown): boolean {
+  for (
+    let error: unknown = cause;
+    error instanceof Error;
+    error = error.cause
+  ) {
+    const message = error.message;
+    if (MISSING_PRISMA_CONFIG_MESSAGES.some((text) => message.includes(text))) {
+      return true;
+    }
+  }
+  return false;
+}
+
+function prismaNotInstalledDiagnostic(path: string): Diagnostic {
+  return {
+    code: "CLI.CONFIG_UNREADABLE",
+    severity: "error",
+    summary: `${path} could not be evaluated: it imports 'prisma/config', and the prisma package is not installed in this project.`,
+    why: "The config file imports definePrismaConfig from the prisma npm package, which resolves from the project's node_modules. Running the CLI through npx does not install that package into the project.",
+    nextActions: [
+      {
+        kind: "user-choice",
+        label:
+          "Install the prisma package as a dev dependency (for example: npm install --save-dev prisma), then run the command again.",
+      },
+    ],
+    where: { path },
+  };
+}
+
 function unreadableDiagnostic(path: string, cause: unknown): Diagnostic {
   const message = cause instanceof Error ? cause.message : String(cause);
   return {
@@ -266,7 +305,12 @@ export async function loadConfig(
   try {
     exported = await evaluateConfigFile(path);
   } catch (cause) {
-    return fileLevelConfig(path, unreadableDiagnostic(path, cause));
+    return fileLevelConfig(
+      path,
+      importsMissingPrismaPackage(cause)
+        ? prismaNotInstalledDiagnostic(path)
+        : unreadableDiagnostic(path, cause),
+    );
   }
   if (!hasVersionMarker(exported)) {
     return fileLevelConfig(path, missingMarkerDiagnostic(path));
