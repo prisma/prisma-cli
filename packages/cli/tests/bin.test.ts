@@ -7,6 +7,7 @@ import { describe, expect, it } from "vitest";
 
 import { CLIENT_ID, DEFAULT_REDIRECT_URI } from "../src/auth/client";
 import { buildCli } from "../src/cli";
+import { getCliVersion } from "../src/lib/version";
 import { main } from "../src/main";
 import {
   assembleRuntime,
@@ -22,6 +23,15 @@ const NAMED_CONFIG_PATH = join(
   "fixtures",
   "config",
   "elsewhere.config.ts",
+);
+
+/** A config whose evaluation fails with Node's wording for a missing
+ *  `import "prisma/config"`. */
+const MISSING_PRISMA_CONFIG_PATH = join(
+  dirname(fileURLToPath(import.meta.url)),
+  "fixtures",
+  "config",
+  "missing-prisma.config.ts",
 );
 
 /** A prisma.config.ts whose only section is composer's. */
@@ -283,6 +293,15 @@ describe("assembleRuntime", () => {
     expect(missing.sections).toEqual({});
     expect(missing.diagnostics[0]?.diagnostic.code).toBe(
       "CLI.CONFIG_NOT_FOUND",
+    );
+  }, 60_000);
+
+  it("names this CLI's exact version in the install guidance for an unresolvable prisma package", async () => {
+    const runtime = await assembleRuntime(makeProcess());
+
+    const loaded = await runtime.loadConfig(MISSING_PRISMA_CONFIG_PATH);
+    expect(loaded.diagnostics[0]?.diagnostic.nextActions?.[0]?.label).toContain(
+      `npm install --save-dev prisma@${getCliVersion()}`,
     );
   }, 60_000);
 

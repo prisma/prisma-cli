@@ -177,7 +177,7 @@ describe("loadConfig", { timeout: 60_000 }, () => {
             {
               kind: "user-choice",
               label:
-                "Install the prisma package matching this CLI's version as a dev dependency (for example: npm install --save-dev prisma), then run the command again.",
+                "Install the prisma package matching this CLI's version as a dev dependency, then run the command again.",
             },
           ],
           where: { path },
@@ -186,7 +186,19 @@ describe("loadConfig", { timeout: 60_000 }, () => {
     ]);
   });
 
-  test("Node's 'Cannot find package' wording is recognised anywhere in the error chain", async () => {
+  test("the install example names the CLI version the loader was given", async () => {
+    const loaded = await loadConfig(
+      join(FIXTURES, "missing-prisma"),
+      undefined,
+      "8.0.0-rc.7",
+    );
+    expect(loaded.diagnostics).toHaveLength(1);
+    expect(loaded.diagnostics[0].diagnostic.nextActions[0].label).toBe(
+      "Install the prisma package matching this CLI's version as a dev dependency (for example: npm install --save-dev prisma@8.0.0-rc.7), then run the command again.",
+    );
+  });
+
+  test("Node's package-level 'Cannot find package' wording is recognised anywhere in the error chain", async () => {
     const loaded = await loadConfig(join(FIXTURES, "missing-prisma-cause"));
     expect(loaded.diagnostics).toHaveLength(1);
     expect(loaded.diagnostics[0].diagnostic.summary).toContain(
@@ -195,6 +207,20 @@ describe("loadConfig", { timeout: 60_000 }, () => {
     expect(loaded.diagnostics[0].diagnostic.nextActions[0].label).toContain(
       "Install the prisma package matching this CLI's version as a dev dependency",
     );
+  });
+
+  test("a missing package whose name only starts with 'prisma' keeps the generic diagnostic", async () => {
+    const loaded = await loadConfig(join(FIXTURES, "missing-prisma-lookalike"));
+    expect(loaded.diagnostics).toHaveLength(1);
+    expect(loaded.diagnostics[0].diagnostic.summary).toContain(
+      "Cannot find package 'prisma-toolbelt'",
+    );
+    expect(loaded.diagnostics[0].diagnostic.nextActions).toEqual([
+      {
+        kind: "user-choice",
+        label: "Fix the error in the file, then run the command again.",
+      },
+    ]);
   });
 
   test("a cyclic cause chain still evaluates to the generic diagnostic instead of hanging", async () => {

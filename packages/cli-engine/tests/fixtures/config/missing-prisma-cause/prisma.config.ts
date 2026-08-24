@@ -1,8 +1,9 @@
-// Node's ESM resolver wording, buried one level down an error chain.
+// Node's ESM resolver wording — package-level, no subpath — buried one
+// level down an error chain.
 const wrap = (): never => {
   throw new Error("evaluation failed", {
     cause: new Error(
-      "Cannot find package 'prisma/config' imported from /some/project/prisma.config.ts",
+      "Cannot find package 'prisma' imported from /some/project/prisma.config.ts",
     ),
   });
 };
