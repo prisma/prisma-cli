@@ -275,7 +275,7 @@ describe("init", () => {
     expect(result.skills.outcome).toBe("synced");
   });
 
-  it("skips the sync and the config scaffold on --skills=none, and still adds the hook", async () => {
+  it("records --skills=none as an empty agents scaffold, skips the sync, and still adds the hook", async () => {
     const root = await makeProjectRoot("init-");
     await installPackage(root, {
       name: "@prisma/orm-postgres",
@@ -283,16 +283,64 @@ describe("init", () => {
       skills: ["prisma-8"],
     });
 
-    const { exitCode, result } = await runInit(root, ["--skills=none"]);
+    const { exitCode, result, diagnosticCodes } = await runInit(root, [
+      "--skills=none",
+    ]);
 
     expect(exitCode).toBe(0);
     expect(result.skills).toEqual({ outcome: "skipped", sync: null });
-    expect(result.config).toEqual({ outcome: "skipped", agents: null });
+    expect(result.config).toEqual({ outcome: "created", agents: [] });
     expect(result.postinstall.outcome).toBe("added");
-    expect(await exists(path.join(root, "prisma.config.ts"))).toBe(false);
+    expect(diagnosticCodes).toEqual([]);
+    const scaffold = await readFile(
+      path.join(root, "prisma.config.ts"),
+      "utf8",
+    );
+    expect(scaffold).toContain("agents: [],");
     for (const dir of HARNESS_SKILL_DIRS) {
       expect(await exists(path.join(root, dir))).toBe(false);
     }
+  });
+
+  it("reruns --skills=none idempotently over its own scaffold", async () => {
+    const root = await makeProjectRoot("init-");
+    await runInit(root, ["--skills=none"]);
+    const before = await readFile(path.join(root, "prisma.config.ts"), "utf8");
+
+    const { exitCode, result, diagnosticCodes } = await runInit(
+      root,
+      ["--skills=none"],
+      { skills: { agents: [] } },
+    );
+
+    expect(exitCode).toBe(0);
+    expect(result.config).toEqual({ outcome: "exists", agents: null });
+    expect(result.skills).toEqual({ outcome: "skipped", sync: null });
+    expect(diagnosticCodes).toEqual([]);
+    expect(await readFile(path.join(root, "prisma.config.ts"), "utf8")).toBe(
+      before,
+    );
+  });
+
+  it("advises the empty snippet when --skills=none meets a config init cannot edit", async () => {
+    const root = await makeProjectRoot("init-");
+    const configPath = path.join(root, "prisma.config.ts");
+    const before = "export default { $prismaConfig: 1 };\n";
+    await writeFile(configPath, before, "utf8");
+
+    const run = await makeCli().run(["init", "--skills=none"], {
+      cwd: root,
+      isTty: { stdout: true, stderr: true },
+    });
+    const result = run.presented?.data as InitResult;
+
+    expect(run.exitCode).toBe(0);
+    expect(result.config).toEqual({ outcome: "exists", agents: null });
+    expect(
+      (run.presented?.diagnostics ?? []).map((diagnostic) => diagnostic.code),
+    ).toContain("INIT.CONFIG_KEPT");
+    expect(run.stderr).toContain("skills: { agents: [] }");
+    expect(await readFile(configPath, "utf8")).toBe(before);
   });
 
   it("reruns idempotently: both steps report already done", async () => {

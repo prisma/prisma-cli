@@ -424,6 +424,38 @@ describe("skills sync", () => {
     expect(listed.upToDate).toBe(true);
   });
 
+  it("does nothing under agents: [] and says no agents are configured", async () => {
+    const root = await makeProjectRoot();
+    await installPackage(root, {
+      name: "@prisma/orm-postgres",
+      version: "8.1.0",
+      skills: ["prisma-8"],
+    });
+    const cli = createTestCli({
+      commandFamilies: [skillsCommandFamily],
+      commands: SKILLS_COMMANDS,
+      groups: { skills: { brief: "Keep Prisma agent skills current" } },
+      config: { skills: { agents: [] } },
+      now: () => new Date(0),
+    });
+
+    const run = await cli.run(["skills", "sync"], {
+      cwd: root,
+      isTty: { stdout: true, stderr: true },
+    });
+    const result = run.presented?.data as SkillsSyncResult;
+
+    expect(run.exitCode).toBe(0);
+    expect(result.agents).toEqual([]);
+    expect(result.synced).toEqual([]);
+    expect(result.pruned).toEqual([]);
+    expect(run.stderr).toContain("No agents are configured for skills.");
+    expect(run.stderr).not.toContain("up to date");
+    for (const dir of HARNESS_SKILL_DIRS) {
+      expect(await exists(path.join(root, dir))).toBe(false);
+    }
+  });
+
   it("refuses a config naming an agent this CLI does not know", async () => {
     const root = await makeProjectRoot();
     const cli = createTestCli({
@@ -611,6 +643,36 @@ describe("skills list", () => {
     const run = await cli.run(["skills", "list"], { cwd: root });
 
     expect((run.presented?.data as SkillsListResult).checkDisabled).toBe(true);
+  });
+
+  it("reports the empty configuration under agents: []", async () => {
+    const root = await makeProjectRoot();
+    await installPackage(root, {
+      name: "@prisma/orm-postgres",
+      version: "8.1.0",
+      skills: ["prisma-8"],
+    });
+    const cli = createTestCli({
+      commandFamilies: [skillsCommandFamily],
+      commands: SKILLS_COMMANDS,
+      groups: { skills: { brief: "Keep Prisma agent skills current" } },
+      config: { skills: { agents: [] } },
+      now: () => new Date(0),
+    });
+
+    const run = await cli.run(["skills", "list"], {
+      cwd: root,
+      isTty: { stdout: true, stderr: true },
+    });
+    const result = run.presented?.data as SkillsListResult;
+
+    expect(run.exitCode).toBe(0);
+    expect(result.agents).toEqual([]);
+    expect(result.skills.every((skill) => skill.targets.length === 0)).toBe(
+      true,
+    );
+    expect(result.upToDate).toBe(true);
+    expect(run.stderr).toContain("No agents are configured for skills.");
   });
 
   it("reads nothing and changes nothing", async () => {

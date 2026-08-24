@@ -385,6 +385,20 @@ describe("the skills check off switches", () => {
     expect(proc.stderrText).toBe("");
   });
 
+  it("stays silent when the config records agents: [], even with stale copies on disk", async () => {
+    const root = await makeStaleProject();
+    await writeFile(
+      path.join(root, "prisma.config.ts"),
+      configSource({ agents: [] }),
+      "utf8",
+    );
+    const proc = makeProcess({ cwd: root });
+
+    await main(proc, stubCli());
+
+    expect(proc.stderrText).toBe("");
+  });
+
   it("still reports a stale copy inside the configured agents", async () => {
     const root = await makeStaleProject();
     await writeFile(
