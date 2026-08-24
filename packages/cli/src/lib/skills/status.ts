@@ -13,8 +13,8 @@ import {
 } from "./allowlist";
 import { readSkillStamp, type SkillStamp } from "./frontmatter";
 import { readSkillsCheckDisabled } from "./opt-out";
-import { workspaceMemberDirs } from "./project-root";
 import { type ResolvedPackage, resolvePackage } from "./resolve";
+import { workspaceMemberDirs } from "./workspace-members";
 
 export interface InstalledSourcePackage {
   readonly name: string;

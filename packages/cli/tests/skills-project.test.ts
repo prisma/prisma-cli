@@ -9,7 +9,7 @@ import path from "node:path";
 import { describe, expect, it } from "vitest";
 
 import { parseSkillStamp } from "../src/lib/skills/frontmatter";
-import { workspaceMemberDirs } from "../src/lib/skills/project-root";
+import { workspaceMemberDirs } from "../src/lib/skills/workspace-members";
 import { makeProjectRoot, writeMember } from "./helpers/skills-fixture";
 
 describe("enumerating workspace members", () => {
