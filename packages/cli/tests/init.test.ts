@@ -14,7 +14,10 @@ import {
   initCommand,
   POSTINSTALL_SCRIPT,
 } from "../src/commands/init";
-import { HARNESS_SKILL_DIRS } from "../src/lib/skills/allowlist";
+import {
+  agentSkillDirs,
+  DEFAULT_AGENTS,
+} from "../src/lib/skills/allowlist";
 import {
   installPackage,
   isolateModuleResolution,
@@ -22,6 +25,8 @@ import {
 } from "./helpers/skills-fixture";
 
 isolateModuleResolution();
+
+const HARNESS_SKILL_DIRS = agentSkillDirs(DEFAULT_AGENTS);
 
 function makeCli() {
   return createTestCli({
@@ -77,6 +82,20 @@ describe("init", () => {
       outcome: "added",
       script: POSTINSTALL_SCRIPT,
     });
+    expect(result.config).toEqual({
+      outcome: "created",
+      agents: [...DEFAULT_AGENTS],
+    });
+    const scaffold = await readFile(
+      path.join(root, "prisma.config.ts"),
+      "utf8",
+    );
+    expect(scaffold).toContain(
+      'import { definePrismaConfig } from "prisma/config";',
+    );
+    expect(scaffold).toContain(
+      'agents: ["claude", "cursor", "agents", "devin"]',
+    );
     expect(result.skills.outcome).toBe("synced");
     expect(result.skills.sync?.synced.map((skill) => skill.skill)).toEqual([
       "prisma-8",
@@ -252,7 +271,7 @@ describe("init", () => {
     expect(result.skills.outcome).toBe("synced");
   });
 
-  it("skips the sync on --no-skills and still adds the hook", async () => {
+  it("skips the sync and the config scaffold on --skills=none, and still adds the hook", async () => {
     const root = await makeProjectRoot("init-");
     await installPackage(root, {
       name: "@prisma/orm-postgres",
@@ -260,11 +279,13 @@ describe("init", () => {
       skills: ["prisma-8"],
     });
 
-    const { exitCode, result } = await runInit(root, ["--no-skills"]);
+    const { exitCode, result } = await runInit(root, ["--skills=none"]);
 
     expect(exitCode).toBe(0);
     expect(result.skills).toEqual({ outcome: "skipped", sync: null });
+    expect(result.config).toEqual({ outcome: "skipped", agents: null });
     expect(result.postinstall.outcome).toBe("added");
+    expect(await exists(path.join(root, "prisma.config.ts"))).toBe(false);
     for (const dir of HARNESS_SKILL_DIRS) {
       expect(await exists(path.join(root, dir))).toBe(false);
     }
@@ -279,10 +300,14 @@ describe("init", () => {
     });
     await runInit(root);
 
-    const { exitCode, result } = await runInit(root);
+    const { exitCode, result, diagnosticCodes } = await runInit(root);
 
     expect(exitCode).toBe(0);
     expect(result.postinstall.outcome).toBe("exists");
+    // The scaffold init itself wrote already carries skills.agents, so
+    // the rerun neither edits it nor warns about it.
+    expect(result.config).toEqual({ outcome: "exists", agents: null });
+    expect(diagnosticCodes).toEqual([]);
     expect(result.skills.outcome).toBe("up-to-date");
     expect(result.skills.sync?.synced).toEqual([]);
     expect(result.skills.sync?.pruned).toEqual([]);
@@ -320,6 +345,90 @@ describe("init", () => {
       ".claude/skills/prisma-8 is not managed by this CLI, so it was left untouched.",
     );
     expect(run.stderr).not.toContain("Agent skills are up to date.");
+  });
+
+  it("writes the --skills list into the scaffold and syncs only those agents", async () => {
+    const root = await makeProjectRoot("init-");
+    await installPackage(root, {
+      name: "@prisma/orm-postgres",
+      version: "8.1.0",
+      skills: ["prisma-8"],
+    });
+
+    const { exitCode, result } = await runInit(root, [
+      "--skills=claude,cursor",
+    ]);
+
+    expect(exitCode).toBe(0);
+    expect(result.config).toEqual({
+      outcome: "created",
+      agents: ["claude", "cursor"],
+    });
+    expect(await readFile(path.join(root, "prisma.config.ts"), "utf8")).toContain(
+      'agents: ["claude", "cursor"]',
+    );
+    expect(result.skills.sync?.synced[0]?.dirs).toEqual([
+      ".claude/skills",
+      ".cursor/skills",
+    ]);
+    expect(await exists(path.join(root, ".devin"))).toBe(false);
+  });
+
+  it("rejects --skills naming an unknown agent", async () => {
+    const root = await makeProjectRoot("init-");
+
+    const run = await makeCli().run(["init", "--skills=claude,zed"], {
+      cwd: root,
+      isTty: { stdout: true, stderr: true },
+    });
+
+    expect(run.exitCode).not.toBe(0);
+    expect(run.stderr).toContain("'zed'");
+    expect(await exists(path.join(root, "prisma.config.ts"))).toBe(false);
+  });
+
+  it("rejects none mixed with agent names", async () => {
+    const root = await makeProjectRoot("init-");
+
+    const run = await makeCli().run(["init", "--skills=none,claude"], {
+      cwd: root,
+      isTty: { stdout: true, stderr: true },
+    });
+
+    expect(run.exitCode).not.toBe(0);
+    expect(run.stderr).toContain("cannot be combined");
+  });
+
+  it("never edits an existing prisma.config.ts, and says what to add", async () => {
+    const root = await makeProjectRoot("init-");
+    const configPath = path.join(root, "prisma.config.ts");
+    const before = 'export default { $prismaConfig: 1 };\n';
+    await writeFile(configPath, before, "utf8");
+
+    const { exitCode, result, diagnosticCodes } = await runInit(root, [
+      "--skills=claude",
+    ]);
+
+    expect(exitCode).toBe(0);
+    expect(result.config).toEqual({ outcome: "exists", agents: null });
+    expect(diagnosticCodes).toContain("INIT.CONFIG_KEPT");
+    expect(await readFile(configPath, "utf8")).toBe(before);
+  });
+
+  it("shows the exact snippet for the agents the user asked for", async () => {
+    const root = await makeProjectRoot("init-");
+    await writeFile(
+      path.join(root, "prisma.config.ts"),
+      "export default { $prismaConfig: 1 };\n",
+      "utf8",
+    );
+
+    const run = await makeCli().run(["init", "--skills=claude,cursor"], {
+      cwd: root,
+      isTty: { stdout: true, stderr: true },
+    });
+
+    expect(run.stderr).toContain('skills: { agents: ["claude", "cursor"] }');
   });
 
   it.skipIf(process.platform === "win32")(

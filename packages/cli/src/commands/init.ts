@@ -3,8 +3,13 @@ import path from "node:path";
 import type { Block, Presentations } from "@prisma/cli-engine";
 import { defineCommand, flag } from "@prisma/cli-engine";
 import type { Diagnostic } from "@prisma/cli-engine/protocol";
-import { ok } from "@prisma/cli-engine/protocol";
+import { CliStructuredError, notOk, ok } from "@prisma/cli-engine/protocol";
 import { CLI_NAME } from "../cli-name";
+import {
+  type AgentName,
+  isKnownAgent,
+  KNOWN_AGENTS,
+} from "../lib/skills/allowlist";
 import { readSkillsStatus } from "../lib/skills/status";
 import { syncSkills } from "../lib/skills/sync";
 import { skillsConfigSection } from "./skills/config";
@@ -34,8 +39,18 @@ export interface InitSkillsReport {
   readonly sync: SkillsSyncResult | null;
 }
 
+export type InitConfigOutcome = "created" | "exists" | "skipped";
+
+export interface InitConfigReport {
+  readonly outcome: InitConfigOutcome;
+  /** The agents list the scaffold carries; null when nothing was
+   *  written. */
+  readonly agents: readonly AgentName[] | null;
+}
+
 export interface InitResult {
   readonly postinstall: InitPostinstallReport;
+  readonly config: InitConfigReport;
   readonly skills: InitSkillsReport;
 }
 
@@ -108,6 +123,42 @@ function foreignPostinstallDiagnostic(): Diagnostic {
     summary:
       "package.json already has a postinstall script, so init left it alone.",
     nextActions: [APPEND_ADVICE],
+  };
+}
+
+function configSnippet(agents: readonly AgentName[]): string {
+  return `skills: { agents: [${agents.map((agent) => `"${agent}"`).join(", ")}] }`;
+}
+
+/** The same never-touch discipline as the postinstall step's
+ *  foreign-script rule: a prisma.config.ts the user already has is
+ *  theirs, and init only says what to add. */
+function configKeptDiagnostic(agents: readonly AgentName[]): Diagnostic {
+  return {
+    code: "INIT.CONFIG_KEPT",
+    severity: "warn",
+    summary:
+      "prisma.config.ts already exists, so init left it alone instead of writing the skills section.",
+    nextActions: [
+      {
+        kind: "user-choice",
+        label: `Add ${configSnippet(agents)} to the object passed to definePrismaConfig in prisma.config.ts.`,
+      },
+    ],
+  };
+}
+
+function configUnwritableDiagnostic(agents: readonly AgentName[]): Diagnostic {
+  return {
+    code: "INIT.CONFIG_UNWRITABLE",
+    severity: "warn",
+    summary: "prisma.config.ts could not be written, so init skipped it.",
+    nextActions: [
+      {
+        kind: "user-choice",
+        label: `Create a prisma.config.ts whose definePrismaConfig call carries ${configSnippet(agents)}.`,
+      },
+    ],
   };
 }
 
@@ -258,12 +309,80 @@ async function addPostinstallHook(
   };
 }
 
+/** What the scaffold contains: the effective agents list, spelled the
+ *  way a user would write it by hand. */
+export function renderConfigScaffold(agents: readonly AgentName[]): string {
+  return [
+    'import { definePrismaConfig } from "prisma/config";',
+    "",
+    "export default definePrismaConfig({",
+    "  skills: {",
+    `    agents: [${agents.map((agent) => `"${agent}"`).join(", ")}],`,
+    "  },",
+    "});",
+    "",
+  ].join("\n");
+}
+
+async function scaffoldConfigStep(
+  cwd: string,
+  agents: readonly AgentName[],
+): Promise<Step<InitConfigReport>> {
+  const configPath = path.join(cwd, "prisma.config.ts");
+
+  let existing: string | null = null;
+  try {
+    existing = await readFile(configPath, "utf8");
+  } catch {
+    existing = null;
+  }
+  if (existing !== null) {
+    // A file that already spells out skills.agents needs no advice; a
+    // rerun after init's own scaffold stays clean. Anything else gets
+    // the exact snippet to add, and the file itself is never edited.
+    const hasAgentsSection =
+      /\bskills\s*:/.test(existing) && /\bagents\s*:/.test(existing);
+    return {
+      report: { outcome: "exists", agents: null },
+      line: hasAgentsSection
+        ? summary("info", "prisma.config.ts already configures skills.agents.")
+        : summary("warn", "prisma.config.ts already exists; left untouched."),
+      diagnostics: hasAgentsSection ? [] : [configKeptDiagnostic(agents)],
+    };
+  }
+
+  try {
+    // `flag: "wx"` so a file that appears between the check and the
+    // write is still never overwritten.
+    await writeFile(configPath, renderConfigScaffold(agents), {
+      encoding: "utf8",
+      flag: "wx",
+    });
+  } catch {
+    return {
+      report: { outcome: "skipped", agents: null },
+      line: summary("warn", "prisma.config.ts could not be written; skipped."),
+      diagnostics: [configUnwritableDiagnostic(agents)],
+    };
+  }
+
+  return {
+    report: { outcome: "created", agents },
+    line: summary(
+      "ok",
+      `Created prisma.config.ts with ${configSnippet(agents)}.`,
+    ),
+    diagnostics: [],
+  };
+}
+
 async function syncSkillsStep(
   cwd: string,
+  agents: readonly AgentName[],
   checkEnabledByConfig: boolean,
 ): Promise<Step<InitSkillsReport>> {
   try {
-    const outcome = await syncSkills(await readSkillsStatus(cwd));
+    const outcome = await syncSkills(await readSkillsStatus(cwd, { agents }));
     const result: SkillsSyncResult = {
       projectRoot: outcome.projectRoot,
       packages: packageReports(outcome.packages),
@@ -301,15 +420,85 @@ const SKIPPED_POSTINSTALL: Step<InitPostinstallReport> = {
   diagnostics: [],
 };
 
-const SKIPPED_SKILLS: Step<InitSkillsReport> = {
-  report: { outcome: "skipped", sync: null },
-  line: summary("info", "Skipped the skills sync (--no-skills)."),
+const SKIPPED_CONFIG: Step<InitConfigReport> = {
+  report: { outcome: "skipped", agents: null },
+  line: summary("info", "Skipped the config scaffold (--skills=none)."),
   diagnostics: [],
 };
+
+const SKIPPED_SKILLS: Step<InitSkillsReport> = {
+  report: { outcome: "skipped", sync: null },
+  line: summary("info", "Skipped the skills sync (--skills=none)."),
+  diagnostics: [],
+};
+
+const SKIP_SENTINEL = "none";
+
+function invalidSkillsFlagError(problem: string): CliStructuredError {
+  return new CliStructuredError("CLI.INVALID_ARGUMENTS", problem, {
+    nextActions: [
+      {
+        kind: "user-choice",
+        label: `Pass --skills a comma-separated list of agents (${KNOWN_AGENTS.join(", ")}), or --skills=${SKIP_SENTINEL} to skip the skills steps.`,
+      },
+    ],
+  });
+}
+
+/** `--skills`: absent defers to the config's agents (every known agent
+ *  when there is no config); `none` means skip the skills steps;
+ *  otherwise a comma-separated list of agent names. */
+function parseSkillsFlag(
+  raw: string | undefined,
+  configured: readonly AgentName[],
+):
+  | { kind: "agents"; agents: readonly AgentName[] }
+  | { kind: "skip" }
+  | { kind: "invalid"; error: CliStructuredError } {
+  if (raw === undefined) {
+    return { kind: "agents", agents: configured };
+  }
+  const names = raw
+    .split(",")
+    .map((name) => name.trim())
+    .filter((name) => name !== "");
+  if (names.includes(SKIP_SENTINEL)) {
+    return names.length === 1
+      ? { kind: "skip" }
+      : {
+          kind: "invalid",
+          error: invalidSkillsFlagError(
+            `--skills=${SKIP_SENTINEL} skips the skills steps, so it cannot be combined with agent names.`,
+          ),
+        };
+  }
+  const agents: AgentName[] = [];
+  for (const name of names) {
+    if (!isKnownAgent(name)) {
+      return {
+        kind: "invalid",
+        error: invalidSkillsFlagError(
+          `--skills names '${name}', which this CLI does not know. The known agents are ${KNOWN_AGENTS.join(", ")}.`,
+        ),
+      };
+    }
+    if (!agents.includes(name)) {
+      agents.push(name);
+    }
+  }
+  if (agents.length === 0) {
+    return {
+      kind: "invalid",
+      error: invalidSkillsFlagError("--skills was given no agent names."),
+    };
+  }
+  return { kind: "agents", agents };
+}
 
 function initPresentations(
   result: InitResult,
   postinstall: Step<InitPostinstallReport>,
+  config: Step<InitConfigReport>,
   skills: Step<InitSkillsReport>,
 ): Presentations {
   return {
@@ -323,6 +512,7 @@ function initPresentations(
           : syncPresentations(result.skills.sync).human(ui);
       return [
         ...(postinstall.line === null ? [] : [postinstall.line]),
+        ...(config.line === null ? [] : [config.line]),
         ...(skills.line === null ? skillsBlocks : [skills.line]),
       ];
     },
@@ -333,8 +523,8 @@ export const initCommand = defineCommand({
   help: {
     summary: "Prepare this repository for Prisma development",
     description:
-      "Runs locally and calls no platform API. Adds a postinstall script to package.json that keeps the Prisma agent skills in sync on every install, then syncs the skills once now. The hook lands in the current directory's package.json, while the skills land at the workspace root. Rerunning is safe: each step reports what is already done.",
-    examples: ["init", "init --no-postinstall"],
+      "Runs locally and calls no platform API. Adds a postinstall script to package.json that keeps the Prisma agent skills in sync on every install, scaffolds a prisma.config.ts recording which agents to install skills for, then syncs the skills once now. Everything lands in the current directory; a prisma.config.ts or postinstall script that already exists is never edited. Rerunning is safe: each step reports what is already done.",
+    examples: ["init", "init --skills=claude,cursor", "init --no-postinstall"],
   },
   needs: { config: skillsConfigSection },
   args: {
@@ -342,32 +532,47 @@ export const initCommand = defineCommand({
       postinstall: flag.optionalBoolean({
         brief: "Add the skills-sync postinstall hook (--no-postinstall skips)",
       }),
-      skills: flag.optionalBoolean({
-        brief: "Sync the agent skills now (--no-skills skips)",
+      skills: flag.string({
+        brief: `Agents to install skills for (comma-separated: ${KNOWN_AGENTS.join(", ")}); '${SKIP_SENTINEL}' skips the skills steps`,
+        placeholder: "agents",
       }),
     },
   },
   handler: async (args, ctx) => {
+    const skillsFlag = parseSkillsFlag(args.flags.skills, ctx.config.agents);
+    if (skillsFlag.kind === "invalid") {
+      return notOk(skillsFlag.error);
+    }
+
     const postinstall =
       args.flags.postinstall === false
         ? SKIPPED_POSTINSTALL
         : await addPostinstallHook(ctx.cwd);
+    const config =
+      skillsFlag.kind === "skip"
+        ? SKIPPED_CONFIG
+        : await scaffoldConfigStep(ctx.cwd, skillsFlag.agents);
     const skills =
-      args.flags.skills === false
+      skillsFlag.kind === "skip"
         ? SKIPPED_SKILLS
-        : await syncSkillsStep(ctx.cwd, ctx.config.check);
+        : await syncSkillsStep(ctx.cwd, skillsFlag.agents, ctx.config.check);
 
     const result: InitResult = {
       postinstall: postinstall.report,
+      config: config.report,
       skills: skills.report,
     };
     return ok(
       ctx.present(
         {
           data: result,
-          diagnostics: [...postinstall.diagnostics, ...skills.diagnostics],
+          diagnostics: [
+            ...postinstall.diagnostics,
+            ...config.diagnostics,
+            ...skills.diagnostics,
+          ],
         },
-        initPresentations(result, postinstall, skills),
+        initPresentations(result, postinstall, config, skills),
       ),
     );
   },
