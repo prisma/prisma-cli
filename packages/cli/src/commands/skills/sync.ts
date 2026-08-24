@@ -121,6 +121,7 @@ export const skillsSyncCommand = defineCommand({
       projectRoot: outcome.projectRoot,
       agents: ctx.config.agents,
       packages: packageReports(outcome.packages),
+      skills: outcome.skills,
       synced: outcome.synced,
       pruned: outcome.pruned,
       refused: outcome.refused,

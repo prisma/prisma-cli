@@ -25,10 +25,13 @@ function unmanagedClause(count: number): string {
 
 function syncSummary(result: SkillsSyncResult): string {
   if (result.agents.length === 0) {
-    return "No agents are configured for skills.";
+    return "No agents are configured to sync skills for.";
   }
   if (result.packages.length === 0) {
     return "No Prisma packages with agent skills are installed.";
+  }
+  if (result.skills.length === 0) {
+    return "No Prisma dependencies in your project ship agent skills to sync.";
   }
   const refusedDirs = result.refused.reduce(
     (count, skill) => count + skill.dirs.length,
@@ -105,10 +108,13 @@ export function syncPresentations(result: SkillsSyncResult): Presentations {
 
 function listSummary(result: SkillsListResult): string {
   if (result.agents.length === 0) {
-    return "No agents are configured for skills.";
+    return "No agents are configured to sync skills for.";
+  }
+  if (result.packages.length === 0) {
+    return "No Prisma packages with agent skills are installed.";
   }
   if (result.skills.length === 0) {
-    return "No Prisma agent skills are available to sync.";
+    return "No Prisma dependencies in your project ship agent skills.";
   }
   if (!result.upToDate) {
     return "Agent skills are out of date.";

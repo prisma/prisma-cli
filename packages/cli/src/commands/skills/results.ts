@@ -19,6 +19,10 @@ export interface SkillsSyncResult {
    *  config records `agents: []` — no skills are wanted. */
   readonly agents: readonly AgentName[];
   readonly packages: readonly SkillsPackageReport[];
+  /** Every skill name the installed packages ship, whether or not this
+   *  run wrote it. Empty while `packages` is not means the installed
+   *  versions ship no skills. */
+  readonly skills: readonly string[];
   readonly synced: readonly SyncedSkill[];
   readonly pruned: readonly PrunedSkill[];
   /** Target directories left untouched because they hold a skill this

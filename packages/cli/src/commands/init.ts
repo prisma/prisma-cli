@@ -40,7 +40,19 @@ export interface InitPostinstallReport {
   readonly dependency: InitDependencyOutcome;
 }
 
-export type InitSkillsOutcome = "synced" | "up-to-date" | "failed" | "skipped";
+/** "up-to-date" is reserved for a project that has skills installed and
+ *  current; each way the sync had nothing to work on names itself.
+ *  "no-agents": the config records `agents: []`. "no-packages": no
+ *  allowlisted Prisma package is installed. "no-skills": packages are
+ *  installed but their versions ship no skills. */
+export type InitSkillsOutcome =
+  | "synced"
+  | "up-to-date"
+  | "no-agents"
+  | "no-packages"
+  | "no-skills"
+  | "failed"
+  | "skipped";
 
 export interface InitSkillsReport {
   readonly outcome: InitSkillsOutcome;
@@ -609,6 +621,22 @@ async function scaffoldConfigStep(
   };
 }
 
+function skillsOutcome(result: SkillsSyncResult): InitSkillsOutcome {
+  if (result.synced.length > 0 || result.pruned.length > 0) {
+    return "synced";
+  }
+  if (result.agents.length === 0) {
+    return "no-agents";
+  }
+  if (result.packages.length === 0) {
+    return "no-packages";
+  }
+  if (result.skills.length === 0) {
+    return "no-skills";
+  }
+  return "up-to-date";
+}
+
 async function syncSkillsStep(
   cwd: string,
   agents: readonly AgentName[],
@@ -620,6 +648,7 @@ async function syncSkillsStep(
       projectRoot: outcome.projectRoot,
       agents,
       packages: packageReports(outcome.packages),
+      skills: outcome.skills,
       synced: outcome.synced,
       pruned: outcome.pruned,
       refused: outcome.refused,
@@ -627,10 +656,7 @@ async function syncSkillsStep(
     };
     return {
       report: {
-        outcome:
-          result.synced.length > 0 || result.pruned.length > 0
-            ? "synced"
-            : "up-to-date",
+        outcome: skillsOutcome(result),
         sync: result,
       },
       lines: null,
