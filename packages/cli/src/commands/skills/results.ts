@@ -1,3 +1,4 @@
+import type { AgentName } from "../../lib/skills/allowlist";
 import type {
   PrunedSkill,
   RefusedSkill,
@@ -14,6 +15,9 @@ export interface SkillsPackageReport {
 
 export interface SkillsSyncResult {
   readonly projectRoot: string;
+  /** The agents whose directories this run covered. Empty when the
+   *  config records `agents: []` — no skills are wanted. */
+  readonly agents: readonly AgentName[];
   readonly packages: readonly SkillsPackageReport[];
   readonly synced: readonly SyncedSkill[];
   readonly pruned: readonly PrunedSkill[];
@@ -39,6 +43,9 @@ export interface SkillsListEntry {
 
 export interface SkillsListResult {
   readonly projectRoot: string;
+  /** The agents whose directories this report covers. Empty when the
+   *  config records `agents: []` — no skills are wanted. */
+  readonly agents: readonly AgentName[];
   readonly packages: readonly SkillsPackageReport[];
   readonly skills: readonly SkillsListEntry[];
   /** Copies from an allowlisted package that nothing installed still

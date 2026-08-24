@@ -61,7 +61,13 @@ export async function maybeWriteSkillsStaleNotice(
     if (config !== null && !config.check) {
       return;
     }
-    const dirs = agentSkillDirs(config?.agents ?? DEFAULT_AGENTS);
+    const agents = config?.agents ?? DEFAULT_AGENTS;
+    // `agents: []` is the recorded choice to install no agent skills,
+    // so there is nothing to keep current.
+    if (agents.length === 0) {
+      return;
+    }
+    const dirs = agentSkillDirs(agents);
     const notice = renderStaleNotice(status, dirs);
     if (notice !== null) {
       runtime.stderr.write(notice);

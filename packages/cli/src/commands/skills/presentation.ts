@@ -24,6 +24,9 @@ function unmanagedClause(count: number): string {
 }
 
 function syncSummary(result: SkillsSyncResult): string {
+  if (result.agents.length === 0) {
+    return "No agents are configured for skills.";
+  }
   if (result.packages.length === 0) {
     return "No Prisma packages with agent skills are installed.";
   }
@@ -101,6 +104,9 @@ export function syncPresentations(result: SkillsSyncResult): Presentations {
 }
 
 function listSummary(result: SkillsListResult): string {
+  if (result.agents.length === 0) {
+    return "No agents are configured for skills.";
+  }
   if (result.skills.length === 0) {
     return "No Prisma agent skills are available to sync.";
   }

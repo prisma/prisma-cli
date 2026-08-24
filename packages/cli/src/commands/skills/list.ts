@@ -18,6 +18,7 @@ export const skillsListCommand = defineCommand({
     });
     const result: SkillsListResult = {
       projectRoot: status.projectRoot,
+      agents: ctx.config.agents,
       packages: packageReports(status.packages),
       skills: status.skills.map((skill) => ({
         skill: skill.skill,

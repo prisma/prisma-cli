@@ -386,6 +386,7 @@ async function syncSkillsStep(
     const outcome = await syncSkills(await readSkillsStatus(cwd, { agents }));
     const result: SkillsSyncResult = {
       projectRoot: outcome.projectRoot,
+      agents,
       packages: packageReports(outcome.packages),
       synced: outcome.synced,
       pruned: outcome.pruned,
@@ -421,12 +422,6 @@ const SKIPPED_POSTINSTALL: Step<InitPostinstallReport> = {
   diagnostics: [],
 };
 
-const SKIPPED_CONFIG: Step<InitConfigReport> = {
-  report: { outcome: "skipped", agents: null },
-  line: summary("info", "Skipped the config scaffold (--skills=none)."),
-  diagnostics: [],
-};
-
 const SKIPPED_SKILLS: Step<InitSkillsReport> = {
   report: { outcome: "skipped", sync: null },
   line: summary("info", "Skipped the skills sync (--skills=none)."),
@@ -440,15 +435,16 @@ function invalidSkillsFlagError(problem: string): CliStructuredError {
     nextActions: [
       {
         kind: "user-choice",
-        label: `Pass --skills a comma-separated list of agents (${KNOWN_AGENTS.join(", ")}), or --skills=${SKIP_SENTINEL} to skip the skills steps.`,
+        label: `Pass --skills a comma-separated list of agents (${KNOWN_AGENTS.join(", ")}), or --skills=${SKIP_SENTINEL} to record that no agent skills are wanted.`,
       },
     ],
   });
 }
 
 /** `--skills`: absent defers to the config's agents (every known agent
- *  when there is no config); `none` means skip the skills steps;
- *  otherwise a comma-separated list of agent names. */
+ *  when there is no config); `none` records the choice — the scaffold
+ *  gets `agents: []` and the sync is skipped; otherwise a
+ *  comma-separated list of agent names. */
 function parseSkillsFlag(
   raw: string | undefined,
   configured: readonly AgentName[],
@@ -469,7 +465,7 @@ function parseSkillsFlag(
       : {
           kind: "invalid",
           error: invalidSkillsFlagError(
-            `--skills=${SKIP_SENTINEL} skips the skills steps, so it cannot be combined with agent names.`,
+            `--skills=${SKIP_SENTINEL} records that no agent skills are wanted, so it cannot be combined with agent names.`,
           ),
         };
   }
@@ -525,7 +521,12 @@ export const initCommand = defineCommand({
     summary: "Prepare this repository for Prisma development",
     description:
       "Runs locally and calls no platform API. Adds a postinstall script to package.json that keeps the Prisma agent skills in sync on every install, scaffolds a prisma.config.ts recording which agents to install skills for, then syncs the skills once now. Everything lands in the current directory; a prisma.config.ts or postinstall script that already exists is never edited. Rerunning is safe: each step reports what is already done.",
-    examples: ["init", "init --skills=claude,cursor", "init --no-postinstall"],
+    examples: [
+      "init",
+      "init --skills=claude,cursor",
+      "init --skills=none",
+      "init --no-postinstall",
+    ],
   },
   needs: { config: skillsConfigSection },
   args: {
@@ -534,7 +535,7 @@ export const initCommand = defineCommand({
         brief: "Add the skills-sync postinstall hook (--no-postinstall skips)",
       }),
       skills: flag.string({
-        brief: `Agents to install skills for (comma-separated: ${KNOWN_AGENTS.join(", ")}); '${SKIP_SENTINEL}' skips the skills steps`,
+        brief: `Agents to install skills for (comma-separated: ${KNOWN_AGENTS.join(", ")}); '${SKIP_SENTINEL}' records that no agent skills are wanted`,
         placeholder: "agents",
       }),
     },
@@ -549,14 +550,15 @@ export const initCommand = defineCommand({
       args.flags.postinstall === false
         ? SKIPPED_POSTINSTALL
         : await addPostinstallHook(ctx.cwd);
-    const config =
-      skillsFlag.kind === "skip"
-        ? SKIPPED_CONFIG
-        : await scaffoldConfigStep(
-            ctx.cwd,
-            skillsFlag.agents,
-            ctx.config.agentsConfigured,
-          );
+    // --skills=none still scaffolds: `agents: []` is the committed
+    // record that no agent skills are wanted, so later syncs and the
+    // staleness check stay quiet instead of falling back to the
+    // default agent set.
+    const config = await scaffoldConfigStep(
+      ctx.cwd,
+      skillsFlag.kind === "skip" ? [] : skillsFlag.agents,
+      ctx.config.agentsConfigured,
+    );
     const skills =
       skillsFlag.kind === "skip"
         ? SKIPPED_SKILLS
