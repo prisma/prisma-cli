@@ -142,6 +142,62 @@ function missingNamedFileDiagnostic(path: string): Diagnostic {
   };
 }
 
+/** jiti reports an unresolvable import as "Cannot find module", Node's
+ *  own resolver as "Cannot find package"; either can appear in the
+ *  evaluation error chain depending on how the file is loaded. Node's
+ *  ESM resolver names only the package, not the subpath — a missing
+ *  `import "prisma/config"` reads "Cannot find package 'prisma'" — and
+ *  the closing quote keeps a package like 'prisma-x' from matching. */
+const MISSING_PRISMA_CONFIG_MESSAGES = [
+  "Cannot find module 'prisma/config'",
+  "Cannot find package 'prisma/config'",
+  "Cannot find package 'prisma'",
+];
+
+/** The walk is depth-limited so a cyclic `cause` chain terminates. */
+const CAUSE_CHAIN_LIMIT = 10;
+
+function importsMissingPrismaPackage(cause: unknown): boolean {
+  let error: unknown = cause;
+  for (
+    let depth = 0;
+    depth < CAUSE_CHAIN_LIMIT && error instanceof Error;
+    depth += 1, error = error.cause
+  ) {
+    const message = error.message;
+    if (MISSING_PRISMA_CONFIG_MESSAGES.some((text) => message.includes(text))) {
+      return true;
+    }
+  }
+  return false;
+}
+
+/** A plain `npm install prisma` would fetch `latest`, which can be the
+ *  too-old version the `why` warns about — the example names the exact
+ *  version, or is dropped when the host supplied none. */
+function prismaConfigUnresolvedDiagnostic(
+  path: string,
+  cliVersion: string | undefined,
+): Diagnostic {
+  const example =
+    cliVersion === undefined
+      ? ""
+      : ` (for example: npm install --save-dev prisma@${cliVersion})`;
+  return {
+    code: "CLI.CONFIG_UNREADABLE",
+    severity: "error",
+    summary: `${path} could not be evaluated: the 'prisma/config' entry point could not be resolved from this project.`,
+    why: "The config file imports definePrismaConfig from the prisma npm package's 'prisma/config' entry point, which resolves from the project's node_modules. The package may be missing there — running the CLI through npx installs nothing into the project — or an installed version may be too old to provide the entry point.",
+    nextActions: [
+      {
+        kind: "user-choice",
+        label: `Install the prisma package matching this CLI's version as a dev dependency${example}, then run the command again.`,
+      },
+    ],
+    where: { path },
+  };
+}
+
 function unreadableDiagnostic(path: string, cause: unknown): Diagnostic {
   const message = cause instanceof Error ? cause.message : String(cause);
   return {
@@ -250,11 +306,16 @@ function fileToRead(cwd: string, configPath: string | undefined): string {
 
 /**
  * The real-disk loader behind Runtime.loadConfig. The bin binds it to
- * the process cwd; tests hand in fixtures.
+ * the process cwd and its own version; tests hand in fixtures.
+ * `cliVersion` names the exact prisma version in the install guidance
+ * when the 'prisma/config' entry point cannot be resolved; absent, the
+ * guidance names no version rather than an example that installs the
+ * wrong one.
  */
 export async function loadConfig(
   cwd: string,
   configPath?: string,
+  cliVersion?: string,
 ): Promise<LoadedConfig> {
   const path = fileToRead(cwd, configPath);
   if (!existsSync(path)) {
@@ -266,7 +327,12 @@ export async function loadConfig(
   try {
     exported = await evaluateConfigFile(path);
   } catch (cause) {
-    return fileLevelConfig(path, unreadableDiagnostic(path, cause));
+    return fileLevelConfig(
+      path,
+      importsMissingPrismaPackage(cause)
+        ? prismaConfigUnresolvedDiagnostic(path, cliVersion)
+        : unreadableDiagnostic(path, cause),
+    );
   }
   if (!hasVersionMarker(exported)) {
     return fileLevelConfig(path, missingMarkerDiagnostic(path));

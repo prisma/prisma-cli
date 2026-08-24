@@ -15,6 +15,7 @@ import {
   POSTINSTALL_SCRIPT,
 } from "../src/commands/init";
 import { agentSkillDirs, DEFAULT_AGENTS } from "../src/lib/skills/allowlist";
+import { getCliVersion } from "../src/lib/version";
 import {
   installPackage,
   isolateModuleResolution,
@@ -44,16 +45,23 @@ async function runInit(
   exitCode: number;
   result: InitResult;
   diagnosticCodes: string[];
+  adviceFor: (code: string) => string[];
 }> {
   const run = await makeCli(config).run(["init", ...argv], { cwd });
+  const diagnostics = run.presented?.diagnostics ?? [];
   return {
     exitCode: run.exitCode,
     result: run.presented?.data as InitResult,
-    diagnosticCodes: (run.presented?.diagnostics ?? []).map(
-      (diagnostic) => diagnostic.code,
-    ),
+    diagnosticCodes: diagnostics.map((diagnostic) => diagnostic.code),
+    adviceFor: (code) =>
+      diagnostics
+        .filter((diagnostic) => diagnostic.code === code)
+        .flatMap((diagnostic) => diagnostic.nextActions ?? [])
+        .map((action) => action.label),
   };
 }
+
+const ADD_DEPENDENCY_ADVICE = `Add "prisma": "${getCliVersion()}" to devDependencies yourself, then run your package manager's install.`;
 
 async function readManifest(root: string): Promise<Record<string, unknown>> {
   return JSON.parse(await readFile(path.join(root, "package.json"), "utf8"));
@@ -83,6 +91,7 @@ describe("init", () => {
     expect(result.postinstall).toEqual({
       outcome: "added",
       script: POSTINSTALL_SCRIPT,
+      dependency: "added",
     });
     expect(result.config).toEqual({
       outcome: "created",
@@ -106,6 +115,7 @@ describe("init", () => {
     expect((manifest.scripts as Record<string, unknown>).postinstall).toBe(
       POSTINSTALL_SCRIPT,
     );
+    expect(manifest.devDependencies).toEqual({ prisma: getCliVersion() });
     expect(
       await exists(path.join(root, ".claude/skills", "prisma-8", "SKILL.md")),
     ).toBe(true);
@@ -162,14 +172,17 @@ describe("init", () => {
     );
     const before = await readFile(path.join(root, "package.json"), "utf8");
 
-    const { exitCode, result, diagnosticCodes } = await runInit(root);
+    const { exitCode, result, diagnosticCodes, adviceFor } =
+      await runInit(root);
 
     expect(exitCode).toBe(0);
     expect(result.postinstall).toEqual({
       outcome: "kept",
       script: "husky install",
+      dependency: "skipped",
     });
     expect(diagnosticCodes).toContain("INIT.POSTINSTALL_KEPT");
+    expect(adviceFor("INIT.POSTINSTALL_KEPT")).toContain(ADD_DEPENDENCY_ADVICE);
     expect(await readFile(path.join(root, "package.json"), "utf8")).toBe(
       before,
     );
@@ -188,9 +201,79 @@ describe("init", () => {
       await chmod(manifestPath, 0o644);
 
       expect(exitCode).toBe(0);
-      expect(result.postinstall).toEqual({ outcome: "skipped", script: null });
+      expect(result.postinstall).toEqual({
+        outcome: "skipped",
+        script: null,
+        dependency: "skipped",
+      });
       expect(diagnosticCodes).toContain("INIT.PACKAGE_JSON_UNWRITABLE");
       expect(await readFile(manifestPath, "utf8")).toBe(before);
+    },
+  );
+
+  it.skipIf(process.platform === "win32")(
+    "an unwritable package.json that already declares prisma reports the dependency declared",
+    async () => {
+      const root = await makeProjectRoot("init-");
+      const manifestPath = path.join(root, "package.json");
+      await writeFile(
+        manifestPath,
+        `${JSON.stringify(
+          { name: "fixture-project", devDependencies: { prisma: "^7.0.0" } },
+          null,
+          2,
+        )}\n`,
+        "utf8",
+      );
+      await chmod(manifestPath, 0o444);
+
+      const { exitCode, result, diagnosticCodes } = await runInit(root, [
+        "--skills=none",
+      ]);
+      await chmod(manifestPath, 0o644);
+
+      expect(exitCode).toBe(0);
+      expect(result.postinstall).toEqual({
+        outcome: "skipped",
+        script: null,
+        dependency: "declared",
+      });
+      expect(diagnosticCodes).toContain("INIT.PACKAGE_JSON_UNWRITABLE");
+    },
+  );
+
+  it.skipIf(process.platform === "win32")(
+    "an unreadable ancestor package.json does not fail init after the edit landed",
+    async () => {
+      const root = await makeProjectRoot("init-");
+      const ancestorManifest = path.join(root, "package.json");
+      const app = path.join(root, "app");
+      await mkdir(app);
+      await writeFile(
+        path.join(app, "package.json"),
+        `${JSON.stringify({ name: "nested-app" }, null, 2)}\n`,
+        "utf8",
+      );
+      // The install-command detection walks ancestors; this one throws
+      // EACCES instead of ENOENT.
+      await chmod(ancestorManifest, 0o000);
+
+      const run = await makeCli().run(["init", "--skills=none"], { cwd: app });
+      await chmod(ancestorManifest, 0o644);
+      const result = run.presented?.data as InitResult;
+
+      expect(run.exitCode).toBe(0);
+      expect(result.postinstall.dependency).toBe("added");
+      expect((await readManifest(app)).devDependencies).toEqual({
+        prisma: getCliVersion(),
+      });
+      expect(run.presented?.presentation.next).toEqual([
+        {
+          kind: "user-choice",
+          label:
+            "Run your package manager's install to fetch the added prisma dev dependency.",
+        },
+      ]);
     },
   );
 
@@ -203,11 +286,19 @@ describe("init", () => {
     );
     const before = await readFile(path.join(root, "package.json"), "utf8");
 
-    const { exitCode, result, diagnosticCodes } = await runInit(root);
+    const { exitCode, result, diagnosticCodes, adviceFor } =
+      await runInit(root);
 
     expect(exitCode).toBe(0);
-    expect(result.postinstall).toEqual({ outcome: "kept", script: null });
+    expect(result.postinstall).toEqual({
+      outcome: "kept",
+      script: null,
+      dependency: "skipped",
+    });
     expect(diagnosticCodes).toContain("INIT.SCRIPTS_NOT_AN_OBJECT");
+    expect(adviceFor("INIT.SCRIPTS_NOT_AN_OBJECT")).toContain(
+      ADD_DEPENDENCY_ADVICE,
+    );
     expect(await readFile(path.join(root, "package.json"), "utf8")).toBe(
       before,
     );
@@ -251,12 +342,41 @@ describe("init", () => {
     const root = await makeProjectRoot("init-");
     await rm(path.join(root, "package.json"));
 
-    const { exitCode, result, diagnosticCodes } = await runInit(root);
+    const { exitCode, result, diagnosticCodes, adviceFor } =
+      await runInit(root);
 
     expect(exitCode).toBe(0);
-    expect(result.postinstall).toEqual({ outcome: "skipped", script: null });
+    expect(result.postinstall).toEqual({
+      outcome: "skipped",
+      script: null,
+      dependency: "skipped",
+    });
     expect(diagnosticCodes).toContain("INIT.NO_PACKAGE_JSON");
+    expect(adviceFor("INIT.NO_PACKAGE_JSON")).toContain(ADD_DEPENDENCY_ADVICE);
     expect(await exists(path.join(root, "package.json"))).toBe(false);
+  });
+
+  it("reports an unparseable package.json with hook and dependency advice", async () => {
+    const root = await makeProjectRoot("init-");
+    await writeFile(path.join(root, "package.json"), "{ not json", "utf8");
+    const before = await readFile(path.join(root, "package.json"), "utf8");
+
+    const { exitCode, result, diagnosticCodes, adviceFor } =
+      await runInit(root);
+
+    expect(exitCode).toBe(0);
+    expect(result.postinstall).toEqual({
+      outcome: "skipped",
+      script: null,
+      dependency: "skipped",
+    });
+    expect(diagnosticCodes).toContain("INIT.PACKAGE_JSON_UNREADABLE");
+    expect(adviceFor("INIT.PACKAGE_JSON_UNREADABLE")).toContain(
+      ADD_DEPENDENCY_ADVICE,
+    );
+    expect(await readFile(path.join(root, "package.json"), "utf8")).toBe(
+      before,
+    );
   });
 
   it("skips the hook on --no-postinstall and still syncs", async () => {
@@ -270,8 +390,16 @@ describe("init", () => {
     const { exitCode, result } = await runInit(root, ["--no-postinstall"]);
 
     expect(exitCode).toBe(0);
-    expect(result.postinstall).toEqual({ outcome: "skipped", script: null });
-    expect((await readManifest(root)).scripts).toBeUndefined();
+    expect(result.postinstall).toEqual({
+      outcome: "skipped",
+      script: null,
+      dependency: "skipped",
+    });
+    const manifest = await readManifest(root);
+    expect(manifest.scripts).toBeUndefined();
+    // The dependency add rides the manifest edit, so the opt-out skips
+    // both; the config loader's guidance covers the missing package.
+    expect(manifest.devDependencies).toBeUndefined();
     expect(result.skills.outcome).toBe("synced");
   });
 
@@ -524,6 +652,221 @@ describe("init", () => {
     });
 
     expect(run.stderr).toContain('skills: { agents: ["claude", "cursor"] }');
+  });
+
+  it("adds the prisma dev dependency at the CLI's exact version, with install advice", async () => {
+    const root = await makeProjectRoot("init-");
+
+    const run = await makeCli().run(["init", "--skills=none"], { cwd: root });
+    const result = run.presented?.data as InitResult;
+
+    expect(run.exitCode).toBe(0);
+    expect(result.postinstall.dependency).toBe("added");
+    expect((await readManifest(root)).devDependencies).toEqual({
+      prisma: getCliVersion(),
+    });
+    expect(run.presented?.presentation.next).toEqual([
+      {
+        kind: "run-command",
+        label: "Install the added prisma dev dependency",
+        command: "npm install",
+      },
+    ]);
+  });
+
+  const DECLARING_FIELDS = [
+    "dependencies",
+    "devDependencies",
+    "optionalDependencies",
+    "peerDependencies",
+  ] as const;
+
+  for (const field of DECLARING_FIELDS) {
+    it(`leaves every dependency field alone when prisma is in ${field}`, async () => {
+      const root = await makeProjectRoot("init-");
+      await writeFile(
+        path.join(root, "package.json"),
+        `${JSON.stringify(
+          { name: "fixture-project", [field]: { prisma: "^7.0.0" } },
+          null,
+          2,
+        )}\n`,
+        "utf8",
+      );
+
+      const { exitCode, result } = await runInit(root, ["--skills=none"]);
+
+      expect(exitCode).toBe(0);
+      expect(result.postinstall.outcome).toBe("added");
+      expect(result.postinstall.dependency).toBe("declared");
+      const manifest = await readManifest(root);
+      expect(manifest[field]).toEqual({ prisma: "^7.0.0" });
+      const others = DECLARING_FIELDS.filter((name) => name !== field);
+      expect(others.map((name) => manifest[name])).toEqual([
+        undefined,
+        undefined,
+        undefined,
+      ]);
+    });
+  }
+
+  const MALFORMED_DEV_DEPENDENCIES = [
+    ["a string", "oops"],
+    ["an array", ["prisma"]],
+  ] as const;
+
+  for (const [shape, value] of MALFORMED_DEV_DEPENDENCIES) {
+    it(`leaves a devDependencies field that is ${shape} untouched and reports the dependency skipped`, async () => {
+      const root = await makeProjectRoot("init-");
+      await writeFile(
+        path.join(root, "package.json"),
+        `${JSON.stringify(
+          {
+            name: "fixture-project",
+            scripts: { postinstall: POSTINSTALL_SCRIPT },
+            devDependencies: value,
+          },
+          null,
+          2,
+        )}\n`,
+        "utf8",
+      );
+      const before = await readFile(path.join(root, "package.json"), "utf8");
+
+      const { exitCode, result, diagnosticCodes, adviceFor } = await runInit(
+        root,
+        ["--skills=none"],
+      );
+
+      expect(exitCode).toBe(0);
+      expect(result.postinstall).toEqual({
+        outcome: "exists",
+        script: POSTINSTALL_SCRIPT,
+        dependency: "skipped",
+      });
+      expect(diagnosticCodes).toContain("INIT.DEV_DEPENDENCIES_NOT_AN_OBJECT");
+      expect(adviceFor("INIT.DEV_DEPENDENCIES_NOT_AN_OBJECT")).toEqual([
+        `Fix the devDependencies field so it is an object, then add "prisma": "${getCliVersion()}" yourself and run your package manager's install.`,
+      ]);
+      expect(await readFile(path.join(root, "package.json"), "utf8")).toBe(
+        before,
+      );
+    });
+  }
+
+  it("still adds the hook when devDependencies is malformed, preserving the field", async () => {
+    const root = await makeProjectRoot("init-");
+    await writeFile(
+      path.join(root, "package.json"),
+      `${JSON.stringify(
+        { name: "fixture-project", devDependencies: "oops" },
+        null,
+        2,
+      )}\n`,
+      "utf8",
+    );
+
+    const { exitCode, result, diagnosticCodes } = await runInit(root, [
+      "--skills=none",
+    ]);
+
+    expect(exitCode).toBe(0);
+    expect(result.postinstall).toEqual({
+      outcome: "added",
+      script: POSTINSTALL_SCRIPT,
+      dependency: "skipped",
+    });
+    expect(diagnosticCodes).toContain("INIT.DEV_DEPENDENCIES_NOT_AN_OBJECT");
+    const manifest = await readManifest(root);
+    expect((manifest.scripts as Record<string, unknown>).postinstall).toBe(
+      POSTINSTALL_SCRIPT,
+    );
+    expect(manifest.devDependencies).toBe("oops");
+  });
+
+  it("a kept foreign postinstall carries no dependency advice when prisma is declared", async () => {
+    const root = await makeProjectRoot("init-");
+    await writeFile(
+      path.join(root, "package.json"),
+      `${JSON.stringify(
+        {
+          name: "fixture-project",
+          scripts: { postinstall: "husky install" },
+          dependencies: { prisma: "8.0.0" },
+        },
+        null,
+        2,
+      )}\n`,
+      "utf8",
+    );
+
+    const { result, adviceFor } = await runInit(root, ["--skills=none"]);
+
+    expect(result.postinstall.dependency).toBe("declared");
+    expect(adviceFor("INIT.POSTINSTALL_KEPT")).not.toContain(
+      ADD_DEPENDENCY_ADVICE,
+    );
+  });
+
+  it("reports no install advice when prisma is already declared", async () => {
+    const root = await makeProjectRoot("init-");
+    await writeFile(
+      path.join(root, "package.json"),
+      `${JSON.stringify(
+        { name: "fixture-project", dependencies: { prisma: "8.0.0" } },
+        null,
+        2,
+      )}\n`,
+      "utf8",
+    );
+
+    const run = await makeCli().run(["init", "--skills=none"], { cwd: root });
+
+    expect(run.exitCode).toBe(0);
+    expect(run.presented?.presentation.next).toEqual([]);
+  });
+
+  it("keeps indentation, BOM and CRLF around the added dependency", async () => {
+    const root = await makeProjectRoot("init-");
+    await writeFile(
+      path.join(root, "package.json"),
+      `\uFEFF{\r\n    "name": "windows-project"\r\n}\r\n`,
+      "utf8",
+    );
+
+    const { result } = await runInit(root, ["--skills=none"]);
+
+    expect(result.postinstall.dependency).toBe("added");
+    const source = await readFile(path.join(root, "package.json"), "utf8");
+    expect(source.startsWith("\uFEFF")).toBe(true);
+    expect(source.endsWith("\r\n")).toBe(true);
+    expect(source.split("\r\n").length).toBe(source.split("\n").length);
+    expect(source).toContain(`    "prisma": "${getCliVersion()}"`);
+  });
+
+  it("a rerun whose hook exists still adds a dependency the user removed", async () => {
+    const root = await makeProjectRoot("init-");
+    await runInit(root, ["--skills=none"]);
+    const manifest = await readManifest(root);
+    delete (manifest as { devDependencies?: unknown }).devDependencies;
+    await writeFile(
+      path.join(root, "package.json"),
+      `${JSON.stringify(manifest, null, 2)}\n`,
+      "utf8",
+    );
+
+    const { result } = await runInit(root, ["--skills=none"], {
+      skills: { agents: [] },
+    });
+
+    expect(result.postinstall).toEqual({
+      outcome: "exists",
+      script: POSTINSTALL_SCRIPT,
+      dependency: "added",
+    });
+    expect((await readManifest(root)).devDependencies).toEqual({
+      prisma: getCliVersion(),
+    });
   });
 
   it.skipIf(process.platform === "win32")(

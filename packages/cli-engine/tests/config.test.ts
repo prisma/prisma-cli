@@ -152,6 +152,84 @@ describe("loadConfig", { timeout: 60_000 }, () => {
     expect(loaded.diagnostics[0].diagnostic.summary).toBe(
       `${join(FIXTURES, "unreadable", "prisma.config.ts")} could not be evaluated: boom at config evaluation time`,
     );
+    // An unrelated evaluation failure keeps the generic guidance.
+    expect(loaded.diagnostics[0].diagnostic.nextActions).toEqual([
+      {
+        kind: "user-choice",
+        label: "Fix the error in the file, then run the command again.",
+      },
+    ]);
+  });
+
+  test("a config whose 'prisma/config' import cannot resolve says to install prisma", async () => {
+    const path = join(FIXTURES, "missing-prisma", "prisma.config.ts");
+    const loaded = await loadConfig(join(FIXTURES, "missing-prisma"));
+    expect(loaded.sections).toEqual({});
+    expect(loaded.diagnostics).toEqual([
+      {
+        section: null,
+        diagnostic: {
+          code: "CLI.CONFIG_UNREADABLE",
+          severity: "error",
+          summary: `${path} could not be evaluated: the 'prisma/config' entry point could not be resolved from this project.`,
+          why: "The config file imports definePrismaConfig from the prisma npm package's 'prisma/config' entry point, which resolves from the project's node_modules. The package may be missing there — running the CLI through npx installs nothing into the project — or an installed version may be too old to provide the entry point.",
+          nextActions: [
+            {
+              kind: "user-choice",
+              label:
+                "Install the prisma package matching this CLI's version as a dev dependency, then run the command again.",
+            },
+          ],
+          where: { path },
+        },
+      },
+    ]);
+  });
+
+  test("the install example names the CLI version the loader was given", async () => {
+    const loaded = await loadConfig(
+      join(FIXTURES, "missing-prisma"),
+      undefined,
+      "8.0.0-rc.7",
+    );
+    expect(loaded.diagnostics).toHaveLength(1);
+    expect(loaded.diagnostics[0].diagnostic.nextActions[0].label).toBe(
+      "Install the prisma package matching this CLI's version as a dev dependency (for example: npm install --save-dev prisma@8.0.0-rc.7), then run the command again.",
+    );
+  });
+
+  test("Node's package-level 'Cannot find package' wording is recognised anywhere in the error chain", async () => {
+    const loaded = await loadConfig(join(FIXTURES, "missing-prisma-cause"));
+    expect(loaded.diagnostics).toHaveLength(1);
+    expect(loaded.diagnostics[0].diagnostic.summary).toContain(
+      "the 'prisma/config' entry point could not be resolved",
+    );
+    expect(loaded.diagnostics[0].diagnostic.nextActions[0].label).toContain(
+      "Install the prisma package matching this CLI's version as a dev dependency",
+    );
+  });
+
+  test("a missing package whose name only starts with 'prisma' keeps the generic diagnostic", async () => {
+    const loaded = await loadConfig(join(FIXTURES, "missing-prisma-lookalike"));
+    expect(loaded.diagnostics).toHaveLength(1);
+    expect(loaded.diagnostics[0].diagnostic.summary).toContain(
+      "Cannot find package 'prisma-toolbelt'",
+    );
+    expect(loaded.diagnostics[0].diagnostic.nextActions).toEqual([
+      {
+        kind: "user-choice",
+        label: "Fix the error in the file, then run the command again.",
+      },
+    ]);
+  });
+
+  test("a cyclic cause chain still evaluates to the generic diagnostic instead of hanging", async () => {
+    const loaded = await loadConfig(join(FIXTURES, "cyclic-cause"));
+    expect(loaded.diagnostics).toHaveLength(1);
+    expect(loaded.diagnostics[0].diagnostic.code).toBe("CLI.CONFIG_UNREADABLE");
+    expect(loaded.diagnostics[0].diagnostic.summary).toContain(
+      "cyclic evaluation failure",
+    );
   });
 });
 
