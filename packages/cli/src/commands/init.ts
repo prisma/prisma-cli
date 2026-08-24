@@ -80,35 +80,36 @@ const APPEND_ADVICE = {
   label: `Append "${POSTINSTALL_SCRIPT}" to your postinstall script yourself to resync the skills on every install.`,
 };
 
-function noPackageJsonDiagnostic(): Diagnostic {
+function addDependencyAdvice(version: string): NextAction {
+  return {
+    kind: "user-choice",
+    label: `Add "prisma": "${version}" to devDependencies yourself, then run your package manager's install.`,
+  };
+}
+
+function noPackageJsonDiagnostic(version: string): Diagnostic {
   return {
     code: "INIT.NO_PACKAGE_JSON",
     severity: "warn",
     summary:
-      "There is no package.json in this directory, so the postinstall hook was not added.",
+      "There is no package.json in this directory, so the postinstall hook and the prisma dev dependency were not added.",
     nextActions: [
       {
         kind: "user-choice",
         label: `Run ${CLI_NAME} init from the directory that holds your package.json.`,
       },
+      addDependencyAdvice(version),
     ],
   };
 }
 
-function unreadablePackageJsonDiagnostic(): Diagnostic {
+function unreadablePackageJsonDiagnostic(version: string): Diagnostic {
   return {
     code: "INIT.PACKAGE_JSON_UNREADABLE",
     severity: "warn",
     summary:
-      "package.json could not be parsed, so the postinstall hook was not added.",
-    nextActions: [APPEND_ADVICE],
-  };
-}
-
-function addDependencyAdvice(version: string): NextAction {
-  return {
-    kind: "user-choice",
-    label: `Add "prisma": "${version}" to devDependencies yourself, then run your package manager's install.`,
+      "package.json could not be parsed, so the postinstall hook and the prisma dev dependency were not added.",
+    nextActions: [APPEND_ADVICE, addDependencyAdvice(version)],
   };
 }
 
@@ -128,23 +129,50 @@ function unwritablePackageJsonDiagnostic(
   };
 }
 
-function scriptsNotAnObjectDiagnostic(): Diagnostic {
+function scriptsNotAnObjectDiagnostic(
+  dependencyNeeded: boolean,
+  version: string,
+): Diagnostic {
   return {
     code: "INIT.SCRIPTS_NOT_AN_OBJECT",
     severity: "warn",
     summary:
       "The scripts field in package.json is not an object, so init left it alone.",
-    nextActions: [APPEND_ADVICE],
+    nextActions: [
+      APPEND_ADVICE,
+      ...(dependencyNeeded ? [addDependencyAdvice(version)] : []),
+    ],
   };
 }
 
-function foreignPostinstallDiagnostic(): Diagnostic {
+function foreignPostinstallDiagnostic(
+  dependencyNeeded: boolean,
+  version: string,
+): Diagnostic {
   return {
     code: "INIT.POSTINSTALL_KEPT",
     severity: "warn",
     summary:
       "package.json already has a postinstall script, so init left it alone.",
-    nextActions: [APPEND_ADVICE],
+    nextActions: [
+      APPEND_ADVICE,
+      ...(dependencyNeeded ? [addDependencyAdvice(version)] : []),
+    ],
+  };
+}
+
+function devDependenciesNotAnObjectDiagnostic(version: string): Diagnostic {
+  return {
+    code: "INIT.DEV_DEPENDENCIES_NOT_AN_OBJECT",
+    severity: "warn",
+    summary:
+      "The devDependencies field in package.json is not an object, so init did not add the prisma dev dependency.",
+    nextActions: [
+      {
+        kind: "user-choice",
+        label: `Fix the devDependencies field so it is an object, then add "prisma": "${version}" yourself and run your package manager's install.`,
+      },
+    ],
   };
 }
 
@@ -255,6 +283,7 @@ async function addPostinstallHook(
   cwd: string,
 ): Promise<Step<InitPostinstallReport>> {
   const manifestPath = path.join(cwd, "package.json");
+  const version = getCliVersion();
 
   let raw: string;
   try {
@@ -265,7 +294,7 @@ async function addPostinstallHook(
       lines: [
         summary("warn", "No package.json here; postinstall hook skipped."),
       ],
-      diagnostics: [noPackageJsonDiagnostic()],
+      diagnostics: [noPackageJsonDiagnostic(version)],
     };
   }
 
@@ -283,7 +312,7 @@ async function addPostinstallHook(
           "package.json could not be parsed; postinstall hook skipped.",
         ),
       ],
-      diagnostics: [unreadablePackageJsonDiagnostic()],
+      diagnostics: [unreadablePackageJsonDiagnostic(version)],
     };
   }
 
@@ -302,7 +331,7 @@ async function addPostinstallHook(
           "The scripts field in package.json is not an object; left untouched.",
         ),
       ],
-      diagnostics: [scriptsNotAnObjectDiagnostic()],
+      diagnostics: [scriptsNotAnObjectDiagnostic(!dependencyDeclared, version)],
     };
   }
 
@@ -322,7 +351,7 @@ async function addPostinstallHook(
           "package.json has its own postinstall script; left untouched.",
         ),
       ],
-      diagnostics: [foreignPostinstallDiagnostic()],
+      diagnostics: [foreignPostinstallDiagnostic(!dependencyDeclared, version)],
     };
   }
 
@@ -351,28 +380,34 @@ async function writeHookAndDependency(edit: {
   dependencyNeeded: boolean;
 }): Promise<Step<InitPostinstallReport>> {
   const { manifest, hookNeeded, dependencyNeeded } = edit;
-  const alreadyHooked = summary(
-    "info",
-    "The postinstall hook is already in package.json.",
-  );
+  const version = getCliVersion();
 
-  if (!hookNeeded && !dependencyNeeded) {
+  // A devDependencies value that is not an object stays untouched, the
+  // same way a malformed scripts field does; only the hook edit (whose
+  // field is fine) may proceed.
+  const dependencyBlocked =
+    dependencyNeeded &&
+    manifest.devDependencies !== undefined &&
+    !isPlainObject(manifest.devDependencies);
+  const block = dependencyBlock(dependencyBlocked, version);
+  const dependencyEdit = dependencyNeeded && !dependencyBlocked;
+
+  if (!hookNeeded && !dependencyEdit) {
     return {
       report: {
         outcome: "exists",
         script: POSTINSTALL_SCRIPT,
-        dependency: "declared",
+        dependency: block.kept,
       },
-      lines: [alreadyHooked],
-      diagnostics: [],
+      lines: [ALREADY_HOOKED, ...block.lines],
+      diagnostics: block.diagnostics,
     };
   }
 
-  const version = getCliVersion();
   if (hookNeeded) {
     manifest.scripts = { ...edit.scripts, postinstall: POSTINSTALL_SCRIPT };
   }
-  if (dependencyNeeded) {
+  if (dependencyEdit) {
     const devDependencies = isPlainObject(manifest.devDependencies)
       ? manifest.devDependencies
       : {};
@@ -394,27 +429,66 @@ async function writeHookAndDependency(edit: {
       },
       lines: [
         summary("warn", "package.json could not be written; left unchanged."),
+        ...block.lines,
       ],
       diagnostics: [
-        unwritablePackageJsonDiagnostic(hookNeeded, dependencyNeeded, version),
+        unwritablePackageJsonDiagnostic(hookNeeded, dependencyEdit, version),
+        ...block.diagnostics,
       ],
     };
   }
 
-  return manifestEditedStep(edit, alreadyHooked, version);
+  return manifestEditedStep(edit, dependencyEdit, block, version);
+}
+
+const ALREADY_HOOKED: Block = {
+  kind: "summary",
+  status: "info",
+  text: "The postinstall hook is already in package.json.",
+};
+
+/** What a blocked (non-object) devDependencies field contributes to
+ *  every outcome: its warning line, its diagnostic, and the outcome the
+ *  untouched dependency reports. */
+function dependencyBlock(
+  blocked: boolean,
+  version: string,
+): {
+  lines: readonly Block[];
+  diagnostics: readonly Diagnostic[];
+  kept: InitDependencyOutcome;
+} {
+  if (!blocked) {
+    return { lines: [], diagnostics: [], kept: "declared" };
+  }
+  return {
+    lines: [
+      summary(
+        "warn",
+        "The devDependencies field in package.json is not an object; prisma was not added.",
+      ),
+    ],
+    diagnostics: [devDependenciesNotAnObjectDiagnostic(version)],
+    kept: "skipped",
+  };
 }
 
 function manifestEditedStep(
-  edit: { cwd: string; hookNeeded: boolean; dependencyNeeded: boolean },
-  alreadyHooked: Block,
+  edit: { cwd: string; hookNeeded: boolean },
+  dependencyEdit: boolean,
+  block: {
+    lines: readonly Block[];
+    diagnostics: readonly Diagnostic[];
+    kept: InitDependencyOutcome;
+  },
   version: string,
 ): Step<InitPostinstallReport> {
-  const { hookNeeded, dependencyNeeded } = edit;
+  const { hookNeeded } = edit;
   return {
     report: {
       outcome: hookNeeded ? "added" : "exists",
       script: POSTINSTALL_SCRIPT,
-      dependency: dependencyNeeded ? "added" : "declared",
+      dependency: dependencyEdit ? "added" : block.kept,
     },
     lines: [
       hookNeeded
@@ -422,8 +496,8 @@ function manifestEditedStep(
             "ok",
             `Added "postinstall": "${POSTINSTALL_SCRIPT}" to package.json.`,
           )
-        : alreadyHooked,
-      ...(dependencyNeeded
+        : ALREADY_HOOKED,
+      ...(dependencyEdit
         ? [
             summary(
               "ok",
@@ -431,8 +505,9 @@ function manifestEditedStep(
             ),
           ]
         : []),
+      ...block.lines,
     ],
-    next: dependencyNeeded
+    next: dependencyEdit
       ? [
           {
             kind: "run-command",
@@ -441,7 +516,7 @@ function manifestEditedStep(
           },
         ]
       : [],
-    diagnostics: [],
+    diagnostics: block.diagnostics,
   };
 }
 
@@ -662,7 +737,7 @@ export const initCommand = defineCommand({
   help: {
     summary: "Prepare this repository for Prisma development",
     description:
-      "Runs locally and calls no platform API. Adds a postinstall script to package.json that keeps the Prisma agent skills in sync on every install, scaffolds a prisma.config.ts recording which agents to install skills for, then syncs the skills once now. Everything lands in the current directory; a prisma.config.ts or postinstall script that already exists is never edited. Rerunning is safe: each step reports what is already done.",
+      "Runs locally and calls no platform API. Adds a postinstall script to package.json that keeps the Prisma agent skills in sync on every install, adds prisma to devDependencies at this CLI's exact version when no dependency field declares it, scaffolds a prisma.config.ts recording which agents to install skills for, then syncs the skills once now. Everything lands in the current directory; a prisma.config.ts or postinstall script that already exists is never edited. Rerunning is safe: each step reports what is already done.",
     examples: [
       "init",
       "init --skills=claude,cursor",
