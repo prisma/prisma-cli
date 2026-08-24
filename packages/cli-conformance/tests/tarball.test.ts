@@ -600,3 +600,134 @@ describe("checkTarball", () => {
     ).toBe(true);
   });
 });
+
+describe("sibling manifests and per-package sandboxes (the rc.8 class)", () => {
+  const WRAPPER_MANIFEST: PackageManifest & { bin?: Record<string, string> } = {
+    bin: { prisma: "./dist/prisma.js" },
+    dependencies: {
+      "@prisma/cli-engine": "8.0.0-rc.1",
+      "@prisma/composer": "0.6.0-dev.16",
+      colorette: "^2.0.20",
+    },
+  };
+
+  function wrapperIo(
+    wrapperManifest: PackageManifest,
+    overrides: Partial<TarballIo> = {},
+  ): TarballIo {
+    return fakeIo({
+      readPackedManifest: (tarball) => {
+        if (tarball.includes("cli-engine")) {
+          return Promise.resolve(ENGINE_MANIFEST);
+        }
+        if (tarball.includes("prisma-wrapper")) {
+          return Promise.resolve(wrapperManifest);
+        }
+        return Promise.resolve(SHELL_MANIFEST);
+      },
+      readPackedFiles: (tarball) =>
+        Promise.resolve(
+          tarball.includes("prisma-wrapper")
+            ? new Map([
+                [
+                  "dist/prisma.js",
+                  'import "colorette";\nimport "@prisma/cli-engine";\nimport "@prisma/composer/family";\n',
+                ],
+              ])
+            : new Map(),
+        ),
+      ...overrides,
+    });
+  }
+
+  const wrapperInput = () =>
+    input({
+      packages: [
+        { name: "@prisma/cli", dir: "packages/cli" },
+        { name: "prisma", dir: "packages/prisma-wrapper" },
+        { name: "@prisma/cli-engine", dir: "packages/cli-engine" },
+      ],
+    });
+
+  test("a sibling pinning a shared dependency at another version is a finding", async () => {
+    const findings = await checkTarball(
+      wrapperInput(),
+      wrapperIo({
+        ...WRAPPER_MANIFEST,
+        // The rc.8 defect verbatim: the wrapper's product pin lags the
+        // shell's, and hoisting decides which one a user's bin runs.
+        dependencies: {
+          ...WRAPPER_MANIFEST.dependencies,
+          "@prisma/composer": "0.5.0",
+        },
+      }),
+    );
+    const mismatch = findings.filter((f) => f.kind === "sibling-pin-mismatch");
+    expect(mismatch).toHaveLength(1);
+    expect(mismatch[0]?.subject).toBe("prisma");
+    expect(mismatch[0]?.summary).toContain("@prisma/composer@0.5.0");
+  });
+
+  test("agreeing siblings raise no sibling finding", async () => {
+    const findings = await checkTarball(
+      wrapperInput(),
+      wrapperIo(WRAPPER_MANIFEST),
+    );
+    expect(findings.filter((f) => f.kind === "sibling-pin-mismatch")).toEqual(
+      [],
+    );
+  });
+
+  test("every bin-bearing package installs and starts in its own sandbox", async () => {
+    const started: string[] = [];
+    const installed: string[] = [];
+    await checkTarball(
+      wrapperInput(),
+      wrapperIo(WRAPPER_MANIFEST, {
+        installSandbox: ({ sandboxDir }) => {
+          installed.push(sandboxDir);
+          return Promise.resolve({ ok: true as const });
+        },
+        startBin: ({ sandboxDir, binName }) => {
+          started.push(`${sandboxDir}:${binName}`);
+          return Promise.resolve({
+            exitCode: 0,
+            stdout: "",
+            stderr: "",
+            timedOut: false,
+          });
+        },
+      }),
+    );
+    // Two sandboxes — the engine has no bin — and each bin starts in
+    // its package's own sandbox, never the other's.
+    expect(new Set(installed).size).toBe(2);
+    expect(started.some((s) => s.endsWith("prisma-cli"))).toBe(true);
+    expect(started.some((s) => s.endsWith(":prisma"))).toBe(true);
+    const dirs = new Set(started.map((s) => s.split(":")[0]));
+    expect(dirs.size).toBe(2);
+  });
+
+  test("a wrapper bin that fails in its own sandbox is a finding naming the wrapper", async () => {
+    const findings = await checkTarball(
+      wrapperInput(),
+      wrapperIo(WRAPPER_MANIFEST, {
+        startBin: ({ binName }) =>
+          Promise.resolve(
+            binName === "prisma"
+              ? {
+                  exitCode: 1,
+                  stdout: "",
+                  stderr:
+                    "Cannot read properties of undefined (reading 'needs')",
+                  timedOut: false,
+                }
+              : { exitCode: 0, stdout: "", stderr: "", timedOut: false },
+          ),
+      }),
+    );
+    const failed = findings.filter((f) => f.kind === "bin-failed");
+    expect(failed).toHaveLength(1);
+    expect(failed[0]?.subject).toBe("prisma");
+  });
+});
