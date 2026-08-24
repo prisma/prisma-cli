@@ -151,8 +151,10 @@ function isSuppressedByInvocation(runtime: SkillsCheckRuntime): boolean {
   }
 
   const argv = flagTokens(runtime.argv);
-  // The command that fixes this must not also complain about it.
-  if (invokedGroup(argv) === "skills") {
+  // The commands that fix this must not also complain about it: the
+  // skills group, and init, whose run includes a sync.
+  const group = invokedGroup(argv);
+  if (group === "skills" || group === "init") {
     return true;
   }
   if (

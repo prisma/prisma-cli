@@ -4,6 +4,7 @@
  * command's own output, never touching the exit code, and silent
  * through every off switch.
  */
+import { existsSync } from "node:fs";
 import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { PRISMA_CONFIG_VERSION } from "@prisma/cli-engine";
@@ -189,6 +190,27 @@ describe("the skills check", () => {
     expect(proc.stderrText).toBe("");
   });
 
+  it("never evaluates the config when every copy is current", async () => {
+    // The check swallows errors, so a throwing config alone could not
+    // tell "never evaluated" from "evaluated and caught": evaluation
+    // must leave a visible trace.
+    const root = await makeSyncedProject();
+    const marker = path.join(root, "config-evaluated.txt");
+    await writeFile(
+      path.join(root, "prisma.config.ts"),
+      `require("node:fs").writeFileSync(${JSON.stringify(marker)}, "");\n` +
+        'throw new Error("the check evaluated the config");\n',
+      "utf8",
+    );
+    const proc = makeProcess({ cwd: root });
+
+    const exitCode = await main(proc, stubCli());
+
+    expect(exitCode).toBe(0);
+    expect(proc.stderrText).toBe("");
+    expect(existsSync(marker)).toBe(false);
+  });
+
   it("says nothing when no allowlisted package is installed", async () => {
     const proc = makeProcess({ cwd: await makeProjectRoot("check-") });
 
@@ -232,7 +254,8 @@ describe("the skills check off switches", () => {
       "a global flag before the group",
       ["--config", "prisma.config.ts", "skills", "list"],
     ],
-  ])("stays silent for the skills commands themselves (%s)", async (_name, argv) => {
+    ["init, whose run includes a sync", ["init"]],
+  ])("stays silent for the commands that fix it (%s)", async (_name, argv) => {
     const proc = makeProcess({ cwd: await makeStaleProject(), argv });
 
     await main(proc, stubCli());
