@@ -457,6 +457,9 @@ The cleanup PR removed the compute config and `init`, made service commands para
 
 ## From the agent-skills delivery (project closed 2026-08-22)
 
+- **Config evaluation fails through unrealpath'd pnpm symlinks; the verified fix waits for the next engine release.** The engine's lazy `await import("c12")` (packages/cli-engine/src/config-loader.ts) resolves through a pnpm symlink without realpathing, so c12's own `pathe` import walks up from the symlink path and misses its store siblings — `CLI.CONFIG_UNREADABLE: Cannot find package 'pathe'`. Affects this repo's dev layout and pnpm `hoist=false` installs only; npm and default-pnpm installs work. The fix is one line, verified empirically: import c12 via `pathToFileURL(realpathSync(fileURLToPath(import.meta.resolve("c12"))))`. It was implemented on PR #219 and reverted because any engine change forces a version bump and the families (`@prisma/orm-toolchain`, `@prisma/composer-cli`) peer-pin the engine exactly, requiring a coordinated family release. Ship it with the next engine version train; the init e2e's rerun workaround (removing the config before the second binary run) comes out at the same time.
+
+
 The agent-skills project (skills sync/list, `prisma init`, the staleness notice; PR #219) closed with these items still open; details were in its own ledger, summarized here as the surviving record.
 
 - **When facade skill content diverges per database, split the skill by name — never add a carrier package** (operator concurred 2026-08-21). Today every facade ships an identical `prisma-8` skill and conflicts are arbitrated by highest version, safe only while content is identical and versions are lockstep. A transitive carrier package is unresolvable from the project root under pnpm; a direct-dependency skills package breaks the installed-version guarantee. The allowlist grows one deliberate line per facade either way.
