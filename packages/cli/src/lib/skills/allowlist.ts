@@ -35,6 +35,10 @@ export const AGENT_SKILL_DIRS = {
   claude: ".claude/skills",
   cursor: ".cursor/skills",
   agents: ".agents/skills",
+  // docs.devin.ai product-guides/skills: Devin reads
+  // .devin/skills/<skill-name>/SKILL.md, and .agents/skills too, so this
+  // entry matters only when a config names devin alone. The same page
+  // documents .windsurf/skills, which was deliberately not added.
   devin: ".devin/skills",
 } as const;
 
