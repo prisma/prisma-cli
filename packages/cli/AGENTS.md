@@ -93,6 +93,7 @@ Important themes:
 - Do not add shortcuts or aliases as canonical forms.
 - Do not let the current app preview introduce abstractions that will block later ORM/Postgres integration.
 - If docs conflict, resolve the docs rather than guessing in implementation.
+- Dependency pins live in TWO manifests: `packages/cli/package.json` and `packages/prisma/package.json` declare the same runtime dependencies, and the `prisma` bin resolves from the wrapper's copy. Change them together, always. `tests/manifest-pins.test.ts` and the tarball conformance check both fail on divergence — this rule exists because `prisma@8.0.0-rc.8` shipped crashing after a pin was bumped in only one of them.
 
 ## Default Agent Workflow
 

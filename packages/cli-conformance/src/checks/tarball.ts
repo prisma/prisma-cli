@@ -1,3 +1,4 @@
+import { join } from "node:path";
 import type { Finding, Suppression } from "../findings";
 import { bareImportRoots } from "../module-graph";
 import { checkImportPurity, type PackageManifest } from "./import-purity";
@@ -161,9 +162,55 @@ export async function checkTarball(
   const shell = packed.get(input.shellPackage);
   if (shell === undefined) return findings;
 
+  findings.push(...siblingPinAgreementFindings(input, shell.manifest, packed));
   findings.push(...manifestPinFindings(input, shell.manifest));
-  findings.push(...(await sandboxFindings(input, shell, packed, io)));
+  // Every packed package that declares a bin installs into its OWN
+  // sandbox and starts there, so resolution happens the way that
+  // package's real install resolves it. prisma@8.0.0-rc.8 shipped a
+  // wrapper bin that crashed on every invocation while a shell-only
+  // sandbox stayed green: the wrapper's stale product pin was hoisted
+  // away by the shell's correct one.
+  for (const [name, entry] of packed) {
+    if (declaredBins(entry.manifest).length === 0) continue;
+    // biome-ignore lint/performance/noAwaitInLoops: sandboxes install one at a time so a failure names its package and concurrent npm installs cannot confound each other
+    findings.push(...(await sandboxFindings(input, name, entry, packed, io)));
+  }
   return applyExceptions(findings, input.exceptions);
+}
+
+/**
+ * The rc.8 guard: sibling packages that ship the same bundled source —
+ * the shell and the `prisma` wrapper — hand-carry their dependency
+ * lists in separate manifests, and which copy of a dependency a user's
+ * install resolves depends on hoisting. Any dependency name two packed
+ * manifests share must therefore carry the identical specifier.
+ */
+function siblingPinAgreementFindings(
+  input: TarballInput,
+  shellManifest: PackedManifest,
+  packed: ReadonlyMap<string, { tarball: string; manifest: PackedManifest }>,
+): readonly Finding[] {
+  const findings: Finding[] = [];
+  const shellDeps = shellManifest.dependencies ?? {};
+  for (const [name, entry] of packed) {
+    if (name === input.shellPackage) continue;
+    for (const [dep, specifier] of Object.entries(
+      entry.manifest.dependencies ?? {},
+    )) {
+      const shellSpecifier = shellDeps[dep];
+      if (shellSpecifier === undefined || shellSpecifier === specifier) {
+        continue;
+      }
+      findings.push(
+        finding(
+          "sibling-pin-mismatch",
+          name,
+          `${name} pins ${dep}@${specifier} while ${input.shellPackage} pins ${shellSpecifier} — which one an install resolves depends on hoisting`,
+        ),
+      );
+    }
+  }
+  return findings;
 }
 
 /**
@@ -249,13 +296,18 @@ function manifestPinFindings(
   return findings;
 }
 
-/** 3b + 3c's installed legs, all downstream of one sandbox install. */
+/** 3b + 3c's installed legs, one sandbox per bin-bearing package. */
 async function sandboxFindings(
   input: TarballInput,
-  shell: { tarball: string; manifest: PackedManifest },
+  packageName: string,
+  root: { tarball: string; manifest: PackedManifest },
   packed: ReadonlyMap<string, { tarball: string; manifest: PackedManifest }>,
   io: TarballIo,
 ): Promise<readonly Finding[]> {
+  const sandboxDir = join(
+    input.sandboxDir,
+    packageName.replace(/[@/]/g, "-").replace(/^-/, ""),
+  );
   // Transitive: a sibling reached only through another sibling still
   // needs its override, or the install falls back to the registry.
   const overrides: Record<string, string> = {};
@@ -269,38 +321,40 @@ async function sandboxFindings(
       visit(entry.manifest);
     }
   };
-  visit(shell.manifest);
+  visit(root.manifest);
   const install = await io.installSandbox({
-    sandboxDir: input.sandboxDir,
-    rootTarball: shell.tarball,
+    sandboxDir,
+    rootTarball: root.tarball,
     overrides,
   });
   if (!install.ok) {
     return [
       finding(
         "install-failed",
-        input.shellPackage,
+        packageName,
         "the packed tarball did not install into a clean tree",
         install.output,
       ),
     ];
   }
   return [
-    ...(await binFindings(input, shell.manifest, io)),
-    ...(await installedPinFindings(input, shell.manifest, io)),
+    ...(await binFindings(input, packageName, sandboxDir, root.manifest, io)),
+    ...(await installedPinFindings(input, sandboxDir, root.manifest, io)),
   ];
 }
 
 async function binFindings(
   input: TarballInput,
-  shellManifest: PackedManifest,
+  packageName: string,
+  sandboxDir: string,
+  manifest: PackedManifest,
   io: TarballIo,
 ): Promise<readonly Finding[]> {
   const findings: Finding[] = [];
-  for (const [binName, relPath] of declaredBins(shellManifest)) {
+  for (const [binName, relPath] of declaredBins(manifest)) {
     // biome-ignore lint/performance/noAwaitInLoops: bins start one at a time so a failure names its bin and concurrent processes cannot confound each other's exit
     const run = await io.startBin({
-      sandboxDir: input.sandboxDir,
+      sandboxDir,
       binName,
       relPath,
       argv: ["--version"],
@@ -310,7 +364,7 @@ async function binFindings(
       findings.push(
         finding(
           "bin-failed",
-          input.shellPackage,
+          packageName,
           `bin ${binName} timed out instead of exiting`,
           run.stderr,
         ),
@@ -319,7 +373,7 @@ async function binFindings(
       findings.push(
         finding(
           "bin-failed",
-          input.shellPackage,
+          packageName,
           `bin ${binName} exited ${run.exitCode} on plain node`,
           `stdout:\n${run.stdout}\nstderr:\n${run.stderr}`,
         ),
@@ -376,31 +430,29 @@ function familyPinFindings(
 
 async function installedPinFindings(
   input: TarballInput,
-  shellManifest: PackedManifest,
+  sandboxDir: string,
+  manifest: PackedManifest,
   io: TarballIo,
 ): Promise<readonly Finding[]> {
   const findings: Finding[] = [];
-  const shellPin = shellManifest.dependencies?.[input.enginePackage];
+  const shellPin = manifest.dependencies?.[input.enginePackage];
 
   for (const family of input.familyPackages) {
     // biome-ignore lint/performance/noAwaitInLoops: one manifest read per mounted family — two today — keeps findings ordered with the family list
-    const installed = await io.readInstalledManifest(input.sandboxDir, family);
+    const installed = await io.readInstalledManifest(sandboxDir, family);
     if (installed === undefined) continue;
     findings.push(
       ...familyPinFindings(
         input,
         family,
-        shellManifest.dependencies?.[family],
+        manifest.dependencies?.[family],
         installed,
         shellPin,
       ),
     );
   }
 
-  const copies = await io.listInstalledCopies(
-    input.sandboxDir,
-    input.enginePackage,
-  );
+  const copies = await io.listInstalledCopies(sandboxDir, input.enginePackage);
   if (copies.length > 1) {
     findings.push(
       finding(
