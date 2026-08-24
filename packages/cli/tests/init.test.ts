@@ -497,6 +497,53 @@ describe("init", () => {
     expect(result.skills.sync?.pruned).toEqual([]);
   });
 
+  it("reports no-skills when the installed packages ship none", async () => {
+    const root = await makeProjectRoot("init-");
+    await installPackage(root, {
+      name: "@prisma/orm-postgres",
+      version: "6.9.0",
+    });
+
+    const run = await makeCli().run(["init"], {
+      cwd: root,
+      isTty: { stdout: true, stderr: true },
+    });
+    const result = run.presented?.data as InitResult;
+
+    expect(run.exitCode).toBe(0);
+    expect(result.skills.outcome).toBe("no-skills");
+    expect(run.stderr).toContain(
+      "No Prisma dependencies in your project ship agent skills to sync.",
+    );
+    expect(run.stderr).not.toContain("up to date");
+  });
+
+  it("reports no-packages when no allowlisted package is installed", async () => {
+    const root = await makeProjectRoot("init-");
+
+    const { exitCode, result } = await runInit(root);
+
+    expect(exitCode).toBe(0);
+    expect(result.skills.outcome).toBe("no-packages");
+    expect(result.skills.sync?.packages).toEqual([]);
+  });
+
+  it("reports no-agents when the config records agents: []", async () => {
+    const root = await makeProjectRoot("init-");
+    await installPackage(root, {
+      name: "@prisma/orm-postgres",
+      version: "8.1.0",
+      skills: ["prisma-8"],
+    });
+
+    const { exitCode, result } = await runInit(root, [], {
+      skills: { agents: [] },
+    });
+
+    expect(exitCode).toBe(0);
+    expect(result.skills.outcome).toBe("no-agents");
+  });
+
   it("surfaces a refused directory instead of claiming the skills are current", async () => {
     const root = await makeProjectRoot("init-");
     await installPackage(root, {
