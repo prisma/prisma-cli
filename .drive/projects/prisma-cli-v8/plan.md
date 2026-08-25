@@ -127,6 +127,8 @@ One standing caveat: every endpoint above is marked experimental and subject to 
 
 **CLOSED 2026-08-12** — shipped as prisma-cli #164 plus the Release-immutability fix #166; acceptance verified in `specs/s7-release.md`'s Close-out; leftovers in `deferred.md`. The DoD artifact exists published: the operator's first real publish put `@prisma/cli@8.0.0-rc.1` (one binary answering platform, composer and ORM) and `@prisma/cli-engine@8.0.0-rc.1` on npm under `next`, `latest` untouched — RC releases publish under `next` by ruling until the deliberate flip. The bare-`prisma` cutover waits on `prisma7`; engine-pin convergence waits on the product repos bumping to the published engine. Next by the graph: S9 after the S5 cutover and S2d land (both dispatched elsewhere).
 
+**Cutover executed 2026-08-25** (rollout-plan step 5, operator-ruled): `prisma@8.0.0-rc.10` published under `latest` — `npm install prisma` serves the unified CLI, verified by clean install (one engine in the tree, config evaluation working). The train behind it: the c12 realpath fix and detectCI export (engine 0.2.1→0.2.3, prisma-cli #222/#224/#225/#227), two family release rounds (composer 0.13.0/0.14.0, orm-toolchain rc.6/rc.7) converging both peers on engine 0.2.3, and the release PR #230 (releaseDistTag widened to `latest`; conformance exception list empty). `prisma7` never blocked in practice — this repo already owned the bare name — and remains with the ORM team as v7's new home. `next` now mirrors `latest` by hand-move (#231, policy in `docs/oss/versioning.md`); leftovers in `deferred.md` (dev-leg ordering decision, `@prisma/cli` deprecation call).
+
 ### S9 — The error-code catalogue (last)
 
 Repo: prisma-cli. The engine raises its `CLI.*` codes from sixteen-plus

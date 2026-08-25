@@ -47,6 +47,15 @@ unified CLI reaches npm, from first pre-release through owning the bare
    `prisma-composer` pointing at `prisma`, per the grammar/consolidation
    docs. (Codemods and docs-site updates are the ecosystem-cutover
    follow-on, out of this project's scope.)
+   **EXECUTED 2026-08-25** via prisma-cli #230 (`releaseDistTag`
+   widened; `prisma@8.0.0-rc.10` under `latest`) and #231 (`next`
+   mirrors `latest` by hand-move until 8.0.0 stable retires it).
+   Deprecations resolved differently than planned: `prisma-next`
+   deprecated by the operator 2026-08-24; `prisma-composer` left alone
+   (operator ruling 2026-08-25); `@prisma/cli` open in `deferred.md` —
+   it is now the actively-published scoped twin, so deprecating it may
+   no longer make sense. Step 4's `prisma7` never blocked in practice
+   (this repo already owned the bare name) and stays with the ORM team.
 
 ## Invariants
 
@@ -57,16 +66,21 @@ unified CLI reaches npm, from first pre-release through owning the bare
   (tightened per the 2026-08-12 ruling: RC-line bump PRs publish under
   `next`, so on this repo's names even a merged bump PR cannot move
   `latest` while the line is RC — only an explicit `dist-tag: latest`
-  dispatch or a stable-version bump can).
+  dispatch or a stable-version bump can). **Since the 2026-08-25
+  cutover the explicit act is behind us: every merged bump PR publishes
+  under `latest`, and merging the bump PR remains the deliberate act.**
 - Version pins across the tandem packages follow the committed-versions
   ruling (S3).
 
 ## Open items
 
 - **`prisma7` timing** — owned by the ORM team; blocks step 4 only.
+  **Overtaken 2026-08-25:** the cutover executed without it; it remains
+  v7's future publish home, nothing here waits on it.
 - **`latest`-flip criteria** (step 5) — TBD by the operator; candidate
   inputs: rc soak duration, issue rate, parity-divergence sign-off per
-  family.
+  family. **Resolved 2026-08-25 by operator ruling: the soak ended and
+  the flip executed (see step 5).**
 - **Exact `prisma-next` handoff mechanics** (step 3) — npm publisher
   config transfer + the prisma/prisma workflow change; small, ruled
   feasible since the operator owns both repos.
