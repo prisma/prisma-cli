@@ -156,6 +156,8 @@ Rules:
 
 ## MVP Error Codes
 
+> **Superseded for per-code lookup.** This section predates the dotted `NAMESPACE.SUBCODE` scheme now used in production source. The canonical per-code registry is [docs/reference/error-reference.md](../reference/error-reference.md), kept complete by `pnpm check:error-reference` in CI. The taxonomy and shape rules in this document still apply.
+
 These codes are the minimum stable set for the MVP:
 
 - `USAGE_ERROR`

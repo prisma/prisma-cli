@@ -1,4 +1,5 @@
 import { type CommandFamily, defineCommandFamily } from "@prisma/cli-engine";
+import { DOCS_ERRORS_BASE_URL } from "../../cli-name";
 import { skillsConfigSection } from "./config";
 import { skillsListCommand } from "./list";
 import { skillsSyncCommand } from "./sync";
@@ -8,6 +9,7 @@ import { skillsSyncCommand } from "./sync";
  *  part of either product's. */
 export const skillsCommandFamily: CommandFamily = defineCommandFamily({
   configSection: skillsConfigSection,
+  docsBaseUrl: DOCS_ERRORS_BASE_URL,
   commands: {
     sync: skillsSyncCommand,
     list: skillsListCommand,
