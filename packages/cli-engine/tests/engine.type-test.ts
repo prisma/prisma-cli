@@ -25,6 +25,7 @@ import type {
   PresentedResult,
   RedirectSpec,
   Runtime,
+  SectionProvenance,
   SectionValidation,
   Session,
   StreamEvent,
@@ -38,6 +39,7 @@ import {
   defineSessionCommand,
   flag,
   positional,
+  resolveSectionPath,
 } from "@prisma/cli-engine";
 import type {
   CliStructuredError,
@@ -147,6 +149,8 @@ interface CheckCfg {
   readonly strict: boolean;
 }
 
+// A one-argument validator stays assignable to the two-parameter
+// declared type of ConfigSection.validate.
 export const checkSection: ConfigSection<CheckCfg> = defineConfigSection({
   name: "check",
   validate: (raw): SectionValidation<CheckCfg> =>
@@ -154,6 +158,24 @@ export const checkSection: ConfigSection<CheckCfg> = defineConfigSection({
       ? { ok: true, value: { strict: false }, diagnostics: [] }
       : { ok: true, value: { strict: true }, diagnostics: [] },
 });
+
+// The validator's second parameter is the resolved value's provenance,
+// typed for resolveSectionPath without annotation.
+export const pathSection: ConfigSection<{ readonly out: string }> =
+  defineConfigSection({
+    name: "paths",
+    validate: (
+      raw,
+      provenance,
+    ): SectionValidation<{ readonly out: string }> => {
+      const typed: SectionProvenance = provenance;
+      return {
+        ok: true,
+        value: { out: resolveSectionPath(typed, "out", String(raw)) },
+        diagnostics: [],
+      };
+    },
+  });
 
 export const checkCommand = defineCommand({
   help: { summary: "Check the project" },

@@ -293,7 +293,7 @@ function validateConfigSection(
   }
   let validation: SectionValidation<unknown>;
   try {
-    validation = section.validate(resolved.value);
+    validation = section.validate(resolved.value, resolved.provenance);
   } catch (cause) {
     return {
       kind: "bug",

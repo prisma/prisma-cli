@@ -120,7 +120,7 @@ function checkOne(
   for (const hostile of corpus) {
     let returned: unknown;
     try {
-      returned = section.validate(hostile.make());
+      returned = section.validate(hostile.make(), { files: [], keys: {} });
     } catch (error) {
       threw.push(hostile.label);
       firstError ??= error instanceof Error ? error.message : String(error);

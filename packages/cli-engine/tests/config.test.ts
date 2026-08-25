@@ -32,6 +32,7 @@ import {
   type Runtime,
   resolveSectionOverChain,
   resolveSectionPath,
+  type SectionProvenance,
   type SectionValidation,
 } from "@prisma/cli-engine";
 import { ok } from "@prisma/cli-engine/protocol";
@@ -1800,6 +1801,59 @@ describe("sections merge per key over the chain", { timeout: 60_000 }, () => {
     );
     const absolute = resolve("/somewhere/else");
     expect(resolveSectionPath(provenance, "out", absolute)).toBe(absolute);
+  });
+
+  test("the validator receives the resolved section's provenance and can return declaring-file-absolute paths", async () => {
+    const seen: SectionProvenance[] = [];
+    const section = defineConfigSection<unknown>({
+      name: "toy",
+      validate: (raw, provenance) => {
+        seen.push(provenance);
+        const { out, migrations } = raw as {
+          out: string;
+          migrations: string;
+        };
+        return {
+          ok: true,
+          value: {
+            out: resolveSectionPath(provenance, "out", out),
+            migrations: resolveSectionPath(
+              provenance,
+              "migrations",
+              migrations,
+            ),
+          },
+          diagnostics: [],
+        };
+      },
+    });
+    const cli = chainCli(
+      chainFiles(
+        { toy: { out: "./dist" } },
+        { toy: { migrations: "./migrations" } },
+      ),
+      section,
+    );
+    const run = await cli.run(["show"], { isTty: { stdout: true } });
+    expect(run.exitCode).toBe(0);
+    expect(seen).toEqual([
+      { files: [PKG, ROOT], keys: { out: PKG, migrations: ROOT } },
+    ]);
+    expect(run.presented?.data).toEqual({
+      out: resolve("/repo/pkg", "dist"),
+      migrations: resolve("/repo", "migrations"),
+    });
+  });
+
+  test("a one-argument validator keeps working unchanged", async () => {
+    const oneArg = defineConfigSection<unknown>({
+      name: "toy",
+      validate: (raw) => ({ ok: true, value: raw, diagnostics: [] }),
+    });
+    const cli = chainCli(chainFiles({ toy: { greeting: "pkg" } }, {}), oneArg);
+    const run = await cli.run(["show"], { isTty: { stdout: true } });
+    expect(run.exitCode).toBe(0);
+    expect(run.presented?.data).toEqual({ greeting: "pkg" });
   });
 
   test("a primitive resolved value still carries provenance naming its contributors", () => {

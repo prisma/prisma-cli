@@ -166,7 +166,10 @@ export async function readProjectSkillsConfig(
   if (!resolved.ok) {
     return null;
   }
-  const section = skillsConfigSection.validate(resolved.value);
+  const section = skillsConfigSection.validate(
+    resolved.value,
+    resolved.provenance,
+  );
   return section.ok ? section.value : null;
 }
 

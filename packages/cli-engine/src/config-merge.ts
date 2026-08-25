@@ -183,10 +183,10 @@ export function resolveSectionOverChain(
 /**
  * Resolves a path found under a TOP-LEVEL `key` of a resolved section
  * value against the file that declared that key — never against cwd or
- * the nearest config file. Sections opt in by resolving their
- * path-valued settings through this with the provenance
- * resolveSectionOverChain returned; an absolute path comes back
- * unchanged. Throws on a key the resolved value does not carry at its
+ * the nearest config file. The intended caller is a section validator,
+ * which receives the provenance as its second argument and returns the
+ * resolved absolute path in its validated value; an absolute path comes
+ * back unchanged. Throws on a key the resolved value does not carry at its
  * top level — a silent fallback could resolve against the wrong file,
  * which is the mistake this helper exists to prevent.
  */
