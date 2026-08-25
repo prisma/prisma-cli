@@ -209,7 +209,7 @@ export interface LoadedConfig {
 }
 
 /**
- * The config contract version defineConfig writes as the structural
+ * The config contract version definePrismaConfig writes as the structural
  * `$prismaConfig` marker; the loader checks it before interpreting
  * anything.
  */

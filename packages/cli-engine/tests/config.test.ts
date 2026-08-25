@@ -13,7 +13,6 @@ import {
   createCli,
   defineCommand,
   defineCommandFamily,
-  defineConfig,
   defineConfigSection,
   definePrismaConfig,
   flag,
@@ -41,12 +40,6 @@ describe("definePrismaConfig", () => {
       toy: { greeting: "hi" },
       $prismaConfig: PRISMA_CONFIG_VERSION,
     });
-  });
-
-  test("the deprecated defineConfig alias stamps the same marker", () => {
-    expect(defineConfig({ toy: { greeting: "hi" } })).toEqual(
-      definePrismaConfig({ toy: { greeting: "hi" } }),
-    );
   });
 });
 

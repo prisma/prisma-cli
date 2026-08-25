@@ -1,7 +1,7 @@
 /**
  * The prisma.config.ts loader behind Runtime.loadConfig: resolve the
  * file (the one `--config` named, otherwise prisma.config.ts in cwd —
- * cwd only, no walking up), evaluate it, check the defineConfig version
+ * cwd only, no walking up), evaluate it, check the definePrismaConfig version
  * marker, and produce LoadedConfig.
  *
  * Which section names a CLI recognises is not this module's business:
@@ -70,10 +70,6 @@ export function definePrismaConfig<T extends Record<string, unknown>>(
 ): T & { readonly $prismaConfig: number } {
   return Object.freeze({ ...config, $prismaConfig: PRISMA_CONFIG_VERSION });
 }
-
-/** @deprecated Renamed to {@link definePrismaConfig}: every family's
- *  config helper carries a unique name, so none needs an import alias. */
-export const defineConfig = definePrismaConfig;
 
 function hasVersionMarker(value: unknown): value is Record<string, unknown> {
   return (

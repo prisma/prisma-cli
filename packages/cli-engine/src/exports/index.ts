@@ -45,7 +45,6 @@ export {
   type SpawnDeclarations,
 } from "../commands";
 export {
-  defineConfig,
   definePrismaConfig,
   loadConfig,
 } from "../config-loader";
