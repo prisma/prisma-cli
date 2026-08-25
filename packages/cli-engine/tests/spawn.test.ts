@@ -1784,8 +1784,7 @@ function controllableRuntime() {
       };
     },
     loadConfig: async () => ({
-      path: "/prisma.config.ts",
-      sections: {},
+      files: [],
       diagnostics: [],
     }),
     managementApi: { baseUrl: "https://test.invalid" },

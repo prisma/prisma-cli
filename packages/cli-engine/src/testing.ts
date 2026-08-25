@@ -298,8 +298,9 @@ export function createTestCli(spec: {
   const loadConfig: Runtime["loadConfig"] =
     spec.loadConfig ??
     (async (configPath) => ({
-      path: configPath ?? CONFIG_FILE_NAME,
-      sections: spec.config ?? {},
+      files: [
+        { path: configPath ?? CONFIG_FILE_NAME, sections: spec.config ?? {} },
+      ],
       diagnostics: [],
     }));
   const spawnChild: SpawnChild =

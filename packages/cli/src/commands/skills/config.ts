@@ -146,6 +146,10 @@ export function readSkillsConfig(loaded: {
  * config file exists — decided with one stat, so a project without a
  * config never pays the file's TypeScript transpile — or the section
  * does not validate.
+ *
+ * Reads the nearest file of the loader's chain, which keeps this
+ * exactly the cwd-only behavior it always had; resolving through the
+ * whole chain comes with the engine-resolver consolidation.
  */
 export async function readProjectSkillsConfig(
   cwd: string,
@@ -158,7 +162,8 @@ export async function readProjectSkillsConfig(
   if (!existsSync(file)) {
     return null;
   }
-  return readSkillsConfig(await loadConfig(cwd, configPath));
+  const loaded = await loadConfig(cwd, configPath);
+  return readSkillsConfig({ sections: loaded.files[0]?.sections ?? {} });
 }
 
 export const skillsConfigSection = defineConfigSection<SkillsConfig>({

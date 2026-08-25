@@ -181,7 +181,7 @@ describe("prisma init", () => {
     const loaded = await loadConfig(workdir);
 
     expect(loaded.diagnostics).toEqual([]);
-    expect(loaded.sections.skills).toEqual({
+    expect(loaded.files[0]?.sections.skills).toEqual({
       agents: ["claude", "cursor", "agents", "devin"],
     });
   });
@@ -212,7 +212,7 @@ describe("prisma init", () => {
 
     const reloaded = await loadConfig(workdir);
     expect(reloaded.diagnostics).toEqual([]);
-    expect(reloaded.sections.skills).toEqual({
+    expect(reloaded.files[0]?.sections.skills).toEqual({
       agents: ["claude", "cursor", "agents", "devin"],
     });
   });

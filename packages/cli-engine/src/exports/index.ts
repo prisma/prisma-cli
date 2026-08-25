@@ -121,6 +121,7 @@ export {
   type HostProcess,
   type InputStream,
   type LoadedConfig,
+  type LoadedConfigFile,
   type OutputStream,
   PRISMA_CONFIG_VERSION,
   type Runtime,

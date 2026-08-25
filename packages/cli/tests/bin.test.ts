@@ -204,11 +204,8 @@ describe("assembleRuntime", () => {
     expect(runtime.isTty).toEqual({ stdin: true, stdout: true, stderr: false });
     expect(runtime.packageManager).toBeUndefined();
     expect(runtime.managementApi).toEqual({ baseUrl: "https://api.prisma.io" });
-    // resolve, not join: the loader makes the path absolute, and on
-    // Windows that puts a drive on this cwd.
     expect(await runtime.loadConfig()).toEqual({
-      path: join(resolve("/tmp/bin-test-cwd"), "prisma.config.ts"),
-      sections: {},
+      files: [],
       diagnostics: [],
     });
 
@@ -284,13 +281,17 @@ describe("assembleRuntime", () => {
 
     const found = await runtime.loadConfig(NAMED_CONFIG_PATH);
     expect(found).toEqual({
-      path: NAMED_CONFIG_PATH,
-      sections: { toy: { greeting: "from the named file" } },
+      files: [
+        {
+          path: NAMED_CONFIG_PATH,
+          sections: { toy: { greeting: "from the named file" } },
+        },
+      ],
       diagnostics: [],
     });
 
     const missing = await runtime.loadConfig(`${NAMED_CONFIG_PATH}.gone`);
-    expect(missing.sections).toEqual({});
+    expect(missing.files).toEqual([]);
     expect(missing.diagnostics[0]?.diagnostic.code).toBe(
       "CLI.CONFIG_NOT_FOUND",
     );

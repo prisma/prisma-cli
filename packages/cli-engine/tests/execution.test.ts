@@ -606,8 +606,7 @@ describe("needs preconditions", () => {
       },
       onSignal: () => () => {},
       loadConfig: async () => ({
-        path: "/prisma.config.ts",
-        sections: {},
+        files: [],
         diagnostics: [
           {
             section: null,
@@ -826,8 +825,7 @@ describe("report() after the handler resolved", () => {
       },
       onSignal: () => () => {},
       loadConfig: async () => ({
-        path: "/prisma.config.ts",
-        sections: {},
+        files: [],
         diagnostics: [],
       }),
       managementApi: { baseUrl: "https://test.invalid" },
@@ -901,8 +899,7 @@ describe("credentials that cannot be read", () => {
       },
       onSignal: () => () => {},
       loadConfig: async () => ({
-        path: "/prisma.config.ts",
-        sections: {},
+        files: [],
         diagnostics: [],
       }),
       credentialManager: {

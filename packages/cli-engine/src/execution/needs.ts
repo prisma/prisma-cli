@@ -231,14 +231,18 @@ function unknownSectionDiagnostic(
   };
 }
 
+/** Every file on the chain is checked — a typo'd key in a nested file
+ *  errors even when the command's section resolved elsewhere. */
 function unknownSections(
   loaded: LoadedConfig,
   configSections: readonly string[],
 ): readonly Diagnostic[] {
   const declared = new Set(configSections);
-  return Object.keys(loaded.sections)
-    .filter((key) => !declared.has(key))
-    .map((key) => unknownSectionDiagnostic(loaded.path, key, configSections));
+  return loaded.files.flatMap((file) =>
+    Object.keys(file.sections)
+      .filter((key) => !declared.has(key))
+      .map((key) => unknownSectionDiagnostic(file.path, key, configSections)),
+  );
 }
 
 /** The config file is read HERE and nowhere else, so a command with no
@@ -283,7 +287,11 @@ function validateConfigSection(
   invocation: Invocation,
   configFile: string,
 ): NeedsOutcome {
-  const raw = loaded.sections[section.name];
+  // The nearest file declaring the section supplies it whole; per-key
+  // merging over the chain arrives with ConfigSection.merge.
+  const raw = loaded.files.find((file) =>
+    Object.hasOwn(file.sections, section.name),
+  )?.sections[section.name];
   let validation: SectionValidation<unknown>;
   try {
     validation = section.validate(raw);

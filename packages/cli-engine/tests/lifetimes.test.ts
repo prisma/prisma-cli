@@ -274,8 +274,7 @@ describe("the engine owns the double-signal policy", () => {
         };
       },
       loadConfig: async () => ({
-        path: "/prisma.config.ts",
-        sections: {},
+        files: [],
         diagnostics: [],
       }),
       managementApi: { baseUrl: "https://test.invalid" },
