@@ -16,7 +16,7 @@ on:
   workflow_dispatch:
     inputs:
       dist-tag:
-        description: "npm dist-tag. Empty = the version's canonical tag (next on the RC line, latest for stable). Pass latest explicitly to move latest onto an RC — that is the deliberate cutover act."
+        description: "npm dist-tag. Empty = latest, the canonical tag for every release since the 2026-08-25 cutover. Pass another tag (e.g. beta) for a hand-cut preview."
         required: false
         default: ""
         type: string

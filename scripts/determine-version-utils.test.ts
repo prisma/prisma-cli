@@ -142,9 +142,9 @@ describe("assertCanonicalBase", () => {
 });
 
 describe("releaseDistTag", () => {
-  it("sends an RC-line bump to next, so latest stays put until the deliberate flip", () => {
-    assert.equal(releaseDistTag("8.0.0-rc.1"), "next");
-    assert.equal(releaseDistTag("8.0.0-rc.12"), "next");
+  it("sends an RC-line bump to latest — the cutover ruling of 2026-08-25", () => {
+    assert.equal(releaseDistTag("8.0.0-rc.1"), "latest");
+    assert.equal(releaseDistTag("8.0.0-rc.12"), "latest");
   });
 
   it("sends a stable bump to latest", () => {
@@ -180,13 +180,13 @@ describe("isReleasePublish", () => {
   });
 
   it("a publish under the base's canonical tag is a release", () => {
-    assert.equal(isReleasePublish("8.0.0-rc.2", "next"), true);
+    assert.equal(isReleasePublish("8.0.0-rc.2", "latest"), true);
     assert.equal(isReleasePublish("8.1.0", "latest"), true);
   });
 
   it("a beta or off-tag publish is not a release", () => {
     assert.equal(isReleasePublish("8.0.0-rc.2", "beta"), false);
-    assert.equal(isReleasePublish("8.0.0-rc.2", "latest"), false);
+    assert.equal(isReleasePublish("8.0.0-rc.2", "next"), false);
   });
 });
 

@@ -118,15 +118,19 @@ export function assertValidDistTag(tag: string): void {
 }
 
 /**
- * The dist-tag a release-bump push publishes under. RC-line versions go
- * to `next`: `latest` keeps serving the pre-8 CLI until the operator
- * deliberately moves it (rollout plan step 5), by dispatching the
- * publish workflow with `dist-tag: latest` or by widening this rule
- * when the RC line is ready. Stable versions go to `latest`.
+ * The dist-tag a release-bump push publishes under: `latest`, on the
+ * RC line included. This is the rollout plan's step-5 cutover, ruled by
+ * the operator on 2026-08-25: `npm install prisma` serves the unified
+ * v8 CLI from the first release after this widening. Before it, RC
+ * releases went to `next` while `latest` kept serving the pre-8 CLI.
+ * `next` is not moved by the publish path anymore: it froze at the
+ * last pre-cutover RC, and the operator re-points or retires it by
+ * hand — npm has no token permission narrower than package write, so
+ * an automated sync would mean a standing publish-capable token.
  */
 export function releaseDistTag(base: string): "latest" | "next" {
   assertCanonicalBase(base);
-  return base.includes("-rc.") ? "next" : "latest";
+  return "latest";
 }
 
 /**
