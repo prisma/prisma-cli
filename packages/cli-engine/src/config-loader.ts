@@ -371,7 +371,7 @@ function sectionsOf(
 
 /** realpath where the path exists; the path itself where it does not
  *  (a cwd that is gone, a comparison candidate that was just checked). */
-function realpathOr(path: string): string {
+export function realpathOr(path: string): string {
   try {
     return realpathSync(path);
   } catch {
@@ -496,10 +496,14 @@ function followParent(
     if (!isFileAt(target)) {
       return { diagnostic: missingParentDiagnostic(path, target) };
     }
-    if (collected.has(realpathOr(target))) {
+    // Realpath'd like a --config target: a symlinked parent traverses
+    // and reports the real file, so its own relative parent and the
+    // discovery above it anchor at the real directory.
+    const real = realpathOr(target);
+    if (collected.has(real)) {
       return { diagnostic: parentCycleDiagnostic(path, target) };
     }
-    return { next: { kind: "file", path: target } };
+    return { next: { kind: "file", path: real } };
   }
   if (parent !== undefined) {
     return { diagnostic: invalidParentDiagnostic(path, parent) };

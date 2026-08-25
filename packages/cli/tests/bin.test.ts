@@ -297,6 +297,19 @@ describe("assembleRuntime", () => {
     );
   }, 60_000);
 
+  it("loads the config once per config path: repeated and concurrent calls share one promise", async () => {
+    const runtime = await assembleRuntime(makeProcess());
+
+    const discovered = runtime.loadConfig();
+    expect(runtime.loadConfig()).toBe(discovered);
+
+    const named = runtime.loadConfig(`${NAMED_CONFIG_PATH}.gone`);
+    expect(named).not.toBe(discovered);
+    expect(runtime.loadConfig(`${NAMED_CONFIG_PATH}.gone`)).toBe(named);
+
+    await Promise.all([discovered, named]);
+  });
+
   it("names this CLI's exact version in the install guidance for an unresolvable prisma package", async () => {
     const runtime = await assembleRuntime(makeProcess());
 

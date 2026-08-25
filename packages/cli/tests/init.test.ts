@@ -1109,4 +1109,31 @@ describe("init below an ancestor config", () => {
     expect(result.config.outcome).toBe("exists");
     expect(result.skills.outcome).toBe("no-packages");
   });
+
+  it("a chain reached sideways (--config to a file elsewhere) is not an ancestor and defers nothing", async () => {
+    const { root, nested } = await makeRepoWithAncestorConfig();
+
+    // The chain a `--config ../shared/elsewhere.config.ts` run resolves:
+    // one file in a sibling directory, not on cwd's ancestor path.
+    const cli = createTestCli({
+      commands: { init: initCommand },
+      loadConfig: async () => ({
+        files: [
+          {
+            path: path.join(root, "shared", "elsewhere.config.ts"),
+            sections: {},
+          },
+        ],
+        diagnostics: [],
+      }),
+      now: () => new Date(0),
+    });
+    const run = await cli.run(["init"], { cwd: nested });
+    const result = run.presented?.data as InitResult;
+
+    expect(run.exitCode).toBe(0);
+    expect(result.postinstall.outcome).toBe("added");
+    expect(result.postinstall.reason).toBeUndefined();
+    expect(result.skills.outcome).toBe("no-packages");
+  });
 });

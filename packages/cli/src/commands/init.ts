@@ -1,4 +1,3 @@
-import { realpathSync } from "node:fs";
 import { readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import type {
@@ -6,7 +5,7 @@ import type {
   LoadedConfigFile,
   Presentations,
 } from "@prisma/cli-engine";
-import { defineCommand, flag } from "@prisma/cli-engine";
+import { defineCommand, flag, realpathOr } from "@prisma/cli-engine";
 import type { Diagnostic, NextAction } from "@prisma/cli-engine/protocol";
 import { CliStructuredError, notOk, ok } from "@prisma/cli-engine/protocol";
 import { CLI_NAME } from "../cli-name";
@@ -686,26 +685,26 @@ async function syncSkillsStep(
   }
 }
 
-function realpathOr(target: string): string {
-  try {
-    return realpathSync(target);
-  } catch {
-    return target;
-  }
-}
-
-/** Whether the resolved config chain reaches outside cwd: a
- *  prisma.config.ts in a directory above, or one an explicit `parent`
- *  named elsewhere. A config in cwd itself does not count. The chain
- *  is the one the needs check loaded before the handler ran, so
- *  init's own scaffold never counts either. Realpath'd on both sides
- *  so symlinked layouts compare like with like. */
+/** Whether some file on the resolved chain sits in a strict ancestor
+ *  directory of cwd. A config in cwd itself does not count, and neither
+ *  does one reached sideways (--config to a file elsewhere) — the spec
+ *  defers only to an ancestor config. The chain is the one the needs
+ *  check loaded before the handler ran, so init's own scaffold never
+ *  counts either. Realpath'd on both sides so symlinked layouts compare
+ *  like with like. */
 function governedByAncestorConfig(
   files: readonly LoadedConfigFile[],
   cwd: string,
 ): boolean {
   const here = realpathOr(cwd);
-  return files.some((file) => realpathOr(path.dirname(file.path)) !== here);
+  return files.some((file) => {
+    const relative = path.relative(realpathOr(path.dirname(file.path)), here);
+    return (
+      relative !== "" &&
+      !relative.startsWith("..") &&
+      !path.isAbsolute(relative)
+    );
+  });
 }
 
 const ANCESTOR_SKIPPED_POSTINSTALL: Step<InitPostinstallReport> = {

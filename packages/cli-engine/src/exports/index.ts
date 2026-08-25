@@ -47,13 +47,13 @@ export {
 export {
   definePrismaConfig,
   loadConfig,
+  realpathOr,
 } from "../config-loader";
 export {
   type ResolvedSection,
   resolveSectionOverChain,
   resolveSectionPath,
   type SectionProvenance,
-  sectionProvenance,
 } from "../config-merge";
 export {
   type ConfigSection,

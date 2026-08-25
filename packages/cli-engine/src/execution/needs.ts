@@ -318,8 +318,9 @@ function validateConfigSection(
   };
 }
 
-/** A property getter in a section's value is user code; a throw while
- *  reading it is a config error naming the file, never an engine bug. */
+/** A section value's property getters and a section's custom merge are
+ *  user code alike; a throw from either is a config error naming the
+ *  file, never an engine bug. */
 function sectionUnreadableError(
   name: string,
   file: string,
@@ -328,7 +329,7 @@ function sectionUnreadableError(
   const message = cause instanceof Error ? cause.message : String(cause);
   return new CliStructuredError(
     "CLI.CONFIG_SECTION_INVALID",
-    `The '${name}' section of ${file} is invalid: reading its value threw '${message.split("\n", 1)[0].trim()}'.`,
+    `The '${name}' section of ${file} is invalid: resolving its value threw '${message.split("\n", 1)[0].trim()}'.`,
     {
       nextActions: [
         {
