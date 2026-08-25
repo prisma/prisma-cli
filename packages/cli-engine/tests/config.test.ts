@@ -1647,7 +1647,7 @@ describe("sections merge per key over the chain", { timeout: 60_000 }, () => {
     expect(run.exitCode).toBe(2);
     const envelope = erroredEnvelope(run);
     expect(envelope.error.summary).toBe(
-      `The 'toy' section, merged from ${PKG} and its parent config files, is invalid.`,
+      `The 'toy' section, merged from ${PKG} and its parent config file, is invalid.`,
     );
     expect(envelope.error.why).toBe(
       `The resolved section combines these files, nearest first: ${PKG}, ${ROOT}.`,
@@ -1668,39 +1668,107 @@ describe("sections merge per key over the chain", { timeout: 60_000 }, () => {
     expect(envelope.error.why).toBeUndefined();
   });
 
+  function resolvedValue(files: ReturnType<typeof chainFiles>): unknown {
+    const resolved = resolveSectionOverChain(passthroughSection(), files);
+    if (!resolved.ok) {
+      throw new Error(`expected resolution to succeed, got ${resolved.file}`);
+    }
+    return resolved.value;
+  }
+
   test("sectionProvenance records the contributors and the declaring file per key", () => {
-    const resolved = resolveSectionOverChain(passthroughSection(), [
+    const value = resolvedValue([
       { path: PKG, sections: { toy: { out: "./dist", shared: 1 } } },
       {
         path: ROOT,
         sections: { toy: { migrations: "./migrations", shared: 2 } },
       },
     ]);
-    expect(sectionProvenance(resolved.value)).toEqual({
+    expect(sectionProvenance("toy", value)).toEqual({
       files: [PKG, ROOT],
       keys: { out: PKG, shared: PKG, migrations: ROOT },
     });
   });
 
+  test("a single file's section is normalized like a merged one: undefined keys are absent and the value is frozen", () => {
+    const value = resolvedValue([
+      { path: PKG, sections: { toy: { greeting: undefined, extra: 1 } } },
+    ]);
+    expect(value).toEqual({ extra: 1 });
+    expect(Object.hasOwn(value as object, "greeting")).toBe(false);
+    expect(Object.isFrozen(value)).toBe(true);
+  });
+
+  test("an own __proto__ key on the merged section stays data and never reaches the prototype", () => {
+    const pkgToy = Object.fromEntries([
+      ["__proto__", { polluted: true }],
+      ["greeting", "pkg"],
+    ]);
+    const value = resolvedValue(
+      chainFiles({ toy: pkgToy }, { toy: { greeting: "root", check: false } }),
+    ) as Record<string, unknown>;
+    expect(Object.hasOwn(value, "__proto__")).toBe(true);
+    expect(value.greeting).toBe("pkg");
+    expect(value.check).toBe(false);
+    expect(Object.getPrototypeOf(value)).toBe(Object.prototype);
+    expect(({} as { polluted?: boolean }).polluted).toBeUndefined();
+    expect(Object.isFrozen(value)).toBe(true);
+  });
+
+  test("a throwing property getter in a section is a config error naming the file, not an engine bug", async () => {
+    const cli = chainCli(
+      [
+        {
+          path: PKG,
+          sections: {
+            toy: {
+              get greeting(): string {
+                throw new Error("getter boom");
+              },
+            },
+          },
+        },
+        { path: ROOT, sections: {} },
+      ],
+      passthroughSection(),
+    );
+    const run = await cli.run(["show", "--json"]);
+    expect(run.exitCode).toBe(2);
+    const envelope = erroredEnvelope(run);
+    expect(envelope.error.code).toBe("CLI.CONFIG_SECTION_INVALID");
+    expect(envelope.error.summary).toBe(
+      `The 'toy' section of ${PKG} is invalid: reading its value threw 'getter boom'.`,
+    );
+  });
+
   test("resolveSectionPath resolves a relative path against the file that declared its key", () => {
-    const resolved = resolveSectionOverChain(passthroughSection(), [
+    const value = resolvedValue([
       { path: PKG, sections: { toy: { out: "./dist" } } },
       { path: ROOT, sections: { toy: { migrations: "./migrations" } } },
     ]);
-    expect(
-      resolveSectionPath(resolved.value, "migrations", "./migrations"),
-    ).toBe(resolve("/repo", "migrations"));
-    expect(resolveSectionPath(resolved.value, "out", "./dist")).toBe(
+    expect(resolveSectionPath("toy", value, "migrations", "./migrations")).toBe(
+      resolve("/repo", "migrations"),
+    );
+    expect(resolveSectionPath("toy", value, "out", "./dist")).toBe(
       resolve("/repo/pkg", "dist"),
     );
     const absolute = resolve("/somewhere/else");
-    expect(resolveSectionPath(resolved.value, "out", absolute)).toBe(absolute);
+    expect(resolveSectionPath("toy", value, "out", absolute)).toBe(absolute);
   });
 
   test("resolveSectionPath refuses a value the engine did not resolve", () => {
-    expect(() => resolveSectionPath({ out: "./x" }, "out", "./x")).toThrow(
-      "carries no provenance",
-    );
+    expect(() =>
+      resolveSectionPath("toy", { out: "./x" }, "out", "./x"),
+    ).toThrow("carries no provenance");
+  });
+
+  test("resolveSectionPath refuses a key the resolved section does not carry at its top level", () => {
+    const value = resolvedValue([
+      { path: PKG, sections: { toy: { out: "./dist" } } },
+    ]);
+    expect(() =>
+      resolveSectionPath("toy", value, "migrations", "./migrations"),
+    ).toThrow("only top-level section keys");
   });
 
   /** The spec's primary layout, from disk: a root config and a package

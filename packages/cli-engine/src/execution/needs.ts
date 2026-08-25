@@ -282,6 +282,11 @@ function validateConfigSection(
   invocation: Invocation,
 ): NeedsOutcome {
   const resolved = resolveSectionOverChain(section, loaded.files);
+  if (!resolved.ok) {
+    return needsErrored(
+      sectionUnreadableError(section.name, resolved.file, resolved.cause),
+    );
+  }
   let validation: SectionValidation<unknown>;
   try {
     validation = section.validate(resolved.value);
@@ -302,6 +307,29 @@ function validateConfigSection(
   }
   writeSectionWarnings(invocation, validation.diagnostics);
   return { kind: "ok", config: validation.value, spawnCredential: undefined };
+}
+
+/** A property getter in a section's value is user code; a throw while
+ *  reading it is a config error naming the file, never an engine bug. */
+function sectionUnreadableError(
+  name: string,
+  file: string,
+  cause: unknown,
+): CliStructuredError {
+  const message = cause instanceof Error ? cause.message : String(cause);
+  return new CliStructuredError(
+    "CLI.CONFIG_SECTION_INVALID",
+    `The '${name}' section of ${file} is invalid: reading its value threw '${message.split("\n", 1)[0].trim()}'.`,
+    {
+      nextActions: [
+        {
+          kind: "user-choice",
+          label:
+            "Fix the reported problems in that section, then run the command again.",
+        },
+      ],
+    },
+  );
 }
 
 /** Provenance decides which file the error names: the one declaring
@@ -326,9 +354,11 @@ function sectionInvalidError(
   }
   if (contributors.length > 1) {
     const paths = contributors.map((file) => file.path);
+    const parents =
+      paths.length === 2 ? "its parent config file" : "its parent config files";
     return new CliStructuredError(
       "CLI.CONFIG_SECTION_INVALID",
-      `The '${name}' section, merged from ${paths[0]} and its parent config files, is invalid.`,
+      `The '${name}' section, merged from ${paths[0]} and ${parents}, is invalid.`,
       {
         why: `The resolved section combines these files, nearest first: ${paths.join(", ")}.`,
         nextActions: [fix],

@@ -4,6 +4,10 @@
  * value, and which file wrote each of its top-level keys, so
  * diagnostics name the file to fix and relative paths resolve against
  * the file that declared them.
+ *
+ * A section's value is user code — a property getter can throw or side
+ * effect — so each contributor's value is read exactly once, inside a
+ * guard that turns a throw into a config error naming that file.
  */
 import { dirname, isAbsolute, resolve } from "node:path";
 import type { ConfigSection } from "./config-section";
@@ -21,22 +25,23 @@ export interface SectionProvenance {
   readonly keys: Readonly<Record<string, string>>;
 }
 
-export interface ResolvedSection {
-  /** undefined when no file on the chain declares the section — the
-   *  section validator owns absence, exactly as before. */
-  readonly value: unknown;
-  /** The files declaring the section, nearest first. */
-  readonly contributors: readonly LoadedConfigFile[];
-}
-
-/** A file declares a section by writing the key with a value. A key
- *  written as `undefined` is absent: it neither contributes nor
- *  shadows an ancestor's real section. */
-function declares(file: LoadedConfigFile, name: string): boolean {
-  return (
-    Object.hasOwn(file.sections, name) && file.sections[name] !== undefined
-  );
-}
+export type ResolvedSection =
+  | {
+      readonly ok: true;
+      /** undefined when no file on the chain declares the section — the
+       *  section validator owns absence, exactly as before. */
+      readonly value: unknown;
+      /** The files declaring the section, nearest first. */
+      readonly contributors: readonly LoadedConfigFile[];
+    }
+  | {
+      /** Reading the section's value threw: a property getter in the
+       *  config file is user code, so this is a config error naming
+       *  the file, never an engine bug. */
+      readonly ok: false;
+      readonly file: string;
+      readonly cause: unknown;
+    };
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {
   if (typeof value !== "object" || value === null || Array.isArray(value)) {
@@ -47,26 +52,60 @@ function isPlainObject(value: unknown): value is Record<string, unknown> {
 }
 
 /**
- * The engine's default merge: per key at the section's top level, the
- * child's key winning, replacement below — arrays and anything else
- * that is not a plain object replace atomically. A key written as
- * `undefined` on either side contributes nothing, so it cannot shadow
- * the other side's value. Built with fromEntries, never key-by-key
- * assignment, for the same `__proto__` hygiene the loader applies; the
- * result is always a fresh object, so frozen inputs are never touched.
+ * One file's declared value, read exactly once. A plain object is
+ * snapshotted into a fresh object of its defined entries — a key
+ * written `undefined` is absent, on a single-file chain and a merged
+ * one alike, so it neither appears nor shadows an ancestor's key.
+ * Anything else is carried atomically. A section written `undefined`
+ * does not contribute at all.
  */
+interface Contribution {
+  readonly file: LoadedConfigFile;
+  readonly value: unknown;
+  /** The snapshot's top-level keys; null when the value is not a
+   *  plain object. */
+  readonly keys: ReadonlySet<string> | null;
+}
+
+function snapshotContribution(
+  file: LoadedConfigFile,
+  name: string,
+): Contribution | null {
+  if (!Object.hasOwn(file.sections, name)) {
+    return null;
+  }
+  const raw = file.sections[name];
+  if (raw === undefined) {
+    return null;
+  }
+  if (!isPlainObject(raw)) {
+    return { file, value: raw, keys: null };
+  }
+  const entries = Object.entries(raw).filter(
+    ([, value]) => value !== undefined,
+  );
+  return {
+    file,
+    value: Object.fromEntries(entries),
+    keys: new Set(entries.map(([key]) => key)),
+  };
+}
+
+/** The engine's default merge: per key at the section's top level, the
+ *  child's key winning, replacement below. fromEntries rather than
+ *  key-by-key assignment: assigning a key named `__proto__` would run
+ *  the prototype setter instead of creating an own property. */
 function mergePerKey(parent: unknown, child: unknown): unknown {
   if (!isPlainObject(parent) || !isPlainObject(child)) {
     return child;
   }
-  return Object.fromEntries(
-    [...Object.entries(parent), ...Object.entries(child)].filter(
-      ([, value]) => value !== undefined,
-    ),
-  );
+  return Object.fromEntries([
+    ...Object.entries(parent),
+    ...Object.entries(child),
+  ]);
 }
 
-const PROVENANCE = new WeakMap<object, SectionProvenance>();
+const PROVENANCE = new WeakMap<object, Map<string, SectionProvenance>>();
 
 function canCarryProvenance(value: unknown): value is object {
   return (
@@ -74,80 +113,92 @@ function canCarryProvenance(value: unknown): value is object {
   );
 }
 
-/** The nearest contributor whose raw section value wrote `key`. */
-function fileDeclaringKey(
+function registerProvenance(
   name: string,
-  key: string,
-  contributors: readonly LoadedConfigFile[],
-): string | undefined {
-  return contributors.find((file) => {
-    const raw = file.sections[name];
-    return (
-      isPlainObject(raw) && Object.hasOwn(raw, key) && raw[key] !== undefined
-    );
-  })?.path;
-}
-
-function provenanceOf(
   value: unknown,
-  name: string,
-  contributors: readonly LoadedConfigFile[],
-): SectionProvenance {
-  const files = contributors.map((file) => file.path);
+  contributions: readonly Contribution[],
+): void {
+  if (!canCarryProvenance(value)) {
+    return;
+  }
+  const files = contributions.map((contribution) => contribution.file.path);
   const keys = isPlainObject(value)
     ? Object.fromEntries(
         Object.keys(value).map((key) => [
           key,
-          fileDeclaringKey(name, key, contributors) ?? files[0],
+          contributions.find((contribution) => contribution.keys?.has(key))
+            ?.file.path ?? files[0],
         ]),
       )
     : {};
-  return { files, keys };
+  const perSection = PROVENANCE.get(value) ?? new Map();
+  perSection.set(name, { files, keys });
+  PROVENANCE.set(value, perSection);
 }
 
 /**
  * Resolves `section` over the chain, nearest first: the farthest
- * declaring file's raw value, folded under each nearer one with the
- * section's own merge or the engine default. The resolved value is
- * annotated with provenance, readable via sectionProvenance and
- * resolveSectionPath.
+ * declaring file's value, folded under each nearer one with the
+ * section's own merge or the engine default. A plain-object result is
+ * always a fresh, frozen object — the files' exports are never
+ * mutated — and it is annotated with provenance, readable via
+ * sectionProvenance and resolveSectionPath.
  */
 export function resolveSectionOverChain(
   section: ConfigSection<unknown>,
   files: readonly LoadedConfigFile[],
 ): ResolvedSection {
-  const contributors = files.filter((file) => declares(file, section.name));
-  if (contributors.length === 0) {
-    return { value: undefined, contributors };
+  const contributions: Contribution[] = [];
+  for (const file of files) {
+    let contribution: Contribution | null;
+    try {
+      contribution = snapshotContribution(file, section.name);
+    } catch (cause) {
+      return { ok: false, file: file.path, cause };
+    }
+    if (contribution !== null) {
+      contributions.push(contribution);
+    }
+  }
+  const contributors = contributions.map((contribution) => contribution.file);
+  if (contributions.length === 0) {
+    return { ok: true, value: undefined, contributors };
   }
   const merge = section.merge ?? mergePerKey;
-  const value = contributors
-    .map((file) => file.sections[section.name])
+  const merged = contributions
+    .map((contribution) => contribution.value)
     .reduceRight((parent, child) => merge(parent, child));
-  if (canCarryProvenance(value)) {
-    PROVENANCE.set(value, provenanceOf(value, section.name, contributors));
-  }
-  return { value, contributors };
+  // Freezing is safe here: every plain object in the fold is a fresh
+  // snapshot or built from one, never a file's own export.
+  const value = isPlainObject(merged) ? Object.freeze(merged) : merged;
+  registerProvenance(section.name, value, contributions);
+  return { ok: true, value, contributors };
 }
 
-/** The provenance of a value resolveSectionOverChain produced, or
- *  undefined for any other value. */
+/** The provenance of a value resolveSectionOverChain produced for the
+ *  named section, or undefined for any other value. */
 export function sectionProvenance(
+  section: string,
   value: unknown,
 ): SectionProvenance | undefined {
-  return canCarryProvenance(value) ? PROVENANCE.get(value) : undefined;
+  return canCarryProvenance(value)
+    ? PROVENANCE.get(value)?.get(section)
+    : undefined;
 }
 
 /**
- * Resolves a path found under `key` of a resolved section value against
- * the file that declared that key — never against cwd or the nearest
- * config file. Sections opt in by resolving their path-valued settings
- * through this on the raw value their validator receives; an absolute
- * path comes back unchanged. Throws when the value carries no
- * provenance, which means it did not come from the engine's section
- * resolution — an engine-boundary misuse, not a user error.
+ * Resolves a path found under a TOP-LEVEL `key` of a resolved section
+ * value against the file that declared that key — never against cwd or
+ * the nearest config file. Sections opt in by resolving their
+ * path-valued settings through this on the raw value their validator
+ * receives; an absolute path comes back unchanged. Throws on a value
+ * that carries no provenance (it did not come from the engine's
+ * section resolution) and on a key the resolved value does not carry
+ * at its top level — a silent fallback could resolve against the wrong
+ * file, which is the mistake this helper exists to prevent.
  */
 export function resolveSectionPath(
+  section: string,
   sectionValue: unknown,
   key: string,
   path: string,
@@ -155,14 +206,16 @@ export function resolveSectionPath(
   if (isAbsolute(path)) {
     return path;
   }
-  const provenance = sectionProvenance(sectionValue);
+  const provenance = sectionProvenance(section, sectionValue);
   if (provenance === undefined) {
     throw new Error(
       "@prisma/cli-engine: resolveSectionPath needs a value the engine resolved from the config chain, and this one carries no provenance",
     );
   }
-  const declaring = Object.hasOwn(provenance.keys, key)
-    ? provenance.keys[key]
-    : provenance.files[0];
-  return resolve(dirname(declaring), path);
+  if (!Object.hasOwn(provenance.keys, key)) {
+    throw new Error(
+      `@prisma/cli-engine: resolveSectionPath resolves only top-level section keys, and '${key}' is not a top-level key of the resolved '${section}' section`,
+    );
+  }
+  return resolve(dirname(provenance.keys[key]), path);
 }
