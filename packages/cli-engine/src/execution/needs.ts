@@ -2,6 +2,7 @@ import { createRequire } from "node:module";
 import { resolve } from "node:path";
 import type { AnyCommand } from "../commands";
 import { CONFIG_FILE_NAME } from "../config-loader";
+import { resolveSectionOverChain } from "../config-merge";
 import type { ConfigSection, SectionValidation } from "../config-section";
 import { credentialsRequiredError } from "../credential-errors";
 import type { ActiveCredential } from "../credential-manager";
@@ -11,7 +12,7 @@ import {
   resolvePackageManager,
 } from "../package-manager";
 import { CliStructuredError, type Diagnostic } from "../protocol";
-import type { LoadedConfig } from "../runtime";
+import type { LoadedConfig, LoadedConfigFile } from "../runtime";
 import type { Invocation } from "./engine";
 import { makePaint } from "./palette";
 import { withDocsUrl, writeDiagnostic } from "./rendering";
@@ -268,33 +269,22 @@ async function checkConfiguration(
       fileLevel.slice(1),
     );
   }
-  return validateConfigSection(
-    section,
-    loaded,
-    invocation,
-    configPath ?? CONFIG_FILE_NAME,
-  );
+  return validateConfigSection(section, loaded, invocation);
 }
 
-/** Validates the command's needed config section. The validator
- *  owns absence (it receives undefined when the section is missing) and
- *  never throws — a throw is an engine-boundary bug, settled as one.
- *  `configFile` is named in the error so a run under --config points at
- *  the file it actually read. */
+/** Validates the command's needed config section, resolved per key over
+ *  the chain nearest-first. The validator owns absence (it receives
+ *  undefined when no file declares the section) and never throws — a
+ *  throw is an engine-boundary bug, settled as one. */
 function validateConfigSection(
   section: ConfigSection<unknown>,
   loaded: LoadedConfig,
   invocation: Invocation,
-  configFile: string,
 ): NeedsOutcome {
-  // The nearest file declaring the section supplies it whole; per-key
-  // merging over the chain arrives with ConfigSection.merge.
-  const raw = loaded.files.find((file) =>
-    Object.hasOwn(file.sections, section.name),
-  )?.sections[section.name];
+  const resolved = resolveSectionOverChain(section, loaded.files);
   let validation: SectionValidation<unknown>;
   try {
-    validation = section.validate(raw);
+    validation = section.validate(resolved.value);
   } catch (cause) {
     return {
       kind: "bug",
@@ -306,24 +296,66 @@ function validateConfigSection(
   }
   if (!validation.ok) {
     return needsErrored(
-      new CliStructuredError(
-        "CLI.CONFIG_SECTION_INVALID",
-        `The '${section.name}' section of ${configFile} is invalid.`,
-        {
-          nextActions: [
-            {
-              kind: "user-choice",
-              label:
-                "Fix the reported problems in that section, then run the command again.",
-            },
-          ],
-        },
-      ),
+      sectionInvalidError(section.name, resolved.contributors, loaded.files),
       validation.diagnostics,
     );
   }
   writeSectionWarnings(invocation, validation.diagnostics);
   return { kind: "ok", config: validation.value, spawnCredential: undefined };
+}
+
+/** Provenance decides which file the error names: the one declaring
+ *  file, the nearest of several with the chain listed, or — when no
+ *  file declares the section at all — the fact that it is missing. */
+function sectionInvalidError(
+  name: string,
+  contributors: readonly LoadedConfigFile[],
+  files: readonly LoadedConfigFile[],
+): CliStructuredError {
+  const fix = {
+    kind: "user-choice" as const,
+    label:
+      "Fix the reported problems in that section, then run the command again.",
+  };
+  if (contributors.length === 1) {
+    return new CliStructuredError(
+      "CLI.CONFIG_SECTION_INVALID",
+      `The '${name}' section of ${contributors[0].path} is invalid.`,
+      { nextActions: [fix] },
+    );
+  }
+  if (contributors.length > 1) {
+    const paths = contributors.map((file) => file.path);
+    return new CliStructuredError(
+      "CLI.CONFIG_SECTION_INVALID",
+      `The '${name}' section, merged from ${paths[0]} and its parent config files, is invalid.`,
+      {
+        why: `The resolved section combines these files, nearest first: ${paths.join(", ")}.`,
+        nextActions: [fix],
+      },
+    );
+  }
+  const target = files[0]?.path ?? CONFIG_FILE_NAME;
+  return new CliStructuredError(
+    "CLI.CONFIG_SECTION_INVALID",
+    `The '${name}' section is missing: ${
+      files.length === 0
+        ? "no config file was found"
+        : "no loaded config file declares it"
+    }.`,
+    {
+      why:
+        files.length === 0
+          ? undefined
+          : `Config files loaded, nearest first: ${files.map((file) => file.path).join(", ")}.`,
+      nextActions: [
+        {
+          kind: "user-choice",
+          label: `Declare the '${name}' section in ${target}, then run the command again.`,
+        },
+      ],
+    },
+  );
 }
 
 /** Diagnostics on an OK validation are warnings: written to stderr as

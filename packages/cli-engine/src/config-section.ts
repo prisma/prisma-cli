@@ -10,6 +10,15 @@ import type { Diagnostic } from "./protocol";
 export interface ConfigSection<T> {
   readonly name: string;
   readonly validate: (raw: unknown | undefined) => SectionValidation<T>;
+  /**
+   * How two files' raw values combine when more than one file on the
+   * config chain declares the section. `child` is the nearer file's
+   * value and wins conflicts. Both inputs may be frozen, so the result
+   * must be a fresh value, never a mutation of either. Absent, the
+   * engine merges per key at the section's top level and replaces
+   * below.
+   */
+  readonly merge?: (parent: unknown, child: unknown) => unknown;
 }
 
 /**
@@ -28,6 +37,11 @@ export type SectionValidation<T> =
 export function defineConfigSection<T>(spec: {
   readonly name: string;
   readonly validate: (raw: unknown | undefined) => SectionValidation<T>;
+  readonly merge?: (parent: unknown, child: unknown) => unknown;
 }): ConfigSection<T> {
-  return Object.freeze({ name: spec.name, validate: spec.validate });
+  return Object.freeze({
+    name: spec.name,
+    validate: spec.validate,
+    merge: spec.merge,
+  });
 }

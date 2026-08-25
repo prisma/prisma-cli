@@ -15,7 +15,7 @@ import {
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
-import { dirname, join, relative } from "node:path";
+import { dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
   type ConfigSection,
@@ -30,10 +30,13 @@ import {
   PRISMA_CONFIG_VERSION,
   positional,
   type Runtime,
+  resolveSectionOverChain,
+  resolveSectionPath,
   type SectionValidation,
+  sectionProvenance,
 } from "@prisma/cli-engine";
 import { ok } from "@prisma/cli-engine/protocol";
-import { createTestCli } from "@prisma/cli-engine/testing";
+import { createTestCli, type TestCli } from "@prisma/cli-engine/testing";
 import { afterAll, describe, expect, test } from "vitest";
 
 const TESTS_DIR = dirname(fileURLToPath(import.meta.url));
@@ -633,9 +636,8 @@ describe("top-level keys that are not sections", { timeout: 60_000 }, () => {
     expect(run.stderr).toContain("/repo/prisma.config.ts");
   });
 
-  /** Until sections merge per key, the nearest file declaring the
-   *  section supplies it whole — and one declared nowhere near falls
-   *  through to an ancestor. */
+  /** Fall-through: a section only an ancestor declares resolves to
+   *  that ancestor's value, whole. */
   test("a section declared only by an ancestor file still reaches the handler", async () => {
     const cli = createTestCli({
       commands: { show: showCommand(toySection()) },
@@ -1409,6 +1411,329 @@ describe("needs.config", { timeout: 60_000 }, () => {
     const run = await cli.run(["show"], { isTty: { stdout: true } });
     expect(run.exitCode).toBe(0);
     expect(run.presented?.data).toEqual({ greeting: "from the named file" });
+  });
+});
+
+/**
+ * Per-key resolution of a section over the chain: the nearest file's
+ * keys win, unwritten keys fall through to ancestors, values below the
+ * section's top level replace whole, and the resolved value carries
+ * provenance naming the file each key came from.
+ */
+describe("sections merge per key over the chain", { timeout: 60_000 }, () => {
+  const PKG = "/repo/pkg/prisma.config.ts";
+  const ROOT = "/repo/prisma.config.ts";
+
+  function chainFiles(
+    pkg: Readonly<Record<string, unknown>>,
+    root: Readonly<Record<string, unknown>>,
+  ) {
+    return [
+      { path: PKG, sections: pkg },
+      { path: ROOT, sections: root },
+    ];
+  }
+
+  function passthroughSection(
+    merge?: (parent: unknown, child: unknown) => unknown,
+  ): ConfigSection<unknown> {
+    return defineConfigSection<unknown>({
+      name: "toy",
+      validate: (raw) => ({ ok: true, value: raw, diagnostics: [] }),
+      merge,
+    });
+  }
+
+  /** Fails on absence, the way the ORM section does. */
+  function requiredSection(): ConfigSection<unknown> {
+    return defineConfigSection<unknown>({
+      name: "toy",
+      validate: (raw) =>
+        raw === undefined
+          ? {
+              ok: false,
+              diagnostics: [
+                {
+                  code: "TOY.MISSING",
+                  severity: "error",
+                  summary: "A toy section is required.",
+                  nextActions: [],
+                },
+              ],
+            }
+          : { ok: true, value: raw, diagnostics: [] },
+    });
+  }
+
+  function presentCommand(section: ConfigSection<unknown>) {
+    return defineCommand({
+      help: { summary: "Present the resolved toy config" },
+      needs: { config: section },
+      handler: async (_args, ctx) =>
+        ok(
+          ctx.present(
+            { data: ctx.config },
+            {
+              human: () => [],
+              stdout: () => [],
+              json: () => ctx.config,
+              next: () => [],
+            },
+          ),
+        ),
+    });
+  }
+
+  function chainCli(
+    files: ReturnType<typeof chainFiles>,
+    section: ConfigSection<unknown>,
+  ) {
+    return createTestCli({
+      commands: { show: presentCommand(section) },
+      loadConfig: async () => ({ files, diagnostics: [] }),
+    });
+  }
+
+  function erroredEnvelope(run: Awaited<ReturnType<TestCli["run"]>>) {
+    const frame = run.json[run.json.length - 1];
+    if (frame?.kind !== "result" || frame.envelope.ok) {
+      throw new Error(`expected an errored result frame, got ${run.stderr}`);
+    }
+    return frame.envelope;
+  }
+
+  test("the nearest file's key shadows the ancestor's; unwritten keys fall through", async () => {
+    const cli = chainCli(
+      chainFiles(
+        { toy: { greeting: "pkg", agents: ["a"] } },
+        { toy: { greeting: "root", check: false } },
+      ),
+      passthroughSection(),
+    );
+    const run = await cli.run(["show"], { isTty: { stdout: true } });
+    expect(run.exitCode).toBe(0);
+    expect(run.presented?.data).toEqual({
+      greeting: "pkg",
+      agents: ["a"],
+      check: false,
+    });
+  });
+
+  test("below the top level values replace whole: nested objects and arrays come from the nearer file", async () => {
+    const cli = chainCli(
+      chainFiles(
+        { toy: { nested: { a: 1 }, list: [1] } },
+        { toy: { nested: { b: 2 }, list: [2, 3], only: "root" } },
+      ),
+      passthroughSection(),
+    );
+    const run = await cli.run(["show"], { isTty: { stdout: true } });
+    expect(run.exitCode).toBe(0);
+    expect(run.presented?.data).toEqual({
+      nested: { a: 1 },
+      list: [1],
+      only: "root",
+    });
+  });
+
+  test("a section written as undefined does not shadow an ancestor's section", async () => {
+    const cli = chainCli(
+      chainFiles({ toy: undefined }, { toy: { greeting: "root" } }),
+      passthroughSection(),
+    );
+    const run = await cli.run(["show"], { isTty: { stdout: true } });
+    expect(run.exitCode).toBe(0);
+    expect(run.presented?.data).toEqual({ greeting: "root" });
+  });
+
+  test("a key written as undefined does not shadow the ancestor's key", async () => {
+    const cli = chainCli(
+      chainFiles(
+        { toy: { greeting: undefined, extra: 1 } },
+        { toy: { greeting: "root" } },
+      ),
+      passthroughSection(),
+    );
+    const run = await cli.run(["show"], { isTty: { stdout: true } });
+    expect(run.exitCode).toBe(0);
+    expect(run.presented?.data).toEqual({ greeting: "root", extra: 1 });
+  });
+
+  test("a section's own merge() replaces the default, folded from the farthest file to the nearest", async () => {
+    const concat = (parent: unknown, child: unknown): unknown => ({
+      list: [
+        ...(parent as { readonly list: readonly number[] }).list,
+        ...(child as { readonly list: readonly number[] }).list,
+      ],
+    });
+    const cli = createTestCli({
+      commands: { show: presentCommand(passthroughSection(concat)) },
+      loadConfig: async () => ({
+        files: [
+          {
+            path: "/repo/a/b/prisma.config.ts",
+            sections: { toy: { list: [3] } },
+          },
+          {
+            path: "/repo/a/prisma.config.ts",
+            sections: { toy: { list: [2] } },
+          },
+          { path: ROOT, sections: { toy: { list: [1] } } },
+        ],
+        diagnostics: [],
+      }),
+    });
+    const run = await cli.run(["show"], { isTty: { stdout: true } });
+    expect(run.exitCode).toBe(0);
+    expect(run.presented?.data).toEqual({ list: [1, 2, 3] });
+  });
+
+  test("merging constructs fresh objects and never mutates the frozen file exports", async () => {
+    const pkgToy = Object.freeze({ greeting: "pkg" });
+    const rootToy = Object.freeze({
+      greeting: "root",
+      check: Object.freeze({ deep: true }),
+    });
+    const cli = chainCli(
+      chainFiles({ toy: pkgToy }, { toy: rootToy }),
+      passthroughSection(),
+    );
+    const run = await cli.run(["show"], { isTty: { stdout: true } });
+    expect(run.exitCode).toBe(0);
+    expect(run.presented?.data).toEqual({
+      greeting: "pkg",
+      check: { deep: true },
+    });
+    expect(pkgToy).toEqual({ greeting: "pkg" });
+    expect(rootToy).toEqual({ greeting: "root", check: { deep: true } });
+  });
+
+  test("a required section's absence error fires only when no file on the chain declares it", async () => {
+    const present = chainCli(
+      chainFiles({}, { toy: { greeting: "root" } }),
+      requiredSection(),
+    );
+    const withAncestor = await present.run(["show"], {
+      isTty: { stdout: true },
+    });
+    expect(withAncestor.exitCode).toBe(0);
+
+    const absent = chainCli(chainFiles({}, {}), requiredSection());
+    const run = await absent.run(["show", "--json"]);
+    expect(run.exitCode).toBe(2);
+    const envelope = erroredEnvelope(run);
+    expect(envelope.error.code).toBe("CLI.CONFIG_SECTION_INVALID");
+    expect(envelope.error.summary).toBe(
+      "The 'toy' section is missing: no loaded config file declares it.",
+    );
+    expect(envelope.error.why).toBe(
+      `Config files loaded, nearest first: ${PKG}, ${ROOT}.`,
+    );
+    expect(envelope.error.nextActions).toEqual([
+      {
+        kind: "user-choice",
+        label: `Declare the 'toy' section in ${PKG}, then run the command again.`,
+      },
+    ]);
+    expect(envelope.diagnostics[0]?.code).toBe("TOY.MISSING");
+  });
+
+  test("an invalid merged section names the nearest contributing file and lists the chain", async () => {
+    const cli = chainCli(
+      chainFiles({ toy: { extra: true } }, { toy: { greeting: 5 } }),
+      toySection(),
+    );
+    const run = await cli.run(["show", "--json"]);
+    expect(run.exitCode).toBe(2);
+    const envelope = erroredEnvelope(run);
+    expect(envelope.error.summary).toBe(
+      `The 'toy' section, merged from ${PKG} and its parent config files, is invalid.`,
+    );
+    expect(envelope.error.why).toBe(
+      `The resolved section combines these files, nearest first: ${PKG}, ${ROOT}.`,
+    );
+  });
+
+  test("an invalid section only an ancestor declares names that file, not the anchor", async () => {
+    const cli = chainCli(
+      chainFiles({}, { toy: { greeting: 5 } }),
+      toySection(),
+    );
+    const run = await cli.run(["show", "--json"]);
+    expect(run.exitCode).toBe(2);
+    const envelope = erroredEnvelope(run);
+    expect(envelope.error.summary).toBe(
+      `The 'toy' section of ${ROOT} is invalid.`,
+    );
+    expect(envelope.error.why).toBeUndefined();
+  });
+
+  test("sectionProvenance records the contributors and the declaring file per key", () => {
+    const resolved = resolveSectionOverChain(passthroughSection(), [
+      { path: PKG, sections: { toy: { out: "./dist", shared: 1 } } },
+      {
+        path: ROOT,
+        sections: { toy: { migrations: "./migrations", shared: 2 } },
+      },
+    ]);
+    expect(sectionProvenance(resolved.value)).toEqual({
+      files: [PKG, ROOT],
+      keys: { out: PKG, shared: PKG, migrations: ROOT },
+    });
+  });
+
+  test("resolveSectionPath resolves a relative path against the file that declared its key", () => {
+    const resolved = resolveSectionOverChain(passthroughSection(), [
+      { path: PKG, sections: { toy: { out: "./dist" } } },
+      { path: ROOT, sections: { toy: { migrations: "./migrations" } } },
+    ]);
+    expect(
+      resolveSectionPath(resolved.value, "migrations", "./migrations"),
+    ).toBe(resolve("/repo", "migrations"));
+    expect(resolveSectionPath(resolved.value, "out", "./dist")).toBe(
+      resolve("/repo/pkg", "dist"),
+    );
+    const absolute = resolve("/somewhere/else");
+    expect(resolveSectionPath(resolved.value, "out", absolute)).toBe(absolute);
+  });
+
+  test("resolveSectionPath refuses a value the engine did not resolve", () => {
+    expect(() => resolveSectionPath({ out: "./x" }, "out", "./x")).toThrow(
+      "carries no provenance",
+    );
+  });
+
+  /** The spec's primary layout, from disk: a root config and a package
+   *  config, discovered and merged through the real loader. The temp
+   *  tree carries its own .git marker, so the walk never reaches this
+   *  repository's real ancestors. */
+  test("the two-file monorepo layout resolves merged from disk, end to end", async () => {
+    const base = realpathSync(
+      mkdtempSync(join(tmpdir(), "prisma-config-merge-")),
+    );
+    try {
+      const repo = join(base, "repo");
+      mkdirSync(join(repo, ".git"), { recursive: true });
+      writeFileSync(
+        join(repo, "prisma.config.ts"),
+        `export default { $prismaConfig: ${PRISMA_CONFIG_VERSION}, toy: { greeting: "root", check: false } };\n`,
+      );
+      const pkg = join(repo, "packages", "db");
+      mkdirSync(pkg, { recursive: true });
+      writeFileSync(
+        join(pkg, "prisma.config.ts"),
+        `export default { $prismaConfig: ${PRISMA_CONFIG_VERSION}, toy: { greeting: "pkg" } };\n`,
+      );
+      const cli = createTestCli({
+        commands: { show: presentCommand(passthroughSection()) },
+        loadConfig: (configPath) => loadConfig(pkg, configPath),
+      });
+      const run = await cli.run(["show"], { isTty: { stdout: true } });
+      expect(run.exitCode).toBe(0);
+      expect(run.presented?.data).toEqual({ greeting: "pkg", check: false });
+    } finally {
+      rmSync(base, { recursive: true, force: true });
+    }
   });
 });
 

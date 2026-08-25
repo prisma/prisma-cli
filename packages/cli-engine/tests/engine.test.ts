@@ -41,6 +41,9 @@ describe("main export", () => {
       "noSessionForWorkspaceError",
       "positional",
       "readActiveAccessToken",
+      "resolveSectionOverChain",
+      "resolveSectionPath",
+      "sectionProvenance",
       "telemetryCommandGroup",
     ]);
   });
