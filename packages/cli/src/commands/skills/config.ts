@@ -147,9 +147,11 @@ export function readSkillsConfig(loaded: {
  * config never pays the file's TypeScript transpile — or the section
  * does not validate.
  *
- * Reads the nearest file of the loader's chain, which keeps this
- * exactly the cwd-only behavior it always had; resolving through the
- * whole chain comes with the engine-resolver consolidation.
+ * loadConfig walks and evaluates the whole ancestor chain; this
+ * adapter then reads only the nearest file, so the skills answer still
+ * comes from cwd's own config (ancestors are evaluated but ignored
+ * here). Resolving through the whole chain comes with the
+ * engine-resolver consolidation.
  */
 export async function readProjectSkillsConfig(
   cwd: string,

@@ -162,12 +162,22 @@ function missingNamedFileDiagnostic(path: string): Diagnostic {
   };
 }
 
+/** JSON where it can (true, null, 42, {}); String for what JSON has no
+ *  spelling for (undefined cannot reach here, but bigint or a symbol
+ *  can). */
+function showParentValue(value: unknown): string {
+  try {
+    return JSON.stringify(value) ?? String(value);
+  } catch {
+    return String(value);
+  }
+}
+
 function invalidParentDiagnostic(path: string, value: unknown): Diagnostic {
-  const described = value === null ? "null" : typeof value;
   return {
     code: "CLI.CONFIG_PARENT_INVALID",
     severity: "error",
-    summary: `${path} has a top-level 'parent' of type ${described}, but parent must be false or a path string.`,
+    summary: `${path} declares parent: ${showParentValue(value)}, but parent must be false or a path string.`,
     why: "'parent' controls config discovery: false makes this file the last on the chain, and a path names the next file explicitly. Any other value is a mistake the CLI stops on rather than guesses about.",
     nextActions: [
       {
@@ -407,13 +417,19 @@ function dirsAbove(dir: string): string[] {
   return discoveryDirs(dir).slice(1);
 }
 
+/** A directory named prisma.config.ts is not a config file, for
+ *  discovery and explicit `parent` links alike. */
+function isFileAt(path: string): boolean {
+  return existsSync(path) && statSync(path).isFile();
+}
+
 function nextDiscoveredFile(
   dirs: readonly string[],
   collected: ReadonlySet<string>,
 ): string | null {
   for (const dir of dirs) {
     const candidate = join(dir, CONFIG_FILE_NAME);
-    if (existsSync(candidate) && !collected.has(realpathOr(candidate))) {
+    if (isFileAt(candidate) && !collected.has(realpathOr(candidate))) {
       return candidate;
     }
   }
@@ -477,7 +493,7 @@ function followParent(
   }
   if (typeof parent === "string") {
     const target = resolve(dirname(path), parent);
-    if (!existsSync(target) || !statSync(target).isFile()) {
+    if (!isFileAt(target)) {
       return { diagnostic: missingParentDiagnostic(path, target) };
     }
     if (collected.has(realpathOr(target))) {
@@ -558,5 +574,7 @@ export async function loadConfig(
   if (!existsSync(named)) {
     return failedChain([], missingNamedFileDiagnostic(named));
   }
-  return collectChain({ kind: "file", path: named }, cliVersion);
+  // Realpath'd like the automatic anchor: a symlinked --config yields
+  // the same chain and the same real-path diagnostics as discovery.
+  return collectChain({ kind: "file", path: realpathOr(named) }, cliVersion);
 }

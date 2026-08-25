@@ -42,11 +42,11 @@ const TESTS_DIR = dirname(fileURLToPath(import.meta.url));
 // symlinks, so the paths it reports are real ones.
 const FIXTURES = realpathSync(join(TESTS_DIR, "fixtures", "config"));
 
-// A .git marker making the fixtures directory its own repository
-// boundary, so no fixture chain can walk into this repository's real
-// ancestors and pick up a config file the checkout happens to contain.
-// Created at run time: git refuses to track any path named .git.
-writeFileSync(join(FIXTURES, ".git"), "");
+// Every marked fixture under FIXTURES declares parent: false, and every
+// broken one fails resolution at itself, so no fixture chain can walk
+// into this repository's real ancestors and pick up a config file the
+// checkout happens to contain. Tests about absence (no file anywhere)
+// use temp directories outside the repository instead.
 
 const EPOCH = () => new Date(0);
 const T0 = "1970-01-01T00:00:00.000Z";
@@ -73,11 +73,17 @@ describe("loadConfig", { timeout: 60_000 }, () => {
     });
   });
 
+  /** In a temp directory outside the repository: an anchor with no
+   *  config anywhere is the one shape parent: false cannot pin. */
   test("no file at all yields an empty chain and no error — validators own absence", async () => {
-    expect(await loadConfig(FIXTURES)).toEqual({
-      files: [],
-      diagnostics: [],
-    });
+    const empty = realpathSync(
+      mkdtempSync(join(tmpdir(), "prisma-config-empty-")),
+    );
+    try {
+      expect(await loadConfig(empty)).toEqual({ files: [], diagnostics: [] });
+    } finally {
+      rmSync(empty, { recursive: true, force: true });
+    }
   });
 
   test("discovery walks upward: a parent directory's config is the chain from a bare subdirectory", async () => {
@@ -437,7 +443,7 @@ describe("chain discovery", { timeout: 60_000 }, () => {
     expect(loaded.diagnostics[0]?.diagnostic.code).toBe(
       "CLI.CONFIG_PARENT_INVALID",
     );
-    expect(loaded.diagnostics[0]?.diagnostic.summary).toContain("boolean");
+    expect(loaded.diagnostics[0]?.diagnostic.summary).toContain("parent: true");
   });
 
   test("a broken file anywhere on the chain fails resolution, naming that file", async () => {
@@ -498,6 +504,38 @@ describe("chain discovery", { timeout: 60_000 }, () => {
       ],
       diagnostics: [],
     });
+  });
+
+  test.skipIf(process.platform === "win32")(
+    "a symlinked --config file resolves to real paths and anchors at the real directory",
+    async () => {
+      const base = sandbox();
+      const repo = join(base, "repo");
+      markRepository(repo);
+      const rootFile = writeConfig(repo, `root: {}`);
+      const pkgFile = writeConfig(join(repo, "pkg"), `mine: {}`);
+      const link = join(base, "link.config.ts");
+      symlinkSync(pkgFile, link, "file");
+
+      expect(await loadConfig(base, link)).toEqual({
+        files: [
+          { path: pkgFile, sections: { mine: {} } },
+          { path: rootFile, sections: { root: {} } },
+        ],
+        diagnostics: [],
+      });
+    },
+  );
+
+  test("a directory named prisma.config.ts is not a config file — discovery skips it", async () => {
+    const repo = join(sandbox(), "repo");
+    markRepository(repo);
+    const rootFile = writeConfig(repo, `root: {}`);
+    mkdirSync(join(repo, "pkg", "prisma.config.ts"), { recursive: true });
+
+    expect(
+      (await loadConfig(join(repo, "pkg"))).files.map((file) => file.path),
+    ).toEqual([rootFile]);
   });
 });
 
@@ -770,10 +808,14 @@ describe("--config", { timeout: 60_000 }, () => {
   });
 
   test("without the flag, a missing prisma.config.ts stays an empty config", async () => {
-    expect(await loadConfig(join(FIXTURES, "named"))).toEqual({
-      files: [],
-      diagnostics: [],
-    });
+    const empty = realpathSync(
+      mkdtempSync(join(tmpdir(), "prisma-config-empty-")),
+    );
+    try {
+      expect(await loadConfig(empty)).toEqual({ files: [], diagnostics: [] });
+    } finally {
+      rmSync(empty, { recursive: true, force: true });
+    }
   });
 
   /** A diagnostic's summary is the line a user reads first, so it has
@@ -946,7 +988,9 @@ const NAMED_CONFIG = `import { definePrismaConfig } from "@prisma/cli-engine";
 
 const greeting: string = "from the file --config named";
 
-export default definePrismaConfig({ toy: { greeting } });
+// parent: false — the sandbox lives inside this repository, and the
+// chain must not walk out of it.
+export default definePrismaConfig({ toy: { greeting }, parent: false });
 `;
 
 interface ProbeResult {
@@ -967,9 +1011,6 @@ function runProbeOnPlainNode(
 ): ProbeResult & { readonly configPath: string; readonly namedPath: string } {
   mkdirSync(SANDBOX_ROOT, { recursive: true });
   const root = realpathSync(mkdtempSync(join(SANDBOX_ROOT, "plain-node-")));
-  // The sandbox is inside this repository, so it gets its own boundary
-  // marker: discovery from the project must never walk past it.
-  writeFileSync(join(root, ".git"), "");
   const cwd = join(root, "project");
   const elsewhere = join(root, "elsewhere");
   mkdirSync(cwd);
@@ -1002,7 +1043,6 @@ function runProbeOnPlainNode(
 
 afterAll(() => {
   rmSync(SANDBOX_ROOT, { recursive: true, force: true });
-  rmSync(join(FIXTURES, ".git"), { force: true });
 });
 
 describe("loadConfig on a Node that cannot execute TypeScript", {
@@ -1014,7 +1054,7 @@ describe("loadConfig on a Node that cannot execute TypeScript", {
 
 const greeting: string = "hello from plain node";
 
-export default definePrismaConfig({ toy: { greeting } });
+export default definePrismaConfig({ toy: { greeting }, parent: false });
 `,
       ["--no-experimental-strip-types"],
     );
@@ -1051,7 +1091,10 @@ enum Level {
   Verbose = "verbose",
 }
 
-export default definePrismaConfig({ toy: { greeting: Level.Verbose } });
+export default definePrismaConfig({
+  toy: { greeting: Level.Verbose },
+  parent: false,
+});
 `,
       [],
     );
