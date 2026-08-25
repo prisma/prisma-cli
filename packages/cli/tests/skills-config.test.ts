@@ -11,7 +11,10 @@ import path from "node:path";
 import { PRISMA_CONFIG_VERSION } from "@prisma/cli-engine";
 import { describe, expect, it } from "vitest";
 
-import { readProjectSkillsConfig } from "../src/commands/skills/config";
+import {
+  projectConfigLoader,
+  readProjectSkillsConfig,
+} from "../src/commands/skills/config";
 import { DEFAULT_AGENTS } from "../src/lib/skills/allowlist";
 import { makeProjectRoot } from "./helpers/skills-fixture";
 
@@ -39,7 +42,7 @@ describe("readProjectSkillsConfig over the config chain", () => {
     const sub = path.join(root, "packages", "db");
     await mkdir(sub, { recursive: true });
 
-    expect(await readProjectSkillsConfig(sub)).toEqual({
+    expect(await readProjectSkillsConfig(projectConfigLoader(sub))).toEqual({
       check: false,
       agents: DEFAULT_AGENTS,
       agentsConfigured: false,
@@ -52,7 +55,7 @@ describe("readProjectSkillsConfig over the config chain", () => {
     const sub = path.join(root, "packages", "db");
     await writeConfig(sub, `skills: { agents: ["cursor"] }`);
 
-    expect(await readProjectSkillsConfig(sub)).toEqual({
+    expect(await readProjectSkillsConfig(projectConfigLoader(sub))).toEqual({
       check: false,
       agents: ["cursor"],
       agentsConfigured: true,
@@ -73,7 +76,9 @@ describe("readProjectSkillsConfig over the config chain", () => {
     );
 
     expect(
-      await readProjectSkillsConfig(path.join(root, "packages", "db")),
+      await readProjectSkillsConfig(
+        projectConfigLoader(path.join(root, "packages", "db")),
+      ),
     ).toBeNull();
   });
 
@@ -82,7 +87,7 @@ describe("readProjectSkillsConfig over the config chain", () => {
     const sub = path.join(root, "packages", "db");
     await mkdir(sub, { recursive: true });
 
-    expect(await readProjectSkillsConfig(sub)).toBeNull();
+    expect(await readProjectSkillsConfig(projectConfigLoader(sub))).toBeNull();
   });
 
   it("reads a --config file as the chain's anchor, with the root still applying", async () => {
@@ -96,7 +101,12 @@ describe("readProjectSkillsConfig over the config chain", () => {
       "utf8",
     );
 
-    expect(await readProjectSkillsConfig(sub, "elsewhere.config.ts")).toEqual({
+    expect(
+      await readProjectSkillsConfig(
+        projectConfigLoader(sub),
+        "elsewhere.config.ts",
+      ),
+    ).toEqual({
       check: false,
       agents: ["cursor"],
       agentsConfigured: true,
@@ -113,7 +123,7 @@ describe("readProjectSkillsConfig over the config chain", () => {
       "utf8",
     );
 
-    expect(await readProjectSkillsConfig(root)).toBeNull();
+    expect(await readProjectSkillsConfig(projectConfigLoader(root))).toBeNull();
   });
 
   it("reads a non-plain section value whose getter throws as no config", async () => {
@@ -126,13 +136,17 @@ describe("readProjectSkillsConfig over the config chain", () => {
       "utf8",
     );
 
-    expect(await readProjectSkillsConfig(root)).toBeNull();
+    expect(await readProjectSkillsConfig(projectConfigLoader(root))).toBeNull();
   });
 
   it("reads an invalid merged section as no config", async () => {
+    // The invalid check value comes from the child, so the null result
+    // is the merged view failing validation, not a single-file read.
     const root = await makeRepoRoot();
-    await writeConfig(root, `skills: { check: "yes" }`);
+    await writeConfig(root, `skills: { check: true, agents: ["claude"] }`);
+    const sub = path.join(root, "packages", "db");
+    await writeConfig(sub, `skills: { check: "yes" }`);
 
-    expect(await readProjectSkillsConfig(root)).toBeNull();
+    expect(await readProjectSkillsConfig(projectConfigLoader(sub))).toBeNull();
   });
 });

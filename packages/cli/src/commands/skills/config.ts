@@ -1,5 +1,6 @@
 import {
   defineConfigSection,
+  type LoadedConfig,
   loadConfig,
   resolveSectionOverChain,
 } from "@prisma/cli-engine";
@@ -10,6 +11,7 @@ import {
   isKnownAgent,
   KNOWN_AGENTS,
 } from "../../lib/skills/allowlist";
+import { getCliVersion } from "../../lib/version";
 
 export interface SkillsConfig {
   /** Whether other commands may report out-of-date agent skills.
@@ -123,13 +125,26 @@ function validateAgents(
   return { ok: true, agents };
 }
 
+/** Runtime.loadConfig's shape: cwd and CLI version already bound. */
+export type ProjectConfigLoader = (
+  configPath?: string,
+) => Promise<LoadedConfig>;
+
+/** The disk loader bound the way the bin's Runtime binds it, for
+ *  callers with no Runtime in scope (the post-login tip). */
+export function projectConfigLoader(cwd: string): ProjectConfigLoader {
+  return (configPath) => loadConfig(cwd, configPath, getCliVersion());
+}
+
 /**
  * The project's skills settings, resolved per key over the discovered
  * config chain exactly as the skills commands resolve them, so callers
  * that run outside a command handler (the staleness check, the
  * post-login tip) agree with the commands on the governing config from
- * any directory. Chain discovery is stat-only until a file exists, so
- * a project without a config never pays a TypeScript transpile.
+ * any directory. `load` is Runtime.loadConfig wherever a Runtime is in
+ * scope, so a host-supplied loader governs these reads too. Chain
+ * discovery is stat-only until a file exists, so a project without a
+ * config never pays a TypeScript transpile.
  *
  * Null deliberately collapses "no config" and "config broken or
  * invalid": both callers fall back to the default agent set, so a
@@ -137,11 +152,14 @@ function validateAgents(
  * the config surface the error themselves.
  */
 export async function readProjectSkillsConfig(
-  cwd: string,
+  load: ProjectConfigLoader,
   configPath?: string,
 ): Promise<SkillsConfig | null> {
-  const loaded = await loadConfig(cwd, configPath);
-  if (loaded.diagnostics.length > 0 || loaded.files.length === 0) {
+  const loaded = await load(configPath);
+  const broken = loaded.diagnostics.some(
+    (entry) => entry.diagnostic.severity === "error",
+  );
+  if (broken || loaded.files.length === 0) {
     return null;
   }
   const resolved = resolveSectionOverChain(skillsConfigSection, loaded.files);

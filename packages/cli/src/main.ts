@@ -43,6 +43,7 @@ export async function main(
     argv: proc.argv.slice(2),
     cwd: proc.cwd(),
     stderr: proc.stderr,
+    loadConfig: runtime.loadConfig,
   });
   return exitCode;
 }
