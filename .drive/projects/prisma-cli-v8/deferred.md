@@ -227,8 +227,15 @@ CLI does not do, and each restarts as engine work if wanted:
 
 ## Upstream, not ours to land
 
-- **alchemy-run/node-utils#6** (scope exit hooks to owned locks) is
-  open. Vendored as a pnpm patch in composer
+- **alchemy-run/node-utils#6** (scope exit hooks to owned locks).
+  **Closed by composer 0.13.0 (2026-08-25):** the release chain
+  delivered — alchemy 2.0.0-beta.74 carries the node-utils fix and
+  composer #254 retired the vendored patch, so a `prisma` install now
+  resolves a node-utils that registers no import-time signal listener.
+  The canary (`packages/cli/tests/composer-isolation.test.ts`) now
+  asserts zero listeners, so a regression in that chain says so. The
+  original entry follows for the record.
+  Was: open. Vendored as a pnpm patch in composer
   (`patches/@alchemy.run__node-utils@0.0.5.patch`, applied to both
   `lib/lockfile.js` and `src/lockfile.ts` because the exports map
   sends bun to `src/`). **Delete the patch when the release chain

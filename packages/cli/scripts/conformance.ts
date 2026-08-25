@@ -122,7 +122,7 @@ async function tarball(): Promise<readonly Finding[]> {
       exceptions: [
         {
           familyPackage: "@prisma/composer-cli",
-          familyPin: "0.2.0",
+          familyPin: "0.2.2",
           shellPin: "0.2.3",
           reason: "engine 0.2.3 must publish before composer-cli can peer it",
           removeWhen:
@@ -130,7 +130,7 @@ async function tarball(): Promise<readonly Finding[]> {
         },
         {
           familyPackage: "@prisma/orm-toolchain",
-          familyPin: "0.2.0",
+          familyPin: "0.2.2",
           shellPin: "0.2.3",
           reason: "engine 0.2.3 must publish before orm-toolchain can peer it",
           removeWhen:
