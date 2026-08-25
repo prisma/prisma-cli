@@ -35,9 +35,6 @@ importers:
       '@prisma/compute-sdk':
         specifier: 0.39.0
         version: 0.39.0(@prisma/management-api-sdk@1.55.0)(rollup@4.62.2)
-      '@prisma/credentials-store':
-        specifier: ^7.8.0
-        version: 7.8.0
       '@prisma/management-api-sdk':
         specifier: 1.55.0
         version: 1.55.0
@@ -63,6 +60,9 @@ importers:
       '@prisma/composer':
         specifier: 0.14.0
         version: 0.14.0(@types/node@22.19.19)(@vercel/nft@1.10.2(rollup@4.62.2))(magicast@0.5.3)(mongodb@6.21.0(@aws-sdk/credential-providers@3.1107.0))(mysql2@3.23.3(@types/node@22.19.19))(pg@8.23.0)(typescript@6.0.3)(vite@7.3.5(@types/node@22.19.19)(jiti@2.7.0)(tsx@4.22.4)(yaml@2.9.0))(vitest@4.1.8(@types/node@22.19.19)(vite@7.3.5(@types/node@22.19.19)(jiti@2.7.0)(tsx@4.22.4)(yaml@2.9.0)))(ws@8.21.0)
+      '@prisma/credentials-store':
+        specifier: ^7.8.0
+        version: 7.8.0
       '@repo/cli-conformance':
         specifier: workspace:8.0.0-rc.10
         version: link:../cli-conformance
@@ -209,9 +209,6 @@ importers:
       '@prisma/compute-sdk':
         specifier: 0.39.0
         version: 0.39.0(@prisma/management-api-sdk@1.55.0)(rollup@4.62.2)
-      '@prisma/credentials-store':
-        specifier: ^7.8.0
-        version: 7.8.0
       '@prisma/management-api-sdk':
         specifier: 1.55.0
         version: 1.55.0
@@ -237,6 +234,9 @@ importers:
       '@prisma/cli':
         specifier: workspace:8.0.0-rc.10
         version: link:../cli
+      '@prisma/credentials-store':
+        specifier: ^7.8.0
+        version: 7.8.0
       '@repo/cli-telemetry':
         specifier: workspace:8.0.0-rc.10
         version: link:../cli-telemetry
