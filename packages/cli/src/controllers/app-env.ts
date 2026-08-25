@@ -1,12 +1,14 @@
 // biome-ignore-all lint/performance/noAwaitInLoops: API pagination loops are intentionally sequential.
+
+import { CliStructuredError } from "@prisma/cli-engine/protocol";
 import type { ManagementApiClient } from "@prisma/management-api-sdk";
-import { CliError, usageError } from "../errors";
 import type { CommandContext } from "../legacy/runtime";
 import {
   type EnvScope,
   type EnvVarRole,
   parseKeyValuePositional,
 } from "../lib/app/env-config";
+import { envUsageError, runCommand, userChoice } from "../lib/app/env-errors";
 import {
   type EnvFileAssignment,
   readEnvFileAssignments,
@@ -58,7 +60,7 @@ export function resolveEnvWriteSource(
   command: "add" | "update",
 ): EnvWriteSource {
   if (filePath !== undefined && rawAssignment !== undefined) {
-    throw usageError(
+    throw envUsageError(
       `prisma project env ${command} accepts either KEY=VALUE or --file`,
       "The command received both a positional assignment and a dotenv file path.",
       "Pass one input source.",
@@ -66,25 +68,23 @@ export function resolveEnvWriteSource(
         `prisma project env ${command} KEY=value --role preview`,
         `prisma project env ${command} --file .env --role preview`,
       ],
-      "app",
     );
   }
 
   if (filePath !== undefined) {
     if (filePath.length === 0) {
-      throw usageError(
+      throw envUsageError(
         `prisma project env ${command} --file requires a path`,
         "The --file flag was passed without a file path.",
         "Pass a readable dotenv file path.",
         [`prisma project env ${command} --file .env --role preview`],
-        "app",
       );
     }
     return { kind: "file", filePath };
   }
 
   if (rawAssignment === undefined) {
-    throw usageError(
+    throw envUsageError(
       `prisma project env ${command} requires KEY=VALUE or --file`,
       "No environment variable input was supplied.",
       "Pass a single KEY=VALUE assignment or a dotenv file path.",
@@ -92,7 +92,6 @@ export function resolveEnvWriteSource(
         `prisma project env ${command} KEY=value --role preview`,
         `prisma project env ${command} --file .env --role preview`,
       ],
-      "app",
     );
   }
 
@@ -155,15 +154,17 @@ export async function resolveScopeToApi(
       );
 
   if (branch.role === "production") {
-    throw new CliError({
-      code: "ENV_BRANCH_SCOPE_IS_PRODUCTION",
-      domain: "app",
-      summary: `Branch "${scope.branchName}" is the production branch`,
-      why: "Production variables are project-level only; branch overrides apply to preview branches.",
-      fix: "Use --role production for the production branch.",
-      exitCode: 1,
-      nextSteps: ["prisma project env list --role production"],
-    });
+    throw new CliStructuredError(
+      "PROJECT.ENV_BRANCH_SCOPE_IS_PRODUCTION",
+      `Branch "${scope.branchName}" is the production branch`,
+      {
+        why: "Production variables are project-level only; branch overrides apply to preview branches.",
+        nextActions: [
+          userChoice("Use --role production for the production branch."),
+          runCommand("prisma project env list --role production"),
+        ],
+      },
+    );
   }
 
   return {
@@ -279,15 +280,19 @@ async function resolveExistingBranch(
     await listBranchesByName(client, projectId, branchName, signal)
   )[0];
   if (!branch) {
-    throw new CliError({
-      code: "ENV_BRANCH_NOT_FOUND",
-      domain: "app",
-      summary: `Branch "${branchName}" not found`,
-      why: "Branch update, list, and delete commands only target existing preview branches.",
-      fix: "Create the branch by deploying it, or use `project env add --branch` to create its first override.",
-      exitCode: 1,
-      nextSteps: [`prisma project env add KEY=value --branch ${branchName}`],
-    });
+    throw new CliStructuredError(
+      "PROJECT.ENV_BRANCH_NOT_FOUND",
+      `Branch "${branchName}" not found`,
+      {
+        why: "Branch update, list, and delete commands only target existing preview branches.",
+        nextActions: [
+          userChoice(
+            "Create the branch by deploying it, or use `project env add --branch` to create its first override.",
+          ),
+          runCommand(`prisma project env add KEY=value --branch ${branchName}`),
+        ],
+      },
+    );
   }
   return branch;
 }
@@ -306,15 +311,19 @@ async function resolveOrCreateBranch(
   }
 
   if (!(await projectHasDefaultBranch(client, projectId, signal))) {
-    throw new CliError({
-      code: "ENV_BRANCH_CREATE_REQUIRES_DEFAULT_BRANCH",
-      domain: "app",
-      summary: `Cannot create branch "${branchName}" from project env`,
-      why: "Creating the first branch would make it the project default, but branch overrides are preview-only.",
-      fix: "Create or deploy the default branch first, then add the branch override.",
-      exitCode: 1,
-      nextSteps: ["prisma git connect <repository-url>"],
-    });
+    throw new CliStructuredError(
+      "PROJECT.ENV_BRANCH_CREATE_REQUIRES_DEFAULT_BRANCH",
+      `Cannot create branch "${branchName}" from project env`,
+      {
+        why: "Creating the first branch would make it the project default, but branch overrides are preview-only.",
+        nextActions: [
+          userChoice(
+            "Create or deploy the default branch first, then add the branch override.",
+          ),
+          runCommand("prisma git connect <repository-url>"),
+        ],
+      },
+    );
   }
 
   const { data, error, response } = await client.POST(

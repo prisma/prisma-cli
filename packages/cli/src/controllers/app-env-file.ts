@@ -1,10 +1,14 @@
 // biome-ignore-all lint/performance/noAwaitInLoops: Environment variable mutations and lookups are intentionally sequential.
-// biome-ignore-all lint/style/noNestedTernary: Existing error formatting expression is intentionally compact.
+
+import {
+  CliStructuredError,
+  type NextAction,
+} from "@prisma/cli-engine/protocol";
 import type { ManagementApiClient } from "@prisma/management-api-sdk";
-import { CliError } from "../errors";
 import type { CommandSuccess } from "../legacy/output";
 import type { CommandContext } from "../legacy/runtime";
 import { type EnvScope, formatScopeLabel } from "../lib/app/env-config";
+import { runCommand, userChoice } from "../lib/app/env-errors";
 import type { EnvFileAssignment } from "../lib/app/env-file";
 import type {
   EnvAddResult,
@@ -45,19 +49,23 @@ export async function runEnvAddFile(
     .filter((key) => existing.has(key));
 
   if (existingKeys.length > 0) {
-    throw new CliError({
-      code: "ENV_VARIABLE_ALREADY_EXISTS",
-      domain: "app",
-      summary: `${existingKeys.length} environment variable(s) already exist in ${formatScopeLabel(resolved.scope)}`,
-      why: `Existing keys: ${formatKeyList(existingKeys)}.`,
-      fix: "Split the input file by key state: update existing keys and add new keys separately.",
-      exitCode: 1,
-      nextSteps: splitFileNextSteps(filePath, resolved.scope, {
-        existingKeys,
-        first: "update-existing",
-      }),
-      meta: { keys: existingKeys },
-    });
+    throw new CliStructuredError(
+      "PROJECT.ENV_VARIABLE_ALREADY_EXISTS",
+      `${existingKeys.length} environment variable(s) already exist in ${formatScopeLabel(resolved.scope)}`,
+      {
+        why: `Existing keys: ${formatKeyList(existingKeys)}.`,
+        meta: { keys: existingKeys },
+        nextActions: [
+          userChoice(
+            "Split the input file by key state: update existing keys and add new keys separately.",
+          ),
+          ...splitFileActions(filePath, resolved.scope, {
+            existingKeys,
+            first: "update-existing",
+          }),
+        ],
+      },
+    );
   }
 
   const warnings = await missingPreviewDefaultWarnings(
@@ -117,7 +125,6 @@ export async function runEnvAddFile(
       },
     },
     warnings,
-    nextSteps: [],
   };
 }
 
@@ -142,19 +149,23 @@ export async function runEnvUpdateFile(
     .filter((key) => !existing.has(key));
 
   if (missingKeys.length > 0) {
-    throw new CliError({
-      code: "ENV_VARIABLE_NOT_FOUND",
-      domain: "app",
-      summary: `${missingKeys.length} environment variable(s) not found in ${formatScopeLabel(resolved.scope)}`,
-      why: `Missing keys: ${formatKeyList(missingKeys)}.`,
-      fix: "Split the input file by key state: add missing keys and update existing keys separately.",
-      exitCode: 1,
-      nextSteps: splitFileNextSteps(filePath, resolved.scope, {
-        missingKeys,
-        first: "add-missing",
-      }),
-      meta: { keys: missingKeys },
-    });
+    throw new CliStructuredError(
+      "PROJECT.ENV_VARIABLE_NOT_FOUND",
+      `${missingKeys.length} environment variable(s) not found in ${formatScopeLabel(resolved.scope)}`,
+      {
+        why: `Missing keys: ${formatKeyList(missingKeys)}.`,
+        meta: { keys: missingKeys },
+        nextActions: [
+          userChoice(
+            "Split the input file by key state: add missing keys and update existing keys separately.",
+          ),
+          ...splitFileActions(filePath, resolved.scope, {
+            missingKeys,
+            first: "add-missing",
+          }),
+        ],
+      },
+    );
   }
 
   const variables: EnvVariableMetadata[] = [];
@@ -208,7 +219,6 @@ export async function runEnvUpdateFile(
       },
     },
     warnings: [],
-    nextSteps: [],
   };
 }
 
@@ -291,35 +301,35 @@ function envFileApplyFailedError(
   failedKey: string,
   writtenVariables: EnvVariableMetadata[],
   error: unknown,
-): CliError {
+): CliStructuredError {
   const writtenKeys = writtenVariables.map((variable) => variable.key);
-  const cause =
-    error instanceof CliError
-      ? error.summary
-      : error instanceof Error
-        ? error.message
-        : "Unknown error.";
+  const cause = error instanceof Error ? error.message : "Unknown error.";
 
-  return new CliError({
-    code: "ENV_FILE_APPLY_FAILED",
-    domain: "app",
-    summary: `Failed to ${command} "${failedKey}" from "${filePath}"`,
-    why:
-      writtenKeys.length === 0
-        ? `No variables were written before ${failedKey} failed. Cause: ${cause}`
-        : `Written keys before failure: ${formatKeyList(writtenKeys)}. Cause: ${cause}`,
-    fix: "Inspect the target scope, then retry the remaining keys once the API issue is resolved.",
-    exitCode: 1,
-    nextSteps: [
-      `prisma project env list ${formatScopeFlag(scope)}`,
-      retryStepForApplyFailure(command, filePath, scope, writtenKeys),
-    ],
-    meta: {
-      file: filePath,
-      failedKey,
-      writtenKeys,
+  return new CliStructuredError(
+    "PROJECT.ENV_FILE_APPLY_FAILED",
+    `Failed to ${command} "${failedKey}" from "${filePath}"`,
+    {
+      why:
+        writtenKeys.length === 0
+          ? `No variables were written before ${failedKey} failed. Cause: ${cause}`
+          : `Written keys before failure: ${formatKeyList(writtenKeys)}. Cause: ${cause}`,
+      meta: {
+        file: filePath,
+        failedKey,
+        writtenKeys,
+      },
+      cause: error,
+      nextActions: [
+        userChoice(
+          "Inspect the target scope, then retry the remaining keys once the API issue is resolved.",
+        ),
+        runCommand(`prisma project env list ${formatScopeFlag(scope)}`),
+        runCommand(
+          retryStepForApplyFailure(command, filePath, scope, writtenKeys),
+        ),
+      ],
     },
-  });
+  );
 }
 
 function retryStepForApplyFailure(
@@ -339,31 +349,40 @@ function retryStepForApplyFailure(
   return `prisma project env add --file <remaining.env> ${formatScopeFlag(scope)}`;
 }
 
-function splitFileNextSteps(
+/** Each command carries the key list it applies to as its reason. */
+function splitFileActions(
   filePath: string,
   scope: EnvScope,
   options:
     | { first: "update-existing"; existingKeys: string[] }
     | { first: "add-missing"; missingKeys: string[] },
-): string[] {
+): NextAction[] {
   const scopeFlag = formatScopeFlag(scope);
   const existingFile = `${filePath}.existing`;
   const newFile = `${filePath}.new`;
 
   if (options.first === "update-existing") {
     return [
-      `# existing keys: ${formatKeyList(options.existingKeys)}`,
-      `prisma project env update --file ${existingFile} ${scopeFlag}`,
-      "# new keys only",
-      `prisma project env add --file ${newFile} ${scopeFlag}`,
+      runCommand(
+        `prisma project env update --file ${existingFile} ${scopeFlag}`,
+        `existing keys: ${formatKeyList(options.existingKeys)}`,
+      ),
+      runCommand(
+        `prisma project env add --file ${newFile} ${scopeFlag}`,
+        "new keys only",
+      ),
     ];
   }
 
   return [
-    `# missing keys: ${formatKeyList(options.missingKeys)}`,
-    `prisma project env add --file ${newFile} ${scopeFlag}`,
-    "# existing keys only",
-    `prisma project env update --file ${existingFile} ${scopeFlag}`,
+    runCommand(
+      `prisma project env add --file ${newFile} ${scopeFlag}`,
+      `missing keys: ${formatKeyList(options.missingKeys)}`,
+    ),
+    runCommand(
+      `prisma project env update --file ${existingFile} ${scopeFlag}`,
+      "existing keys only",
+    ),
   ];
 }
 

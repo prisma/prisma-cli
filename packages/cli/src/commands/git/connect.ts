@@ -6,7 +6,7 @@ import {
   type Presentations,
   positional,
 } from "@prisma/cli-engine";
-import { CliStructuredError, notOk, ok } from "@prisma/cli-engine/protocol";
+import { CliStructuredError, ok } from "@prisma/cli-engine/protocol";
 import type { ManagementApiClient } from "@prisma/management-api-sdk";
 import type { GitHubRepositoryReference } from "../../adapters/git";
 import {
@@ -29,7 +29,6 @@ import {
   toRepositoryConnection,
   unsupportedRepositoryProviderError,
 } from "../../controllers/project";
-import { usageError } from "../../errors";
 import { formatGitConnectionDetail } from "../../presenters/project";
 import type { ProjectRepositoryConnectionResult } from "../../types/project";
 import {
@@ -37,7 +36,7 @@ import {
   projectFlag,
   resolveGitContext,
 } from "./context";
-import { installWaitFailedError, mapGitOperationError } from "./errors";
+import { installWaitFailedError } from "./errors";
 
 /** The legacy wait line, printed once before the poll loop. */
 const WAIT_MESSAGE =
@@ -174,96 +173,94 @@ export const gitConnectCommand = defineCommand({
   // wait: the repository already connected, or the app already installed.
   needs: { credentials: true },
   handler: async (args, ctx) => {
-    try {
-      const { api, target } = await resolveGitContext(
-        ctx,
-        args.flags.project,
-        "git connect",
-      );
+    const { api, target } = await resolveGitContext(
+      ctx,
+      args.flags.project,
+      "git connect",
+    );
 
-      const remoteUrl =
-        args.positionals.gitUrl ??
-        (await readGitOriginRemote(ctx.cwd, ctx.signal));
-      if (!remoteUrl) {
-        throw usageError(
-          "Repository connection requires a GitHub repository URL",
-          "No git-url was provided and the local repo does not have an origin remote.",
-          `Pass a GitHub repository URL, or add a GitHub origin remote and rerun ${CLI_NAME} git connect.`,
-          [`${CLI_NAME} git connect git@github.com:prisma/prisma-cli.git`],
-          "project",
-        );
-      }
-
-      const repository = parseGitHubRepositoryUrl(remoteUrl);
-      if (!repository) {
-        throw unsupportedRepositoryProviderError();
-      }
-
-      const existing = await readFirstSourceRepository(
-        api,
-        target.project.id,
-        ctx.signal,
-      );
-      if (existing) {
-        const existingConnection = toRepositoryConnection(existing);
-        if (
-          !repositoryFullNamesMatch(
-            existingConnection.repository.fullName,
-            repository.fullName,
-          )
-        ) {
-          throw repoAlreadyConnectedError(
-            existingConnection.repository.fullName,
-          );
-        }
-
-        const idempotent: ProjectRepositoryConnectionResult = {
-          ...target,
-          repositoryConnection: existingConnection,
-        };
-        return ok(
-          ctx.present({ data: idempotent }, connectPresentations(idempotent)),
-        );
-      }
-
-      const installed = await resolveInstalledRepository(
-        ctx,
-        api,
-        target.workspace.id,
-        repository,
-      );
-
-      const { data, error, response } = await api.POST(
-        "/v1/source-repositories",
+    const remoteUrl =
+      args.positionals.gitUrl ??
+      (await readGitOriginRemote(ctx.cwd, ctx.signal));
+    if (!remoteUrl) {
+      const example = `${CLI_NAME} git connect git@github.com:prisma/prisma-cli.git`;
+      throw new CliStructuredError(
+        "GIT.USAGE_ERROR",
+        "Repository connection requires a GitHub repository URL",
         {
-          body: {
-            projectId: target.project.id,
-            provider: "github",
-            providerRepositoryId: installed.repository.id,
-            installationId: installed.installation.id,
-          },
-          signal: ctx.signal,
+          why: "No git-url was provided and the local repo does not have an origin remote.",
+          nextActions: [
+            {
+              kind: "user-choice",
+              label: `Pass a GitHub repository URL, or add a GitHub origin remote and rerun ${CLI_NAME} git connect.`,
+            },
+            { kind: "run-command", label: example, command: example },
+          ],
         },
       );
-      if (error || !data) {
-        throw repoConnectionApiError(
-          "Failed to connect GitHub repository",
-          response,
-          error,
-        );
+    }
+
+    const repository = parseGitHubRepositoryUrl(remoteUrl);
+    if (!repository) {
+      throw unsupportedRepositoryProviderError();
+    }
+
+    const existing = await readFirstSourceRepository(
+      api,
+      target.project.id,
+      ctx.signal,
+    );
+    if (existing) {
+      const existingConnection = toRepositoryConnection(existing);
+      if (
+        !repositoryFullNamesMatch(
+          existingConnection.repository.fullName,
+          repository.fullName,
+        )
+      ) {
+        throw repoAlreadyConnectedError(existingConnection.repository.fullName);
       }
 
-      const result: ProjectRepositoryConnectionResult = {
+      const idempotent: ProjectRepositoryConnectionResult = {
         ...target,
-        repositoryConnection: toRepositoryConnection(data.data),
+        repositoryConnection: existingConnection,
       };
-      return ok(ctx.present({ data: result }, connectPresentations(result)));
-    } catch (error) {
-      const mapped = mapGitOperationError(error);
-      if (mapped) {
-        return notOk(mapped);
-      }
-      throw error;
+      return ok(
+        ctx.present({ data: idempotent }, connectPresentations(idempotent)),
+      );
     }
+
+    const installed = await resolveInstalledRepository(
+      ctx,
+      api,
+      target.workspace.id,
+      repository,
+    );
+
+    const { data, error, response } = await api.POST(
+      "/v1/source-repositories",
+      {
+        body: {
+          projectId: target.project.id,
+          provider: "github",
+          providerRepositoryId: installed.repository.id,
+          installationId: installed.installation.id,
+        },
+        signal: ctx.signal,
+      },
+    );
+    if (error || !data) {
+      throw repoConnectionApiError(
+        "Failed to connect GitHub repository",
+        response,
+        error,
+      );
+    }
+
+    const result: ProjectRepositoryConnectionResult = {
+      ...target,
+      repositoryConnection: toRepositoryConnection(data.data),
+    };
+    return ok(ctx.present({ data: result }, connectPresentations(result)));
   },
 });

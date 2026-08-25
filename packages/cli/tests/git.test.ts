@@ -826,7 +826,7 @@ describe("prisma git disconnect", () => {
     });
   });
 
-  it("maps a forbidden delete to GIT.AUTH_REQUIRED without the TTY offer", async () => {
+  it("reports a forbidden delete as a connection failure carrying the status", async () => {
     const result = await makeCli(
       gitClient({
         sourceRepositories: [SOURCE_REPOSITORY],
@@ -840,11 +840,16 @@ describe("prisma git disconnect", () => {
     expect(resultFrame(result.json).envelope).toMatchObject({
       ok: false,
       error: {
-        code: "GIT.AUTH_REQUIRED",
-        summary: "Authentication required",
-        why: "This command needs an authenticated session.",
+        code: "GIT.REPO_CONNECTION_FAILED",
+        summary: "Failed to disconnect GitHub repository",
+        why: "The Management API rejected the request as unauthorized (HTTP 403).",
+        meta: { status: 403 },
         nextActions: [
-          { kind: "user-choice", label: "Run prisma auth login." },
+          {
+            kind: "user-choice",
+            label:
+              "Sign in again with prisma auth login, then rerun the command.",
+          },
           {
             kind: "run-command",
             label: "prisma auth login",

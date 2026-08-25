@@ -4,18 +4,16 @@ import {
   type Presentations,
   positional,
 } from "@prisma/cli-engine";
-import { notOk, ok } from "@prisma/cli-engine/protocol";
+import { ok } from "@prisma/cli-engine/protocol";
 import { shortenHomePath } from "../../lib/fs/home-path";
 import {
   buildProjectSetupNextActions,
   inspectProjectBinding,
-  projectResolutionErrorToCliError,
+  projectResolutionErrorToStructured,
 } from "../../lib/project/resolution";
 import type { ProjectShowResult } from "../../types/project";
 import { resolveActiveWorkspace } from "../resources-shared/workspace";
 import { legacyOperationContext, listWorkspaceProjects } from "./context";
-import { mapProjectOperationError } from "./errors";
-import { toNextActions } from "./presentation";
 
 interface FieldRow {
   readonly label: string;
@@ -98,15 +96,13 @@ function showPresentations(
       stdoutFieldRows(result, cwd).map((row) => `${row.label}: ${row.value}`),
     next: () =>
       result.project === null
-        ? toNextActions(
-            buildProjectSetupNextActions({
-              commandName: "project show",
-              retryCommand: "prisma project show <id-or-name>",
-              suggestedProjectName: result.suggestedProjectName,
-              reason:
-                "This directory is not linked to a Prisma Project. Package and directory names can suggest setup defaults, but they do not select a Project.",
-            }),
-          )
+        ? buildProjectSetupNextActions({
+            commandName: "project show",
+            retryCommand: "prisma project show <id-or-name>",
+            suggestedProjectName: result.suggestedProjectName,
+            reason:
+              "This directory is not linked to a Prisma Project. Package and directory names can suggest setup defaults, but they do not select a Project.",
+          })
         : [],
   };
 }
@@ -126,31 +122,23 @@ export const projectShowCommand = defineCommand({
   },
   needs: { credentials: true },
   handler: async (args, ctx) => {
-    try {
-      const workspace = await resolveActiveWorkspace(ctx);
-      const inspected = await inspectProjectBinding({
-        context: legacyOperationContext(ctx),
-        workspace,
-        explicitProject: args.positionals.project,
-        listProjects: () => listWorkspaceProjects(ctx),
-        commandName: "project show",
-      });
-      if (inspected.isErr()) {
-        throw projectResolutionErrorToCliError(inspected.error);
-      }
-      const result = inspected.value;
-      return ok(
-        ctx.present(
-          { data: result },
-          showPresentations(result, ctx.cwd, ctx.env),
-        ),
-      );
-    } catch (error) {
-      const mapped = mapProjectOperationError(error);
-      if (mapped) {
-        return notOk(mapped);
-      }
-      throw error;
+    const workspace = await resolveActiveWorkspace(ctx);
+    const inspected = await inspectProjectBinding({
+      context: legacyOperationContext(ctx),
+      workspace,
+      explicitProject: args.positionals.project,
+      listProjects: () => listWorkspaceProjects(ctx),
+      commandName: "project show",
+    });
+    if (inspected.isErr()) {
+      throw projectResolutionErrorToStructured(inspected.error);
     }
+    const result = inspected.value;
+    return ok(
+      ctx.present(
+        { data: result },
+        showPresentations(result, ctx.cwd, ctx.env),
+      ),
+    );
   },
 });

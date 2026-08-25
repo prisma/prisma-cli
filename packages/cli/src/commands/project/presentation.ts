@@ -2,10 +2,8 @@
 import type { Presentations } from "@prisma/cli-engine";
 import type { Diagnostic, NextAction } from "@prisma/cli-engine/protocol";
 import { CLI_NAME } from "../../cli-name";
-import type { NextAction as LegacyNextAction } from "../../next-actions";
 import { serializeProjectSetup } from "../../presenters/project";
 import type { ProjectSetupResult } from "../../types/project";
-import { portCommandString } from "./errors";
 
 /** Deploys come from pushing a connected repository, so the step after
  *  creating or linking a Project is connecting one. */
@@ -24,22 +22,6 @@ export function localPinDiagnostics(warnings: readonly string[]): Diagnostic[] {
     severity: "warn" as const,
     summary: warning,
     nextActions: [],
-  }));
-}
-
-/** The legacy NextAction shape minus its `journey` field, which the engine
- *  protocol does not carry. */
-export function toNextActions(
-  actions: readonly LegacyNextAction[],
-): NextAction[] {
-  return actions.map((action) => ({
-    kind: action.kind,
-    label: action.label,
-    ...(action.command ? { command: portCommandString(action.command) } : {}),
-    ...(action.commands
-      ? { commands: action.commands.map(portCommandString) }
-      : {}),
-    ...(action.reason ? { reason: action.reason } : {}),
   }));
 }
 

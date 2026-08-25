@@ -180,6 +180,10 @@ async function pinnedCwd() {
   return cwd;
 }
 
+function unpinnedCwd() {
+  return mkdtemp(path.join(os.tmpdir(), "postgres-unpinned-"));
+}
+
 function resultFrame(frames: ReadonlyArray<{ kind: string }>) {
   const frame = frames.at(-1);
   if (frame === undefined || frame.kind !== "result") {
@@ -360,7 +364,25 @@ describe("prisma postgres list", () => {
     });
   });
 
-  it("maps an API failure to the passthrough code", async () => {
+  // The project resolver raises its own PROJECT.* structured error, and
+  // the postgres commands let it through untouched.
+  it("reports an unbound directory as PROJECT.SETUP_REQUIRED", async () => {
+    const result = await makeCli(postgresClient()).run(
+      ["postgres", "list", "--json"],
+      { cwd: await unpinnedCwd() },
+    );
+
+    expect(result.exitCode).toBe(2);
+    expect(resultFrame(result.json).envelope).toMatchObject({
+      ok: false,
+      error: {
+        code: "PROJECT.SETUP_REQUIRED",
+        summary: "Choose a Project before running this command",
+      },
+    });
+  });
+
+  it("reports an API failure as POSTGRES.API_ERROR with the API code in meta", async () => {
     const result = await makeCli(
       postgresClient({
         routes: {
@@ -376,9 +398,10 @@ describe("prisma postgres list", () => {
     expect(resultFrame(result.json).envelope).toMatchObject({
       ok: false,
       error: {
-        code: "POSTGRES.internalError",
+        code: "POSTGRES.API_ERROR",
         summary: "Failed to list databases",
         why: "Backend exploded.",
+        meta: { status: 500, apiCode: "internalError" },
         nextActions: [
           {
             kind: "user-choice",
@@ -2373,7 +2396,7 @@ describe("prisma postgres connection rotate", () => {
     });
   });
 
-  it("passes an unknown connection through as an API error", async () => {
+  it("reports an unknown connection as POSTGRES.API_ERROR", async () => {
     const result = await makeCli(
       postgresClient({
         routes: {
@@ -2400,9 +2423,10 @@ describe("prisma postgres connection rotate", () => {
     expect(resultFrame(result.json).envelope).toMatchObject({
       ok: false,
       error: {
-        code: "POSTGRES.notFound",
+        code: "POSTGRES.API_ERROR",
         summary: "Failed to rotate database connection",
         why: "Connection not found.",
+        meta: { status: 404, apiCode: "notFound" },
       },
     });
   });

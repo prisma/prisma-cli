@@ -6,18 +6,11 @@ import {
   type Presentations,
   positional,
 } from "@prisma/cli-engine";
-import { notOk, ok } from "@prisma/cli-engine/protocol";
+import { CliStructuredError, ok } from "@prisma/cli-engine/protocol";
 import { CLI_NAME } from "../../cli-name";
 import { resolveDatabase } from "../../controllers/database";
-import { usageError } from "../../errors";
 import type { DatabaseRestoreResult } from "../../types/database";
-import {
-  branchFlag,
-  legacyCommandFormatter,
-  projectFlag,
-  resolvePostgresContext,
-} from "./context";
-import { mapPostgresOperationError } from "./errors";
+import { branchFlag, projectFlag, resolvePostgresContext } from "./context";
 import type { FieldRow } from "./presentation";
 
 const CONSENT_QUESTION =
@@ -93,80 +86,69 @@ export const postgresBackupRestoreCommand = defineCommand({
   },
   needs: { credentials: true },
   handler: async (args, ctx) => {
-    try {
-      const backupId = args.flags.backup?.trim();
-      if (!backupId) {
-        throw usageError(
-          "Backup id required",
-          "Database restore needs the backup to restore from.",
-          `Pass --backup <backup-id> from ${legacyCommandFormatter(["postgres", "backup", "list", "<database>"])}.`,
-          [
-            legacyCommandFormatter([
-              "postgres",
-              "backup",
-              "list",
-              "<database>",
-            ]),
+    const backupId = args.flags.backup?.trim();
+    if (!backupId) {
+      const listCommand = `${CLI_NAME} postgres backup list <database>`;
+      throw new CliStructuredError(
+        "POSTGRES.USAGE_ERROR",
+        "Backup id required",
+        {
+          why: "Database restore needs the backup to restore from.",
+          nextActions: [
+            {
+              kind: "user-choice",
+              label: `Pass --backup <backup-id> from ${listCommand}.`,
+            },
+            { kind: "run-command", label: listCommand, command: listCommand },
           ],
-          "database",
-        );
-      }
-
-      const { provider, target, projectId, projectName } =
-        await resolvePostgresContext(
-          ctx,
-          args.flags,
-          "postgres backup restore",
-        );
-      const database = await resolveDatabase(
-        provider,
-        target,
-        args.positionals.database,
-        args.flags.branch,
-        ctx.signal,
+        },
       );
-      const sourceDatabase = args.flags.sourceDatabase
-        ? await resolveDatabase(
-            provider,
-            target,
-            args.flags.sourceDatabase,
-            args.flags.branch,
-            ctx.signal,
-          )
-        : database;
-
-      await ctx.prompt.consent(CONSENT_QUESTION, { token: database.id });
-
-      const restored = await provider.restoreDatabase({
-        targetDatabaseId: database.id,
-        sourceDatabaseId: sourceDatabase.id,
-        backupId,
-        projectId,
-        signal: ctx.signal,
-      });
-
-      const result: DatabaseRestoreResult = {
-        projectId,
-        projectName,
-        database: restored,
-        source: { databaseId: sourceDatabase.id, backupId },
-      };
-      return ok(
-        ctx.present(
-          { data: result },
-          restorePresentations(
-            result,
-            sourceDatabase.id === database.id ? null : sourceDatabase.id,
-            database.id,
-          ),
-        ),
-      );
-    } catch (error) {
-      const mapped = mapPostgresOperationError(error);
-      if (mapped) {
-        return notOk(mapped);
-      }
-      throw error;
     }
+
+    const { provider, target, projectId, projectName } =
+      await resolvePostgresContext(ctx, args.flags, "postgres backup restore");
+    const database = await resolveDatabase(
+      provider,
+      target,
+      args.positionals.database,
+      args.flags.branch,
+      ctx.signal,
+    );
+    const sourceDatabase = args.flags.sourceDatabase
+      ? await resolveDatabase(
+          provider,
+          target,
+          args.flags.sourceDatabase,
+          args.flags.branch,
+          ctx.signal,
+        )
+      : database;
+
+    await ctx.prompt.consent(CONSENT_QUESTION, { token: database.id });
+
+    const restored = await provider.restoreDatabase({
+      targetDatabaseId: database.id,
+      sourceDatabaseId: sourceDatabase.id,
+      backupId,
+      projectId,
+      signal: ctx.signal,
+    });
+
+    const result: DatabaseRestoreResult = {
+      projectId,
+      projectName,
+      database: restored,
+      source: { databaseId: sourceDatabase.id, backupId },
+    };
+    return ok(
+      ctx.present(
+        { data: result },
+        restorePresentations(
+          result,
+          sourceDatabase.id === database.id ? null : sourceDatabase.id,
+          database.id,
+        ),
+      ),
+    );
   },
 });

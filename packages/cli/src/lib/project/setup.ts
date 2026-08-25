@@ -1,5 +1,8 @@
+import {
+  CliStructuredError,
+  type NextAction,
+} from "@prisma/cli-engine/protocol";
 import { matchError } from "better-result";
-import { CliError, usageError } from "../../errors";
 import type { AuthWorkspace } from "../../types/auth";
 import type { ProjectSummary } from "../../types/project";
 import {
@@ -39,10 +42,9 @@ export function resolveProjectForSetup(
   throw projectNotFoundError(projectRef, workspace);
 }
 
-export function projectDirectoryBindingErrorToCliError(
+export function projectDirectoryBindingErrorToStructured(
   error: ProjectDirectoryBindingError,
-): CliError {
-  // Temporary during the migration to better-result: remove when command boundaries convert Result errors directly.
+): CliStructuredError {
   return matchError(error, {
     LocalResolutionPinSerializationError: (error) => {
       throw error;
@@ -75,18 +77,28 @@ export function projectDirectoryBindingErrorToCliError(
 function localStateWriteFailedError(
   error: ProjectDirectoryBindingError,
   options: { why: string; meta: Record<string, unknown> },
-): CliError {
-  return new CliError({
-    code: "LOCAL_STATE_WRITE_FAILED",
-    domain: "project",
-    summary: "Could not save local Project binding",
-    why: options.why,
-    fix: "Check that this directory is writable and that .prisma/local.json and .gitignore are not blocked by directories or permissions, then retry.",
-    debug: formatDebugDetails(error.cause),
-    meta: options.meta,
-    exitCode: 1,
-    nextSteps: ["prisma project link <id-or-name>"],
-  });
+): CliStructuredError {
+  return new CliStructuredError(
+    "PROJECT.LOCAL_STATE_WRITE_FAILED",
+    "Could not save local Project binding",
+    {
+      why: options.why,
+      meta: options.meta,
+      cause: error.cause,
+      nextActions: [
+        {
+          kind: "user-choice",
+          label:
+            "Check that this directory is writable and that .prisma/local.json and .gitignore are not blocked by directories or permissions, then retry.",
+        },
+        {
+          kind: "run-command",
+          label: "prisma project link <id-or-name>",
+          command: "prisma project link <id-or-name>",
+        },
+      ],
+    },
+  );
 }
 
 export function toProjectSummary(
@@ -102,13 +114,20 @@ export function toProjectSummary(
   };
 }
 
-export function projectSetupNameRequiredError(command: string): CliError {
-  return usageError(
+export function projectSetupNameRequiredError(
+  command: string,
+): CliStructuredError {
+  const example = `prisma ${command} my-app`;
+  return new CliStructuredError(
+    "PROJECT.USAGE_ERROR",
     "Project create requires a name",
-    "The project name must be a non-empty value.",
-    "Pass a Project name explicitly.",
-    [`prisma ${command} my-app`],
-    "project",
+    {
+      why: "The project name must be a non-empty value.",
+      nextActions: [
+        { kind: "user-choice", label: "Pass a Project name explicitly." },
+        { kind: "run-command", label: example, command: example },
+      ],
+    },
   );
 }
 
@@ -121,32 +140,34 @@ export function projectCreateFailedError(
     permissionFix: string;
     fallbackFix: string;
   },
-): CliError {
+): CliStructuredError {
   const status = extractHttpStatus(error);
+  const permissionRejection = status === 401 || status === 403;
+  const message = error instanceof Error ? error.message : String(error);
 
-  if (status === 401 || status === 403) {
-    return new CliError({
-      code: "PROJECT_CREATE_FAILED",
-      domain: "project",
-      summary: `Could not create Project "${projectName}"`,
-      why: `The platform rejected the Project create in workspace "${workspace.name}" (HTTP ${status}).`,
-      fix: options.permissionFix,
-      debug: formatDebugDetails(error),
-      exitCode: 1,
-      nextSteps: options.nextSteps,
-    });
-  }
+  const nextActions: NextAction[] = [
+    {
+      kind: "user-choice",
+      label: permissionRejection ? options.permissionFix : options.fallbackFix,
+    },
+    ...options.nextSteps.map((step) => ({
+      kind: "run-command" as const,
+      label: step,
+      command: step,
+    })),
+  ];
 
-  return new CliError({
-    code: "PROJECT_CREATE_FAILED",
-    domain: "project",
-    summary: `Could not create Project "${projectName}"`,
-    why: error instanceof Error ? error.message : String(error),
-    fix: options.fallbackFix,
-    debug: formatDebugDetails(error),
-    exitCode: 1,
-    nextSteps: options.nextSteps,
-  });
+  return new CliStructuredError(
+    "PROJECT.CREATE_FAILED",
+    `Could not create Project "${projectName}"`,
+    {
+      why: permissionRejection
+        ? `The platform rejected the Project create in workspace "${workspace.name}" (HTTP ${status}).`
+        : message,
+      cause: error,
+      nextActions,
+    },
+  );
 }
 
 const HTTP_STATUS_IN_MESSAGE = /\(HTTP (\d{3})\)/;
@@ -176,12 +197,4 @@ function extractHttpStatus(error: unknown): number | null {
   }
 
   return null;
-}
-
-function formatDebugDetails(error: unknown): string | null {
-  if (error instanceof Error) {
-    return error.stack ?? error.message;
-  }
-
-  return typeof error === "string" ? error : null;
 }

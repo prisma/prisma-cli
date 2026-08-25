@@ -20,7 +20,7 @@
  */
 
 import { execFileSync } from "node:child_process";
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { argv, exit, stderr, stdout } from "node:process";
 import { fileURLToPath } from "node:url";
@@ -55,7 +55,11 @@ export function extractCodes(root) {
     .filter(
       (f) =>
         f.includes("/src/") && !TEST_FILE_RE.test(f) && !f.includes("/test/"),
-    );
+    )
+    // `git ls-files` lists what the index tracks, which includes a file
+    // deleted in the working tree but not yet staged. Reading one throws,
+    // so a branch mid-delete would crash the check instead of running it.
+    .filter((f) => existsSync(join(root, f)));
 
   const codes = new Map();
   for (const file of files) {

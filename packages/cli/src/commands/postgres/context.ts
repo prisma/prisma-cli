@@ -1,7 +1,5 @@
 /** Workspace, project and provider for the `postgres *` commands. */
 import { type CommandContext, flag, positional } from "@prisma/cli-engine";
-import { CLI_NAME } from "../../cli-name";
-import type { PrismaCliPackageCommandFormatter } from "../../lib/agent/cli-command";
 import {
   createManagementDatabaseProvider,
   type DatabaseProvider,
@@ -26,13 +24,6 @@ export const databasePositional = positional.string({
   brief: "Database id or name",
   placeholder: "database",
 });
-
-/** The legacy helpers build their nextSteps through a command
- *  formatter. This CLI phrases every command string as `${CLI_NAME} …`; the
- *  error mapper rewrites the `database` group name to `postgres`. */
-export const legacyCommandFormatter: PrismaCliPackageCommandFormatter = (
-  args,
-) => [CLI_NAME, ...args].join(" ");
 
 export interface PostgresContext {
   readonly provider: DatabaseProvider;
