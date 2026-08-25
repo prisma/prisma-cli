@@ -29,17 +29,18 @@ run() {
 
 # The engine's tags went stale because publish-packages.sh tolerates an
 # already-published version by skipping it, which also skips the tag
-# move. Point latest at the newest published engine and drop its stale
-# next tag: since the cutover, releases publish under latest only and
-# next is retired (docs/oss/versioning.md).
+# move. Point both tags at the newest published engine.
 run npm dist-tag add @prisma/cli-engine@0.2.3 latest
-run npm dist-tag rm @prisma/cli-engine next
+run npm dist-tag add @prisma/cli-engine@0.2.3 next
 
-# next froze at the last pre-cutover RC on the CLI names. Remove it so
-# prisma@next stops resolving an ever-older release; text that says
-# prisma@next should move to plain prisma.
-run npm dist-tag rm prisma next
-run npm dist-tag rm @prisma/cli next
+# next froze at the last pre-cutover RC on the CLI names. Removing it
+# would break every `prisma@next` instruction immediately (operator
+# ruling 2026-08-25), so point it at the current release instead. No
+# automated sync exists — npm has no token permission narrower than
+# package write — so this lags future releases; the tag is retired
+# deliberately, with an announcement, once 8.0.0 stable ships.
+run npm dist-tag add prisma@8.0.0-rc.10 next
+run npm dist-tag add @prisma/cli@8.0.0-rc.10 next
 
 # Deprecations from the rollout plan, step 5:
 #   prisma-next    — already deprecated (operator, 2026-08-24).
