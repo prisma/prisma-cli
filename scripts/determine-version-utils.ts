@@ -123,10 +123,10 @@ export function assertValidDistTag(tag: string): void {
  * the operator on 2026-08-25: `npm install prisma` serves the unified
  * v8 CLI from the first release after this widening. Before it, RC
  * releases went to `next` while `latest` kept serving the pre-8 CLI.
- * `next` now tracks `latest` — the publish workflow re-points it at
- * every release — so existing text telling people to install
- * `prisma@next` keeps resolving the newest release, until the tag is
- * given a new meaning (operator ruling 2026-08-25).
+ * `next` is not moved by the publish path anymore: it froze at the
+ * last pre-cutover RC, and the operator re-points or retires it by
+ * hand — npm has no token permission narrower than package write, so
+ * an automated sync would mean a standing publish-capable token.
  */
 export function releaseDistTag(base: string): "latest" | "next" {
   assertCanonicalBase(base);
