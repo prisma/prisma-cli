@@ -156,6 +156,31 @@ jobs:
             "@prisma/cli@$RELEASE_VERSION" \
             "prisma@$RELEASE_VERSION"
 
+      # `next` tracks `latest` so existing prisma@next instructions keep
+      # resolving the newest release (operator ruling 2026-08-25), until
+      # the tag is given a new meaning. Re-pointing a tag on an
+      # already-published version cannot authenticate over OIDC, so this
+      # uses NPM_DIST_TAG_TOKEN — a granular npm token scoped to
+      # dist-tag maintenance, nothing more. Absent token: warn, never
+      # fail — the release itself is complete either way.
+      - name: Keep next on the release
+        if: ${{ steps.version.outputs.release == 'true' && (github.event_name != 'workflow_dispatch' || github.event.inputs.dry-run != 'true') }}
+        env:
+          NPM_DIST_TAG_TOKEN: ${{ secrets.NPM_DIST_TAG_TOKEN }}
+          RELEASE_VERSION: ${{ steps.version.outputs.releaseVersion }}
+        run: |
+          if [ -z "$NPM_DIST_TAG_TOKEN" ]; then
+            echo "::warning::NPM_DIST_TAG_TOKEN is not configured; next was not moved to $RELEASE_VERSION."
+            exit 0
+          fi
+          npmrc=$(mktemp)
+          echo "//registry.npmjs.org/:_authToken=\${NPM_DIST_TAG_TOKEN}" > "$npmrc"
+          engine=$(node -p "require('./packages/cli-engine/package.json').version")
+          NPM_CONFIG_USERCONFIG="$npmrc" npm dist-tag add "@prisma/cli-engine@$engine" next
+          NPM_CONFIG_USERCONFIG="$npmrc" npm dist-tag add "@prisma/cli@$RELEASE_VERSION" next
+          NPM_CONFIG_USERCONFIG="$npmrc" npm dist-tag add "prisma@$RELEASE_VERSION" next
+          rm -f "$npmrc"
+
       # Draft first, assets, then publish: a published release is
       # immutable, so a later upload answers 422. Created through the API
       # for the id — searching the releases listing for a draft races its
