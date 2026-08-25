@@ -27,7 +27,7 @@ importers:
         specifier: ^2.1.2
         version: 2.1.2
       '@prisma/cli-engine':
-        specifier: workspace:0.2.3
+        specifier: workspace:0.3.0
         version: link:../cli-engine
       '@prisma/composer-cli':
         specifier: 0.14.0
@@ -201,7 +201,7 @@ importers:
         specifier: ^2.1.2
         version: 2.1.2
       '@prisma/cli-engine':
-        specifier: workspace:0.2.3
+        specifier: workspace:0.3.0
         version: link:../cli-engine
       '@prisma/composer-cli':
         specifier: 0.14.0
