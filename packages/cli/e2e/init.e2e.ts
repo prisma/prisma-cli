@@ -35,6 +35,7 @@ interface InitEnvelope {
   readonly result: {
     readonly postinstall: {
       readonly outcome: string;
+      readonly reason?: string;
       readonly script: string | null;
       readonly dependency: string;
     };
@@ -44,6 +45,7 @@ interface InitEnvelope {
     };
     readonly skills: {
       readonly outcome: string;
+      readonly reason?: string;
       readonly sync: { readonly packages: readonly unknown[] } | null;
     };
   };
@@ -189,7 +191,8 @@ describe("prisma init", () => {
   // The binary evaluates the scaffold it wrote in the first test: the
   // engine imports c12 via its realpath, so the pnpm development
   // layout that once broke this rerun ("Cannot find package 'pathe'")
-  // no longer does.
+  // no longer does. The removed-config recreation the old rerun shape
+  // exercised instead is covered by tests/init.test.ts.
   it("reruns safely over its own scaffold: every step reports already done", async () => {
     const envelope = await runInit(workdir);
 
@@ -222,10 +225,12 @@ describe("prisma init", () => {
     expect(envelope.ok).toBe(true);
     expect(envelope.result.postinstall).toEqual({
       outcome: "skipped",
+      reason: "governing-config",
       script: null,
       dependency: "skipped",
     });
     expect(envelope.result.skills.outcome).toBe("skipped");
+    expect(envelope.result.skills.reason).toBe("governing-config");
     expect(envelope.result.config.outcome).toBe("created");
     expect(envelope.diagnostics).toEqual([]);
     const manifest = JSON.parse(

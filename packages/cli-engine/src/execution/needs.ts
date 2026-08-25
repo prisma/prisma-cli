@@ -30,6 +30,9 @@ export type NeedsOutcome =
   | {
       readonly kind: "ok";
       readonly config: unknown;
+      /** The chain the config check loaded, for ctx.configFiles; empty
+       *  when the command has no config need. */
+      readonly configFiles: readonly LoadedConfigFile[];
       /** The credential resolved for a `credentials: "child"` command,
        *  carried forward so the spawn path never re-resolves it. */
       readonly spawnCredential: ActiveCredential | undefined;
@@ -90,6 +93,7 @@ export async function checkNeeds(
   return {
     kind: "ok",
     config: undefined,
+    configFiles: [],
     spawnCredential: credentials.spawnCredential,
   };
 }
@@ -306,7 +310,12 @@ function validateConfigSection(
     );
   }
   writeSectionWarnings(invocation, validation.diagnostics);
-  return { kind: "ok", config: validation.value, spawnCredential: undefined };
+  return {
+    kind: "ok",
+    config: validation.value,
+    configFiles: loaded.files,
+    spawnCredential: undefined,
+  };
 }
 
 /** A property getter in a section's value is user code; a throw while

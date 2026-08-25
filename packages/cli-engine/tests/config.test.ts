@@ -1240,7 +1240,8 @@ describe("needs.config", { timeout: 60_000 }, () => {
           error: {
             code: "CLI.CONFIG_SECTION_INVALID",
             severity: "error",
-            summary: "The 'toy' section of prisma.config.ts is invalid.",
+            // The harness seeds the config in the run's cwd ("/").
+            summary: "The 'toy' section of /prisma.config.ts is invalid.",
             nextActions: [
               {
                 kind: "user-choice",

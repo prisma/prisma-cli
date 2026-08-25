@@ -1,3 +1,4 @@
+import { resolve } from "node:path";
 import type { CommandFamily, MountedTree } from "./command-family";
 import { CONFIG_FILE_NAME } from "./config-loader";
 import type { Credential } from "./credential-manager";
@@ -295,11 +296,16 @@ export function createTestCli(spec: {
       apiBaseUrl: managementApiBaseUrl,
       authBaseUrl: "https://auth.test.invalid",
     };
-  const loadConfig: Runtime["loadConfig"] =
+  /** LoadedConfigFile.path is absolute by contract, so the seeded file
+   *  lands in the run's cwd — where the real loader would discover it. */
+  const loadConfigFor = (cwd: string): Runtime["loadConfig"] =>
     spec.loadConfig ??
     (async (configPath) => ({
       files: [
-        { path: configPath ?? CONFIG_FILE_NAME, sections: spec.config ?? {} },
+        {
+          path: resolve(cwd, configPath ?? CONFIG_FILE_NAME),
+          sections: spec.config ?? {},
+        },
       ],
       diagnostics: [],
     }));
@@ -374,7 +380,7 @@ export function createTestCli(spec: {
             signalListeners.delete(cb);
           };
         },
-        loadConfig,
+        loadConfig: loadConfigFor(opts?.cwd ?? "/"),
         credentialManager,
         managementApiClientConfig,
         spawn: recordingSpawn(spawnChild, spawns),

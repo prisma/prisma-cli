@@ -19,6 +19,7 @@ import type {
   FlagSpec,
   InputStream,
   LoadedConfig,
+  LoadedConfigFile,
   MountedTree,
   Presentations,
   PresentedResult,
@@ -203,12 +204,15 @@ export const runCheck: CommandHandler<typeof checkCommand> = async (
   const cfg: CheckCfg = ctx.config;
   const strictCfg: boolean = ctx.config.strict;
 
+  // The chain the config was resolved from rides the context
+  const chain: ReadonlyArray<LoadedConfigFile> = ctx.configFiles;
+
   // r5(1)/r4(b): documented exit codes compile at every return site
   const p4 = ctx.present(
     { data: { strict, filter, name, rest }, exitCode: 4 },
     presentations,
   );
-  const p5 = ctx.present({ data: cfg, exitCode: 5 }, presentations);
+  const p5 = ctx.present({ data: { cfg, chain }, exitCode: 5 }, presentations);
   const p0 = ctx.present({ data: strictCfg, exitCode: 0 }, presentations);
   // r5(1): diagnostics are optional alongside the exit code
   const pDiag = ctx.present(
@@ -242,12 +246,14 @@ export const runPlain: CommandHandler<typeof plainCommand> = async (
 ) => {
   // r5(3): with no needs.config, TConfig defaults to undefined
   const noConfig: undefined = ctx.config;
+  // ctx.configFiles exists on every context; it is empty here
+  const noChain: ReadonlyArray<LoadedConfigFile> = ctx.configFiles;
 
   // r5(1): present({ data }) compiles without an exit code
   const bare = ctx.present({ data: noConfig }, presentations);
   // r5(1): diagnostics still accepted without a catalogue
   const withDiagnostics = ctx.present(
-    { data: 1, diagnostics: [] },
+    { data: noChain, diagnostics: [] },
     presentations,
   );
 

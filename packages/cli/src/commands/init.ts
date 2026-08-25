@@ -1,7 +1,11 @@
 import { realpathSync } from "node:fs";
 import { readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
-import type { Block, Presentations } from "@prisma/cli-engine";
+import type {
+  Block,
+  LoadedConfigFile,
+  Presentations,
+} from "@prisma/cli-engine";
 import { defineCommand, flag } from "@prisma/cli-engine";
 import type { Diagnostic, NextAction } from "@prisma/cli-engine/protocol";
 import { CliStructuredError, notOk, ok } from "@prisma/cli-engine/protocol";
@@ -15,7 +19,7 @@ import {
 import { readSkillsStatus } from "../lib/skills/status";
 import { syncSkills } from "../lib/skills/sync";
 import { getCliVersion } from "../lib/version";
-import { projectConfigLoader, skillsConfigSection } from "./skills/config";
+import { skillsConfigSection } from "./skills/config";
 import { syncPresentations } from "./skills/presentation";
 import type { SkillsSyncResult } from "./skills/results";
 import {
@@ -30,8 +34,14 @@ export type InitPostinstallOutcome = "added" | "exists" | "kept" | "skipped";
 
 export type InitDependencyOutcome = "added" | "declared" | "skipped";
 
+/** Present only on a "skipped" outcome that no flag and no diagnostic
+ *  explains: another prisma.config.ts governs the directory, so the
+ *  step belongs at the repository root. */
+export type InitSkipReason = "governing-config";
+
 export interface InitPostinstallReport {
   readonly outcome: InitPostinstallOutcome;
+  readonly reason?: InitSkipReason;
   /** The postinstall script package.json holds after init; null when
    *  the step was skipped or nothing was written. */
   readonly script: string | null;
@@ -57,6 +67,7 @@ export type InitSkillsOutcome =
 
 export interface InitSkillsReport {
   readonly outcome: InitSkillsOutcome;
+  readonly reason?: InitSkipReason;
   readonly sync: SkillsSyncResult | null;
 }
 
@@ -683,37 +694,42 @@ function realpathOr(target: string): string {
   }
 }
 
-/** Whether the discovered config chain reaches outside cwd: a
+/** Whether the resolved config chain reaches outside cwd: a
  *  prisma.config.ts in a directory above, or one an explicit `parent`
- *  named elsewhere. A config in cwd itself is not an ancestor. Runs
- *  before the scaffold is written, so init's own output never counts.
- *  Realpath'd on both sides so symlinked layouts compare like with
- *  like. */
-async function hasAncestorConfig(cwd: string): Promise<boolean> {
-  const loaded = await projectConfigLoader(cwd)();
+ *  named elsewhere. A config in cwd itself does not count. The chain
+ *  is the one the needs check loaded before the handler ran, so
+ *  init's own scaffold never counts either. Realpath'd on both sides
+ *  so symlinked layouts compare like with like. */
+function governedByAncestorConfig(
+  files: readonly LoadedConfigFile[],
+  cwd: string,
+): boolean {
   const here = realpathOr(cwd);
-  return loaded.files.some(
-    (file) => realpathOr(path.dirname(file.path)) !== here,
-  );
+  return files.some((file) => realpathOr(path.dirname(file.path)) !== here);
 }
 
 const ANCESTOR_SKIPPED_POSTINSTALL: Step<InitPostinstallReport> = {
-  report: { outcome: "skipped", script: null, dependency: "skipped" },
+  report: {
+    outcome: "skipped",
+    reason: "governing-config",
+    script: null,
+    dependency: "skipped",
+  },
   lines: [
     summary(
       "info",
-      "Skipped the postinstall hook and the prisma dev dependency: a prisma.config.ts in a parent directory covers this one, so both belong at the repository root. Pass --postinstall to add them here anyway.",
+      "Skipped the postinstall hook and the prisma dev dependency: another prisma.config.ts already governs this directory, so both belong at the repository root. Pass --postinstall to add them here anyway.",
     ),
   ],
   diagnostics: [],
 };
 
 const ANCESTOR_SKIPPED_SKILLS: Step<InitSkillsReport> = {
-  report: { outcome: "skipped", sync: null },
+  report: { outcome: "skipped", reason: "governing-config", sync: null },
   lines: [
     summary(
       "info",
-      "Skipped the skills sync: a prisma.config.ts in a parent directory covers this one, so the skills belong at the repository root. Pass --skills with your agents to sync them here anyway.",
+      "Skipped the skills sync: another prisma.config.ts already governs this directory, so the skills belong at the repository root. Pass --skills with your agents to sync them here anyway.",
     ),
   ],
   diagnostics: [],
@@ -797,13 +813,13 @@ function parseSkillsFlag(
 
 async function postinstallStep(
   flag: boolean | undefined,
-  ancestor: boolean,
+  deferToAncestor: boolean,
   cwd: string,
 ): Promise<Step<InitPostinstallReport>> {
   if (flag === false) {
     return SKIPPED_POSTINSTALL;
   }
-  if (ancestor && flag === undefined) {
+  if (deferToAncestor && flag === undefined) {
     return ANCESTOR_SKIPPED_POSTINSTALL;
   }
   return addPostinstallHook(cwd);
@@ -837,7 +853,7 @@ export const initCommand = defineCommand({
   help: {
     summary: "Prepare this repository for Prisma development",
     description:
-      "Runs locally and calls no platform API. Adds a postinstall script to package.json that keeps the Prisma agent skills in sync on every install, adds prisma to devDependencies at this CLI's exact version when no dependency field declares it, scaffolds a prisma.config.ts recording which agents to install skills for, then syncs the skills once now. Everything lands in the current directory; a prisma.config.ts or postinstall script that already exists is never edited. Rerunning is safe: each step reports what is already done. In a directory that a parent directory's prisma.config.ts already governs, init writes only the prisma.config.ts scaffold — the postinstall hook, the prisma dev dependency, and the skills sync belong at the repository root and are skipped unless --postinstall or --skills asks for them here.",
+      "Runs locally and calls no platform API. Adds a postinstall script to package.json that keeps the Prisma agent skills in sync on every install, adds prisma to devDependencies at this CLI's exact version when no dependency field declares it, scaffolds a prisma.config.ts recording which agents to install skills for, then syncs the skills once now. Everything lands in the current directory; a prisma.config.ts or postinstall script that already exists is never edited. Rerunning is safe: each step reports what is already done. In a directory another prisma.config.ts already governs, init writes only the prisma.config.ts scaffold — the postinstall hook, the prisma dev dependency, and the skills sync belong at the repository root and are skipped unless --postinstall or --skills asks for them here.",
     examples: [
       "init",
       "init --skills=claude,cursor",
@@ -863,16 +879,11 @@ export const initCommand = defineCommand({
       return notOk(skillsFlag.error);
     }
 
-    // Detection is skipped when both steps are already decided by
-    // flags; discovery is stat-only until a config file exists, so a
-    // project without one pays nothing.
-    const stepsUndecided =
-      args.flags.postinstall === undefined || args.flags.skills === undefined;
-    const ancestor = stepsUndecided && (await hasAncestorConfig(ctx.cwd));
+    const deferToAncestor = governedByAncestorConfig(ctx.configFiles, ctx.cwd);
 
     const postinstall = await postinstallStep(
       args.flags.postinstall,
-      ancestor,
+      deferToAncestor,
       ctx.cwd,
     );
     // --skills=none still scaffolds: `agents: []` is the committed
@@ -887,7 +898,7 @@ export const initCommand = defineCommand({
     let skills: Step<InitSkillsReport>;
     if (skillsFlag.kind === "skip") {
       skills = SKIPPED_SKILLS;
-    } else if (ancestor && args.flags.skills === undefined) {
+    } else if (deferToAncestor && args.flags.skills === undefined) {
       skills = ANCESTOR_SKIPPED_SKILLS;
     } else {
       skills = await syncSkillsStep(
