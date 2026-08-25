@@ -4,6 +4,29 @@ Work identified during a slice that is not part of that slice's
 contract. Each entry: what, why it was deferred, where it lands.
 Nothing here is tracked outside this file.
 
+## After the latest cutover (2026-08-25, PR #230)
+
+- **A stale product `dev` dist-tag can block a release publish.** The
+  publish run checks the dev channel before the release leg, and the
+  dev channel resolves each product's `dev` tag with no fallback — so
+  when prisma/prisma released rc.7 without publishing a dev build
+  (their workflow's two publish kinds were alternatives), our rc.10
+  release run died in the dev conformance check with an
+  engine-pin-mismatch nothing in this repo caused. Unblocked by a
+  manual `npm dist-tag add @prisma/orm-toolchain@8.0.0-rc.7 dev`; a
+  separate agent is porting composer's dual-publish (composer #241) to
+  prisma/prisma, which removes the trigger. Open decision for THIS
+  repo: whether a dev-channel failure should stop the release leg at
+  all, or the release should publish and the run report the dev
+  failure after — the current ordering makes another repo's stale tag
+  this repo's release blocker.
+- **The `@prisma/cli` deprecation call is open.** Rollout-plan step 5
+  listed a deprecation notice pointing installers at `prisma`; the
+  package is now the scoped twin the workflow actively publishes, so
+  deprecating it may no longer make sense. Operator decision; needs
+  npm auth either way (`scripts/cutover-dist-tags.sh` carries a
+  commented-out line for it).
+
 ## After S7's first real publish
 
 - **The publish/Release shell in `publish.yml` should become a tested
