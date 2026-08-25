@@ -29,6 +29,10 @@ export interface RefusedSkill {
 export interface SyncOutcome {
   readonly projectRoot: string;
   readonly packages: readonly InstalledSourcePackage[];
+  /** Every skill name the installed packages ship, whether or not this
+   *  run wrote it. Empty while packages are installed means those
+   *  versions ship no skills. */
+  readonly skills: readonly string[];
   readonly synced: readonly SyncedSkill[];
   readonly pruned: readonly PrunedSkill[];
   readonly refused: readonly RefusedSkill[];
@@ -102,6 +106,7 @@ export async function syncSkills(status: SkillsStatus): Promise<SyncOutcome> {
   return {
     projectRoot: status.projectRoot,
     packages: status.packages,
+    skills: status.skills.map((skill) => skill.skill),
     synced,
     pruned,
     refused,

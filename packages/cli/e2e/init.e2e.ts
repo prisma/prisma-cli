@@ -130,7 +130,7 @@ describe("prisma init", () => {
     ]);
     // No allowlisted Prisma package is installed here, so the sync has
     // nothing to do and says so instead of failing.
-    expect(envelope.result.skills.outcome).toBe("up-to-date");
+    expect(envelope.result.skills.outcome).toBe("no-packages");
     expect(envelope.result.skills.sync?.packages).toEqual([]);
     expect(envelope.diagnostics).toEqual([]);
 
@@ -205,7 +205,7 @@ describe("prisma init", () => {
     expect(envelope.result.postinstall.outcome).toBe("exists");
     expect(envelope.result.postinstall.dependency).toBe("declared");
     expect(envelope.result.config.outcome).toBe("created");
-    expect(envelope.result.skills.outcome).toBe("up-to-date");
+    expect(envelope.result.skills.outcome).toBe("no-packages");
     expect(envelope.diagnostics.map((d) => d.code)).not.toContain(
       "INIT.CONFIG_KEPT",
     );

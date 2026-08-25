@@ -246,7 +246,57 @@ describe("skills sync", () => {
 
     expect(exitCode).toBe(0);
     expect(result.packages).toEqual([]);
+    expect(result.skills).toEqual([]);
     expect(result.synced).toEqual([]);
+  });
+
+  it("says the installed packages ship no skills instead of claiming up to date", async () => {
+    const root = await makeProjectRoot();
+    await installPackage(root, {
+      name: "@prisma/orm-postgres",
+      version: "6.9.0",
+    });
+
+    const run = await makeCli().run(["skills", "sync"], {
+      cwd: root,
+      isTty: { stdout: true, stderr: true },
+    });
+    const result = run.presented?.data as SkillsSyncResult;
+
+    expect(run.exitCode).toBe(0);
+    expect(result.packages.map((pkg) => pkg.package)).toEqual([
+      "@prisma/orm-postgres",
+    ]);
+    expect(result.skills).toEqual([]);
+    expect(result.synced).toEqual([]);
+    expect(run.stderr).toContain(
+      "No Prisma dependencies in your project ship agent skills to sync.",
+    );
+    expect(run.stderr).not.toContain("up to date");
+  });
+
+  it("keeps the up-to-date summary while any installed package ships skills", async () => {
+    const root = await makeProjectRoot();
+    await installPackage(root, {
+      name: "@prisma/orm-postgres",
+      version: "8.1.0",
+      skills: ["prisma-8"],
+    });
+    await installPackage(root, {
+      name: "@prisma/composer",
+      version: "0.11.0",
+    });
+    await runSync(root);
+
+    const run = await makeCli().run(["skills", "sync"], {
+      cwd: root,
+      isTty: { stdout: true, stderr: true },
+    });
+    const result = run.presented?.data as SkillsSyncResult;
+
+    expect(run.exitCode).toBe(0);
+    expect(result.skills).toEqual(["prisma-8"]);
+    expect(run.stderr).toContain("Agent skills are up to date.");
   });
 
   it("removes a copy whose source package is gone, and nothing else", async () => {
@@ -278,6 +328,25 @@ describe("skills sync", () => {
     expect(
       await exists(path.join(root, ".claude/skills", "someone-elses")),
     ).toBe(true);
+  });
+
+  it("summarizes a prune-only run as removal, not as an empty state", async () => {
+    const root = await makeProjectRoot();
+    await seedSyncedSkill(root, ".claude/skills", {
+      skill: "prisma-8",
+      library: "@prisma/orm-postgres",
+      version: "8.1.0",
+    });
+
+    const run = await makeCli().run(["skills", "sync"], {
+      cwd: root,
+      isTty: { stdout: true, stderr: true },
+    });
+
+    expect(run.exitCode).toBe(0);
+    expect(run.stderr).toContain("Removed 1 skill.");
+    expect(run.stderr).not.toContain("are installed");
+    expect(run.stderr).not.toContain("ship agent skills");
   });
 
   it("keeps a skill still shipped by another installed package", async () => {
@@ -449,7 +518,9 @@ describe("skills sync", () => {
     expect(result.agents).toEqual([]);
     expect(result.synced).toEqual([]);
     expect(result.pruned).toEqual([]);
-    expect(run.stderr).toContain("No agents are configured for skills.");
+    expect(run.stderr).toContain(
+      "No agents are configured to sync skills for.",
+    );
     expect(run.stderr).not.toContain("up to date");
     for (const dir of HARNESS_SKILL_DIRS) {
       expect(await exists(path.join(root, dir))).toBe(false);
@@ -611,6 +682,47 @@ describe("skills list", () => {
     expect(result.orphaned).toEqual([]);
   });
 
+  it("says no allowlisted package is installed when there are none", async () => {
+    const root = await makeProjectRoot();
+
+    const run = await makeCli().run(["skills", "list"], {
+      cwd: root,
+      isTty: { stdout: true, stderr: true },
+    });
+    const result = run.presented?.data as SkillsListResult;
+
+    expect(run.exitCode).toBe(0);
+    expect(result.packages).toEqual([]);
+    expect(run.stderr).toContain(
+      "No Prisma packages with agent skills are installed.",
+    );
+    expect(run.stderr).not.toContain("up to date");
+  });
+
+  it("says the installed packages ship no skills", async () => {
+    const root = await makeProjectRoot();
+    await installPackage(root, {
+      name: "@prisma/orm-postgres",
+      version: "6.9.0",
+    });
+
+    const run = await makeCli().run(["skills", "list"], {
+      cwd: root,
+      isTty: { stdout: true, stderr: true },
+    });
+    const result = run.presented?.data as SkillsListResult;
+
+    expect(run.exitCode).toBe(0);
+    expect(result.packages.map((pkg) => pkg.package)).toEqual([
+      "@prisma/orm-postgres",
+    ]);
+    expect(result.skills).toEqual([]);
+    expect(run.stderr).toContain(
+      "No Prisma dependencies in your project ship agent skills.",
+    );
+    expect(run.stderr).not.toContain("up to date");
+  });
+
   it("names copies waiting to be pruned", async () => {
     const root = await makeProjectRoot();
     await seedSyncedSkill(root, ".agents/skills", {
@@ -672,7 +784,9 @@ describe("skills list", () => {
       true,
     );
     expect(result.upToDate).toBe(true);
-    expect(run.stderr).toContain("No agents are configured for skills.");
+    expect(run.stderr).toContain(
+      "No agents are configured to sync skills for.",
+    );
   });
 
   it("reads nothing and changes nothing", async () => {
