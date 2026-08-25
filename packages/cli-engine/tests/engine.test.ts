@@ -29,7 +29,6 @@ describe("main export", () => {
       "credentialsRequiredError",
       "defineCommand",
       "defineCommandFamily",
-      "defineConfig",
       "defineConfigSection",
       "definePrismaConfig",
       "defineServerCommand",
