@@ -6,22 +6,24 @@ Nothing here is tracked outside this file.
 
 ## After the latest cutover (2026-08-25, PR #230)
 
-- **compute-sdk 0.42.0 asks for a `@prisma/management-api-sdk` this repo
-  does not install.** Its peer range is `^1.69.0`; all three manifests
-  here pin `1.55.0`, so `pnpm peers check` reports one unmet peer. Left
-  that way deliberately: the SDK version is a shared type surface, so
-  moving it in `packages/cli` and `packages/prisma` alone makes the
-  engine's `ManagementApiClient` a second, incompatible copy and every
-  command that hands the engine's client to a CLI function stops
-  typechecking. Moving all three means `packages/cli-engine` changed,
-  which needs a new engine version, which both families peer-pin
-  exactly — the three-repo release sequence. Nothing is broken in the
-  meantime: the field is declared by compute-sdk's own types and the
-  server sends it whatever the client was generated from. Two ways out,
-  operator's call: move the SDK with the next engine version train, or
-  relax compute-sdk's floor back to `^1.44.0`, which is arguably where
-  it belongs — the floor protects a build-time concern of compute-sdk's
-  own that no consumer shares.
+- **The engine 0.3.0 transition is in flight; both families still peer
+  0.2.3.** `@prisma/cli-engine` declared `@prisma/management-api-sdk` as
+  an ordinary dependency while re-exporting the SDK's client type across
+  its own public API (`ctx.api`). That is a shared type surface held as
+  a private copy: when the shell moved to a newer SDK, the engine's
+  `Client<paths>` and the shell's became unrelated types and every
+  command taking `ctx.api` into a CLI function stopped typechecking, so
+  the version could only ever move in all three manifests at once —
+  which changed the engine, which both families peer-pin exactly. 0.3.0
+  makes the SDK a peer of the engine (`^1.55.0`) with the two binaries
+  supplying the copy, so a future SDK bump touches the apps only. The
+  sequence from here, per `packages/cli/scripts/conformance.ts`: engine
+  0.3.0 publishes → `@prisma/composer-cli` and `@prisma/orm-toolchain`
+  republish peering 0.3.0 → a release PR here pins those versions and
+  deletes the two `exceptions` entries, restoring the empty list. Until
+  then conformance reports six allowed findings, including two copies of
+  the engine resolving in the sandbox install — the expected shape of a
+  transition, not a defect.
 
 - **A stale product `dev` dist-tag can block a release publish.** The
   publish run checks the dev channel before the release leg, and the
