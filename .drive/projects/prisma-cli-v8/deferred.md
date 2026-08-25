@@ -25,6 +25,13 @@ Nothing here is tracked outside this file.
   package is now the scoped twin the workflow actively publishes, so
   deprecating it may no longer make sense. Operator decision; needs npm auth either way
   (`npm deprecate @prisma/cli@"<8.0.0" "..."`).
+  Update 2026-08-25: the cutover surfaced a live 3.x consumer —
+  pdp-control-plane's build-runner and github-webhook deploys used
+  `@prisma/cli@latest` for the old `app deploy` and broke when `latest`
+  moved to rc.10. Resolved by Kristof pinning their CLI version, not by
+  moving the tag back. No deprecation of the `<8` line while control
+  plane runs on it; the entry closes when those services migrate to
+  Composer.
 
 ## After S7's first real publish
 
