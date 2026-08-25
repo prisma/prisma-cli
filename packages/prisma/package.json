@@ -50,11 +50,11 @@
   "dependencies": {
     "@manypkg/tools": "^2.1.2",
     "@prisma/cli-engine": "workspace:0.2.3",
-    "@prisma/composer-cli": "0.13.0",
+    "@prisma/composer-cli": "0.14.0",
     "@prisma/compute-sdk": "0.39.0",
     "@prisma/credentials-store": "^7.8.0",
     "@prisma/management-api-sdk": "1.55.0",
-    "@prisma/orm-toolchain": "8.0.0-rc.6",
+    "@prisma/orm-toolchain": "8.0.0-rc.7",
     "@vercel/detect-agent": "^1.2.3",
     "better-result": "^2.9.2",
     "dotenv": "^17.4.2",
