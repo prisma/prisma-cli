@@ -8,7 +8,7 @@ export default defineConfig({
   },
   format: ["esm"],
   // The vendor table is embedded; see src/ci.ts.
-  noExternal: ["ci-info/vendors.json"],
+  deps: { alwaysBundle: ["ci-info/vendors.json"] },
   dts: true,
   clean: true,
   fixedExtension: false,

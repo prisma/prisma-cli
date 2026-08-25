@@ -15,7 +15,7 @@ export default defineConfig([
     clean: true,
     shims: true,
     fixedExtension: false,
-    noExternal: ["@prisma/cli", "@repo/cli-telemetry"],
+    deps: { alwaysBundle: ["@prisma/cli", "@repo/cli-telemetry"] },
     outDir: "dist",
   },
   // The `prisma/config` subpath for user prisma.config.ts files.

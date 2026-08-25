@@ -15,7 +15,7 @@ export default defineConfig([
     clean: true,
     shims: true,
     fixedExtension: false,
-    noExternal: ["@repo/cli-telemetry"],
+    deps: { alwaysBundle: ["@repo/cli-telemetry"] },
     outDir: "dist",
   },
 ]);
