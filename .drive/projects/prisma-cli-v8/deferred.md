@@ -6,6 +6,23 @@ Nothing here is tracked outside this file.
 
 ## After the latest cutover (2026-08-25, PR #230)
 
+- **compute-sdk 0.42.0 asks for a `@prisma/management-api-sdk` this repo
+  does not install.** Its peer range is `^1.69.0`; all three manifests
+  here pin `1.55.0`, so `pnpm peers check` reports one unmet peer. Left
+  that way deliberately: the SDK version is a shared type surface, so
+  moving it in `packages/cli` and `packages/prisma` alone makes the
+  engine's `ManagementApiClient` a second, incompatible copy and every
+  command that hands the engine's client to a CLI function stops
+  typechecking. Moving all three means `packages/cli-engine` changed,
+  which needs a new engine version, which both families peer-pin
+  exactly — the three-repo release sequence. Nothing is broken in the
+  meantime: the field is declared by compute-sdk's own types and the
+  server sends it whatever the client was generated from. Two ways out,
+  operator's call: move the SDK with the next engine version train, or
+  relax compute-sdk's floor back to `^1.44.0`, which is arguably where
+  it belongs — the floor protects a build-time concern of compute-sdk's
+  own that no consumer shares.
+
 - **A stale product `dev` dist-tag can block a release publish.** The
   publish run checks the dev channel before the release leg, and the
   dev channel resolves each product's `dev` tag with no fallback — so
@@ -481,7 +498,7 @@ The cleanup PR removed the compute config and `init`, made service commands para
 - ~~**`PRISMA_PROJECT_ID` is honoured only by the domain commands**~~ Closed on the PR branch (2026-08-21, operator ruling): the env var served the deleted `app deploy` headless flow and survived only in the domain commands by accident; it is removed entirely. Project targeting is `--project` and the link file.
 - ~~**orm-toolchain's shipped help examples name retired spellings.**~~ Closed (2026-08-22) by prisma#30102: the family keys are the mount paths and the examples follow; `tests/orm-mount.test.ts` now asserts upstream stays clean.
 - ~~**The deployment-id targeting asymmetry is undocumented.**~~ Closed on the PR branch (2026-08-21): every deployment-id command (`promote|start|stop|delete|show`, `logs --deployment`) now resolves the id globally with no service parameter, per the "Subjects are positional" ruling.
-- **`GET /v1/deployments/{id}` omits the parent `appId`.** Verified against `@prisma/management-api-sdk@1.55.0`: the response carries id/status/url/previewDomain/envVars/createdAt and no owning-app pointer, so `showDeployment` finds the owner via `findAppForDeployment` — a scan of every project's service list and each service's deployments — and every id-targeted command pays it per run. The fix is in pdp-control-plane: include `appId` in the deployment representation; the CLI then swaps the scan for one `GET /v1/apps/{appId}`.
+- ~~**`GET /v1/deployments/{id}` omits the parent `appId`.**~~ Closed on this branch (2026-08-25): pdp-control-plane#4983 added the owner to the deployment representation as `serviceId` (ADR-012 vocabulary, not `appId`), compute-sdk 0.42.0 exposes it as `DeploymentDetail.serviceId`, and `showDeployment` now resolves the owner with one `GET /v1/apps/{id}` — `findAppForDeployment` and its per-service scan are deleted.
 
 ## From the agent-skills delivery (project closed 2026-08-22)
 
