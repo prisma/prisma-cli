@@ -23,9 +23,8 @@ Nothing here is tracked outside this file.
 - **The `@prisma/cli` deprecation call is open.** Rollout-plan step 5
   listed a deprecation notice pointing installers at `prisma`; the
   package is now the scoped twin the workflow actively publishes, so
-  deprecating it may no longer make sense. Operator decision; needs
-  npm auth either way (`scripts/cutover-dist-tags.sh` carries a
-  commented-out line for it).
+  deprecating it may no longer make sense. Operator decision; needs npm auth either way
+  (`npm deprecate @prisma/cli@"<8.0.0" "..."`).
 
 ## After S7's first real publish
 
