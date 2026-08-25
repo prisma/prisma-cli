@@ -1,10 +1,9 @@
 /** The `postgres connection rotate` command. */
 import { defineCommand, positional } from "@prisma/cli-engine";
-import { notOk, ok } from "@prisma/cli-engine/protocol";
-import { usageError } from "../../errors";
+import { CliStructuredError, ok } from "@prisma/cli-engine/protocol";
+import { CLI_NAME } from "../../cli-name";
 import type { DatabaseConnectionRotateResult } from "../../types/database";
-import { legacyCommandFormatter, resolvePostgresProviderOnly } from "./context";
-import { mapPostgresOperationError } from "./errors";
+import { resolvePostgresProviderOnly } from "./context";
 import { secretBlocks } from "./presentation";
 
 const CONSENT_QUESTION =
@@ -26,63 +25,54 @@ export const postgresConnectionRotateCommand = defineCommand({
   },
   needs: { credentials: true },
   handler: async (args, ctx) => {
-    try {
-      const connectionId = args.positionals.connection.trim();
-      if (!connectionId) {
-        throw usageError(
-          "Connection id required",
-          "Database connection rotation needs a connection id.",
-          "Pass the connection id to rotate.",
-          [
-            legacyCommandFormatter([
-              "database",
-              "connection",
-              "rotate",
-              "<connection-id>",
-              "--confirm",
-              "<connection-id>",
-            ]),
+    const connectionId = args.positionals.connection.trim();
+    if (!connectionId) {
+      const example = `${CLI_NAME} postgres connection rotate <connection-id> --confirm <connection-id>`;
+      throw new CliStructuredError(
+        "POSTGRES.USAGE_ERROR",
+        "Connection id required",
+        {
+          why: "Database connection rotation needs a connection id.",
+          nextActions: [
+            {
+              kind: "user-choice",
+              label: "Pass the connection id to rotate.",
+            },
+            { kind: "run-command", label: example, command: example },
           ],
-          "database",
-        );
-      }
-
-      await ctx.prompt.consent(CONSENT_QUESTION, { token: connectionId });
-
-      const provider = await resolvePostgresProviderOnly(ctx);
-      const rotated = await provider.rotateConnection(connectionId, {
-        signal: ctx.signal,
-      });
-
-      const result: DatabaseConnectionRotateResult = {
-        connection: rotated.connection,
-        database: rotated.database,
-        connectionString: rotated.connectionString,
-      };
-      const subject = result.database
-        ? `"${result.database.name}"`
-        : `connection ${result.connection.id}`;
-      return ok(
-        ctx.present(
-          { data: result },
-          {
-            human: () =>
-              secretBlocks(
-                `Rotated credentials for ${subject}. The previous credentials no longer work.`,
-                result.connectionString,
-              ),
-            stdout: () => [result.connectionString],
-            json: () => result,
-            next: () => [],
-          },
-        ),
+        },
       );
-    } catch (error) {
-      const mapped = mapPostgresOperationError(error);
-      if (mapped) {
-        return notOk(mapped);
-      }
-      throw error;
     }
+
+    await ctx.prompt.consent(CONSENT_QUESTION, { token: connectionId });
+
+    const provider = await resolvePostgresProviderOnly(ctx);
+    const rotated = await provider.rotateConnection(connectionId, {
+      signal: ctx.signal,
+    });
+
+    const result: DatabaseConnectionRotateResult = {
+      connection: rotated.connection,
+      database: rotated.database,
+      connectionString: rotated.connectionString,
+    };
+    const subject = result.database
+      ? `"${result.database.name}"`
+      : `connection ${result.connection.id}`;
+    return ok(
+      ctx.present(
+        { data: result },
+        {
+          human: () =>
+            secretBlocks(
+              `Rotated credentials for ${subject}. The previous credentials no longer work.`,
+              result.connectionString,
+            ),
+          stdout: () => [result.connectionString],
+          json: () => result,
+          next: () => [],
+        },
+      ),
+    );
   },
 });

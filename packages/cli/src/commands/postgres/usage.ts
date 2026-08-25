@@ -5,18 +5,19 @@ import {
   flag,
   type Presentations,
 } from "@prisma/cli-engine";
-import { notOk, ok } from "@prisma/cli-engine/protocol";
-import { parseUsageDate, resolveDatabase } from "../../controllers/database";
-import { usageError } from "../../errors";
+import { CliStructuredError, ok } from "@prisma/cli-engine/protocol";
+import {
+  parseUsageDate,
+  resolveDatabase,
+  USAGE_PERIOD_EXAMPLE_COMMAND,
+} from "../../controllers/database";
 import type { DatabaseUsageResult } from "../../types/database";
 import {
   branchFlag,
   databasePositional,
-  legacyCommandFormatter,
   projectFlag,
   resolvePostgresContext,
 } from "./context";
-import { mapPostgresOperationError } from "./errors";
 import {
   type FieldRow,
   formatUsageMetric,
@@ -103,69 +104,52 @@ export const postgresUsageCommand = defineCommand({
   },
   needs: { credentials: true },
   handler: async (args, ctx) => {
-    try {
-      const from = parseUsageDate(
-        args.flags.from,
-        "--from",
-        "start",
-        legacyCommandFormatter,
-      );
-      const to = parseUsageDate(
-        args.flags.to,
-        "--to",
-        "end",
-        legacyCommandFormatter,
-      );
-      if (from && to && Date.parse(from) > Date.parse(to)) {
-        throw usageError(
-          "Invalid usage period",
-          "--from must not be later than --to.",
-          "Pass a --from date that is on or before the --to date.",
-          [
-            legacyCommandFormatter([
-              "database",
-              "usage",
-              "<database>",
-              "--from",
-              "2026-06-01",
-              "--to",
-              "2026-06-30",
-            ]),
+    const from = parseUsageDate(args.flags.from, "--from", "start");
+    const to = parseUsageDate(args.flags.to, "--to", "end");
+    if (from && to && Date.parse(from) > Date.parse(to)) {
+      throw new CliStructuredError(
+        "POSTGRES.USAGE_ERROR",
+        "Invalid usage period",
+        {
+          why: "--from must not be later than --to.",
+          nextActions: [
+            {
+              kind: "user-choice",
+              label: "Pass a --from date that is on or before the --to date.",
+            },
+            {
+              kind: "run-command",
+              label: USAGE_PERIOD_EXAMPLE_COMMAND,
+              command: USAGE_PERIOD_EXAMPLE_COMMAND,
+            },
           ],
-          "database",
-        );
-      }
-
-      const { provider, target, projectId, projectName } =
-        await resolvePostgresContext(ctx, args.flags, "postgres usage");
-      const database = await resolveDatabase(
-        provider,
-        target,
-        args.positionals.database,
-        args.flags.branch,
-        ctx.signal,
+        },
       );
-      const usage = await provider.getUsage(database.id, {
-        from,
-        to,
-        signal: ctx.signal,
-      });
-
-      const result: DatabaseUsageResult = {
-        projectId,
-        projectName,
-        database,
-        period: usage.period,
-        metrics: usage.metrics,
-        generatedAt: usage.generatedAt,
-      };
-      return ok(ctx.present({ data: result }, usagePresentations(result)));
-    } catch (error) {
-      const mapped = mapPostgresOperationError(error);
-      if (mapped) {
-        return notOk(mapped);
-      }
-      throw error;
     }
+
+    const { provider, target, projectId, projectName } =
+      await resolvePostgresContext(ctx, args.flags, "postgres usage");
+    const database = await resolveDatabase(
+      provider,
+      target,
+      args.positionals.database,
+      args.flags.branch,
+      ctx.signal,
+    );
+    const usage = await provider.getUsage(database.id, {
+      from,
+      to,
+      signal: ctx.signal,
+    });
+
+    const result: DatabaseUsageResult = {
+      projectId,
+      projectName,
+      database,
+      period: usage.period,
+      metrics: usage.metrics,
+      generatedAt: usage.generatedAt,
+    };
+    return ok(ctx.present({ data: result }, usagePresentations(result)));
   },
 });

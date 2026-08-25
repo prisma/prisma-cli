@@ -161,7 +161,9 @@ describe("prisma service — the workspace comes from the engine session", () =>
     if (frame?.kind !== "result" || frame.envelope.ok) {
       throw new Error("expected an errored envelope");
     }
-    expect(frame.envelope.error.code).toBe("SERVICE.PROJECT_NOT_FOUND");
+    // An unmatched --project is the project group's failure whichever
+    // command met it, so it carries that group's code here too.
+    expect(frame.envelope.error.code).toBe("PROJECT.NOT_FOUND");
     // The workspace the refusal names still comes from the session.
     expect(frame.envelope.error.why).toContain('workspace "Acme Inc"');
   });

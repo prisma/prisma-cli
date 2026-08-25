@@ -361,7 +361,7 @@ describe("prisma bucket create", () => {
     ]);
   });
 
-  it("maps an API failure to the passthrough code", async () => {
+  it("reports an API failure as BUCKET.API_ERROR with the API code in meta", async () => {
     const result = await makeCli(
       bucketClient({
         routes: {
@@ -377,9 +377,10 @@ describe("prisma bucket create", () => {
     expect(resultFrame(result.json).envelope).toMatchObject({
       ok: false,
       error: {
-        code: "BUCKET.internalError",
+        code: "BUCKET.API_ERROR",
         summary: "Failed to create bucket",
         why: "Backend exploded.",
+        meta: { status: 500, apiCode: "internalError" },
         nextActions: [
           {
             kind: "user-choice",
@@ -534,7 +535,7 @@ describe("prisma bucket delete", () => {
     });
   });
 
-  it("maps an API failure to the passthrough code", async () => {
+  it("reports an API failure as BUCKET.API_ERROR with the API code in meta", async () => {
     const result = await makeCli(
       bucketClient({
         routes: {
@@ -547,7 +548,11 @@ describe("prisma bucket delete", () => {
     expect(result.exitCode).toBe(2);
     expect(resultFrame(result.json).envelope).toMatchObject({
       ok: false,
-      error: { code: "BUCKET.notFound", summary: "Failed to delete bucket" },
+      error: {
+        code: "BUCKET.API_ERROR",
+        summary: "Failed to delete bucket",
+        meta: { status: 404, apiCode: "notFound" },
+      },
     });
   });
 
@@ -912,7 +917,7 @@ describe("prisma bucket key delete", () => {
     });
   });
 
-  it("maps an API failure to the passthrough code", async () => {
+  it("reports an API failure as BUCKET.API_ERROR with the API code in meta", async () => {
     const result = await makeCli(
       bucketClient({
         routes: {
@@ -926,8 +931,9 @@ describe("prisma bucket key delete", () => {
     expect(resultFrame(result.json).envelope).toMatchObject({
       ok: false,
       error: {
-        code: "BUCKET.notFound",
+        code: "BUCKET.API_ERROR",
         summary: "Failed to delete bucket key",
+        meta: { status: 404, apiCode: "notFound" },
       },
     });
   });

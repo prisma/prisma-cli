@@ -4,7 +4,7 @@ import type { Result } from "better-result";
 import { describe, expect, it, vi } from "vitest";
 import type { ProjectCandidate } from "../src/lib/project/resolution";
 import {
-  projectResolutionErrorToCliError,
+  projectResolutionErrorToStructured,
   resolveProjectTarget,
 } from "../src/lib/project/resolution";
 import { createTempCwd, createTestCommandContext } from "./helpers";
@@ -64,9 +64,8 @@ describe("project resolution", () => {
     });
 
     const error = expectErr(result, "LocalProjectWorkspaceMismatchError");
-    expect(projectResolutionErrorToCliError(error)).toMatchObject({
-      code: "LOCAL_PROJECT_WORKSPACE_MISMATCH",
-      domain: "project",
+    expect(projectResolutionErrorToStructured(error)).toMatchObject({
+      code: "PROJECT.LOCAL_WORKSPACE_MISMATCH",
       meta: {
         pinPath: ".prisma/local.json",
         pinnedWorkspaceId: "ws_other",
@@ -132,9 +131,8 @@ describe("project resolution", () => {
     });
 
     const error = expectErr(result, "LocalStateStaleError");
-    expect(projectResolutionErrorToCliError(error)).toMatchObject({
-      code: "LOCAL_STATE_STALE",
-      domain: "project",
+    expect(projectResolutionErrorToStructured(error)).toMatchObject({
+      code: "PROJECT.LOCAL_STATE_STALE",
       meta: {
         pinPath: ".prisma/local.json",
       },

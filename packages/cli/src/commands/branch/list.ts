@@ -5,7 +5,7 @@ import {
   flag,
   type Presentations,
 } from "@prisma/cli-engine";
-import { notOk, ok } from "@prisma/cli-engine/protocol";
+import { ok } from "@prisma/cli-engine/protocol";
 import {
   listBranches,
   sortBranches,
@@ -14,7 +14,6 @@ import {
 import type { BranchListResult } from "../../types/branch";
 import { resolvePinnedProject } from "../project/context";
 import { resolveActiveWorkspace } from "../resources-shared/workspace";
-import { mapBranchOperationError } from "./errors";
 
 const TITLE = "Listing branches for the resolved project.";
 
@@ -68,32 +67,20 @@ export const branchListCommand = defineCommand({
   },
   needs: { credentials: true },
   handler: async (args, ctx) => {
-    try {
-      const workspace = await resolveActiveWorkspace(ctx);
-      const target = await resolvePinnedProject(
-        ctx,
-        workspace,
-        args.flags.project,
-        "branch list",
-      );
-      const branches = await listBranches(
-        ctx.api,
-        target.project.id,
-        ctx.signal,
-      );
+    const workspace = await resolveActiveWorkspace(ctx);
+    const target = await resolvePinnedProject(
+      ctx,
+      workspace,
+      args.flags.project,
+      "branch list",
+    );
+    const branches = await listBranches(ctx.api, target.project.id, ctx.signal);
 
-      const result: BranchListResult = {
-        projectId: target.project.id,
-        projectName: target.project.name,
-        branches: sortBranches(branches.map(toBranchSummary)),
-      };
-      return ok(ctx.present({ data: result }, listPresentations(result)));
-    } catch (error) {
-      const mapped = mapBranchOperationError(error);
-      if (mapped) {
-        return notOk(mapped);
-      }
-      throw error;
-    }
+    const result: BranchListResult = {
+      projectId: target.project.id,
+      projectName: target.project.name,
+      branches: sortBranches(branches.map(toBranchSummary)),
+    };
+    return ok(ctx.present({ data: result }, listPresentations(result)));
   },
 });

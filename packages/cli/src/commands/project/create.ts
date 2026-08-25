@@ -1,6 +1,6 @@
 /** The `project create` command. */
 import { defineCommand, flag, positional } from "@prisma/cli-engine";
-import { notOk, ok } from "@prisma/cli-engine/protocol";
+import { ok } from "@prisma/cli-engine/protocol";
 import { createAppProvider } from "../../lib/app/app-provider";
 import {
   isValidProjectSetupName,
@@ -9,7 +9,6 @@ import {
 } from "../../lib/project/setup";
 import { resolveActiveWorkspace } from "../resources-shared/workspace";
 import { bindDirectoryToProject } from "./context";
-import { mapProjectOperationError } from "./errors";
 import { setupPresentations } from "./presentation";
 
 export const projectCreateCommand = defineCommand({
@@ -33,59 +32,51 @@ export const projectCreateCommand = defineCommand({
   },
   needs: { credentials: true },
   handler: async (args, ctx) => {
-    try {
-      const workspace = await resolveActiveWorkspace(ctx);
-      if (!isValidProjectSetupName(args.positionals.name)) {
-        throw projectSetupNameRequiredError("project create");
-      }
-
-      const name = args.positionals.name.trim();
-      const created = await createAppProvider(ctx.api)
-        .createProject({
-          name,
-          region: args.flags.region,
-          signal: ctx.signal,
-        })
-        .catch((error: unknown) => {
-          /** A cancelled run is cancelled, not a failed creation. The
-           *  provider flattens the underlying AbortError into a plain
-           *  Error, which the engine would settle as a bug, so hand it
-           *  back its own abort reason and let it settle the run as
-           *  cancelled. */
-          if (ctx.signal.aborted) {
-            throw ctx.signal.reason;
-          }
-          throw projectCreateFailedError(error, name, workspace, {
-            nextSteps: [
-              "prisma project list",
-              "prisma project link <id-or-name>",
-            ],
-            permissionFix:
-              "Grant the token permission to create Projects in this workspace, or link an existing Project.",
-            fallbackFix:
-              "Retry the command, or choose an existing Project with prisma project link <id-or-name>.",
-          });
-        });
-
-      const result = await bindDirectoryToProject(
-        ctx,
-        workspace,
-        {
-          id: created.id,
-          name: created.name,
-          ...(created.defaultRegion != null
-            ? { defaultRegion: created.defaultRegion }
-            : {}),
-        },
-        "created",
-      );
-      return ok(ctx.present({ data: result }, setupPresentations(result)));
-    } catch (error) {
-      const mapped = mapProjectOperationError(error);
-      if (mapped) {
-        return notOk(mapped);
-      }
-      throw error;
+    const workspace = await resolveActiveWorkspace(ctx);
+    if (!isValidProjectSetupName(args.positionals.name)) {
+      throw projectSetupNameRequiredError("project create");
     }
+
+    const name = args.positionals.name.trim();
+    const created = await createAppProvider(ctx.api)
+      .createProject({
+        name,
+        region: args.flags.region,
+        signal: ctx.signal,
+      })
+      .catch((error: unknown) => {
+        /** A cancelled run is cancelled, not a failed creation. The
+         *  provider flattens the underlying AbortError into a plain
+         *  Error, which the engine would settle as a bug, so hand it
+         *  back its own abort reason and let it settle the run as
+         *  cancelled. */
+        if (ctx.signal.aborted) {
+          throw ctx.signal.reason;
+        }
+        throw projectCreateFailedError(error, name, workspace, {
+          nextSteps: [
+            "prisma project list",
+            "prisma project link <id-or-name>",
+          ],
+          permissionFix:
+            "Grant the token permission to create Projects in this workspace, or link an existing Project.",
+          fallbackFix:
+            "Retry the command, or choose an existing Project with prisma project link <id-or-name>.",
+        });
+      });
+
+    const result = await bindDirectoryToProject(
+      ctx,
+      workspace,
+      {
+        id: created.id,
+        name: created.name,
+        ...(created.defaultRegion != null
+          ? { defaultRegion: created.defaultRegion }
+          : {}),
+      },
+      "created",
+    );
+    return ok(ctx.present({ data: result }, setupPresentations(result)));
   },
 });

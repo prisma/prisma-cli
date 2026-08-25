@@ -8,7 +8,7 @@ import {
   SERVICE_TOKEN_ENV_VAR,
 } from "@prisma/cli-engine";
 import type { Diagnostic } from "@prisma/cli-engine/protocol";
-import { notOk, ok } from "@prisma/cli-engine/protocol";
+import { CliStructuredError, ok } from "@prisma/cli-engine/protocol";
 import {
   workspaceAmbiguousError,
   workspaceNotAuthenticatedError,
@@ -25,7 +25,6 @@ import {
   transferRecipientRequiredError,
   transferRecipientUnavailableError,
 } from "../../controllers/project";
-import { usageError } from "../../errors";
 import type { PrismaCliPackageCommandFormatter } from "../../lib/agent/cli-command";
 import { createManagementProjectProvider } from "../../lib/project/provider";
 import {
@@ -39,7 +38,6 @@ import {
   listWorkspaceProjects,
   type ProjectCommandContext,
 } from "./context";
-import { mapProjectOperationError } from "./errors";
 import { localPinDiagnostics } from "./presentation";
 
 const CONSENT_QUESTION =
@@ -198,88 +196,87 @@ export const projectTransferCommand = defineCommand({
   },
   needs: { credentials: true },
   handler: async (args, ctx) => {
-    try {
-      const workspace = await resolveActiveWorkspace(ctx);
-      // Normalized once: an all-whitespace flag value must not read as
-      // supplied to one check and absent to the next.
-      const toWorkspace = args.flags.toWorkspace?.trim() || undefined;
-      const recipientToken = args.flags.recipientToken?.trim() || undefined;
+    const workspace = await resolveActiveWorkspace(ctx);
+    // Normalized once: an all-whitespace flag value must not read as
+    // supplied to one check and absent to the next.
+    const toWorkspace = args.flags.toWorkspace?.trim() || undefined;
+    const recipientToken = args.flags.recipientToken?.trim() || undefined;
 
-      if (toWorkspace && recipientToken) {
-        throw usageError(
-          "Choose one transfer recipient source",
-          "--to-workspace and --recipient-token are mutually exclusive.",
-          "Pass either --to-workspace <id-or-name> or --recipient-token <token>.",
-          [
-            formatCommand([
-              "project",
-              "transfer",
-              "<project>",
-              "--to-workspace",
-              "<id-or-name>",
-              "--confirm",
-              "<project-id>",
-            ]),
+    if (toWorkspace && recipientToken) {
+      const retry = formatCommand([
+        "project",
+        "transfer",
+        "<project>",
+        "--to-workspace",
+        "<id-or-name>",
+        "--confirm",
+        "<project-id>",
+      ]);
+      throw new CliStructuredError(
+        "PROJECT.USAGE_ERROR",
+        "Choose one transfer recipient source",
+        {
+          why: "--to-workspace and --recipient-token are mutually exclusive.",
+          nextActions: [
+            {
+              kind: "user-choice",
+              label:
+                "Pass either --to-workspace <id-or-name> or --recipient-token <token>.",
+            },
+            { kind: "run-command", label: retry, command: retry },
           ],
-          "project",
-        );
-      }
-      if (!toWorkspace && !recipientToken) {
-        throw transferRecipientRequiredError(formatCommand);
-      }
-
-      const projects = await listWorkspaceProjects(ctx);
-      const project = toProjectSummary(
-        resolveProjectForSetup(
-          args.positionals.project.trim(),
-          projects,
-          workspace,
-        ),
-      );
-
-      await ctx.prompt.consent(CONSENT_QUESTION, { token: project.id });
-
-      const recipient = await resolveRecipient(ctx, {
-        toWorkspace,
-        recipientToken,
-      });
-      await createManagementProjectProvider(ctx.api).transferProject({
-        projectId: project.id,
-        recipientAccessToken: recipient.accessToken,
-        signal: ctx.signal,
-      });
-
-      const warnings: string[] = [];
-      const action = await rewriteOrClearLocalPinForProject(
-        legacyOperationContext(ctx),
-        project.id,
-        recipient.workspaceId,
-        { onError: (message) => warnings.push(message) },
-      );
-
-      const result: ProjectTransferResult = {
-        workspace,
-        project,
-        recipient: {
-          workspaceId: recipient.workspaceId,
-          workspaceName: recipient.workspaceName,
-          source: recipient.source,
         },
-        localPin: { action },
-      };
-      const diagnostics: Diagnostic[] = localPinDiagnostics(warnings);
-      return ok(
-        ctx.present(
-          { data: result, diagnostics },
-          transferPresentations(result, toWorkspace),
-        ),
       );
-    } catch (error) {
-      const mapped = mapProjectOperationError(error);
-      if (mapped) {
-        return notOk(mapped);
-      }
-      throw error;
     }
+    if (!toWorkspace && !recipientToken) {
+      throw transferRecipientRequiredError(formatCommand);
+    }
+
+    const projects = await listWorkspaceProjects(ctx);
+    const project = toProjectSummary(
+      resolveProjectForSetup(
+        args.positionals.project.trim(),
+        projects,
+        workspace,
+      ),
+    );
+
+    await ctx.prompt.consent(CONSENT_QUESTION, { token: project.id });
+
+    const recipient = await resolveRecipient(ctx, {
+      toWorkspace,
+      recipientToken,
+    });
+    await createManagementProjectProvider(ctx.api).transferProject({
+      projectId: project.id,
+      recipientAccessToken: recipient.accessToken,
+      signal: ctx.signal,
+    });
+
+    const warnings: string[] = [];
+    const action = await rewriteOrClearLocalPinForProject(
+      legacyOperationContext(ctx),
+      project.id,
+      recipient.workspaceId,
+      { onError: (message) => warnings.push(message) },
+    );
+
+    const result: ProjectTransferResult = {
+      workspace,
+      project,
+      recipient: {
+        workspaceId: recipient.workspaceId,
+        workspaceName: recipient.workspaceName,
+        source: recipient.source,
+      },
+      localPin: { action },
+    };
+    const diagnostics: Diagnostic[] = localPinDiagnostics(warnings);
+    return ok(
+      ctx.present(
+        { data: result, diagnostics },
+        transferPresentations(result, toWorkspace),
+      ),
+    );
   },
 });

@@ -4,8 +4,8 @@ import { type Block, flag, type Presentations } from "@prisma/cli-engine";
 import type { Diagnostic } from "@prisma/cli-engine/protocol";
 import { resolveScopeToApi } from "../../controllers/app-env";
 import type { ResolvedEnvFileScope } from "../../controllers/app-env-file";
-import { usageError } from "../../errors";
 import { type EnvScope, resolveEnvScope } from "../../lib/app/env-config";
+import { envUsageError } from "../../lib/app/env-errors";
 import { scopeLabel } from "../../presenters/app-env";
 import type {
   EnvResolvedContext,
@@ -50,12 +50,11 @@ export function requireEnvScope(
     { requireExplicit: true, command },
   );
   if (!scope) {
-    throw usageError(
+    throw envUsageError(
       `prisma project env ${command} requires --role or --branch`,
       "Writing without an explicit scope is rejected.",
       "Pass --role production, --role preview, or --branch <git-name>.",
       [`prisma project env ${command} KEY=value --role production`],
-      "app",
     );
   }
   return scope;

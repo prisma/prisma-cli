@@ -1,6 +1,6 @@
 /** The `postgres connection create` command. */
 import { defineCommand, flag } from "@prisma/cli-engine";
-import { notOk, ok } from "@prisma/cli-engine/protocol";
+import { ok } from "@prisma/cli-engine/protocol";
 import {
   defaultConnectionName,
   resolveDatabase,
@@ -12,7 +12,6 @@ import {
   projectFlag,
   resolvePostgresContext,
 } from "./context";
-import { mapPostgresOperationError } from "./errors";
 import { postgresTargetLabel, secretBlocks } from "./presentation";
 
 export const postgresConnectionCreateCommand = defineCommand({
@@ -34,54 +33,46 @@ export const postgresConnectionCreateCommand = defineCommand({
   },
   needs: { credentials: true },
   handler: async (args, ctx) => {
-    try {
-      const { provider, target, projectId, projectName } =
-        await resolvePostgresContext(
-          ctx,
-          args.flags,
-          "postgres connection create",
-        );
-      const database = await resolveDatabase(
-        provider,
-        target,
-        args.positionals.database,
-        args.flags.branch,
-        ctx.signal,
+    const { provider, target, projectId, projectName } =
+      await resolvePostgresContext(
+        ctx,
+        args.flags,
+        "postgres connection create",
       );
-      const created = await provider.createConnection({
-        databaseId: database.id,
-        name: args.flags.name?.trim() || defaultConnectionName(),
-        signal: ctx.signal,
-      });
+    const database = await resolveDatabase(
+      provider,
+      target,
+      args.positionals.database,
+      args.flags.branch,
+      ctx.signal,
+    );
+    const created = await provider.createConnection({
+      databaseId: database.id,
+      name: args.flags.name?.trim() || defaultConnectionName(),
+      signal: ctx.signal,
+    });
 
-      const result: DatabaseConnectionCreateResult = {
-        projectId,
-        projectName,
-        database,
-        connection: created.connection,
-        connectionString: created.connectionString,
-      };
-      return ok(
-        ctx.present(
-          { data: result },
-          {
-            human: () =>
-              secretBlocks(
-                `Added a connection to "${database.name}" in ${postgresTargetLabel(projectName, database.branchName)}.`,
-                result.connectionString,
-              ),
-            stdout: () => [result.connectionString],
-            json: () => result,
-            next: () => [],
-          },
-        ),
-      );
-    } catch (error) {
-      const mapped = mapPostgresOperationError(error);
-      if (mapped) {
-        return notOk(mapped);
-      }
-      throw error;
-    }
+    const result: DatabaseConnectionCreateResult = {
+      projectId,
+      projectName,
+      database,
+      connection: created.connection,
+      connectionString: created.connectionString,
+    };
+    return ok(
+      ctx.present(
+        { data: result },
+        {
+          human: () =>
+            secretBlocks(
+              `Added a connection to "${database.name}" in ${postgresTargetLabel(projectName, database.branchName)}.`,
+              result.connectionString,
+            ),
+          stdout: () => [result.connectionString],
+          json: () => result,
+          next: () => [],
+        },
+      ),
+    );
   },
 });

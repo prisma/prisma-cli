@@ -1,8 +1,11 @@
 // biome-ignore-all lint/performance/noAwaitInLoops: Database pagination requests must run sequentially.
+import {
+  CliStructuredError,
+  type NextAction,
+} from "@prisma/cli-engine/protocol";
 import type { ManagementApiClient, paths } from "@prisma/management-api-sdk";
 
-import { formatPrismaCliCommand } from "../../cli-command";
-import { CliError } from "../../errors";
+import { CLI_NAME } from "../../cli-name";
 import type {
   DatabaseConnectionSummary,
   DatabaseSummary,
@@ -10,7 +13,6 @@ import type {
   DatabaseUsageMetrics,
   DatabaseUsagePeriod,
 } from "../../types/database";
-import type { PrismaCliPackageCommandFormatter } from "../agent/cli-command";
 
 export interface DatabaseCreateInput {
   projectId: string;
@@ -208,15 +210,23 @@ interface RawDatabaseRecord {
   connections?: RawDatabaseConnectionRecord[] | null;
 }
 
+const VERBOSE_LOG_FIX =
+  "Re-run with --log-level verbose for the underlying API response details.";
+
+function userChoice(label: string): NextAction {
+  return { kind: "user-choice", label };
+}
+
+function runCommand(command: string): NextAction {
+  return { kind: "run-command", label: command, command };
+}
+
 export function createManagementDatabaseProvider(
   client: ManagementApiClient,
   options?: {
-    formatCommand?: PrismaCliPackageCommandFormatter;
     workspaceId?: string;
   },
 ): DatabaseProvider {
-  const formatCommand =
-    options?.formatCommand ?? ((args) => formatPrismaCliCommand(args));
   const toDatabaseApiError = (
     summary: string,
     response: Response | undefined,
@@ -487,11 +497,7 @@ export function createManagementDatabaseProvider(
         result.response?.status === 409 &&
         !isPlanLimitApiError(result.error)
       ) {
-        throw restoreConflictError(
-          options.targetDatabaseId,
-          result.error,
-          formatCommand,
-        );
+        throw restoreConflictError(options.targetDatabaseId, result.error);
       }
       // Target and source databases are resolved before this call, so a 404
       // here identifies the backup.
@@ -499,7 +505,7 @@ export function createManagementDatabaseProvider(
         result.response?.status === 404 &&
         !isPlanLimitApiError(result.error)
       ) {
-        throw restoreBackupNotFoundError(options, result.error, formatCommand);
+        throw restoreBackupNotFoundError(options, result.error);
       }
       if (result.error || !result.data) {
         throw await toDatabaseApiError(
@@ -579,15 +585,19 @@ export function normalizeCreatedDatabase(
 ): DatabaseCreateRecord {
   const rawConnection = database.connections?.[0];
   if (!rawConnection) {
-    throw new CliError({
-      code: "DATABASE_CONNECTION_MISSING",
-      domain: "database",
-      summary: "Created database did not return a connection string",
-      why: "The Management API created the database but did not include the one-time connection payload.",
-      fix: "Create a connection explicitly with prisma database connection create <database>.",
-      exitCode: 1,
-      nextSteps: [`prisma database connection create ${database.id}`],
-    });
+    throw new CliStructuredError(
+      "POSTGRES.CONNECTION_MISSING",
+      "Created database did not return a connection string",
+      {
+        why: "The Management API created the database but did not include the one-time connection payload.",
+        nextActions: [
+          userChoice(
+            `Create a connection explicitly with ${CLI_NAME} postgres connection create <database>.`,
+          ),
+          runCommand(`${CLI_NAME} postgres connection create ${database.id}`),
+        ],
+      },
+    );
   }
 
   return {
@@ -602,15 +612,21 @@ export function normalizeCreatedConnection(
 ): DatabaseConnectionCreateRecord {
   const connectionString = extractConnectionString(connection);
   if (!connectionString) {
-    throw new CliError({
-      code: "DATABASE_CONNECTION_STRING_MISSING",
-      domain: "database",
-      summary: "Created connection did not return a connection string",
-      why: "Database connection strings are one-time-view secrets, but the Management API did not include one in this create response.",
-      fix: "Create another database connection and store the returned URL immediately.",
-      exitCode: 1,
-      nextSteps: [`prisma database connection create ${fallbackDatabaseId}`],
-    });
+    throw new CliStructuredError(
+      "POSTGRES.CONNECTION_STRING_MISSING",
+      "Created connection did not return a connection string",
+      {
+        why: "Database connection strings are one-time-view secrets, but the Management API did not include one in this create response.",
+        nextActions: [
+          userChoice(
+            "Create another database connection and store the returned URL immediately.",
+          ),
+          runCommand(
+            `${CLI_NAME} postgres connection create ${fallbackDatabaseId}`,
+          ),
+        ],
+      },
+    );
   }
 
   return {
@@ -635,15 +651,14 @@ function requireDatabaseProjectId(
     return projectId;
   }
 
-  throw new CliError({
-    code: "DATABASE_API_ERROR",
-    domain: "database",
-    summary: "Database response did not include a project id",
-    why: "The Management API returned database metadata without project context.",
-    fix: "Re-run with --trace for the underlying API response details.",
-    exitCode: 1,
-    nextSteps: [],
-  });
+  throw new CliStructuredError(
+    "POSTGRES.API_ERROR",
+    "Database response did not include a project id",
+    {
+      why: "The Management API returned database metadata without project context.",
+      nextActions: [userChoice(VERBOSE_LOG_FIX)],
+    },
+  );
 }
 
 function extractConnectionString(
@@ -709,15 +724,18 @@ export function normalizeRotatedConnection(
 ): DatabaseConnectionRotateRecord {
   const connectionString = extractConnectionString(connection);
   if (!connectionString) {
-    throw new CliError({
-      code: "DATABASE_CONNECTION_STRING_MISSING",
-      domain: "database",
-      summary: "Rotated connection did not return a connection string",
-      why: "Rotated connection strings are one-time-view secrets, but the Management API did not include one in this rotate response.",
-      fix: "Re-run the rotation, or create a replacement connection and store the returned URL immediately.",
-      exitCode: 1,
-      nextSteps: [],
-    });
+    throw new CliStructuredError(
+      "POSTGRES.CONNECTION_STRING_MISSING",
+      "Rotated connection did not return a connection string",
+      {
+        why: "Rotated connection strings are one-time-view secrets, but the Management API did not include one in this rotate response.",
+        nextActions: [
+          userChoice(
+            "Re-run the rotation, or create a replacement connection and store the returned URL immediately.",
+          ),
+        ],
+      },
+    );
   }
 
   const database =
@@ -738,62 +756,115 @@ export function normalizeRotatedConnection(
 function backupsUnsupportedError(
   databaseId: string,
   error: RawApiErrorBody | undefined,
-): CliError {
-  return new CliError({
-    code: "DATABASE_BACKUPS_UNSUPPORTED",
-    domain: "database",
-    summary: "Backups are not available for this database",
-    why:
-      error?.error?.message ??
-      `The platform does not manage backups for database "${databaseId}", for example because it is a remote/BYO database.`,
-    fix: "Use your own backup tooling for externally managed databases.",
-    exitCode: 1,
-    nextSteps: [],
-  });
+): CliStructuredError {
+  return new CliStructuredError(
+    "POSTGRES.BACKUPS_UNSUPPORTED",
+    "Backups are not available for this database",
+    {
+      why:
+        error?.error?.message ??
+        `The platform does not manage backups for database "${databaseId}", for example because it is a remote/BYO database.`,
+      nextActions: [
+        userChoice(
+          "Use your own backup tooling for externally managed databases.",
+        ),
+      ],
+    },
+  );
 }
 
 function restoreBackupNotFoundError(
   options: { backupId: string; sourceDatabaseId: string },
   error: RawApiErrorBody | undefined,
-  formatCommand: PrismaCliPackageCommandFormatter,
-): CliError {
-  const listCommand = formatCommand([
-    "database",
-    "backup",
-    "list",
-    options.sourceDatabaseId,
-  ]);
-  return new CliError({
-    code: "DATABASE_BACKUP_NOT_FOUND",
-    domain: "database",
-    summary: "Database backup not found",
-    why:
-      error?.error?.message ??
-      `No backup matched "${options.backupId}" for database "${options.sourceDatabaseId}".`,
-    fix: `Pass a backup id from ${listCommand}.`,
-    exitCode: 1,
-    nextSteps: [listCommand],
-  });
+): CliStructuredError {
+  const listCommand = `${CLI_NAME} postgres backup list ${options.sourceDatabaseId}`;
+  return new CliStructuredError(
+    "POSTGRES.BACKUP_NOT_FOUND",
+    "Database backup not found",
+    {
+      why:
+        error?.error?.message ??
+        `No backup matched "${options.backupId}" for database "${options.sourceDatabaseId}".`,
+      nextActions: [
+        userChoice(`Pass a backup id from ${listCommand}.`),
+        runCommand(listCommand),
+      ],
+    },
+  );
 }
 
 function restoreConflictError(
   targetDatabaseId: string,
   error: RawApiErrorBody | undefined,
-  formatCommand: PrismaCliPackageCommandFormatter,
-): CliError {
-  return new CliError({
-    code: "DATABASE_RESTORE_CONFLICT",
-    domain: "database",
-    summary: "Database cannot be restored right now",
-    why:
-      error?.error?.message ??
-      `Database "${targetDatabaseId}" is provisioning or already recovering.`,
-    fix: "Wait for the database to become ready, then retry the restore.",
-    exitCode: 1,
-    nextSteps: [formatCommand(["database", "show", targetDatabaseId])],
-  });
+): CliStructuredError {
+  return new CliStructuredError(
+    "POSTGRES.RESTORE_CONFLICT",
+    "Database cannot be restored right now",
+    {
+      why:
+        error?.error?.message ??
+        `Database "${targetDatabaseId}" is provisioning or already recovering.`,
+      nextActions: [
+        userChoice(
+          "Wait for the database to become ready, then retry the restore.",
+        ),
+        runCommand(`${CLI_NAME} postgres show ${targetDatabaseId}`),
+      ],
+    },
+  );
 }
 
+/** A 401 or 403 is the API refusing the caller, not a database problem. */
+function isRejectedCaller(status: number): boolean {
+  return status === 401 || status === 403;
+}
+
+function apiErrorWhy(status: number, message: string | undefined): string {
+  if (!isRejectedCaller(status)) {
+    return (
+      message ?? `The Management API returned status ${status || "unknown"}.`
+    );
+  }
+  const rejection = `The Management API rejected the request as ${status === 401 ? "unauthorized" : "forbidden"}.`;
+  return message ? `${rejection} ${message}` : rejection;
+}
+
+function apiErrorMeta(
+  status: number,
+  apiCode: string | undefined,
+): Record<string, unknown> | undefined {
+  if (!status && apiCode === undefined) {
+    return undefined;
+  }
+  return {
+    ...(status ? { status } : {}),
+    ...(apiCode === undefined ? {} : { apiCode }),
+  };
+}
+
+function apiErrorActions(
+  status: number,
+  hint: string | undefined,
+): NextAction[] {
+  if (!isRejectedCaller(status)) {
+    return [userChoice(hint ?? VERBOSE_LOG_FIX)];
+  }
+  return [
+    userChoice(
+      hint ??
+        `Sign in again with ${CLI_NAME} auth login, then retry the command.`,
+    ),
+    runCommand(`${CLI_NAME} auth login`),
+  ];
+}
+
+/**
+ * Every database Management API failure that is not a plan limit lands
+ * on the one registered code. The response's own error code is data, not
+ * an identity: it travels in `meta.apiCode` beside `meta.status` so a
+ * consumer can still branch on it without the CLI minting a code it
+ * never registered.
+ */
 async function databaseApiError(options: {
   client: ManagementApiClient;
   workspaceId?: string;
@@ -801,24 +872,18 @@ async function databaseApiError(options: {
   response: Response | undefined;
   error: RawApiErrorBody | undefined;
   signal?: AbortSignal;
-}): Promise<CliError> {
+}): Promise<CliStructuredError> {
   if (isPlanLimitApiError(options.error)) {
     return planLimitReachedError(options);
   }
 
   const status = options.response?.status ?? 0;
-  return new CliError({
-    code: options.error?.error?.code ?? "DATABASE_API_ERROR",
-    domain: "database",
-    summary: options.summary,
-    why:
-      options.error?.error?.message ??
-      `The Management API returned status ${status || "unknown"}.`,
-    fix:
-      options.error?.error?.hint ??
-      "Re-run with --trace for the underlying API response details.",
-    exitCode: 1,
-    nextSteps: [],
+  const meta = apiErrorMeta(status, options.error?.error?.code);
+
+  return new CliStructuredError("POSTGRES.API_ERROR", options.summary, {
+    why: apiErrorWhy(status, options.error?.error?.message),
+    ...(meta === undefined ? {} : { meta }),
+    nextActions: apiErrorActions(status, options.error?.error?.hint),
   });
 }
 
@@ -826,7 +891,7 @@ async function planLimitReachedError(options: {
   client: ManagementApiClient;
   workspaceId?: string;
   signal?: AbortSignal;
-}): Promise<CliError> {
+}): Promise<CliStructuredError> {
   const subscription = options.workspaceId
     ? await readWorkspaceSubscription(
         options.client,
@@ -834,45 +899,33 @@ async function planLimitReachedError(options: {
         options.signal,
       )
     : null;
-  const workspaceLine = options.workspaceId
-    ? `Workspace: ${options.workspaceId}`
-    : "Workspace: unavailable";
   const planName = subscription?.planName || null;
   const usageBlocked = subscription?.usageBlocked ?? null;
   const upgradeUrl = subscription?.upgradeUrl || null;
-  const recoveryLines = [
-    ...(planName ? [`Current plan: ${planName}`] : []),
-    upgradeUrl
-      ? `Upgrade: ${upgradeUrl}`
-      : "Upgrade: Open Prisma Console and upgrade the affected workspace plan.",
-  ];
 
-  return new CliError({
-    code: "PLAN_LIMIT_REACHED",
-    domain: "database",
-    summary: "Workspace plan limit reached",
-    why: "Database operations are blocked because this workspace has used the operations included in its plan. This is a workspace plan limit, not a Prisma outage.",
-    fix: upgradeUrl
-      ? `Upgrade the workspace plan at ${upgradeUrl}.`
-      : "Open Prisma Console and upgrade the affected workspace plan.",
-    meta: {
-      workspaceId: options.workspaceId ?? null,
-      blockedFeature: null,
-      planName,
-      usageBlocked,
-      upgradeUrl,
+  return new CliStructuredError(
+    "POSTGRES.PLAN_LIMIT_REACHED",
+    "Workspace plan limit reached",
+    {
+      why: "Database operations are blocked because this workspace has used the operations included in its plan. This is a workspace plan limit, not a Prisma outage.",
+      meta: {
+        workspaceId: options.workspaceId ?? null,
+        blockedFeature: null,
+        planName,
+        usageBlocked,
+        upgradeUrl,
+      },
+      nextActions: [
+        {
+          kind: "user-choice",
+          label: "Upgrade the workspace plan",
+          reason: upgradeUrl
+            ? `Upgrade at ${upgradeUrl}${planName ? ` (current plan: ${planName})` : ""}.`
+            : "Open Prisma Console and upgrade the affected workspace plan.",
+        },
+      ],
     },
-    exitCode: 1,
-    nextSteps: [],
-    humanLines: [
-      "Workspace plan limit reached [PLAN_LIMIT_REACHED]",
-      "",
-      "Database operations are blocked because this workspace has used the operations included in its plan. This is a workspace plan limit, not a Prisma outage.",
-      "",
-      workspaceLine,
-      ...recoveryLines,
-    ],
-  });
+  );
 }
 
 function isPlanLimitApiError(error: RawApiErrorBody | undefined): boolean {

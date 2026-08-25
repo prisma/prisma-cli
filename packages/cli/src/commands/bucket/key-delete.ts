@@ -5,11 +5,10 @@ import {
   type Presentations,
   positional,
 } from "@prisma/cli-engine";
-import { notOk, ok } from "@prisma/cli-engine/protocol";
-import { usageError } from "../../errors";
+import { CliStructuredError, ok } from "@prisma/cli-engine/protocol";
+import { CLI_NAME } from "../../cli-name";
 import type { BucketKeyDeleteResult } from "../../types/bucket";
 import { bucketPositional, resolveBucketProviderOnly } from "./context";
-import { mapBucketOperationError } from "./errors";
 
 function deletePresentations(result: BucketKeyDeleteResult): Presentations {
   return {
@@ -37,31 +36,32 @@ export const bucketKeyDeleteCommand = defineCommand({
   },
   needs: { credentials: true },
   handler: async (args, ctx) => {
-    try {
-      const bucketId = args.positionals.bucketId.trim();
-      const keyId = args.positionals.keyId.trim();
-      if (!bucketId || !keyId) {
-        throw usageError(
-          "Bucket id and key id required",
-          "Bucket key deletion needs both a bucket id and a key id.",
-          "Pass the bucket id and key id.",
-          ["prisma bucket key list <bucketId>"],
-          "bucket",
-        );
-      }
-
-      await resolveBucketProviderOnly(ctx).deleteKey(bucketId, keyId, {
-        signal: ctx.signal,
-      });
-
-      const result: BucketKeyDeleteResult = { key: { id: keyId } };
-      return ok(ctx.present({ data: result }, deletePresentations(result)));
-    } catch (error) {
-      const mapped = mapBucketOperationError(error);
-      if (mapped) {
-        return notOk(mapped);
-      }
-      throw error;
+    const bucketId = args.positionals.bucketId.trim();
+    const keyId = args.positionals.keyId.trim();
+    if (!bucketId || !keyId) {
+      const listKeysCommand = `${CLI_NAME} bucket key list <bucketId>`;
+      throw new CliStructuredError(
+        "BUCKET.USAGE_ERROR",
+        "Bucket id and key id required",
+        {
+          why: "Bucket key deletion needs both a bucket id and a key id.",
+          nextActions: [
+            { kind: "user-choice", label: "Pass the bucket id and key id." },
+            {
+              kind: "run-command",
+              label: listKeysCommand,
+              command: listKeysCommand,
+            },
+          ],
+        },
+      );
     }
+
+    await resolveBucketProviderOnly(ctx).deleteKey(bucketId, keyId, {
+      signal: ctx.signal,
+    });
+
+    const result: BucketKeyDeleteResult = { key: { id: keyId } };
+    return ok(ctx.present({ data: result }, deletePresentations(result)));
   },
 });

@@ -218,7 +218,7 @@ describe("prisma branch list", () => {
     expect(result.presented?.presentation.stdout).toEqual([]);
   });
 
-  it("maps an API failure to the passthrough code", async () => {
+  it("reports an API failure as BRANCH.API_ERROR carrying the API code in meta", async () => {
     const result = await makeCli(
       branchClient({
         routes: {
@@ -234,9 +234,10 @@ describe("prisma branch list", () => {
     expect(resultFrame(result.json).envelope).toMatchObject({
       ok: false,
       error: {
-        code: "BRANCH.internalError",
+        code: "BRANCH.API_ERROR",
         summary: "Failed to list branches",
         why: "Backend exploded.",
+        meta: { status: 500, apiCode: "internalError" },
         nextActions: [
           {
             kind: "user-choice",

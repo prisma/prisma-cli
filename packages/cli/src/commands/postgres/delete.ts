@@ -4,7 +4,7 @@ import {
   defineCommand,
   type Presentations,
 } from "@prisma/cli-engine";
-import { notOk, ok } from "@prisma/cli-engine/protocol";
+import { ok } from "@prisma/cli-engine/protocol";
 import { resolveDatabase } from "../../controllers/database";
 import type { DatabaseDeleteResult } from "../../types/database";
 import {
@@ -13,7 +13,6 @@ import {
   projectFlag,
   resolvePostgresContext,
 } from "./context";
-import { mapPostgresOperationError } from "./errors";
 
 const CONSENT_QUESTION =
   "Deleting this database is destructive and requires the exact id.";
@@ -52,33 +51,25 @@ export const postgresDeleteCommand = defineCommand({
   },
   needs: { credentials: true },
   handler: async (args, ctx) => {
-    try {
-      const { provider, target, projectId, projectName } =
-        await resolvePostgresContext(ctx, args.flags, "postgres delete");
-      const database = await resolveDatabase(
-        provider,
-        target,
-        args.positionals.database,
-        args.flags.branch,
-        ctx.signal,
-      );
+    const { provider, target, projectId, projectName } =
+      await resolvePostgresContext(ctx, args.flags, "postgres delete");
+    const database = await resolveDatabase(
+      provider,
+      target,
+      args.positionals.database,
+      args.flags.branch,
+      ctx.signal,
+    );
 
-      await ctx.prompt.consent(CONSENT_QUESTION, { token: database.id });
+    await ctx.prompt.consent(CONSENT_QUESTION, { token: database.id });
 
-      await provider.removeDatabase(database.id, { signal: ctx.signal });
+    await provider.removeDatabase(database.id, { signal: ctx.signal });
 
-      const result: DatabaseDeleteResult = {
-        projectId,
-        projectName,
-        database,
-      };
-      return ok(ctx.present({ data: result }, deletePresentations(result)));
-    } catch (error) {
-      const mapped = mapPostgresOperationError(error);
-      if (mapped) {
-        return notOk(mapped);
-      }
-      throw error;
-    }
+    const result: DatabaseDeleteResult = {
+      projectId,
+      projectName,
+      database,
+    };
+    return ok(ctx.present({ data: result }, deletePresentations(result)));
   },
 });
