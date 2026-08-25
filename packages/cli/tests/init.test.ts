@@ -916,6 +916,23 @@ describe("init", () => {
     });
   });
 
+  it("runs every step when discovery finds no config file", async () => {
+    const root = await makeProjectRoot("init-");
+    const cli = createTestCli({
+      commands: { init: initCommand },
+      loadConfig: async () => ({ files: [], diagnostics: [] }),
+      now: () => new Date(0),
+    });
+
+    const run = await cli.run(["init"], { cwd: root });
+    const result = run.presented?.data as InitResult;
+
+    expect(run.exitCode).toBe(0);
+    expect(result.postinstall.outcome).toBe("added");
+    expect(result.config.outcome).toBe("created");
+    expect(result.skills.outcome).toBe("no-packages");
+  });
+
   it.skipIf(process.platform === "win32")(
     "turns a sync failure into a diagnostic on a successful init",
     async () => {

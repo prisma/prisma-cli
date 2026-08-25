@@ -38,6 +38,7 @@ import {
 import { ok } from "@prisma/cli-engine/protocol";
 import { createTestCli, type TestCli } from "@prisma/cli-engine/testing";
 import { afterAll, describe, expect, test } from "vitest";
+import { CONFIG_FILE_NAME } from "../src/config-loader";
 
 const TESTS_DIR = dirname(fileURLToPath(import.meta.url));
 
@@ -1241,7 +1242,7 @@ describe("needs.config", { timeout: 60_000 }, () => {
             code: "CLI.CONFIG_SECTION_INVALID",
             severity: "error",
             // The harness seeds the config in the run's cwd ("/").
-            summary: "The 'toy' section of /prisma.config.ts is invalid.",
+            summary: `The 'toy' section of ${resolve("/", CONFIG_FILE_NAME)} is invalid.`,
             nextActions: [
               {
                 kind: "user-choice",

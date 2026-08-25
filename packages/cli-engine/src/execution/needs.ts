@@ -313,7 +313,7 @@ function validateConfigSection(
   return {
     kind: "ok",
     config: validation.value,
-    configFiles: loaded.files,
+    configFiles: Object.freeze(loaded.files),
     spawnCredential: undefined,
   };
 }

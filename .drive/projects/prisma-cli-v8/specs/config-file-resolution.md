@@ -1,6 +1,6 @@
 # Config-file resolution: ancestor discovery and per-key merging
 
-Status: **decided** (operator rulings 2026-08-25). This file was the design discussion; it is now the slice contract. The discussion history survives condensed under "Design decisions"; the appendix's edge-case catalogue is carried forward as implementation requirements.
+Status: **landed** (operator rulings 2026-08-25; implementation landed 2026-08-25). This file was the design discussion; it is now the slice contract. The discussion history survives condensed under "Design decisions"; the appendix's edge-case catalogue is carried forward as implementation requirements.
 
 ## At a glance
 

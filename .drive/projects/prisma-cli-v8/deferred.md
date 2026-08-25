@@ -485,7 +485,7 @@ The cleanup PR removed the compute config and `init`, made service commands para
 
 ## From the agent-skills delivery (project closed 2026-08-22)
 
-- ~~**Config evaluation fails through unrealpath'd pnpm symlinks.**~~ Closed (2026-08-25): the one-line realpath fix shipped — `packages/cli-engine/src/config-loader.ts` imports c12 via `realpathSync(import.meta.resolve("c12"))` on main, released with engine 0.2.2 (#224). The init e2e's rerun workaround (`e2e/init.e2e.ts:189-200`) is still in place; it comes out with the config-file-resolution slice, which tracks it in its plan.
+- ~~**Config evaluation fails through unrealpath'd pnpm symlinks.**~~ Closed (2026-08-25): the one-line realpath fix shipped — `packages/cli-engine/src/config-loader.ts` imports c12 via `realpathSync(import.meta.resolve("c12"))` on main, released with engine 0.2.2 (#224). The init e2e's rerun workaround came out with the config-file-resolution slice (D4, 2026-08-25): the rerun no longer deletes the scaffold first and now covers the config-present path directly.
 
 
 The agent-skills project (skills sync/list, `prisma init`, the staleness notice; PR #219) closed with these items still open; details were in its own ledger, summarized here as the surviving record.
@@ -511,3 +511,7 @@ The design in `specs/config-file-resolution.md` is decided (per-key merge with s
 
 - **`readProjectSkillsConfig`'s hand-rolled resolution must consolidate into the engine resolver** (ruled 2026-08-25) — lands as D3 of the slice; until then the staleness notice and the commands can disagree about which config governs when run from a subdirectory.
 - **Subdirectory `prisma init` skips the skills sync, postinstall script, and devDependency by default** (ruled 2026-08-25) — those steps belong to the repository root; lands as D4 of the slice, which needs D1's ancestor discovery to detect "subdirectory" at all.
+
+## Left open by the config-file-resolution slice (2026-08-25)
+
+- **`--config` does not reach the post-login skills tip.** `packages/cli/src/commands/auth/agent-setup-tip.ts` calls `readProjectSkillsConfig` via `projectConfigLoader(ctx.cwd)` — the disk loader anchored at cwd — because `CommandContext` does not expose the parsed `--config` flag to that path. A login run with `--config` shows the tip against the cwd-anchored chain instead of the named file's. Recorded from D3 review; pre-existing shape, low impact.

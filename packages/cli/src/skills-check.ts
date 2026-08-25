@@ -189,8 +189,8 @@ function isSuppressedByInvocation(runtime: SkillsCheckRuntime): boolean {
   );
 }
 
-/** The file an explicit --config names, so the check reads the same
- *  config the command did. Discovery is otherwise cwd-only. */
+/** The file an explicit --config names, so the check anchors the same
+ *  chain the command did. Discovery otherwise anchors at cwd. */
 function configPathFromArgv(argv: readonly string[]): string | undefined {
   const tokens = flagTokens(argv);
   for (let index = 0; index < tokens.length; index += 1) {
