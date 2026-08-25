@@ -1,4 +1,4 @@
-// biome-ignore-all lint/performance/noAwaitInLoops: API pagination and deployment lookup scans are intentionally sequential.
+// biome-ignore-all lint/performance/noAwaitInLoops: API pagination walks pages in order.
 // biome-ignore-all lint/performance/useTopLevelRegex: Existing hostname normalization regexes are kept inline for readability.
 // biome-ignore-all lint/style/noNestedTernary: Existing app resolution expression is intentionally compact.
 import type { StreamRecord } from "@prisma/compute-sdk";
@@ -697,9 +697,9 @@ export function createAppProvider(
         throw new Error(deploymentResult.error.message);
       }
 
-      const app = await findAppForDeployment(
+      const app = await owningService(
         sdk,
-        deploymentId,
+        deploymentResult.value.serviceId,
         options?.signal,
       );
 
@@ -920,6 +920,29 @@ async function listComputeServices(
   return services.map(toAppRecord);
 }
 
+async function owningService(
+  sdk: ComputeClient,
+  serviceId: string,
+  signal?: AbortSignal,
+): Promise<AppRecord | null> {
+  const result = await sdk.showApp({ appId: serviceId, signal });
+  if (result.isErr()) {
+    // Only a deleted service reads as ownerless; any other failure is real
+    // and must not be reported as a version with no service.
+    if (ApiError.is(result.error) && result.error.statusCode === 404) {
+      return null;
+    }
+    throw new Error(result.error.message);
+  }
+  return {
+    id: result.value.id,
+    name: result.value.name,
+    region: result.value.region ?? null,
+    liveDeploymentId: result.value.latestDeploymentId ?? null,
+    liveUrl: toAbsoluteUrl(result.value.appEndpointDomain ?? null),
+  };
+}
+
 function toAppRecord(service: RawAppRecord): AppRecord {
   return {
     id: service.id,
@@ -1098,80 +1121,6 @@ function domainApiCallError(
       `Management API returned HTTP ${response.status}.`,
     hint: error.error?.hint ?? null,
   });
-}
-
-async function findAppForDeployment(
-  sdk: ComputeClient,
-  deploymentId: string,
-  signal?: AbortSignal,
-): Promise<AppRecord | null> {
-  const projectsResult = await sdk.listProjects({ signal });
-  if (projectsResult.isErr()) {
-    throw new Error(projectsResult.error.message);
-  }
-
-  for (const project of projectsResult.value) {
-    const servicesResult = await sdk.listApps({
-      projectId: project.id,
-      signal,
-    });
-    if (servicesResult.isErr()) {
-      throw new Error(servicesResult.error.message);
-    }
-
-    for (const service of servicesResult.value) {
-      const app = await findServiceAppForDeployment(
-        sdk,
-        service.id,
-        deploymentId,
-        signal,
-      );
-      if (app) {
-        return app;
-      }
-    }
-  }
-
-  return null;
-}
-
-async function findServiceAppForDeployment(
-  sdk: ComputeClient,
-  serviceId: string,
-  deploymentId: string,
-  signal?: AbortSignal,
-): Promise<AppRecord | null> {
-  const detailResult = await sdk.showApp({
-    appId: serviceId,
-    signal,
-  });
-  if (detailResult.isErr()) {
-    throw new Error(detailResult.error.message);
-  }
-
-  const app: AppRecord = {
-    id: detailResult.value.id,
-    name: detailResult.value.name,
-    region: detailResult.value.region ?? null,
-    liveDeploymentId: detailResult.value.latestDeploymentId ?? null,
-    liveUrl: toAbsoluteUrl(detailResult.value.appEndpointDomain ?? null),
-  };
-
-  if (app.liveDeploymentId === deploymentId) {
-    return app;
-  }
-
-  const versionsResult = await sdk.listDeployments({
-    appId: serviceId,
-    signal,
-  });
-  if (versionsResult.isErr()) {
-    throw new Error(versionsResult.error.message);
-  }
-
-  return versionsResult.value.some((version) => version.id === deploymentId)
-    ? app
-    : null;
 }
 
 function toAbsoluteUrl(url: string | null): string | null {
