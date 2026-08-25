@@ -1,3 +1,4 @@
+import { realpathSync } from "node:fs";
 import { readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import type { Block, Presentations } from "@prisma/cli-engine";
@@ -14,7 +15,7 @@ import {
 import { readSkillsStatus } from "../lib/skills/status";
 import { syncSkills } from "../lib/skills/sync";
 import { getCliVersion } from "../lib/version";
-import { skillsConfigSection } from "./skills/config";
+import { projectConfigLoader, skillsConfigSection } from "./skills/config";
 import { syncPresentations } from "./skills/presentation";
 import type { SkillsSyncResult } from "./skills/results";
 import {
@@ -674,6 +675,50 @@ async function syncSkillsStep(
   }
 }
 
+function realpathOr(target: string): string {
+  try {
+    return realpathSync(target);
+  } catch {
+    return target;
+  }
+}
+
+/** Whether the discovered config chain reaches outside cwd: a
+ *  prisma.config.ts in a directory above, or one an explicit `parent`
+ *  named elsewhere. A config in cwd itself is not an ancestor. Runs
+ *  before the scaffold is written, so init's own output never counts.
+ *  Realpath'd on both sides so symlinked layouts compare like with
+ *  like. */
+async function hasAncestorConfig(cwd: string): Promise<boolean> {
+  const loaded = await projectConfigLoader(cwd)();
+  const here = realpathOr(cwd);
+  return loaded.files.some(
+    (file) => realpathOr(path.dirname(file.path)) !== here,
+  );
+}
+
+const ANCESTOR_SKIPPED_POSTINSTALL: Step<InitPostinstallReport> = {
+  report: { outcome: "skipped", script: null, dependency: "skipped" },
+  lines: [
+    summary(
+      "info",
+      "Skipped the postinstall hook and the prisma dev dependency: a prisma.config.ts in a parent directory covers this one, so both belong at the repository root. Pass --postinstall to add them here anyway.",
+    ),
+  ],
+  diagnostics: [],
+};
+
+const ANCESTOR_SKIPPED_SKILLS: Step<InitSkillsReport> = {
+  report: { outcome: "skipped", sync: null },
+  lines: [
+    summary(
+      "info",
+      "Skipped the skills sync: a prisma.config.ts in a parent directory covers this one, so the skills belong at the repository root. Pass --skills with your agents to sync them here anyway.",
+    ),
+  ],
+  diagnostics: [],
+};
+
 const SKIPPED_POSTINSTALL: Step<InitPostinstallReport> = {
   report: { outcome: "skipped", script: null, dependency: "skipped" },
   lines: [summary("info", "Skipped the postinstall hook (--no-postinstall).")],
@@ -750,6 +795,20 @@ function parseSkillsFlag(
   return { kind: "agents", agents };
 }
 
+async function postinstallStep(
+  flag: boolean | undefined,
+  ancestor: boolean,
+  cwd: string,
+): Promise<Step<InitPostinstallReport>> {
+  if (flag === false) {
+    return SKIPPED_POSTINSTALL;
+  }
+  if (ancestor && flag === undefined) {
+    return ANCESTOR_SKIPPED_POSTINSTALL;
+  }
+  return addPostinstallHook(cwd);
+}
+
 function initPresentations(
   result: InitResult,
   postinstall: Step<InitPostinstallReport>,
@@ -778,7 +837,7 @@ export const initCommand = defineCommand({
   help: {
     summary: "Prepare this repository for Prisma development",
     description:
-      "Runs locally and calls no platform API. Adds a postinstall script to package.json that keeps the Prisma agent skills in sync on every install, adds prisma to devDependencies at this CLI's exact version when no dependency field declares it, scaffolds a prisma.config.ts recording which agents to install skills for, then syncs the skills once now. Everything lands in the current directory; a prisma.config.ts or postinstall script that already exists is never edited. Rerunning is safe: each step reports what is already done.",
+      "Runs locally and calls no platform API. Adds a postinstall script to package.json that keeps the Prisma agent skills in sync on every install, adds prisma to devDependencies at this CLI's exact version when no dependency field declares it, scaffolds a prisma.config.ts recording which agents to install skills for, then syncs the skills once now. Everything lands in the current directory; a prisma.config.ts or postinstall script that already exists is never edited. Rerunning is safe: each step reports what is already done. In a directory that a parent directory's prisma.config.ts already governs, init writes only the prisma.config.ts scaffold — the postinstall hook, the prisma dev dependency, and the skills sync belong at the repository root and are skipped unless --postinstall or --skills asks for them here.",
     examples: [
       "init",
       "init --skills=claude,cursor",
@@ -804,10 +863,18 @@ export const initCommand = defineCommand({
       return notOk(skillsFlag.error);
     }
 
-    const postinstall =
-      args.flags.postinstall === false
-        ? SKIPPED_POSTINSTALL
-        : await addPostinstallHook(ctx.cwd);
+    // Detection is skipped when both steps are already decided by
+    // flags; discovery is stat-only until a config file exists, so a
+    // project without one pays nothing.
+    const stepsUndecided =
+      args.flags.postinstall === undefined || args.flags.skills === undefined;
+    const ancestor = stepsUndecided && (await hasAncestorConfig(ctx.cwd));
+
+    const postinstall = await postinstallStep(
+      args.flags.postinstall,
+      ancestor,
+      ctx.cwd,
+    );
     // --skills=none still scaffolds: `agents: []` is the committed
     // record that no agent skills are wanted, so later syncs and the
     // staleness check stay quiet instead of falling back to the
@@ -817,10 +884,18 @@ export const initCommand = defineCommand({
       skillsFlag.kind === "skip" ? [] : skillsFlag.agents,
       ctx.config.agentsConfigured,
     );
-    const skills =
-      skillsFlag.kind === "skip"
-        ? SKIPPED_SKILLS
-        : await syncSkillsStep(ctx.cwd, skillsFlag.agents, ctx.config.check);
+    let skills: Step<InitSkillsReport>;
+    if (skillsFlag.kind === "skip") {
+      skills = SKIPPED_SKILLS;
+    } else if (ancestor && args.flags.skills === undefined) {
+      skills = ANCESTOR_SKIPPED_SKILLS;
+    } else {
+      skills = await syncSkillsStep(
+        ctx.cwd,
+        skillsFlag.agents,
+        ctx.config.check,
+      );
+    }
 
     const result: InitResult = {
       postinstall: postinstall.report,

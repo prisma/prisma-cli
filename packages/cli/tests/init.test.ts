@@ -916,6 +916,18 @@ describe("init", () => {
     });
   });
 
+  it("runs every step at a repository root with no config", async () => {
+    const root = await makeProjectRoot("init-");
+    await mkdir(path.join(root, ".git"));
+
+    const { exitCode, result } = await runInit(root);
+
+    expect(exitCode).toBe(0);
+    expect(result.postinstall.outcome).toBe("added");
+    expect(result.config.outcome).toBe("created");
+    expect(result.skills.outcome).toBe("no-packages");
+  });
+
   it.skipIf(process.platform === "win32")(
     "turns a sync failure into a diagnostic on a successful init",
     async () => {
@@ -942,4 +954,125 @@ describe("init", () => {
       }
     },
   );
+});
+
+/**
+ * Init below an ancestor config: real temp trees with their own `.git`
+ * marker, so chain discovery stops inside the fixture and the
+ * checkout's own configs never leak in. The ancestor file carries the
+ * version marker literally — nothing resolves from a bare temp
+ * directory. The handler's ancestor detection reads the disk through
+ * the engine's real loader, so the first evaluation loads c12/jiti.
+ */
+describe("init below an ancestor config", { timeout: 60_000 }, () => {
+  async function makeRepoWithAncestorConfig(): Promise<{
+    root: string;
+    nested: string;
+  }> {
+    const root = await makeProjectRoot("init-repo-");
+    await mkdir(path.join(root, ".git"));
+    await writeFile(
+      path.join(root, "prisma.config.ts"),
+      "export default { $prismaConfig: 1 };\n",
+      "utf8",
+    );
+    const nested = path.join(root, "packages", "db");
+    await mkdir(nested, { recursive: true });
+    await writeFile(
+      path.join(nested, "package.json"),
+      `${JSON.stringify({ name: "db-package", version: "0.0.0" }, null, 2)}\n`,
+      "utf8",
+    );
+    return { root, nested };
+  }
+
+  it("skips the postinstall hook, the dependency, and the skills sync, and says why", async () => {
+    const { nested } = await makeRepoWithAncestorConfig();
+
+    const run = await makeCli().run(["init"], {
+      cwd: nested,
+      isTty: { stdout: true, stderr: true },
+    });
+    const result = run.presented?.data as InitResult;
+
+    expect(run.exitCode).toBe(0);
+    expect(result.postinstall).toEqual({
+      outcome: "skipped",
+      script: null,
+      dependency: "skipped",
+    });
+    expect(result.skills).toEqual({ outcome: "skipped", sync: null });
+    expect(result.config).toEqual({
+      outcome: "created",
+      agents: [...DEFAULT_AGENTS],
+    });
+    expect(run.stderr).toContain(
+      "Skipped the postinstall hook and the prisma dev dependency",
+    );
+    expect(run.stderr).toContain("Skipped the skills sync");
+    expect(run.stderr).toContain("belong at the repository root");
+    expect(await exists(path.join(nested, "prisma.config.ts"))).toBe(true);
+    const manifest = await readManifest(nested);
+    expect(manifest.scripts).toBeUndefined();
+    expect(manifest.devDependencies).toBeUndefined();
+  });
+
+  it("--postinstall opts the manifest edit back in, the sync stays skipped", async () => {
+    const { nested } = await makeRepoWithAncestorConfig();
+
+    const { exitCode, result } = await runInit(nested, ["--postinstall"]);
+
+    expect(exitCode).toBe(0);
+    expect(result.postinstall).toEqual({
+      outcome: "added",
+      script: POSTINSTALL_SCRIPT,
+      dependency: "added",
+    });
+    expect(result.skills).toEqual({ outcome: "skipped", sync: null });
+    const manifest = await readManifest(nested);
+    expect((manifest.scripts as Record<string, unknown>).postinstall).toBe(
+      POSTINSTALL_SCRIPT,
+    );
+    expect(manifest.devDependencies).toEqual({ prisma: getCliVersion() });
+  });
+
+  it("--skills opts the sync back in, the manifest edit stays skipped", async () => {
+    const { nested } = await makeRepoWithAncestorConfig();
+    await installPackage(nested, {
+      name: "@prisma/orm-postgres",
+      version: "8.1.0",
+      skills: ["prisma-8"],
+    });
+
+    const { exitCode, result } = await runInit(nested, ["--skills=claude"]);
+
+    expect(exitCode).toBe(0);
+    expect(result.skills.outcome).toBe("synced");
+    expect(
+      await exists(path.join(nested, ".claude/skills", "prisma-8", "SKILL.md")),
+    ).toBe(true);
+    expect(result.postinstall).toEqual({
+      outcome: "skipped",
+      script: null,
+      dependency: "skipped",
+    });
+    expect(result.config).toEqual({ outcome: "created", agents: ["claude"] });
+  });
+
+  it("a config in cwd itself is not an ancestor and defers nothing", async () => {
+    const root = await makeProjectRoot("init-repo-");
+    await mkdir(path.join(root, ".git"));
+    await writeFile(
+      path.join(root, "prisma.config.ts"),
+      "export default { $prismaConfig: 1 };\n",
+      "utf8",
+    );
+
+    const { exitCode, result } = await runInit(root);
+
+    expect(exitCode).toBe(0);
+    expect(result.postinstall.outcome).toBe("added");
+    expect(result.config.outcome).toBe("exists");
+    expect(result.skills.outcome).toBe("no-packages");
+  });
 });
