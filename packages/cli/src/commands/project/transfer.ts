@@ -34,8 +34,8 @@ import {
 import type { ProjectTransferResult } from "../../types/project";
 import { resolveActiveWorkspace } from "../resources-shared/workspace";
 import {
-  legacyOperationContext,
   listWorkspaceProjects,
+  operationContext,
   type ProjectCommandContext,
 } from "./context";
 import { localPinDiagnostics } from "./presentation";
@@ -255,7 +255,7 @@ export const projectTransferCommand = defineCommand({
 
     const warnings: string[] = [];
     const action = await rewriteOrClearLocalPinForProject(
-      legacyOperationContext(ctx),
+      operationContext(ctx),
       project.id,
       recipient.workspaceId,
       { onError: (message) => warnings.push(message) },

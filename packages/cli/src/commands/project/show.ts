@@ -13,7 +13,7 @@ import {
 } from "../../lib/project/resolution";
 import type { ProjectShowResult } from "../../types/project";
 import { resolveActiveWorkspace } from "../resources-shared/workspace";
-import { legacyOperationContext, listWorkspaceProjects } from "./context";
+import { listWorkspaceProjects, operationContext } from "./context";
 
 interface FieldRow {
   readonly label: string;
@@ -124,7 +124,7 @@ export const projectShowCommand = defineCommand({
   handler: async (args, ctx) => {
     const workspace = await resolveActiveWorkspace(ctx);
     const inspected = await inspectProjectBinding({
-      context: legacyOperationContext(ctx),
+      context: operationContext(ctx),
       workspace,
       explicitProject: args.positionals.project,
       listProjects: () => listWorkspaceProjects(ctx),

@@ -1,7 +1,7 @@
 /**
- * The context the surviving legacy operation layer takes. The commander
- * shell that built it is gone, and the operations read only these three
- * runtime fields; the command handlers supply them
+ * The context the project and env controllers take. The commander
+ * shell that once built it is gone; the controllers read only these
+ * three runtime fields, and the command handlers supply them
  * (`src/commands/project/context.ts`).
  */
 export interface CliRuntime {
