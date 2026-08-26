@@ -167,12 +167,12 @@ function provenanceFor(value: unknown): CheckableProvenance {
   if (typeof value !== "object" || value === null || Array.isArray(value)) {
     return { files: [], keys: {} };
   }
-  const proto = Object.getPrototypeOf(value);
-  if (proto !== Object.prototype && proto !== null) {
-    return { files: [], keys: {} };
-  }
   let names: string[];
   try {
+    const proto = Object.getPrototypeOf(value);
+    if (proto !== Object.prototype && proto !== null) {
+      return { files: [], keys: {} };
+    }
     names = Object.keys(value);
   } catch {
     return { files: [], keys: {} };
