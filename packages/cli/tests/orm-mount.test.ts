@@ -58,6 +58,9 @@ function descriptor(kind: string) {
   };
 }
 
+/** Retired spellings upstream must not ship in its help examples. */
+const RETIRED_ORM_SPELLING = /prisma-test (format|migrate|ref|init)(\s|$)/;
+
 function shell(config?: Readonly<Record<string, unknown>>) {
   return createTestCli({
     commandFamilies: [
@@ -138,11 +141,28 @@ describe("the ORM family answers from the assembled tree", () => {
     expect(frame.envelope.error.code).toBe("CLI.COMMAND_MOVED");
     expect(frame.envelope.nextActions[0]).toMatchObject({
       kind: "run-command",
-      command: "prisma-test migrate --to <contract>",
+      command: "prisma-test db migrate --to <contract>",
     });
   });
 
-  it("names the four new groups in the root help", async () => {
+  it.each([
+    [["contract", "format"], "contract format"],
+    [["db", "migrate"], "db migrate"],
+    [["migration", "ref", "list"], "migration ref list"],
+    [["migration", "ref", "set"], "migration ref set"],
+    [["migration", "ref", "delete"], "migration ref delete"],
+    [["orm", "init"], "orm init"],
+  ])("renders %j help with the mounted spelling, not the family key", async (path, mounted) => {
+    const result = await shell().run([...path, "--help"], {
+      isTty: { stdout: true },
+    });
+
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout).toContain(`prisma-test ${mounted}`);
+    expect(result.stdout).not.toMatch(RETIRED_ORM_SPELLING);
+  });
+
+  it("names the ORM groups in the root help", async () => {
     const result = await shell().run(["--help"], {
       isTty: { stdout: true },
     });
@@ -152,7 +172,7 @@ describe("the ORM family answers from the assembled tree", () => {
       contract: cliGroups.contract,
       db: cliGroups.db,
       migration: cliGroups.migration,
-      ref: cliGroups.ref,
+      orm: cliGroups.orm,
     })) {
       expect(result.stdout).toContain(group);
       expect(result.stdout).toContain(brief);

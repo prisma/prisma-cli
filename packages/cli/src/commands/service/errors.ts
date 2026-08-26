@@ -1,12 +1,10 @@
 import type { NextAction } from "@prisma/cli-engine/protocol";
 import { CliStructuredError } from "@prisma/cli-engine/protocol";
 import { CLI_NAME } from "../../cli-name";
-import type { CliError } from "../../errors";
 import { DomainApiError, type DomainRecord } from "../../lib/app/app-provider";
 import { formatDomainFailureFix } from "../../lib/app/domain-guidance";
-import type { NextAction as LegacyNextAction } from "../../next-actions";
 
-type DomainCommand = "add" | "show" | "remove" | "retry" | "wait";
+type DomainCommand = "add" | "show" | "delete" | "retry" | "wait";
 
 export function runCommandAction(label: string, command: string): NextAction {
   return { kind: "run-command", label, command: `${CLI_NAME} ${command}` };
@@ -16,81 +14,8 @@ export function adviceAction(label: string): NextAction {
   return { kind: "user-choice", label };
 }
 
-function toEngineNextAction(action: LegacyNextAction): NextAction {
-  return {
-    kind: action.kind,
-    label: action.label,
-    ...(action.command !== undefined ? { command: action.command } : {}),
-    ...(action.commands !== undefined ? { commands: action.commands } : {}),
-    ...(action.reason !== undefined ? { reason: action.reason } : {}),
-  };
-}
-
-/**
- * The binary name legacy error copy is written in. It is fixed, not
- * `CLI_NAME`: these strings are inputs to the rewriting below, and a
- * renamed binary must still recognise them.
- */
-const LEGACY_CLI_NAME = "prisma-cli";
-
 const CNAME_HINT = /\bcname(?:s)?\s+to\b/;
 const PRISMA_BUILD_HOST = /\b((?:[a-z0-9-]+\.)+prisma\.build)\b/i;
-
-/**
- * The rename surface for copy that flows through legacy error builders:
- * command lines and the "app target" noun in prose. Deliberately
- * narrow — `prisma.compute.ts` keys stay `app` (SDK-owned), including
- * prose that describes the config's `app`/`apps` entries.
- */
-export function renameAppCopy(text: string): string {
-  return text
-    .replaceAll(`${LEGACY_CLI_NAME} app `, `${CLI_NAME} service `)
-    .replaceAll("App target", "Service target")
-    .replaceAll("app target", "service target");
-}
-
-/** A legacy `nextSteps` command line as this binary spells it. */
-function toCurrentCommandLine(legacyStep: string): string {
-  const renamed = renameAppCopy(legacyStep);
-  return renamed.startsWith(`${LEGACY_CLI_NAME} `)
-    ? `${CLI_NAME} ${renamed.slice(LEGACY_CLI_NAME.length + 1)}`
-    : renamed;
-}
-
-/**
- * Maps a legacy CliError onto the engine error protocol: the flat code
- * becomes `SERVICE.<code>`, the free-text fix becomes a user-choice
- * action carried alongside any typed legacy actions, and nextSteps that
- * are command lines become run-command actions. Copy passes through the
- * rename surface.
- */
-export function fromLegacyCliError(error: CliError): CliStructuredError {
-  const fixAction = error.fix ? [adviceAction(renameAppCopy(error.fix))] : [];
-  const nextActions: NextAction[] =
-    error.nextActions.length > 0
-      ? [...error.nextActions.map(toEngineNextAction), ...fixAction]
-      : [
-          ...fixAction,
-          ...error.nextSteps
-            .filter((step) => step.startsWith(`${LEGACY_CLI_NAME} `))
-            .map((step) => ({
-              kind: "run-command" as const,
-              label: "Run",
-              command: toCurrentCommandLine(step),
-            })),
-        ];
-  return new CliStructuredError(
-    `SERVICE.${error.code}`,
-    renameAppCopy(error.summary),
-    {
-      ...(error.why ? { why: renameAppCopy(error.why) } : {}),
-      nextActions,
-      ...(error.where ? { where: { path: error.where } } : {}),
-      ...(Object.keys(error.meta).length > 0 ? { meta: error.meta } : {}),
-      ...(error.docsUrl ? { docsUrl: error.docsUrl } : {}),
-    },
-  );
-}
 
 /**
  * Consent declined interactively. The engine settles this code as a
@@ -117,14 +42,12 @@ export function serviceSelectionInvalidError(
 ): CliStructuredError {
   return new CliStructuredError(
     "SERVICE.SELECTION_INVALID",
-    "Selected service does not exist in the resolved project",
+    "The requested service does not exist in the resolved project",
     {
       why: `The service "${serviceName}" could not be found in resolved project "${projectId}".`,
       nextActions: [
-        adviceAction(
-          "Pass the name of an existing service, or rerun the command in a TTY to choose one.",
-        ),
-        // Not `service deployment list`: that command has to select a
+        adviceAction("Pass the id or name of an existing service."),
+        // Not `service version list`: that command has to resolve a
         // service before it can list anything, so it fails the same way.
         runCommandAction("List services", "service list"),
       ],
@@ -172,28 +95,29 @@ export function deployFailedError(
   });
 }
 
-export function noDeploymentsError(
+export function noVersionsError(
   summary: string,
   why: string,
+  serviceName: string,
 ): CliStructuredError {
-  return new CliStructuredError("SERVICE.NO_DEPLOYMENTS", summary, {
+  return new CliStructuredError("SERVICE.NO_VERSIONS", summary, {
     why,
-    nextActions: [runCommandAction("Inspect the service", "service show")],
+    nextActions: [
+      runCommandAction("Inspect the service", `service show ${serviceName}`),
+    ],
   });
 }
 
-export function deploymentNotFoundError(
-  deploymentId: string,
-): CliStructuredError {
+export function versionNotFoundError(deploymentId: string): CliStructuredError {
   return new CliStructuredError(
-    "SERVICE.DEPLOYMENT_NOT_FOUND",
-    `Deployment "${deploymentId}" not found`,
+    "SERVICE.VERSION_NOT_FOUND",
+    `Version "${deploymentId}" not found`,
     {
-      why: "The requested deployment does not exist or is no longer available.",
+      why: "The requested service version does not exist or is no longer available.",
       nextActions: [
         runCommandAction(
-          "Choose an available deployment id",
-          "service deployment list",
+          "Choose an available version id",
+          "service version list <service>",
         ),
       ],
     },
@@ -217,95 +141,79 @@ export function logsRangeConflictError(): CliStructuredError {
   );
 }
 
-/** A deployment id resolves globally, so one that exists but belongs to
- *  another project is its own failure — not "not found". */
-export function deploymentOutsideProjectError(
-  deploymentId: string,
-): CliStructuredError {
+/** The version exists but names no owning service, so there is
+ *  nothing to report or act on it as. */
+export function versionDetachedError(deploymentId: string): CliStructuredError {
   return new CliStructuredError(
-    "SERVICE.DEPLOYMENT_OUTSIDE_PROJECT",
-    `Deployment "${deploymentId}" belongs to another project`,
+    "SERVICE.VERSION_DETACHED",
+    `Version "${deploymentId}" has no owning service`,
     {
-      why: "The deployment exists, but the service that owns it is not in the resolved project.",
-      nextActions: [
-        adviceAction("Pass --project for the project that owns it."),
-        runCommandAction("List services", "service list"),
-      ],
-    },
-  );
-}
-
-/** The deployment exists but names no owning service, so there is no
- *  project to check it against and nothing to scope logs by. */
-export function deploymentDetachedError(
-  deploymentId: string,
-): CliStructuredError {
-  return new CliStructuredError(
-    "SERVICE.DEPLOYMENT_DETACHED",
-    `Deployment "${deploymentId}" has no owning service`,
-    {
-      why: "The Management API returned the deployment without a service, so it cannot be scoped to a project.",
+      why: "The Management API returned the version without a service, so there is nothing to report or act on it as.",
       nextActions: [
         runCommandAction(
-          "Show the deployment",
-          `service deployment show ${deploymentId}`,
+          "Show the version",
+          `service version show ${deploymentId}`,
         ),
       ],
     },
   );
 }
 
-export function deploymentNotFoundForServiceError(
+export function versionNotFoundForServiceError(
   deploymentId: string,
   serviceName: string,
 ): CliStructuredError {
   return new CliStructuredError(
-    "SERVICE.DEPLOYMENT_NOT_FOUND",
-    `Deployment "${deploymentId}" not found for service "${serviceName}"`,
+    "SERVICE.VERSION_NOT_FOUND",
+    `Version "${deploymentId}" not found for service "${serviceName}"`,
     {
-      why: "The requested deployment does not belong to the resolved service or is no longer available.",
+      why: "The requested version does not belong to the resolved service or is no longer available.",
       nextActions: [
         runCommandAction(
-          "Choose an available deployment id",
-          "service deployment list",
+          "Choose an available version id",
+          `service version list ${serviceName}`,
         ),
       ],
     },
   );
 }
 
-/** promote / rollback / remove need a service that already exists. */
-export function releaseTargetRequiredError(
+/** Every command that acts on an existing service needs its target
+ *  named explicitly; nothing is inferred, remembered, or prompted for. */
+export function serviceTargetRequiredError(
   commandName: string,
 ): CliStructuredError {
   return new CliStructuredError(
     "SERVICE.TARGET_REQUIRED",
-    `Command "${commandName}" requires an existing service`,
+    `Command "${commandName}" requires a service`,
     {
-      why: "The resolved project does not have a service that can be selected for this command.",
+      why: "Service commands act only on an explicitly named service, and this run named none.",
       nextActions: [
-        adviceAction(
-          `Deploy a service first, or rerun "${commandName}" with --service <name> once a service exists.`,
-        ),
-        // Not `service deployment list`: it selects a service first, so
-        // it cannot help a run that could not select one.
+        adviceAction("Pass the service id or name as the first argument."),
+        // Not `service version list`: it resolves a service first, so
+        // it cannot help a run that could not resolve one.
         runCommandAction("List services", "service list"),
       ],
     },
   );
 }
 
-export function noPreviousDeploymentError(): CliStructuredError {
+export function noPreviousVersionError(
+  serviceName: string,
+): CliStructuredError {
   return new CliStructuredError(
-    "SERVICE.NO_PREVIOUS_DEPLOYMENT",
-    "No previous deployment available for rollback",
+    "SERVICE.NO_PREVIOUS_VERSION",
+    "No previous version available for rollback",
     {
-      why: "The selected service does not have an earlier deployment to switch back to.",
+      why: "The service does not have an earlier version to switch back to.",
       nextActions: [
         adviceAction(
-          "Deploy a second version first, or pass --to <deployment-id> for a specific earlier deployment.",
+          "Deploy a second version first, or pass --to <version-id> for a specific earlier version.",
         ),
-        runCommandAction("List deployments", "service deployment list"),
+        runCommandAction(
+          "List versions",
+          `service version list ${serviceName}`,
+        ),
       ],
     },
   );
@@ -313,66 +221,73 @@ export function noPreviousDeploymentError(): CliStructuredError {
 
 /** Rolling back without `--to` needs the live deployment: the default
  *  target is defined relative to it. */
-export function liveDeploymentUnknownError(): CliStructuredError {
+export function liveVersionUnknownError(
+  serviceName: string,
+): CliStructuredError {
   return new CliStructuredError(
-    "SERVICE.LIVE_DEPLOYMENT_UNKNOWN",
-    "Cannot determine which deployment is currently live",
+    "SERVICE.LIVE_VERSION_UNKNOWN",
+    "Cannot determine which version is currently live",
     {
-      why: "The service record does not name a live deployment, so the deployment to roll back to cannot be chosen without guessing what production is serving.",
+      why: "The service record does not name a live version, so the version to roll back to cannot be chosen without guessing what production is serving.",
       nextActions: [
         runCommandAction(
-          "Roll back to a named deployment",
-          "service deployment rollback --to <deployment>",
+          "Roll back to a named version",
+          `service version rollback ${serviceName} --to <version>`,
         ),
-        runCommandAction("List deployments", "service deployment list"),
+        runCommandAction(
+          "List versions",
+          `service version list ${serviceName}`,
+        ),
       ],
     },
   );
 }
 
-export function removeFailedError(
+export function deleteFailedError(
   summary: string,
   cause: unknown,
+  serviceName: string,
 ): CliStructuredError {
-  return new CliStructuredError("SERVICE.REMOVE_FAILED", summary, {
+  return new CliStructuredError("SERVICE.DELETE_FAILED", summary, {
     why: cause instanceof Error ? cause.message : String(cause),
     nextActions: [
-      runCommandAction("Inspect the service", "service show"),
-      runCommandAction("List deployments", "service deployment list"),
+      runCommandAction("Inspect the service", `service show ${serviceName}`),
+      runCommandAction("List versions", `service version list ${serviceName}`),
     ],
     cause,
   });
 }
 
-/** A blank `--branch` must never fall back to the inferred (possibly
- *  production) branch. */
+/** A blank `--branch` names no branch and must never fall through to
+ *  the branch the command targets when the flag is omitted. */
 export function branchValueEmptyError(): CliStructuredError {
   return new CliStructuredError(
     "SERVICE.BRANCH_INVALID",
     "The --branch value cannot be empty",
     {
-      why: "service remove scopes the removal to the given branch; an empty --branch would silently fall back to the inferred (possibly production) branch.",
+      why: "The command scopes its work to the given branch; an empty --branch names none, and omitting the flag targets the default branch instead.",
       nextActions: [
         adviceAction(
-          "Pass a non-empty branch name, or omit --branch to use the inferred branch.",
-        ),
-        runCommandAction(
-          "Remove on a branch",
-          "service remove --service <name> --branch <branch>",
+          "Pass a non-empty branch name, or omit --branch to target the default branch.",
         ),
       ],
     },
   );
 }
 
-export function liveUrlUnavailableError(): CliStructuredError {
+export function liveUrlUnavailableError(
+  serviceName: string,
+): CliStructuredError {
   return new CliStructuredError(
     "SERVICE.FEATURE_UNAVAILABLE",
-    "Live URL is not available for the selected service",
+    "Live URL is not available for this service",
     {
-      why: "Deployments exist, but the provider does not expose a stable live service URL for this service yet.",
+      why: "Versions exist, but the provider does not expose a stable live service URL for this service yet.",
       nextActions: [
-        runCommandAction("Inspect the deployment state", "service show"),
+        runCommandAction(
+          "Inspect the service state",
+          `service show ${serviceName}`,
+        ),
       ],
     },
   );
@@ -392,7 +307,7 @@ export function branchNotDeployableError(
         ),
         runCommandAction(
           "Add on production",
-          "service domain add <hostname> --branch production",
+          "service domain add <hostname> --service <name> --branch production",
         ),
       ],
     },
@@ -412,7 +327,10 @@ export function domainHostnameInvalidError(
         "Custom domains must be valid hostnames without protocol, path, wildcard, or port.",
       nextActions: [
         adviceAction("Pass a hostname like shop.acme.com."),
-        runCommandAction("Add a domain", "service domain add shop.acme.com"),
+        runCommandAction(
+          "Add a domain",
+          "service domain add shop.acme.com --service <name>",
+        ),
       ],
     },
   );
@@ -423,41 +341,14 @@ export function domainNotFoundError(hostname: string): CliStructuredError {
     "SERVICE.DOMAIN_NOT_FOUND",
     `Custom domain "${hostname}" not found`,
     {
-      why: "The hostname is not attached to the selected service.",
+      why: "The hostname is not attached to the service.",
       nextActions: [
         adviceAction(
-          "Check the hostname and selected service, or add the domain first.",
+          "Check the hostname and the service, or add the domain first.",
         ),
-        runCommandAction("Add the domain", `service domain add ${hostname}`),
-      ],
-    },
-  );
-}
-
-export function domainTargetRequiredError(): CliStructuredError {
-  return new CliStructuredError(
-    "SERVICE.DOMAIN_TARGET_REQUIRED",
-    "Custom domain requires an existing service on the production branch",
-    {
-      why: "The resolved production branch does not have a service that can receive a custom domain.",
-      nextActions: [runCommandAction("Inspect the service", "service show")],
-    },
-  );
-}
-
-export function selectedServiceMissingError(
-  envVarName: string,
-  serviceId: string,
-  projectId: string,
-): CliStructuredError {
-  return new CliStructuredError(
-    "SERVICE.SELECTION_INVALID",
-    "Selected service does not exist in the resolved production branch",
-    {
-      why: `The service "${serviceId}" from ${envVarName} could not be found in resolved project "${projectId}".`,
-      nextActions: [
-        adviceAction(
-          `Unset ${envVarName}, pass --service <name>, or deploy the service on the production branch.`,
+        runCommandAction(
+          "Add the domain",
+          `service domain add ${hostname} --service <name>`,
         ),
       ],
     },
@@ -486,11 +377,14 @@ export function domainVerificationFailedError(
     {
       why,
       nextActions: [
-        ...(guidance ? [adviceAction(renameAppCopy(guidance))] : []),
-        runCommandAction("Show the domain", `service domain show ${hostname}`),
+        ...(guidance ? [adviceAction(guidance)] : []),
+        runCommandAction(
+          "Show the domain",
+          `service domain show ${hostname} --service <name>`,
+        ),
         runCommandAction(
           "Retry verification",
-          `service domain retry ${hostname}`,
+          `service domain retry ${hostname} --service <name>`,
         ),
       ],
     },
@@ -507,7 +401,10 @@ export function domainVerificationTimeoutError(
     {
       why: `The domain is still "${lastStatus}".`,
       nextActions: [
-        runCommandAction("Show the domain", `service domain show ${hostname}`),
+        runCommandAction(
+          "Show the domain",
+          `service domain show ${hostname} --service <name>`,
+        ),
         adviceAction("Retry wait with a longer --timeout."),
       ],
     },
@@ -523,7 +420,7 @@ export function timeoutInvalidError(value: string): CliStructuredError {
       nextActions: [
         runCommandAction(
           "Wait with a valid timeout",
-          "service domain wait shop.acme.com --timeout 15m",
+          "service domain wait shop.acme.com --service <name> --timeout 15m",
         ),
       ],
     },
@@ -556,7 +453,10 @@ export function domainCommandError(
       why: error instanceof Error ? error.message : String(error),
       meta: debugMeta(error),
       nextActions: [
-        runCommandAction("Show the domain", `service domain show ${hostname}`),
+        runCommandAction(
+          "Show the domain",
+          `service domain show ${hostname} --service <name>`,
+        ),
       ],
       cause: error,
     },
@@ -619,7 +519,10 @@ function domainHostnameRejectedError(
         adviceAction(
           "Pass a valid hostname like shop.acme.com and make sure DNS can be verified.",
         ),
-        runCommandAction("Add a domain", "service domain add shop.acme.com"),
+        runCommandAction(
+          "Add a domain",
+          "service domain add shop.acme.com --service <name>",
+        ),
       ],
     },
   );
@@ -634,9 +537,12 @@ function domainQuotaExceededError(error: DomainApiError): CliStructuredError {
       meta: debugMeta(error),
       nextActions: [
         adviceAction(
-          "Remove an existing custom domain before adding another one.",
+          "Delete an existing custom domain before adding another one.",
         ),
-        runCommandAction("Remove a domain", "service domain remove <hostname>"),
+        runCommandAction(
+          "Delete a domain",
+          "service domain delete <hostname> --service <name>",
+        ),
       ],
     },
   );
@@ -654,7 +560,7 @@ function domainAlreadyRegisteredError(
       meta: debugMeta(error),
       nextActions: [
         adviceAction(
-          "Select the service that owns this hostname and remove it there, or contact Prisma support if you cannot access it.",
+          "Select the service that owns this hostname and delete it there, or contact Prisma support if you cannot access it.",
         ),
       ],
     },
@@ -666,8 +572,8 @@ function domainRequiresDeploymentError(
   error: DomainApiError,
 ): CliStructuredError {
   return new CliStructuredError(
-    "SERVICE.NO_DEPLOYMENTS",
-    "Custom domain requires a live production deployment",
+    "SERVICE.NO_VERSIONS",
+    "Custom domain requires a live production version",
     {
       why: "The selected production service does not have a promoted version that can receive a custom domain.",
       meta: debugMeta(error),
@@ -677,9 +583,12 @@ function domainRequiresDeploymentError(
         // with the dropped command; without the advice the only thing
         // left told the user to rerun what had just failed.
         adviceAction(
-          "Promote a deployment on the service's production branch, then add the domain again.",
+          "Promote a version on the service's production branch, then add the domain again.",
         ),
-        runCommandAction("Add the domain", `service domain add ${hostname}`),
+        runCommandAction(
+          "Add the domain",
+          `service domain add ${hostname} --service <name>`,
+        ),
       ],
     },
   );
@@ -699,7 +608,10 @@ function domainRetryNotEligibleError(
         adviceAction(
           "Wait for the current verification or TLS step to finish, then rerun retry if the domain fails.",
         ),
-        runCommandAction("Show the domain", `service domain show ${hostname}`),
+        runCommandAction(
+          "Show the domain",
+          `service domain show ${hostname} --service <name>`,
+        ),
       ],
     },
   );
@@ -746,7 +658,7 @@ function domainDnsNotConfiguredError(
             ),
             runCommandAction(
               "Add the domain",
-              `service domain add ${hostname}`,
+              `service domain add ${hostname} --service <name>`,
             ),
           ]
         : [
@@ -762,22 +674,4 @@ function extractDomainDnsTarget(error: DomainApiError): string | null {
   const text = `${error.hint ?? ""} ${error.message}`;
   const match = PRISMA_BUILD_HOST.exec(text);
   return match?.[1]?.toLowerCase() ?? null;
-}
-
-export function configTargetRequiresConfigError(
-  configTarget: string,
-  configFilename: string,
-): CliStructuredError {
-  return new CliStructuredError(
-    "SERVICE.COMPUTE_CONFIG_TARGET_UNKNOWN",
-    `Service target "${configTarget}" requires a compute config file`,
-    {
-      why: `No ${configFilename} exists in the current directory, so there are no named service targets.`,
-      nextActions: [
-        adviceAction(
-          `Create ${configFilename} with an apps entry named "${configTarget}", or rerun without the target argument.`,
-        ),
-      ],
-    },
-  );
 }

@@ -58,7 +58,7 @@ Recommended symbols:
 
 - Human-facing paths should usually be shown relative to the current working directory.
 - Structured output should use the literal machine-meaningful value.
-- Banners are reserved for `init` and similar first-run experiences.
+- Banners are reserved for first-run experiences such as `auth login`.
 - Outside those flows, focus on status, context, result, and next steps.
 
 Human-oriented command output in TTY mode should usually start with a compact header.
@@ -83,8 +83,8 @@ project show → This directory is not linked to a Prisma Project.
 │  project:    Not linked
 
 Next steps:
-- Link an existing Project you choose: prisma-cli project link <id-or-name>
-- Create a new Project: prisma-cli project create billing-api
+- Link an existing Project you choose: prisma project link <id-or-name>
+- Create a new Project: prisma project create billing-api
 ```
 
 Rules:

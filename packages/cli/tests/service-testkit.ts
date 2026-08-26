@@ -67,6 +67,7 @@ export interface RawServiceDetail {
 
 export interface RawDeployment {
   id: string;
+  serviceId: string;
   status: string;
   createdAt: string;
   previewDomain: string | null;
@@ -178,12 +179,14 @@ export const SERVICE_DETAIL: RawServiceDetail = {
 export const DEPLOYMENTS: RawDeployment[] = [
   {
     id: "dep_1",
+    serviceId: "svc_1",
     status: "stopped",
     createdAt: "2026-08-01T00:00:00.000Z",
     previewDomain: "dep1.prisma.app",
   },
   {
     id: "dep_2",
+    serviceId: "svc_1",
     status: "running",
     createdAt: "2026-08-02T00:00:00.000Z",
     previewDomain: "dep2.prisma.app",
@@ -261,6 +264,7 @@ export function releaseRoutes(overrides: Routes = {}): Routes {
         data: {
           data: {
             id,
+            serviceId: "svc_1",
             status,
             createdAt: "2026-08-01T00:00:00.000Z",
             previewDomain: `${id}.prisma.app`,
@@ -288,7 +292,7 @@ export function releaseRoutes(overrides: Routes = {}): Routes {
 const SERVICE_GROUPS = {
   service: { brief: "Manage services and deployments for a project" },
   "service domain": { brief: "Manage custom domains for a service" },
-  "service deployment": { brief: "Manage deployments for a service" },
+  "service version": { brief: "Manage deployments for a service" },
   build: { brief: "Inspect builds created by a git push or Console" },
 };
 

@@ -58,9 +58,9 @@ const EXCLUSIONS: Readonly<Record<string, string>> = {
   "db sign": ORM_FAMILY_REASON,
   "db update": ORM_FAMILY_REASON,
   "db verify": ORM_FAMILY_REASON,
-  format: ORM_FAMILY_REASON,
+  "contract format": ORM_FAMILY_REASON,
   lsp: ORM_FAMILY_REASON,
-  migrate: ORM_FAMILY_REASON,
+  "db migrate": ORM_FAMILY_REASON,
   "migration check": ORM_FAMILY_REASON,
   "migration graph": ORM_FAMILY_REASON,
   "migration list": ORM_FAMILY_REASON,
@@ -70,9 +70,14 @@ const EXCLUSIONS: Readonly<Record<string, string>> = {
   "migration show": ORM_FAMILY_REASON,
   "migration status": ORM_FAMILY_REASON,
   "orm init": ORM_FAMILY_REASON,
-  "ref delete": ORM_FAMILY_REASON,
-  "ref list": ORM_FAMILY_REASON,
-  "ref set": ORM_FAMILY_REASON,
+  "migration ref delete": ORM_FAMILY_REASON,
+  "migration ref list": ORM_FAMILY_REASON,
+  "migration ref set": ORM_FAMILY_REASON,
+  init: "Writes a package.json script, scaffolds prisma.config.ts and syncs skills from installed packages. No management API is involved; its credential-free happy path against the built binary lives in e2e/init.e2e.ts.",
+  "skills sync":
+    "Copies files from installed packages into the project's skill directories. No management API is involved, and the whole surface is filesystem behavior the unit fixtures drive directly.",
+  "skills list":
+    "Reads the project's installed packages and skill directories. No management API is involved.",
   feedback:
     "Posts a real message to the feedback service the CLI team reads. A per-CI-run post is spam, not a test.",
   "auth login":
@@ -83,20 +88,15 @@ const EXCLUSIONS: Readonly<Record<string, string>> = {
     "Ends a stored OAuth session. Same reason as `auth workspace use`.",
   "project transfer":
     "Irreversibly moves a project to another workspace, and needs a second workspace plus a recipient who accepts. Not safe to run unattended.",
-  "postgres restore":
+  "postgres backup restore":
     "Needs an existing backup. Backups are created on the platform's own schedule, so a database made during the run never has one.",
   "git connect":
     "Needs a GitHub App installation on the account under test, which CI cannot provision.",
   "git disconnect":
     "Needs a connected repository, which `git connect` cannot create here.",
-  "composer deploy":
+  deploy:
     "Provisions real cloud infrastructure for an app entry point, through a child `alchemy deploy`. Standing that up per CI run is neither cheap nor unattended-safe.",
-  "composer destroy":
-    "Tears down what `composer deploy` provisioned, which this suite cannot create.",
-  "composer dev":
-    "A session command: it runs until SIGINT or SIGTERM, redeploying on file change, so it has no happy path that terminates on its own.",
-  "composer log":
-    "A session command that streams until interrupted, against an app only `composer deploy` could have deployed.",
+  dev: "A session command: it runs until SIGINT or SIGTERM, redeploying on file change, so it has no happy path that terminates on its own.",
 };
 
 /**
@@ -120,16 +120,13 @@ const EXCLUSIONS: Readonly<Record<string, string>> = {
  * switchboard.ewr.prisma.build." No fixture inside this repo can satisfy
  * that; it needs a domain the test account owns and a DNS record.
  *
- * `build logs` needs a build, which comes from a git push or a Console
- * action, not from anything the CLI can do.
  */
 const AWAITING_COVERAGE: readonly string[] = [
   "service domain add",
   "service domain show",
-  "service domain remove",
+  "service domain delete",
   "service domain retry",
   "service domain wait",
-  "build logs",
 ];
 
 async function mountedCommands(): Promise<string[]> {
@@ -149,7 +146,7 @@ async function mountedCommands(): Promise<string[]> {
   }
   const block = source.slice(start + marker.length, end);
   // Quoted keys are multi-word paths; bare identifier keys are the
-  // single-word mounts (init, feedback), which the quoted-only scan
+  // single-word mounts (feedback), which the quoted-only scan
   // used to miss entirely.
   return [
     ...block.matchAll(/^\s{2}(?:"([^"]+)"|([A-Za-z][A-Za-z0-9]*)):/gm),

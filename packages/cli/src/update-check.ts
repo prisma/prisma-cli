@@ -6,6 +6,7 @@ import os from "node:os";
 import path from "node:path";
 
 import { CLI_DOCS_URL } from "./cli-name";
+import { compareVersionStrings } from "./lib/semver-order";
 import { getCliName, getCliVersion } from "./lib/version";
 
 /** The exact runtime surface the update check reads; both the legacy
@@ -360,82 +361,8 @@ function isInstalledVersionStale(
   installedVersion: string,
   latestVersion: string,
 ): boolean {
-  const installed = parseVersion(installedVersion);
-  const latest = parseVersion(latestVersion);
-
-  if (!installed || !latest) {
-    return false;
-  }
-
-  return compareVersions(installed, latest) < 0;
-}
-
-interface ParsedVersion {
-  major: number;
-  minor: number;
-  patch: number;
-  prerelease: string[];
-}
-
-function parseVersion(version: string): ParsedVersion | null {
-  const match = /^(\d+)\.(\d+)\.(\d+)(?:-([0-9A-Za-z.-]+))?$/.exec(version);
-  if (!match) {
-    return null;
-  }
-
-  return {
-    major: Number(match[1]),
-    minor: Number(match[2]),
-    patch: Number(match[3]),
-    prerelease: match[4]?.split(".") ?? [],
-  };
-}
-
-function compareVersions(left: ParsedVersion, right: ParsedVersion): number {
-  for (const key of ["major", "minor", "patch"] as const) {
-    const diff = left[key] - right[key];
-    if (diff !== 0) {
-      return diff;
-    }
-  }
-
-  return comparePrerelease(left.prerelease, right.prerelease);
-}
-
-function comparePrerelease(left: string[], right: string[]): number {
-  if (left.length === 0 && right.length === 0) return 0;
-  if (left.length === 0) return 1;
-  if (right.length === 0) return -1;
-
-  const count = Math.max(left.length, right.length);
-  for (let index = 0; index < count; index += 1) {
-    const leftPart = left[index];
-    const rightPart = right[index];
-
-    if (leftPart === undefined) return -1;
-    if (rightPart === undefined) return 1;
-
-    const diff = comparePrereleasePart(leftPart, rightPart);
-    if (diff !== 0) {
-      return diff;
-    }
-  }
-
-  return 0;
-}
-
-function comparePrereleasePart(left: string, right: string): number {
-  const leftNumber = /^\d+$/.test(left) ? Number(left) : null;
-  const rightNumber = /^\d+$/.test(right) ? Number(right) : null;
-
-  if (leftNumber !== null && rightNumber !== null) {
-    return leftNumber - rightNumber;
-  }
-
-  if (leftNumber !== null) return -1;
-  if (rightNumber !== null) return 1;
-
-  return left.localeCompare(right);
+  const order = compareVersionStrings(installedVersion, latestVersion);
+  return order !== null && order < 0;
 }
 
 async function fetchLatestVersion(

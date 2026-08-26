@@ -13,7 +13,8 @@
  *
  * What one invocation edits, so the bump lands as one consistent commit:
  *   - `packages/cli-engine/package.json` `version`
- *   - `packages/cli/package.json`'s `workspace:<version>` pin on the engine
+ *   - the `workspace:<version>` pin on the engine in every consumer
+ *     manifest (`packages/cli`, `packages/prisma`)
  *   - `pnpm-lock.yaml`, refreshed to match
  *
  * Reads the current version from HEAD (not disk) so re-running before
@@ -30,7 +31,14 @@ import { computeNextEngineVersion } from "./bump-cli-engine-version-utils.ts";
 
 const ENGINE_PACKAGE = "@prisma/cli-engine";
 const ENGINE_MANIFEST = "packages/cli-engine/package.json";
-const SHELL_MANIFEST = "packages/cli/package.json";
+// Every manifest that pins the engine. `prisma@8.0.0-rc.4` shipped
+// crashing because the engine moved to 0.2.0 while `packages/prisma`
+// kept its pin on the registry's broken 0.1.1 — a consumer this list
+// missed is a consumer that publishes against the wrong engine.
+const CONSUMER_MANIFESTS = [
+  "packages/cli/package.json",
+  "packages/prisma/package.json",
+];
 
 const rootDir = dirname(dirname(fileURLToPath(import.meta.url)));
 
@@ -70,18 +78,20 @@ engine.version = nextVersion;
 writeFileSync(enginePath, `${JSON.stringify(engine, null, 2)}\n`);
 console.log(`Updated ${ENGINE_MANIFEST}`);
 
-const shellPath = join(rootDir, SHELL_MANIFEST);
-const shell = JSON.parse(readFileSync(shellPath, "utf-8")) as {
-  dependencies?: Record<string, string>;
-};
-if (shell.dependencies?.[ENGINE_PACKAGE] === undefined) {
-  throw new Error(
-    `${SHELL_MANIFEST} no longer depends on ${ENGINE_PACKAGE}; this script needs updating.`,
-  );
+for (const manifestPath of CONSUMER_MANIFESTS) {
+  const consumerPath = join(rootDir, manifestPath);
+  const consumer = JSON.parse(readFileSync(consumerPath, "utf-8")) as {
+    dependencies?: Record<string, string>;
+  };
+  if (consumer.dependencies?.[ENGINE_PACKAGE] === undefined) {
+    throw new Error(
+      `${manifestPath} no longer depends on ${ENGINE_PACKAGE}; this script needs updating.`,
+    );
+  }
+  consumer.dependencies[ENGINE_PACKAGE] = `workspace:${nextVersion}`;
+  writeFileSync(consumerPath, `${JSON.stringify(consumer, null, 2)}\n`);
+  console.log(`Updated ${manifestPath} pin to workspace:${nextVersion}`);
 }
-shell.dependencies[ENGINE_PACKAGE] = `workspace:${nextVersion}`;
-writeFileSync(shellPath, `${JSON.stringify(shell, null, 2)}\n`);
-console.log(`Updated ${SHELL_MANIFEST} pin to workspace:${nextVersion}`);
 
 console.log("");
 console.log("Refreshing pnpm-lock.yaml to match the rewritten specifiers...");

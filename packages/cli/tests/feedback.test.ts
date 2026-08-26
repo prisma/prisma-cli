@@ -6,7 +6,9 @@ import { afterEach, describe, expect, it } from "vitest";
 import { feedbackCommand } from "../src/commands/feedback";
 import { mountsFor } from "./service-testkit";
 
-const USER_AGENT_PREFIX = /^prisma-cli\//;
+/** The client identifies itself by the binary's name, which the rename
+ *  to `prisma` carried along with every other user-facing spelling. */
+const USER_AGENT_PREFIX = /^prisma\//;
 
 /** The command posts with the global fetch and the engine hands session
  *  commands no HTTP seam, so the service is faked where the legacy
@@ -94,7 +96,7 @@ function completedFrame(json: readonly unknown[]) {
   };
 }
 
-describe("prisma-cli feedback", () => {
+describe("prisma feedback", () => {
   it("declares no credential needs and sends without a session", async () => {
     expect(feedbackCommand.needs.credentials).toBe(false);
     const { url, requests } = await startFeedbackService({});

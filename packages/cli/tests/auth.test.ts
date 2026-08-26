@@ -496,7 +496,7 @@ describe("auth workspace list", () => {
       {
         kind: "run-command",
         label: "Sign in",
-        command: "prisma-cli auth login",
+        command: "prisma auth login",
       },
     ]);
   });

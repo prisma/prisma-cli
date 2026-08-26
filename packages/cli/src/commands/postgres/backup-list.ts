@@ -5,18 +5,16 @@ import {
   flag,
   type Presentations,
 } from "@prisma/cli-engine";
-import { notOk, ok } from "@prisma/cli-engine/protocol";
+import { ok } from "@prisma/cli-engine/protocol";
 import { parseBackupLimit, resolveDatabase } from "../../controllers/database";
 import { serializeDatabaseBackupList } from "../../presenters/database";
 import type { DatabaseBackupListResult } from "../../types/database";
 import {
   branchFlag,
   databasePositional,
-  legacyCommandFormatter,
   projectFlag,
   resolvePostgresContext,
 } from "./context";
-import { mapPostgresOperationError } from "./errors";
 import { backupRows, backupStdoutRows } from "./presentation";
 
 const TITLE = "Listing platform-created database backups.";
@@ -89,37 +87,29 @@ export const postgresBackupListCommand = defineCommand({
   },
   needs: { credentials: true },
   handler: async (args, ctx) => {
-    try {
-      const limit = parseBackupLimit(args.flags.limit, legacyCommandFormatter);
-      const { provider, target, projectId, projectName } =
-        await resolvePostgresContext(ctx, args.flags, "postgres backup list");
-      const database = await resolveDatabase(
-        provider,
-        target,
-        args.positionals.database,
-        args.flags.branch,
-        ctx.signal,
-      );
-      const backups = await provider.listBackups(database.id, {
-        limit,
-        signal: ctx.signal,
-      });
+    const limit = parseBackupLimit(args.flags.limit);
+    const { provider, target, projectId, projectName } =
+      await resolvePostgresContext(ctx, args.flags, "postgres backup list");
+    const database = await resolveDatabase(
+      provider,
+      target,
+      args.positionals.database,
+      args.flags.branch,
+      ctx.signal,
+    );
+    const backups = await provider.listBackups(database.id, {
+      limit,
+      signal: ctx.signal,
+    });
 
-      const result: DatabaseBackupListResult = {
-        projectId,
-        projectName,
-        database,
-        backups: backups.backups,
-        retentionDays: backups.retentionDays,
-        hasMore: backups.hasMore,
-      };
-      return ok(ctx.present({ data: result }, backupListPresentations(result)));
-    } catch (error) {
-      const mapped = mapPostgresOperationError(error);
-      if (mapped) {
-        return notOk(mapped);
-      }
-      throw error;
-    }
+    const result: DatabaseBackupListResult = {
+      projectId,
+      projectName,
+      database,
+      backups: backups.backups,
+      retentionDays: backups.retentionDays,
+      hasMore: backups.hasMore,
+    };
+    return ok(ctx.present({ data: result }, backupListPresentations(result)));
   },
 });

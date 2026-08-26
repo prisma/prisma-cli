@@ -15,15 +15,9 @@
 `@prisma/cli` is the public beta of the new CLI for the
 Prisma Developer Platform.
 
-It is the terminal surface managing your platform projects, branches, apps,
-deployments, and environment variables.
-
-The command model is under active development to include tooling for your
-schema, database, migration, and broader platform workflows.
-
-Looking for Prisma ORM commands such as `prisma generate`, `prisma migrate`, or
-`prisma studio`? Use the [`prisma`](https://www.npmjs.com/package/prisma)
-package.
+It is one binary for the ORM, Composer, and the Prisma Developer
+Platform: projects, branches, services, service versions, environment
+variables, and the Prisma ORM schema and migration workflow.
 
 ---
 
@@ -32,7 +26,7 @@ package.
 Install the beta package locally:
 
 ```bash
-npm install --save-dev @prisma/cli
+npm install --save-dev @prisma/cli@next
 ```
 
 Run the binary exposed by this package:
@@ -40,22 +34,25 @@ Run the binary exposed by this package:
 ```bash
 npx prisma-cli --help
 npx prisma-cli auth login
-npx prisma-cli app deploy
+npx prisma-cli project create my-app
+npx prisma-cli git connect git@github.com:owner/repo.git
 ```
+
+Deployments start from pushing the connected repository, the Console, or `prisma-cli deploy`.
 
 With `pnpm`:
 
 ```bash
-pnpm add -D @prisma/cli
+pnpm add -D @prisma/cli@next
 pnpm prisma-cli auth login
-pnpm prisma-cli app deploy
+pnpm prisma-cli git connect
 ```
 
 Useful next commands:
 
 ```bash
-npx prisma-cli app logs
-npx prisma-cli app open
+npx prisma-cli service list
+npx prisma-cli service logs
 npx prisma-cli project env add DATABASE_URL=postgresql://example --role preview
 npx prisma-cli project env add --file .env --role preview
 npx prisma-cli project env list
@@ -71,24 +68,25 @@ The beta package exposes `prisma-cli` so it can coexist with the existing
 
 | Group | What it does |
 | --- | --- |
-| `version` | Show the installed CLI build and host environment. |
 | `auth` | Log in, log out, and inspect the active Prisma account. |
-| `project` | List projects, show the resolved project, and manage project environment variables. |
-| `git` | Connect or disconnect a project from a GitHub repository. |
+| `project` | List, create, link, and manage projects and their environment variables. |
+| `git` | Connect or disconnect a project from a GitHub repository; pushes deploy. |
 | `branch` | List Prisma branches for the resolved project. |
-| `database` | Create, inspect, and remove Prisma Postgres databases and their connection strings. |
-| `bucket` | Create, list, and delete Tigris object-store buckets and their access keys. |
-| `app` | Build, run, deploy, inspect, open, stream logs, promote, roll back, and remove apps. |
+| `postgres` | Create, inspect, back up, restore, and delete Prisma Postgres databases and their connections. |
+| `bucket` | Create, list, and delete object-store buckets and their access keys. |
+| `service` | Inspect services: versions, logs, domains, promote, roll back, delete. |
+| `dev`, `deploy` | Run a Composer app locally; deploy it to the platform. |
+| `contract`, `db`, `migration`, `orm init`, `lsp` | The Prisma ORM workflow. |
 
 Common examples:
 
 ```bash
-npx prisma-cli version
+npx prisma-cli --version
 npx prisma-cli auth whoami
 npx prisma-cli project show
 npx prisma-cli branch list
-npx prisma-cli app deploy --branch feat-login --framework nextjs
-npx prisma-cli app promote <deployment-id>
+npx prisma-cli service list
+npx prisma-cli service version promote VERSION_ID
 ```
 
 ### Built for humans, CI, and agents
@@ -105,9 +103,9 @@ npx prisma-cli app promote <deployment-id>
 ## Beta notes
 
 - Requires Node.js 22.18 or newer.
-- This is a beta package and may change quickly.
-- Official beta releases publish as `@prisma/cli`.
-- The package binary is `prisma-cli`, not `prisma`, during beta.
+- This is a release-candidate package and may change quickly.
+- The 8.0.0 release candidates publish as `@prisma/cli` on the `next` dist-tag.
+- The package binary is `prisma-cli`; the sibling `prisma` package ships the same CLI under the `prisma` binary.
 - Local project context is cached in `.prisma/local.json`, which is gitignored and not a declarative repo config file.
 
 ---
@@ -115,9 +113,7 @@ npx prisma-cli app promote <deployment-id>
 ## Documentation
 
 - [CLI docs index](https://github.com/prisma/prisma-cli/blob/main/docs/README.md)
-- [Resource model](https://github.com/prisma/prisma-cli/blob/main/docs/product/resource-model.md)
 - [Command principles](https://github.com/prisma/prisma-cli/blob/main/docs/product/command-principles.md)
-- [Command spec](https://github.com/prisma/prisma-cli/blob/main/docs/product/command-spec.md)
 - [Output conventions](https://github.com/prisma/prisma-cli/blob/main/docs/product/output-conventions.md)
 - [Error conventions](https://github.com/prisma/prisma-cli/blob/main/docs/product/error-conventions.md)
 

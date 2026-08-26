@@ -251,6 +251,8 @@ describe("the state file", () => {
     }
 
     const stateDir = path.dirname(stateFilePath);
+    // The trailing rename is the legacy auth.context.json mirror, which
+    // goes through its own temp file in the same directory.
     expect(order).toEqual([
       expect.stringMatching(
         new RegExp(`^open ${escapeForRegExp(stateFilePath)}\\..+\\.tmp$`),
@@ -259,6 +261,11 @@ describe("the state file", () => {
       expect.stringMatching(
         new RegExp(
           `^rename ${escapeForRegExp(stateFilePath)}\\..+\\.tmp -> ${escapeForRegExp(stateFilePath)}$`,
+        ),
+      ),
+      expect.stringMatching(
+        new RegExp(
+          `\\.tmp -> ${escapeForRegExp(stateDir)}.*\\.context\\.json$`,
         ),
       ),
     ]);

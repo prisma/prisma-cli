@@ -3,15 +3,15 @@ import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { parse as parseDotenv } from "dotenv";
 
-import { usageError } from "../../errors";
 import { validateKey } from "./env-config";
+import { envUsageError } from "./env-errors";
 
 export interface EnvFileAssignment {
   key: string;
   value: string;
 }
 
-type EnvFileCommand = "add" | "update" | "deploy";
+type EnvFileCommand = "add" | "update";
 
 interface ParsedEnvFileKey {
   key: string;
@@ -30,16 +30,11 @@ export async function readEnvFileAssignments(
   try {
     contents = await readFile(resolvedPath, "utf8");
   } catch (error) {
-    throw usageError(
+    throw envUsageError(
       `Failed to read env file "${filePath}"`,
       error instanceof Error ? error.message : "The file could not be read.",
       "Pass a readable dotenv file path.",
-      [
-        command === "deploy"
-          ? "prisma-cli app deploy --env .env"
-          : `prisma-cli project env ${command} --file .env --role preview`,
-      ],
-      "app",
+      [`prisma project env ${command} --file .env --role preview`],
     );
   }
 
@@ -53,12 +48,10 @@ export function parseEnvFileContents(
 ): EnvFileAssignment[] {
   const parsedKeys = extractParsedKeys(contents);
   if (parsedKeys.length === 0) {
-    throw usageError(
+    throw envUsageError(
       `No environment variables found in "${filePath}"`,
       "The file does not contain any KEY=VALUE assignments.",
       "Pass a dotenv file with at least one non-empty variable.",
-      [],
-      "app",
     );
   }
 
@@ -67,12 +60,10 @@ export function parseEnvFileContents(
     validateEnvFileKey(entry.key, entry.line, filePath, command);
     const firstLine = seen.get(entry.key);
     if (firstLine !== undefined) {
-      throw usageError(
+      throw envUsageError(
         `Duplicate environment variable "${entry.key}" in "${filePath}"`,
         `Lines ${firstLine} and ${entry.line} both define ${entry.key}.`,
         "Keep one assignment for each key before importing the file.",
-        [],
-        "app",
       );
     }
     seen.set(entry.key, entry.line);
@@ -83,14 +74,12 @@ export function parseEnvFileContents(
     const value = parsedValues[key];
     if (typeof value !== "string" || value.length === 0) {
       const line = seen.get(key);
-      throw usageError(
+      throw envUsageError(
         `Environment variable "${key}" in "${filePath}" has an empty value`,
         line === undefined
           ? `${key} has an empty value.`
           : `Line ${line} defines ${key} with an empty value.`,
         "Pass a non-empty value, or omit the key from the file.",
-        [],
-        "app",
       );
     }
 
@@ -145,18 +134,16 @@ function validateEnvFileKey(
   command: EnvFileCommand,
 ): void {
   try {
-    validateKey(key, command === "deploy" ? "add" : command);
+    validateKey(key, command);
   } catch (error) {
     const reason =
       error instanceof Error && error.message.length > 0
         ? error.message
         : "Invalid environment variable key.";
-    throw usageError(
+    throw envUsageError(
       `Invalid environment variable "${key}" in "${filePath}"`,
       `Line ${line}: ${reason}`,
       "Use a valid env-var key and retry the import.",
-      [],
-      "app",
     );
   }
 }

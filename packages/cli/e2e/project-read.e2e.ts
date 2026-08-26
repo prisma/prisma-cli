@@ -41,7 +41,7 @@ describeCommand("project show", () => {
   it("shows a project resolved by id, and says how it resolved it", async () => {
     const target = scratch.project();
 
-    const run = await scratch.run(["project", "show", "--project", target.id]);
+    const run = await scratch.run(["project", "show", target.id]);
     const shown = run.envelope.result as {
       readonly project: { readonly id: string; readonly name: string };
       readonly resolution: { readonly projectSource: string };

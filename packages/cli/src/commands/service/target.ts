@@ -1,68 +1,49 @@
 import type { CommandContext } from "@prisma/cli-engine";
 import {
-  COMPUTE_CONFIG_FILENAME,
-  ComputeConfigTargetRequiredError,
-  inferComputeTargetFromCwd,
-  selectComputeDeployTarget,
-} from "@prisma/compute-sdk/config";
-import { LocalStateStore } from "../../adapters/local-state";
-import {
   type AppProvider,
   type AppRecord,
   createAppProvider,
+  type DeploymentRecord,
   type DomainRecord,
 } from "../../lib/app/app-provider";
-import {
-  type ComputeDeployTarget,
-  computeConfigErrorToCliError,
-  type LoadedComputeConfig,
-  loadComputeConfig,
-} from "../../lib/app/compute-config";
 import { resolveReadBranch } from "../../lib/app/read-branch";
-import { readLocalGitBranch } from "../../lib/git/local-branch";
 import { projectApiError } from "../../lib/project/provider";
 import {
   type ProjectCandidate,
   type ProjectResolutionContext,
-  projectResolutionErrorToCliError,
+  projectResolutionErrorToStructured,
   resolveProjectTarget,
   sortProjects,
 } from "../../lib/project/resolution";
-import { resolveStateDir } from "../../state-dir";
 import type { AuthWorkspace } from "../../types/auth";
 import type { BranchKind } from "../../types/branch";
 import type { ProjectResolution, ProjectSummary } from "../../types/project";
 import {
   branchNotDeployableError,
-  configTargetRequiresConfigError,
+  branchValueEmptyError,
   deployFailedError,
   domainCommandError,
   domainHostnameInvalidError,
   domainNotFoundError,
-  domainTargetRequiredError,
-  fromLegacyCliError,
   projectNotFoundError,
   runCommandAction,
-  selectedServiceMissingError,
   serviceSelectionInvalidError,
+  serviceTargetRequiredError,
+  versionDetachedError,
+  versionNotFoundError,
   workspaceRequiredError,
 } from "./errors";
 import type {
-  ServiceDeploymentSummary,
   ServiceDomainSummary,
   ServiceDomainTarget,
   ServiceListEntry,
   ServiceSummary,
+  ServiceVersionSummary,
 } from "./results";
-
-const PRISMA_PROJECT_ID_ENV_VAR = "PRISMA_PROJECT_ID";
 
 /** A hostname's optional root dot, and one DNS label. */
 const TRAILING_DOT = /\.$/;
 const DNS_LABEL = /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/;
-/** The group prefix a compute-config error message drops. */
-const SERVICE_PREFIX = /^service /;
-const PRISMA_SERVICE_ID_ENV_VAR = "PRISMA_SERVICE_ID";
 
 export type ServiceContext = Pick<
   CommandContext,
@@ -87,17 +68,6 @@ export interface ResolvedServiceProjectContext {
   resolution: ProjectResolution;
 }
 
-export async function openServiceStateStore(
-  ctx: ServiceContext,
-): Promise<LocalStateStore> {
-  const stateDir = await resolveStateDir({
-    env: ctx.env,
-    cwd: ctx.cwd,
-    signal: ctx.signal,
-  });
-  return new LocalStateStore(stateDir, ctx.signal);
-}
-
 /** The workspace the run is acting as, from the credential the engine
  *  is authenticating with. A workspace with no name shows its id
  *  instead: the id is the only other identifier the user can act on,
@@ -118,100 +88,10 @@ export async function requireWorkspace(
   };
 }
 
-function readServiceEnvOverride(
-  ctx: ServiceContext,
-  name: string,
-): string | undefined {
-  const value = ctx.env[name]?.trim();
-  return value ? value : undefined;
-}
-
 /** What project resolution reads: where the command was invoked, and
  *  the run's abort signal. */
 function resolutionContext(ctx: ServiceContext): ProjectResolutionContext {
   return { runtime: { cwd: ctx.cwd, signal: ctx.signal } };
-}
-
-async function resolveComputeTarget(
-  ctx: ServiceContext,
-  configTarget: string | undefined,
-  commandName: string,
-  options?: {
-    targetOptional?: boolean;
-  },
-): Promise<{
-  config: LoadedComputeConfig | null;
-  target: ComputeDeployTarget | null;
-}> {
-  const loaded = await loadComputeConfig(ctx.cwd, ctx.signal);
-  if (loaded.isErr()) {
-    throw fromLegacyCliError(
-      computeConfigErrorToCliError(loaded.error, commandName),
-    );
-  }
-  const config = loaded.value;
-  if (!config) {
-    if (configTarget) {
-      throw configTargetRequiresConfigError(
-        configTarget,
-        COMPUTE_CONFIG_FILENAME,
-      );
-    }
-    return { config: null, target: null };
-  }
-
-  const requestedTarget =
-    configTarget ?? inferComputeTargetFromCwd(config, ctx.cwd);
-  const selected = selectComputeDeployTarget(config, requestedTarget);
-  if (selected.isErr()) {
-    if (
-      options?.targetOptional &&
-      selected.error instanceof ComputeConfigTargetRequiredError
-    ) {
-      return { config, target: null };
-    }
-    throw fromLegacyCliError(
-      computeConfigErrorToCliError(selected.error, commandName),
-    );
-  }
-
-  return { config, target: selected.value };
-}
-
-/**
- * Compute-config context for service management commands: the project
- * directory (where `.prisma/local.json` lives) and the config-selected
- * service name, which ranks below `--service` but above the remembered
- * selection.
- */
-export async function resolveComputeManagementContext(
-  ctx: ServiceContext,
-  configTarget: string | undefined,
-  commandName: string,
-): Promise<{ projectDir: string; configServiceName: string | undefined }> {
-  const compute = await resolveComputeTarget(ctx, configTarget, commandName, {
-    targetOptional: true,
-  });
-  return {
-    projectDir: compute.config?.configDir ?? ctx.cwd,
-    configServiceName: compute.target?.name ?? compute.target?.key ?? undefined,
-  };
-}
-
-interface ResolvedReadBranchRequest {
-  name: string;
-  explicit: boolean;
-}
-
-async function resolveRequestedBranch(
-  ctx: ServiceContext,
-  explicitBranchName: string | undefined,
-): Promise<ResolvedReadBranchRequest> {
-  if (explicitBranchName) {
-    return { name: explicitBranchName, explicit: true };
-  }
-  const gitBranch = await readLocalGitBranch(ctx.cwd, ctx.signal);
-  return { name: gitBranch ?? "main", explicit: false };
 }
 
 export function toBranchKind(name: string): BranchKind {
@@ -245,9 +125,7 @@ async function listWorkspaceProjects(
     signal: ctx.signal,
   });
   if (error || !data) {
-    throw fromLegacyCliError(
-      projectApiError("Failed to list projects", response, error),
-    );
+    throw projectApiError("Failed to list projects", response, error);
   }
   return sortProjects(
     (data.data ?? []).map((project) => ({
@@ -271,16 +149,23 @@ async function listWorkspaceProjects(
   );
 }
 
+/** A blank `--branch` names no branch and must never fall through to
+ *  the default-branch behavior of omitting the flag. */
+function requireBranchFlagValue(branchName: string | undefined): void {
+  if (branchName !== undefined && branchName.trim() === "") {
+    throw branchValueEmptyError();
+  }
+}
+
 export async function resolveServiceProjectContext(
   ctx: ServiceContext,
   explicitProject: string | undefined,
   options: {
     commandName: string;
-    projectDir?: string;
     branchName?: string;
-    envProjectId?: string;
   },
 ): Promise<ResolvedServiceProjectContext> {
+  requireBranchFlagValue(options.branchName);
   const workspace = await requireWorkspace(ctx);
   // Listed here rather than from inside `resolveProjectTarget`, which
   // runs its body in a Result generator: a throw in the callback comes
@@ -291,22 +176,16 @@ export async function resolveServiceProjectContext(
     context: resolutionContext(ctx),
     workspace,
     ...(explicitProject !== undefined ? { explicitProject } : {}),
-    ...(options.envProjectId !== undefined
-      ? { envProjectId: options.envProjectId }
-      : {}),
-    ...(options.projectDir !== undefined
-      ? { projectDir: options.projectDir }
-      : {}),
     listProjects: () => Promise.resolve(projects),
     commandName: options.commandName,
   });
   if (resolvedResult.isErr()) {
-    throw fromLegacyCliError(
-      projectResolutionErrorToCliError(resolvedResult.error),
-    );
+    throw projectResolutionErrorToStructured(resolvedResult.error);
   }
   const resolved = resolvedResult.value;
-  const requested = await resolveRequestedBranch(ctx, options.branchName);
+  const requested = options.branchName
+    ? { name: options.branchName, explicit: true }
+    : { name: "main", explicit: false };
 
   const remoteBranch = requested.explicit
     ? null
@@ -367,69 +246,69 @@ export async function listServices(
     });
 }
 
-/**
- * The service picker: an explicit name must exist; otherwise the saved
- * selection is reused when still valid; otherwise the engine prompt
- * selects interactively (non-interactive contexts settle with the
- * engine's structural prompt failure).
- */
-export async function resolveExistingServiceSelection(
-  ctx: ServiceContext,
-  stateStore: LocalStateStore,
-  projectId: string,
-  services: AppRecord[],
-  explicitServiceName: string | undefined,
-): Promise<AppRecord | null> {
-  if (explicitServiceName) {
-    const matched = services.find(
-      (service) => service.name === explicitServiceName,
-    );
-    if (!matched) {
-      throw serviceSelectionInvalidError(explicitServiceName, projectId);
-    }
-    return matched;
+/** The service argument, required: service commands never infer,
+ *  remember, or prompt for a target. */
+export function requireServiceArgument(
+  serviceRef: string | undefined,
+  commandName: string,
+): string {
+  if (!serviceRef) {
+    throw serviceTargetRequiredError(commandName);
   }
-
-  const savedSelection = await stateStore.readSelectedApp(projectId);
-  if (savedSelection) {
-    const matched =
-      services.find((service) => service.id === savedSelection.id) ??
-      services.find((service) => service.name === savedSelection.name);
-    if (matched) {
-      return matched;
-    }
-  }
-
-  if (services.length === 0) {
-    return null;
-  }
-
-  const selectedId = await ctx.prompt.select(
-    "Select a service",
-    sortServices(services).map((service) => ({
-      value: service.id,
-      label: service.name,
-    })),
-  );
-  return services.find((service) => service.id === selectedId) ?? null;
+  return serviceRef;
 }
 
-export async function rememberSelectedService(
-  stateStore: LocalStateStore,
+/** Matches the service argument against the branch's services: the
+ *  stable platform id is primary, the name is the fallback. An id
+ *  match always wins, so a service named like another service's id
+ *  cannot shadow it. */
+export function matchRequestedService(
+  serviceRef: string,
+  services: AppRecord[],
   projectId: string,
-  service: Pick<AppRecord, "id" | "name">,
-): Promise<void> {
-  await stateStore.setSelectedApp(projectId, {
-    id: service.id,
-    name: service.name,
-  });
+): AppRecord {
+  const matched =
+    services.find((service) => service.id === serviceRef) ??
+    services.find((service) => service.name === serviceRef);
+  if (!matched) {
+    throw serviceSelectionInvalidError(serviceRef, projectId);
+  }
+  return matched;
+}
+
+export interface VersionSubject {
+  provider: AppProvider;
+  service: AppRecord;
+  version: DeploymentRecord;
+}
+
+/** Resolve a service version by its globally-unique id. The id alone names
+ *  the subject — no service, project, or branch parameter is consulted,
+ *  the same way `service version show` resolves it. */
+export async function resolveVersionSubject(
+  ctx: ServiceContext,
+  deploymentId: string,
+): Promise<VersionSubject> {
+  const provider = serviceProvider(ctx);
+  const shown = await provider
+    .showDeployment(deploymentId, { signal: ctx.signal })
+    .catch((error) => {
+      throw deployFailedError("Failed to show version", error, []);
+    });
+  if (!shown) {
+    throw versionNotFoundError(deploymentId);
+  }
+  if (!shown.app) {
+    throw versionDetachedError(deploymentId);
+  }
+  return { provider, service: shown.app, version: shown.deployment };
 }
 
 /** The live deployment is the one the service record names as its latest
  *  deployment. Nothing else decides it — local CLI state never does. */
-export function resolveCurrentLiveDeploymentId(
+export function resolveCurrentLiveVersionId(
   service: Pick<AppRecord, "liveDeploymentId">,
-  deployments: ServiceDeploymentSummary[],
+  deployments: ServiceVersionSummary[],
 ): string | null {
   if (
     service.liveDeploymentId &&
@@ -440,10 +319,10 @@ export function resolveCurrentLiveDeploymentId(
   return null;
 }
 
-export function applyLiveDeploymentHint(
-  deployments: ServiceDeploymentSummary[],
+export function applyLiveVersionHint(
+  deployments: ServiceVersionSummary[],
   currentLiveDeploymentId: string | null,
-): ServiceDeploymentSummary[] {
+): ServiceVersionSummary[] {
   if (!currentLiveDeploymentId) {
     return deployments.map((deployment) => ({
       ...deployment,
@@ -456,9 +335,9 @@ export function applyLiveDeploymentHint(
   }));
 }
 
-export function sortDeploymentsNewestFirst(
-  deployments: ServiceDeploymentSummary[],
-): ServiceDeploymentSummary[] {
+export function sortVersionsNewestFirst(
+  deployments: ServiceVersionSummary[],
+): ServiceVersionSummary[] {
   return deployments
     .slice()
     .sort(
@@ -483,7 +362,7 @@ export function toServiceListEntry(service: AppRecord): ServiceListEntry {
     id: service.id,
     name: service.name,
     region: service.region,
-    liveDeploymentId: service.liveDeploymentId,
+    liveVersionId: service.liveDeploymentId,
     liveUrl: service.liveDeploymentId ? service.liveUrl : null,
   };
 }
@@ -551,7 +430,7 @@ export async function resolveDomainByHostname(
   provider: AppProvider,
   serviceId: string,
   hostname: string,
-  command: "add" | "show" | "remove" | "retry" | "wait",
+  command: "add" | "show" | "delete" | "retry" | "wait",
   signal: AbortSignal,
 ): Promise<DomainRecord> {
   const domains = await provider
@@ -568,66 +447,64 @@ export async function resolveDomainByHostname(
   throw domainNotFoundError(hostname);
 }
 
-export interface ServiceReadState {
+interface ServiceProjectState {
   provider: AppProvider;
-  stateStore: LocalStateStore;
   target: ResolvedServiceProjectContext;
   projectId: string;
-  selected: AppRecord | null;
 }
 
-/** The shared read flow for show / deployment list / open: config context,
- *  project + branch resolution, service listing, and selection. */
+export interface ServiceReadState extends ServiceProjectState {
+  service: AppRecord;
+}
+
+/** Project + branch resolution, before the service match. */
+async function resolveServiceProjectState(
+  ctx: ServiceContext,
+  options: {
+    projectRef?: string;
+    branchName?: string;
+    commandName: string;
+  },
+): Promise<ServiceProjectState> {
+  const provider = serviceProvider(ctx);
+  const target = await resolveServiceProjectContext(ctx, options.projectRef, {
+    commandName: options.commandName,
+    ...(options.branchName !== undefined
+      ? { branchName: options.branchName }
+      : {}),
+  });
+  return { provider, target, projectId: target.project.id };
+}
+
+/** The shared read flow for every command that acts on an existing
+ *  service: project + branch resolution, service listing, and the
+ *  parameter-only service match. */
 export async function resolveServiceReadState(
   ctx: ServiceContext,
   options: {
     serviceName?: string;
     projectRef?: string;
-    configTarget?: string;
     branchName?: string;
     commandName: string;
-    /** Skip the service picker entirely. A caller resolving its target
-     *  by a globally-unique deployment id does not use the selection,
-     *  and selecting first would prompt for something it ignores. */
-    skipSelection?: boolean;
   },
 ): Promise<ServiceReadState> {
-  const compute = await resolveComputeManagementContext(
-    ctx,
-    options.configTarget,
-    options.commandName.replace(SERVICE_PREFIX, ""),
+  const requested = requireServiceArgument(
+    options.serviceName,
+    options.commandName,
   );
-  const provider = serviceProvider(ctx);
-  const target = await resolveServiceProjectContext(ctx, options.projectRef, {
-    commandName: options.commandName,
-    projectDir: compute.projectDir,
-    ...(options.branchName !== undefined
-      ? { branchName: options.branchName }
-      : {}),
-  });
-  const projectId = target.project.id;
-  const stateStore = await openServiceStateStore(ctx);
+  const state = await resolveServiceProjectState(ctx, options);
   const services = await listServices(
     ctx,
-    provider,
-    projectId,
-    target.branch.name,
+    state.provider,
+    state.projectId,
+    state.target.branch.name,
   );
-  const selected = options.skipSelection
-    ? null
-    : await resolveExistingServiceSelection(
-        ctx,
-        stateStore,
-        projectId,
-        services,
-        options.serviceName ?? compute.configServiceName,
-      );
-  return { provider, stateStore, target, projectId, selected };
+  const service = matchRequestedService(requested, services, state.projectId);
+  return { ...state, service };
 }
 
 export interface ResolvedServiceDomainTarget {
   provider: AppProvider;
-  stateStore: LocalStateStore;
   service: AppRecord;
   resultTarget: ServiceDomainTarget;
 }
@@ -638,70 +515,37 @@ export async function resolveServiceDomainTarget(
     serviceName?: string;
     projectRef?: string;
     branchName?: string;
-    configTarget?: string;
     commandName: string;
   },
 ): Promise<ResolvedServiceDomainTarget> {
-  const compute = await resolveComputeManagementContext(
-    ctx,
-    options.configTarget,
-    options.commandName.replace(SERVICE_PREFIX, ""),
-  );
-  const branchName = options.branchName?.trim() || "production";
+  requireBranchFlagValue(options.branchName);
+  const branchName = options.branchName?.trim() ?? "production";
   if (toBranchKind(branchName) !== "production") {
     throw branchNotDeployableError(branchName);
   }
 
-  const envProjectId = readServiceEnvOverride(ctx, PRISMA_PROJECT_ID_ENV_VAR);
-  const envServiceId = readServiceEnvOverride(ctx, PRISMA_SERVICE_ID_ENV_VAR);
+  const requested = requireServiceArgument(
+    options.serviceName,
+    options.commandName,
+  );
 
   const provider = serviceProvider(ctx);
   const target = await resolveServiceProjectContext(ctx, options.projectRef, {
     commandName: options.commandName,
-    projectDir: compute.projectDir,
     branchName,
-    ...(envProjectId !== undefined ? { envProjectId } : {}),
   });
   const projectId = target.project.id;
-  const stateStore = await openServiceStateStore(ctx);
   const services = await listServices(
     ctx,
     provider,
     projectId,
     target.branch.name,
   );
-
-  const explicitServiceName = options.serviceName ?? compute.configServiceName;
-  let selectedService: AppRecord | null;
-  if (envServiceId) {
-    selectedService =
-      services.find((service) => service.id === envServiceId) ?? null;
-    if (!selectedService) {
-      throw selectedServiceMissingError(
-        PRISMA_SERVICE_ID_ENV_VAR,
-        envServiceId,
-        projectId,
-      );
-    }
-  } else {
-    selectedService = await resolveExistingServiceSelection(
-      ctx,
-      stateStore,
-      projectId,
-      services,
-      explicitServiceName,
-    );
-  }
-  if (!selectedService) {
-    throw domainTargetRequiredError();
-  }
-
-  await rememberSelectedService(stateStore, projectId, selectedService);
+  const service = matchRequestedService(requested, services, projectId);
 
   return {
     provider,
-    stateStore,
-    service: selectedService,
+    service,
     resultTarget: {
       workspace: target.workspace,
       project: target.project,
@@ -709,7 +553,7 @@ export async function resolveServiceDomainTarget(
         name: target.branch.name,
         kind: target.branch.kind,
       },
-      service: toServiceSummary(selectedService),
+      service: toServiceSummary(service),
     },
   };
 }

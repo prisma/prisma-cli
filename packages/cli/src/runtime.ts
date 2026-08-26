@@ -22,6 +22,7 @@ import {
   STATE_FILE_ENV_VAR,
 } from "./auth/state-file";
 import { fetchWorkspaceName } from "./auth/workspace-name";
+import { getCliVersion } from "./lib/version";
 import { runPackageManager } from "./package-manager-runner";
 import { makeSpawnChild } from "./spawn";
 
@@ -133,7 +134,8 @@ export async function assembleRuntime(proc: HostProcess): Promise<Runtime> {
     outputStreamsShareDevice: outputStreamsShareDevice(),
     exit: (code) => proc.exit(code),
     onSignal: makeOnSignal(proc),
-    loadConfig: (configPath) => loadConfig(proc.cwd(), configPath),
+    loadConfig: (configPath) =>
+      loadConfig(proc.cwd(), configPath, getCliVersion()),
     credentialManager: new FileCredentialManager({
       env: proc.env,
       fetchWorkspaceName: fetchWorkspaceName(apiBaseUrl),

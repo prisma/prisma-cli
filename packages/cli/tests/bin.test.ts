@@ -7,6 +7,7 @@ import { describe, expect, it } from "vitest";
 
 import { CLIENT_ID, DEFAULT_REDIRECT_URI } from "../src/auth/client";
 import { buildCli } from "../src/cli";
+import { getCliVersion } from "../src/lib/version";
 import { main } from "../src/main";
 import {
   assembleRuntime,
@@ -22,6 +23,15 @@ const NAMED_CONFIG_PATH = join(
   "fixtures",
   "config",
   "elsewhere.config.ts",
+);
+
+/** A config whose evaluation fails with Node's wording for a missing
+ *  `import "prisma/config"`. */
+const MISSING_PRISMA_CONFIG_PATH = join(
+  dirname(fileURLToPath(import.meta.url)),
+  "fixtures",
+  "config",
+  "missing-prisma.config.ts",
 );
 
 /** A prisma.config.ts whose only section is composer's. */
@@ -286,6 +296,15 @@ describe("assembleRuntime", () => {
     );
   }, 60_000);
 
+  it("names this CLI's exact version in the install guidance for an unresolvable prisma package", async () => {
+    const runtime = await assembleRuntime(makeProcess());
+
+    const loaded = await runtime.loadConfig(MISSING_PRISMA_CONFIG_PATH);
+    expect(loaded.diagnostics[0]?.diagnostic.nextActions?.[0]?.label).toContain(
+      `npm install --save-dev prisma@${getCliVersion()}`,
+    );
+  }, 60_000);
+
   it("derives managementApi.baseUrl from PRISMA_MANAGEMENT_API_URL", async () => {
     const proc = makeProcess({
       env: { PRISMA_MANAGEMENT_API_URL: "https://api.example.test" },
@@ -445,9 +464,9 @@ describe("buildCli", () => {
     return last.envelope.error;
   }
 
-  /** `composer log` through the real bin, against the fixture whose
+  /** Composer's `dev` through the real bin, against the fixture whose
    *  composer section names a config file that is not there. */
-  async function runComposerLog(): Promise<{
+  async function runComposerDev(): Promise<{
     readonly exitCode: number;
     readonly error: Diagnostic;
   }> {
@@ -455,8 +474,7 @@ describe("buildCli", () => {
       argv: [
         "node",
         "bin.js",
-        "composer",
-        "log",
+        "dev",
         "--config",
         COMPOSER_SECTION_CONFIG_PATH,
         "src/service.ts",
@@ -472,17 +490,17 @@ describe("buildCli", () => {
    * family declares, read by the bin's real disk loader, reaching
    * composer's own handler as the path it acts on.
    *
-   * Every platform but Windows. `dev` and `log` are the only composer
-   * commands that reach config discovery without credentials — deploy
-   * and destroy stop at the credential check — and both refuse Windows
-   * before they read the section they were handed, so no shipped
-   * command can show the section arriving there. The test after this
-   * one pins what Windows can still show.
+   * Every platform but Windows. `dev` is the only composer command
+   * that reaches config discovery without credentials — `deploy` stops
+   * at the credential check — and it refuses Windows before it reads
+   * the section it was handed, so no shipped command can show the
+   * section arriving there. The test after this one pins what Windows
+   * can still show.
    */
   it.skipIf(process.platform === "win32")(
     "hands the composer section of prisma.config.ts to the composer family",
     async () => {
-      const { exitCode, error } = await runComposerLog();
+      const { exitCode, error } = await runComposerDev();
 
       expect(exitCode).toBe(2);
       expect(error.code).toBe("CONFIG.FILE_MISSING");
@@ -508,12 +526,12 @@ describe("buildCli", () => {
    * collapses back into the one above.
    */
   it.runIf(process.platform === "win32")(
-    "on Windows, composer's log refuses the platform before it reads the section",
+    "on Windows, composer's dev refuses the platform before it reads the section",
     async () => {
-      const { exitCode, error } = await runComposerLog();
+      const { exitCode, error } = await runComposerDev();
 
       expect(exitCode).toBe(2);
-      expect(error.code).toBe("LOG.PLATFORM_UNSUPPORTED");
+      expect(error.code).toBe("DEV.PLATFORM_UNSUPPORTED");
     },
   );
 

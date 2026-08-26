@@ -130,7 +130,7 @@ function blocks(presented: unknown) {
   return value?.presentation.human ?? [];
 }
 
-describe("prisma-cli branch list", () => {
+describe("prisma branch list", () => {
   it("lists production branches first, then the rest alphabetically", async () => {
     const result = await makeCli(branchClient()).run(["branch", "list"], {
       cwd: await pinnedCwd(),
@@ -218,7 +218,7 @@ describe("prisma-cli branch list", () => {
     expect(result.presented?.presentation.stdout).toEqual([]);
   });
 
-  it("maps an API failure to the passthrough code", async () => {
+  it("reports an API failure as BRANCH.API_ERROR carrying the API code in meta", async () => {
     const result = await makeCli(
       branchClient({
         routes: {
@@ -234,9 +234,10 @@ describe("prisma-cli branch list", () => {
     expect(resultFrame(result.json).envelope).toMatchObject({
       ok: false,
       error: {
-        code: "BRANCH.internalError",
+        code: "BRANCH.API_ERROR",
         summary: "Failed to list branches",
         why: "Backend exploded.",
+        meta: { status: 500, apiCode: "internalError" },
         nextActions: [
           {
             kind: "user-choice",
@@ -263,7 +264,7 @@ describe("prisma-cli branch list", () => {
       error: {
         code: "PROJECT.SETUP_REQUIRED",
         summary: "Choose a Project before running this command",
-        why: "This directory is not linked to a Prisma Project, and prisma-cli branch list will not choose one from package or directory names.",
+        why: "This directory is not linked to a Prisma Project, and prisma branch list will not choose one from package or directory names.",
       },
     });
   });

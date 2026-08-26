@@ -8,10 +8,7 @@ import {
 } from "@prisma/cli-engine";
 import { createComposerFamily } from "@prisma/composer-cli/family";
 import { ormCommandFamily as ormToolchainFamily } from "@prisma/orm-toolchain/cli";
-import { CLI_DOCS_URL, CLI_NAME } from "./cli-name";
-import { agentInstallCommand } from "./commands/agent/install";
-import { agentStatusCommand } from "./commands/agent/status";
-import { agentUpdateCommand } from "./commands/agent/update";
+import { CLI_DOCS_URL, CLI_NAME, DOCS_ERRORS_BASE_URL } from "./cli-name";
 import { authLoginCommand } from "./commands/auth/login";
 import { authLogoutCommand } from "./commands/auth/logout";
 import { authWhoamiCommand } from "./commands/auth/whoami";
@@ -25,54 +22,55 @@ import { bucketKeyCreateCommand } from "./commands/bucket/key-create";
 import { bucketKeyDeleteCommand } from "./commands/bucket/key-delete";
 import { bucketKeyListCommand } from "./commands/bucket/key-list";
 import { bucketListCommand } from "./commands/bucket/list";
-import { buildLogsCommand } from "./commands/build/logs";
 import { feedbackCommand } from "./commands/feedback";
 import { gitConnectCommand } from "./commands/git/connect";
 import { gitDisconnectCommand } from "./commands/git/disconnect";
-import { initCommand } from "./commands/init/init";
+import { initCommand } from "./commands/init";
 import { postgresBackupListCommand } from "./commands/postgres/backup-list";
+import { postgresBackupRestoreCommand } from "./commands/postgres/backup-restore";
 import { postgresConnectionCreateCommand } from "./commands/postgres/connection-create";
+import { postgresConnectionDeleteCommand } from "./commands/postgres/connection-delete";
 import { postgresConnectionListCommand } from "./commands/postgres/connection-list";
-import { postgresConnectionRemoveCommand } from "./commands/postgres/connection-remove";
 import { postgresConnectionRotateCommand } from "./commands/postgres/connection-rotate";
 import { postgresCreateCommand } from "./commands/postgres/create";
+import { postgresDeleteCommand } from "./commands/postgres/delete";
 import { postgresListCommand } from "./commands/postgres/list";
-import { postgresRemoveCommand } from "./commands/postgres/remove";
-import { postgresRestoreCommand } from "./commands/postgres/restore";
 import { postgresShowCommand } from "./commands/postgres/show";
 import { postgresUsageCommand } from "./commands/postgres/usage";
 import { projectCreateCommand } from "./commands/project/create";
+import { projectDeleteCommand } from "./commands/project/delete";
 import { projectEnvAddCommand } from "./commands/project/env-add";
+import { projectEnvDeleteCommand } from "./commands/project/env-delete";
 import { projectEnvListCommand } from "./commands/project/env-list";
-import { projectEnvRemoveCommand } from "./commands/project/env-remove";
 import { projectEnvUpdateCommand } from "./commands/project/env-update";
 import { projectLinkCommand } from "./commands/project/link";
 import { projectListCommand } from "./commands/project/list";
-import { projectRemoveCommand } from "./commands/project/remove";
 import { projectRenameCommand } from "./commands/project/rename";
 import { projectShowCommand } from "./commands/project/show";
 import { projectTransferCommand } from "./commands/project/transfer";
 import { serviceCreateCommand } from "./commands/service/create";
-import { serviceDeploymentDeleteCommand } from "./commands/service/deployment-delete";
-import { serviceDeploymentListCommand } from "./commands/service/deployment-list";
-import { serviceDeploymentPromoteCommand } from "./commands/service/deployment-promote";
-import { serviceDeploymentRollbackCommand } from "./commands/service/deployment-rollback";
-import { serviceDeploymentShowCommand } from "./commands/service/deployment-show";
-import { serviceDeploymentStartCommand } from "./commands/service/deployment-start";
-import { serviceDeploymentStopCommand } from "./commands/service/deployment-stop";
+import { serviceDeleteCommand } from "./commands/service/delete";
 import { serviceDomainAddCommand } from "./commands/service/domain-add";
-import { serviceDomainRemoveCommand } from "./commands/service/domain-remove";
+import { serviceDomainDeleteCommand } from "./commands/service/domain-delete";
 import { serviceDomainRetryCommand } from "./commands/service/domain-retry";
 import { serviceDomainShowCommand } from "./commands/service/domain-show";
 import { serviceDomainWaitCommand } from "./commands/service/domain-wait";
 import { serviceListCommand } from "./commands/service/list";
 import { serviceLogsCommand } from "./commands/service/logs";
 import { serviceOpenCommand } from "./commands/service/open";
-import { serviceRemoveCommand } from "./commands/service/remove";
 import { serviceShowCommand } from "./commands/service/show";
+import { serviceVersionDeleteCommand } from "./commands/service/version-delete";
+import { serviceVersionListCommand } from "./commands/service/version-list";
+import { serviceVersionPromoteCommand } from "./commands/service/version-promote";
+import { serviceVersionRollbackCommand } from "./commands/service/version-rollback";
+import { serviceVersionShowCommand } from "./commands/service/version-show";
+import { serviceVersionStartCommand } from "./commands/service/version-start";
+import { serviceVersionStopCommand } from "./commands/service/version-stop";
+import { skillsCommandFamily } from "./commands/skills/family";
 import { getCliVersion } from "./lib/version";
 
 export const platformCommandFamily: CommandFamily = defineCommandFamily({
+  docsBaseUrl: DOCS_ERRORS_BASE_URL,
   commands: {
     login: authLoginCommand,
     logout: authLogoutCommand,
@@ -85,23 +83,23 @@ export const platformCommandFamily: CommandFamily = defineCommandFamily({
     projectCreate: projectCreateCommand,
     projectLink: projectLinkCommand,
     projectRename: projectRenameCommand,
-    projectRemove: projectRemoveCommand,
+    projectDelete: projectDeleteCommand,
     projectTransfer: projectTransferCommand,
     projectEnvAdd: projectEnvAddCommand,
     projectEnvUpdate: projectEnvUpdateCommand,
     projectEnvList: projectEnvListCommand,
-    projectEnvRemove: projectEnvRemoveCommand,
+    projectEnvDelete: projectEnvDeleteCommand,
     postgresList: postgresListCommand,
     postgresShow: postgresShowCommand,
     postgresCreate: postgresCreateCommand,
     postgresUsage: postgresUsageCommand,
-    postgresRestore: postgresRestoreCommand,
-    postgresRemove: postgresRemoveCommand,
+    postgresBackupRestore: postgresBackupRestoreCommand,
+    postgresDelete: postgresDeleteCommand,
     postgresBackupList: postgresBackupListCommand,
     postgresConnectionList: postgresConnectionListCommand,
     postgresConnectionCreate: postgresConnectionCreateCommand,
     postgresConnectionRotate: postgresConnectionRotateCommand,
-    postgresConnectionRemove: postgresConnectionRemoveCommand,
+    postgresConnectionDelete: postgresConnectionDeleteCommand,
     bucketList: bucketListCommand,
     bucketCreate: bucketCreateCommand,
     bucketDelete: bucketDeleteCommand,
@@ -116,41 +114,47 @@ export const platformCommandFamily: CommandFamily = defineCommandFamily({
     serviceCreate: serviceCreateCommand,
     serviceShow: serviceShowCommand,
     serviceOpen: serviceOpenCommand,
-    serviceDeploymentList: serviceDeploymentListCommand,
-    serviceDeploymentShow: serviceDeploymentShowCommand,
-    serviceDeploymentPromote: serviceDeploymentPromoteCommand,
-    serviceDeploymentRollback: serviceDeploymentRollbackCommand,
-    serviceDeploymentStart: serviceDeploymentStartCommand,
-    serviceDeploymentStop: serviceDeploymentStopCommand,
-    serviceDeploymentDelete: serviceDeploymentDeleteCommand,
-    serviceRemove: serviceRemoveCommand,
+    serviceVersionList: serviceVersionListCommand,
+    serviceVersionShow: serviceVersionShowCommand,
+    serviceVersionPromote: serviceVersionPromoteCommand,
+    serviceVersionRollback: serviceVersionRollbackCommand,
+    serviceVersionStart: serviceVersionStartCommand,
+    serviceVersionStop: serviceVersionStopCommand,
+    serviceVersionDelete: serviceVersionDeleteCommand,
+    serviceDelete: serviceDeleteCommand,
     serviceDomainAdd: serviceDomainAddCommand,
     serviceDomainShow: serviceDomainShowCommand,
-    serviceDomainRemove: serviceDomainRemoveCommand,
+    serviceDomainDelete: serviceDomainDeleteCommand,
     serviceDomainRetry: serviceDomainRetryCommand,
     serviceDomainWait: serviceDomainWaitCommand,
-    buildLogs: buildLogsCommand,
   },
 });
 
 /**
  * Composer's commands, contributed by composer's own package and run by
- * this process. Only the command definitions and their handler entry
- * functions load here; the alchemy and effect constellation stays behind
- * composer's dynamic executor imports, so mounting costs an unrelated
- * command nothing.
+ * this process, mounted as shipped. Only the command definitions and
+ * their handler entry functions load here; the alchemy and effect
+ * constellation stays behind composer's dynamic executor imports, so
+ * mounting costs an unrelated command nothing.
  */
 export const composerCommandFamily: CommandFamily = createComposerFamily();
 
 /**
- * The ORM commands, contributed by orm-toolchain's own package. The
- * family object carries its `orm` config section, its docs base and its
- * redirect table, so nothing here is wired per command. Unlike
- * composer's, this family's entry module imports esbuild and arktype
- * statically, so every invocation of this bin pays that import; fixing
- * that is orm-toolchain's move.
+ * The ORM commands, contributed by orm-toolchain's own package, mounted
+ * as shipped: the family keys are the mount paths, so the shell adds
+ * nothing. The family object carries its `orm` config section, its docs
+ * base and its redirect table. Unlike composer's, this family's entry
+ * module imports esbuild and arktype statically, so every invocation of
+ * this bin pays that import; fixing that is orm-toolchain's move.
  */
 export const ormCommandFamily: CommandFamily = ormToolchainFamily;
+
+/**
+ * Skill delivery for AI coding agents: one pair of commands for every
+ * product, defined in this package because the skills travel in the
+ * product packages and only the shell sees all of them.
+ */
+export { skillsCommandFamily };
 
 /** The engine ships the three telemetry commands and the group help
  *  text that belongs to them; both halves are spread in below. */
@@ -165,7 +169,9 @@ export const cliGroups: Readonly<
     brief: "Manage environment variables for the active project",
   },
   postgres: { brief: "Manage Prisma Postgres databases for a project" },
-  "postgres backup": { brief: "Inspect platform-created database backups" },
+  "postgres backup": {
+    brief: "Inspect and restore platform-created database backups",
+  },
   "postgres connection": {
     brief: "Manage one-time-view database connection strings",
   },
@@ -173,20 +179,16 @@ export const cliGroups: Readonly<
   "bucket key": { brief: "Manage access keys for an object-store bucket" },
   branch: { brief: "View your Platform branches" },
   git: { brief: "Manage Git repository connections for a project" },
-  service: { brief: "Manage services and deployments for a project" },
+  service: { brief: "Manage services and their versions for a project" },
   "service domain": { brief: "Manage custom domains for a service" },
-  "service deployment": { brief: "Manage deployments for a service" },
-  build: { brief: "Inspect builds created by a git push or Console" },
-  composer: {
-    brief: "Run and deploy applications composed from Prisma modules",
-  },
-  agent: { brief: "Manage Prisma skills for AI coding agents" },
+  "service version": { brief: "Manage the versions of a service" },
   "auth workspace": { brief: "Manage local workspace sessions" },
   contract: { brief: "Define and emit your application data contract" },
   db: { brief: "Verify, sign and update your database against the contract" },
   migration: { brief: "Plan, inspect and scaffold on-disk migrations" },
-  ref: { brief: "Manage named refs that point at contracts" },
+  "migration ref": { brief: "Manage named refs that point at contracts" },
   orm: { brief: "Initialize a Prisma ORM project" },
+  skills: { brief: "Keep this project's Prisma agent skills current" },
   ...telemetry.groups,
 };
 
@@ -202,23 +204,23 @@ export const mountedCommands: Readonly<Record<string, AnyCommand>> = {
   "project create": projectCreateCommand,
   "project link": projectLinkCommand,
   "project rename": projectRenameCommand,
-  "project remove": projectRemoveCommand,
+  "project delete": projectDeleteCommand,
   "project transfer": projectTransferCommand,
   "project env add": projectEnvAddCommand,
   "project env update": projectEnvUpdateCommand,
   "project env list": projectEnvListCommand,
-  "project env remove": projectEnvRemoveCommand,
+  "project env delete": projectEnvDeleteCommand,
   "postgres list": postgresListCommand,
   "postgres show": postgresShowCommand,
   "postgres create": postgresCreateCommand,
   "postgres usage": postgresUsageCommand,
-  "postgres restore": postgresRestoreCommand,
-  "postgres remove": postgresRemoveCommand,
+  "postgres delete": postgresDeleteCommand,
   "postgres backup list": postgresBackupListCommand,
+  "postgres backup restore": postgresBackupRestoreCommand,
   "postgres connection list": postgresConnectionListCommand,
   "postgres connection create": postgresConnectionCreateCommand,
   "postgres connection rotate": postgresConnectionRotateCommand,
-  "postgres connection remove": postgresConnectionRemoveCommand,
+  "postgres connection delete": postgresConnectionDeleteCommand,
   "bucket list": bucketListCommand,
   "bucket create": bucketCreateCommand,
   "bucket delete": bucketDeleteCommand,
@@ -233,25 +235,22 @@ export const mountedCommands: Readonly<Record<string, AnyCommand>> = {
   "service create": serviceCreateCommand,
   "service show": serviceShowCommand,
   "service open": serviceOpenCommand,
-  "service deployment list": serviceDeploymentListCommand,
-  "service deployment show": serviceDeploymentShowCommand,
-  "service deployment promote": serviceDeploymentPromoteCommand,
-  "service deployment rollback": serviceDeploymentRollbackCommand,
-  "service deployment start": serviceDeploymentStartCommand,
-  "service deployment stop": serviceDeploymentStopCommand,
-  "service deployment delete": serviceDeploymentDeleteCommand,
-  "service remove": serviceRemoveCommand,
+  "service version list": serviceVersionListCommand,
+  "service version show": serviceVersionShowCommand,
+  "service version promote": serviceVersionPromoteCommand,
+  "service version rollback": serviceVersionRollbackCommand,
+  "service version start": serviceVersionStartCommand,
+  "service version stop": serviceVersionStopCommand,
+  "service version delete": serviceVersionDeleteCommand,
+  "service delete": serviceDeleteCommand,
   "service domain add": serviceDomainAddCommand,
   "service domain show": serviceDomainShowCommand,
-  "service domain remove": serviceDomainRemoveCommand,
+  "service domain delete": serviceDomainDeleteCommand,
   "service domain retry": serviceDomainRetryCommand,
   "service domain wait": serviceDomainWaitCommand,
-  // Platform builds are their own group; there is no local build verb.
-  "build logs": buildLogsCommand,
-  "composer deploy": composerCommandFamily.commands.deploy,
-  "composer destroy": composerCommandFamily.commands.destroy,
-  "composer dev": composerCommandFamily.commands.dev,
-  "composer log": composerCommandFamily.commands.log,
+  // Composer's two product verbs, mounted at the root.
+  deploy: composerCommandFamily.commands.deploy,
+  dev: composerCommandFamily.commands.dev,
   // The ORM family. Written out per path: the shell owns the tree
   // (R12), so this map — not the family's own keying — is the source of
   // truth for where each command mounts.
@@ -262,12 +261,12 @@ export const mountedCommands: Readonly<Record<string, AnyCommand>> = {
   "db sign": ormCommandFamily.commands["db sign"],
   "db update": ormCommandFamily.commands["db update"],
   "db verify": ormCommandFamily.commands["db verify"],
-  format: ormCommandFamily.commands.format,
-  // Ruled (operator, 2026-08-12): the ORM's project initializer lives at
-  // `orm init`; top-level `init` is the platform's compute-config wizard.
-  "orm init": ormCommandFamily.commands.init,
+  "db migrate": ormCommandFamily.commands["db migrate"],
+  "contract format": ormCommandFamily.commands["contract format"],
+  // `orm init` keeps this path: only the top-level `init` (the compute
+  // config wizard) was removed, by the 2026-08-21 PM review.
+  "orm init": ormCommandFamily.commands["orm init"],
   lsp: ormCommandFamily.commands.lsp,
-  migrate: ormCommandFamily.commands.migrate,
   "migration check": ormCommandFamily.commands["migration check"],
   "migration graph": ormCommandFamily.commands["migration graph"],
   "migration list": ormCommandFamily.commands["migration list"],
@@ -276,20 +275,16 @@ export const mountedCommands: Readonly<Record<string, AnyCommand>> = {
   "migration plan": ormCommandFamily.commands["migration plan"],
   "migration show": ormCommandFamily.commands["migration show"],
   "migration status": ormCommandFamily.commands["migration status"],
-  "ref delete": ormCommandFamily.commands["ref delete"],
-  "ref list": ormCommandFamily.commands["ref list"],
-  "ref set": ormCommandFamily.commands["ref set"],
+  "migration ref delete": ormCommandFamily.commands["migration ref delete"],
+  "migration ref list": ormCommandFamily.commands["migration ref list"],
+  "migration ref set": ormCommandFamily.commands["migration ref set"],
   // Local utilities: no owning package, no config section, no API.
-  "agent install": agentInstallCommand,
-  "agent update": agentUpdateCommand,
-  "agent status": agentStatusCommand,
+  init: initCommand,
+  "skills sync": skillsCommandFamily.commands.sync,
+  "skills list": skillsCommandFamily.commands.list,
   feedback: feedbackCommand,
   // The engine's consent surface, mounted whole (no command family).
   ...telemetry.commands,
-  // Top-level, and not the platform package's: init writes the local
-  // compute config the service group reads. It joins the compute family
-  // when one exists.
-  init: initCommand,
 };
 
 export function buildCli(): Cli {
@@ -300,6 +295,7 @@ export function buildCli(): Cli {
       platformCommandFamily,
       composerCommandFamily,
       ormCommandFamily,
+      skillsCommandFamily,
     ],
     groups: cliGroups,
     commands: mountedCommands,
@@ -307,7 +303,7 @@ export function buildCli(): Cli {
       tagline: "The Prisma Developer Platform, from your terminal",
       description:
         "Deploy your app with isolated infrastructure for every branch.",
-      examples: ["init", "auth login", "project list"],
+      examples: ["auth login", "project list", "deploy"],
       docsUrl: CLI_DOCS_URL,
     },
     telemetry: { docsUrl: CLI_DOCS_URL },

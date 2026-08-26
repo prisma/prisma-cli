@@ -1,6 +1,6 @@
 {
   "name": "prisma-cli",
-  "version": "8.0.0-rc.4",
+  "version": "8.0.0-rc.10",
   "private": true,
   "engines": {
     "node": ">=24"
@@ -11,6 +11,7 @@
     "build:cli": "turbo run build --filter=@prisma/cli",
     "build:compute": "pnpm --filter @prisma/compute build",
     "check:grammar": "turbo run check:grammar",
+    "check:error-reference": "node scripts/list-error-codes.mjs --verify docs/reference/error-reference.md",
     "format": "biome format . --write",
     "lint": "biome check . --error-on-warnings",
     "lint:fix": "biome check . --write",

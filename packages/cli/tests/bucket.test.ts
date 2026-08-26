@@ -177,7 +177,7 @@ function blocks(presented: unknown) {
   return value?.presentation.human ?? [];
 }
 
-describe("prisma-cli bucket list", () => {
+describe("prisma bucket list", () => {
   it("lists the project's buckets", async () => {
     const result = await makeCli(bucketClient()).run(["bucket", "list"], {
       cwd: await pinnedCwd(),
@@ -262,7 +262,7 @@ describe("prisma-cli bucket list", () => {
       error: {
         code: "PROJECT.SETUP_REQUIRED",
         summary: "Choose a Project before running this command",
-        why: "This directory is not linked to a Prisma Project, and prisma-cli bucket list will not choose one from package or directory names.",
+        why: "This directory is not linked to a Prisma Project, and prisma bucket list will not choose one from package or directory names.",
       },
     });
   });
@@ -302,7 +302,7 @@ describe("prisma-cli bucket list", () => {
   });
 });
 
-describe("prisma-cli bucket create", () => {
+describe("prisma bucket create", () => {
   it("creates a named bucket", async () => {
     const calls: Call[] = [];
     const result = await makeCli(
@@ -361,7 +361,7 @@ describe("prisma-cli bucket create", () => {
     ]);
   });
 
-  it("maps an API failure to the passthrough code", async () => {
+  it("reports an API failure as BUCKET.API_ERROR with the API code in meta", async () => {
     const result = await makeCli(
       bucketClient({
         routes: {
@@ -377,9 +377,10 @@ describe("prisma-cli bucket create", () => {
     expect(resultFrame(result.json).envelope).toMatchObject({
       ok: false,
       error: {
-        code: "BUCKET.internalError",
+        code: "BUCKET.API_ERROR",
         summary: "Failed to create bucket",
         why: "Backend exploded.",
+        meta: { status: 500, apiCode: "internalError" },
         nextActions: [
           {
             kind: "user-choice",
@@ -426,7 +427,7 @@ describe("prisma-cli bucket create", () => {
   });
 });
 
-describe("prisma-cli bucket delete", () => {
+describe("prisma bucket delete", () => {
   it("deletes the bucket", async () => {
     const calls: Call[] = [];
     const result = await makeCli(bucketClient({ calls })).run(
@@ -466,7 +467,7 @@ describe("prisma-cli bucket delete", () => {
         why: "Bucket deletion needs a bucket id.",
         nextActions: [
           { kind: "user-choice", label: "Pass the bucket id to delete." },
-          { kind: "run-command", command: "prisma-cli bucket list" },
+          { kind: "run-command", command: "prisma bucket list" },
         ],
       },
     });
@@ -534,7 +535,7 @@ describe("prisma-cli bucket delete", () => {
     });
   });
 
-  it("maps an API failure to the passthrough code", async () => {
+  it("reports an API failure as BUCKET.API_ERROR with the API code in meta", async () => {
     const result = await makeCli(
       bucketClient({
         routes: {
@@ -547,7 +548,11 @@ describe("prisma-cli bucket delete", () => {
     expect(result.exitCode).toBe(2);
     expect(resultFrame(result.json).envelope).toMatchObject({
       ok: false,
-      error: { code: "BUCKET.notFound", summary: "Failed to delete bucket" },
+      error: {
+        code: "BUCKET.API_ERROR",
+        summary: "Failed to delete bucket",
+        meta: { status: 404, apiCode: "notFound" },
+      },
     });
   });
 
@@ -585,7 +590,7 @@ describe("prisma-cli bucket delete", () => {
   });
 });
 
-describe("prisma-cli bucket key list", () => {
+describe("prisma bucket key list", () => {
   it("lists the bucket's access keys", async () => {
     const result = await makeCli(bucketClient()).run(
       ["bucket", "key", "list", "bkt_1"],
@@ -647,7 +652,7 @@ describe("prisma-cli bucket key list", () => {
         why: "Bucket key listing needs a bucket id.",
         nextActions: [
           { kind: "user-choice", label: "Pass the bucket id." },
-          { kind: "run-command", command: "prisma-cli bucket list" },
+          { kind: "run-command", command: "prisma bucket list" },
         ],
       },
     });
@@ -698,7 +703,7 @@ const CREATED_KEY = {
   bucketName: "assets",
 };
 
-describe("prisma-cli bucket key create", () => {
+describe("prisma bucket key create", () => {
   it("prints the credentials on stdout and masks the secrets in the card", async () => {
     const result = await makeCli(
       bucketClient({
@@ -811,7 +816,7 @@ describe("prisma-cli bucket key create", () => {
           },
           {
             kind: "run-command",
-            command: "prisma-cli bucket key create bkt_1",
+            command: "prisma bucket key create bkt_1",
           },
         ],
       },
@@ -862,7 +867,7 @@ describe("prisma-cli bucket key create", () => {
   });
 });
 
-describe("prisma-cli bucket key delete", () => {
+describe("prisma bucket key delete", () => {
   it("deletes the access key", async () => {
     const calls: Call[] = [];
     const result = await makeCli(bucketClient({ calls })).run(
@@ -905,14 +910,14 @@ describe("prisma-cli bucket key delete", () => {
           { kind: "user-choice", label: "Pass the bucket id and key id." },
           {
             kind: "run-command",
-            command: "prisma-cli bucket key list <bucketId>",
+            command: "prisma bucket key list <bucketId>",
           },
         ],
       },
     });
   });
 
-  it("maps an API failure to the passthrough code", async () => {
+  it("reports an API failure as BUCKET.API_ERROR with the API code in meta", async () => {
     const result = await makeCli(
       bucketClient({
         routes: {
@@ -926,8 +931,9 @@ describe("prisma-cli bucket key delete", () => {
     expect(resultFrame(result.json).envelope).toMatchObject({
       ok: false,
       error: {
-        code: "BUCKET.notFound",
+        code: "BUCKET.API_ERROR",
         summary: "Failed to delete bucket key",
+        meta: { status: 404, apiCode: "notFound" },
       },
     });
   });

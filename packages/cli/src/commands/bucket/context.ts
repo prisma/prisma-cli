@@ -1,5 +1,6 @@
 /** Workspace, project and provider for the `bucket *` commands. */
 import { type CommandContext, flag, positional } from "@prisma/cli-engine";
+import { CLI_NAME } from "../../cli-name";
 import {
   type BucketProvider,
   createManagementBucketProvider,
@@ -8,6 +9,9 @@ import { resolvePinnedProject } from "../project/context";
 import { resolveActiveWorkspace } from "../resources-shared/workspace";
 
 export type BucketCommandContext = CommandContext<undefined, never>;
+
+/** Where a caller who is missing a bucket id finds one. */
+export const LIST_BUCKETS_COMMAND = `${CLI_NAME} bucket list`;
 
 export const projectFlag = flag.string({
   brief: "Project id or name",

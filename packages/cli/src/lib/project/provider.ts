@@ -1,7 +1,9 @@
+import {
+  CliStructuredError,
+  type NextAction,
+} from "@prisma/cli-engine/protocol";
 import type { ManagementApiClient } from "@prisma/management-api-sdk";
-
 import { formatPrismaCliCommand } from "../../cli-command";
-import { CliError } from "../../errors";
 import type { ProjectSummary } from "../../types/project";
 
 export interface ProjectProvider {
@@ -77,11 +79,11 @@ export function createManagementProjectProvider(
         signal: options.signal,
       });
       if (result.response?.status === 400) {
-        throw projectRemoveBlockedError(options.projectId, result.error);
+        throw projectDeleteBlockedError(options.projectId, result.error);
       }
       if (result.error) {
         throw projectApiError(
-          "Failed to remove project",
+          "Failed to delete project",
           result.response,
           result.error,
         );
@@ -112,74 +114,104 @@ export function createManagementProjectProvider(
   };
 }
 
+function userChoice(label: string): NextAction {
+  return { kind: "user-choice", label };
+}
+
 export function projectRenameFailedError(
   name: string,
   error: RawApiErrorBody | undefined,
-): CliError {
-  return new CliError({
-    code: "PROJECT_RENAME_FAILED",
-    domain: "project",
-    summary: "Project rename failed",
-    why: error?.error?.message ?? `The platform rejected the name "${name}".`,
-    fix:
-      error?.error?.hint ??
-      "Pass a different project name and retry the rename.",
-    exitCode: 1,
-    nextSteps: [],
-  });
+): CliStructuredError {
+  return new CliStructuredError(
+    "PROJECT.RENAME_FAILED",
+    "Project rename failed",
+    {
+      why: error?.error?.message ?? `The platform rejected the name "${name}".`,
+      nextActions: [
+        userChoice(
+          error?.error?.hint ??
+            "Pass a different project name and retry the rename.",
+        ),
+      ],
+    },
+  );
 }
 
-export function projectRemoveBlockedError(
+export function projectDeleteBlockedError(
   projectId: string,
   error: RawApiErrorBody | undefined,
-): CliError {
-  return new CliError({
-    code: "PROJECT_REMOVE_BLOCKED",
-    domain: "project",
-    summary: "Project cannot be removed yet",
-    why:
-      error?.error?.message ??
-      `Project "${projectId}" still has active deployments.`,
-    fix: "Remove the project's apps first, then retry the removal.",
-    exitCode: 1,
-    nextSteps: [formatPrismaCliCommand(["app", "remove", "--app", "<name>"])],
-  });
+): CliStructuredError {
+  const deleteServicesCommand = formatPrismaCliCommand([
+    "service",
+    "delete",
+    "--service",
+    "<name>",
+  ]);
+  return new CliStructuredError(
+    "PROJECT.DELETE_BLOCKED",
+    "Project cannot be deleted yet",
+    {
+      why:
+        error?.error?.message ??
+        `Project "${projectId}" still has active deployments.`,
+      nextActions: [
+        userChoice(
+          "Delete the project's services first, then retry the deletion.",
+        ),
+        {
+          kind: "run-command",
+          label: deleteServicesCommand,
+          command: deleteServicesCommand,
+        },
+      ],
+    },
+  );
 }
 
 export function projectTransferRejectedError(
   projectId: string,
   error: RawApiErrorBody | undefined,
-): CliError {
-  return new CliError({
-    code: "PROJECT_TRANSFER_REJECTED",
-    domain: "project",
-    summary: "Project transfer was rejected",
-    why:
-      error?.error?.message ??
-      `The platform rejected the transfer of project "${projectId}", for example because the recipient token is invalid or expired.`,
-    fix: "Check the recipient workspace session or token and retry the transfer.",
-    exitCode: 1,
-    nextSteps: [],
-  });
+): CliStructuredError {
+  return new CliStructuredError(
+    "PROJECT.TRANSFER_REJECTED",
+    "Project transfer was rejected",
+    {
+      why:
+        error?.error?.message ??
+        `The platform rejected the transfer of project "${projectId}", for example because the recipient token is invalid or expired.`,
+      nextActions: [
+        userChoice(
+          "Check the recipient workspace session or token and retry the transfer.",
+        ),
+      ],
+    },
+  );
 }
 
 export function projectApiError(
   summary: string,
   response: Response | undefined,
   error: RawApiErrorBody | undefined,
-): CliError {
+): CliStructuredError {
   const status = response?.status ?? 0;
-  return new CliError({
-    code: error?.error?.code ?? "PROJECT_API_ERROR",
-    domain: "project",
-    summary,
+  const apiCode = error?.error?.code;
+  return new CliStructuredError("PROJECT.API_ERROR", summary, {
     why:
       error?.error?.message ??
       `The Management API returned status ${status || "unknown"}.`,
-    fix:
-      error?.error?.hint ??
-      "Re-run with --trace for the underlying API response details.",
-    exitCode: 1,
-    nextSteps: [],
+    ...(apiCode !== undefined || status
+      ? {
+          meta: {
+            ...(status ? { status } : {}),
+            ...(apiCode !== undefined ? { apiCode } : {}),
+          },
+        }
+      : {}),
+    nextActions: [
+      userChoice(
+        error?.error?.hint ??
+          "Re-run with --log-level verbose for the underlying API response details.",
+      ),
+    ],
   });
 }

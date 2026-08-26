@@ -38,7 +38,6 @@ export function realTarballIo(
   // exact files CI uploads and attaches to the GitHub Release.
   const tarballDir = resolve(options.tarballDir ?? join(absWork, "tarballs"));
   rmSync(tarballDir, { recursive: true, force: true });
-  const sandbox = () => join(absWork, "sandbox");
 
   return {
     async pack(pkgDir) {
@@ -88,8 +87,9 @@ export function realTarballIo(
       return files;
     },
 
-    async installSandbox({ rootTarball, overrides }) {
-      const dir = sandbox();
+    async installSandbox({ sandboxDir, rootTarball, overrides }) {
+      const dir = resolve(sandboxDir);
+      rmSync(dir, { recursive: true, force: true });
       mkdirSync(dir, { recursive: true });
       const rootManifest = await this.readPackedManifest(rootTarball);
       const name = manifestName(rootManifest);
@@ -176,7 +176,7 @@ export function realTarballIo(
       argv,
       timeoutMs,
     }) {
-      const rootManifestPath = join(sandbox(), "package.json");
+      const rootManifestPath = join(sandboxDir, "package.json");
       const rootManifest = JSON.parse(
         readFileSync(rootManifestPath, "utf8"),
       ) as {

@@ -33,7 +33,7 @@ Why this rule exists: `prisma project list` reported "No projects found." and ex
 
 ## Pre-Commit Verification
 
-- `pnpm --recursive exec tsc --noEmit`
+- `pnpm typecheck`
 - `pnpm lint`
 - Package-specific tests for changed packages
   - `pnpm --filter @prisma/cli test`

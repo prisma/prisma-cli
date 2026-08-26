@@ -27,3 +27,15 @@ minimumReleaseAgeExclude:
   # The ORM family and the framework it reaches through.
   - '@prisma/orm-toolchain'
   - '@prisma/orm-framework'
+  - '@alchemy.run/cloudflare-runtime@2.0.0-beta.74'
+  - '@alchemy.run/floci@2.0.0-beta.74'
+  - '@alchemy.run/node-utils@2.0.0-beta.74'
+  - '@distilled.cloud/aws@1.0.0-rc.6'
+  - '@distilled.cloud/axiom@1.0.0-rc.6'
+  - '@distilled.cloud/cloudflare@1.0.0-rc.6'
+  - '@distilled.cloud/core@1.0.0-rc.6'
+  - '@distilled.cloud/fly-io@1.0.0-rc.6'
+  - '@distilled.cloud/hetzner@1.0.0-rc.6'
+  - '@distilled.cloud/neon@1.0.0-rc.6'
+  - '@distilled.cloud/planetscale@1.0.0-rc.6'
+  - alchemy@2.0.0-beta.74

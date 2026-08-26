@@ -1,7 +1,11 @@
 // biome-ignore-all lint/performance/noAwaitInLoops: Bucket pagination requests must run sequentially.
+import {
+  CliStructuredError,
+  type NextAction,
+} from "@prisma/cli-engine/protocol";
 import type { ManagementApiClient } from "@prisma/management-api-sdk";
 
-import { CliError } from "../../errors";
+import { CLI_NAME } from "../../cli-name";
 import type { BucketKeySummary, BucketSummary } from "../../types/bucket";
 
 export interface BucketCreateInput {
@@ -226,15 +230,7 @@ export function createManagementBucketProvider(
       const bucketName = raw.bucketName;
 
       if (!secretAccessKey || !accessKeyId || !endpoint || !bucketName) {
-        throw new CliError({
-          code: "BUCKET_KEY_SECRET_MISSING",
-          domain: "bucket",
-          summary: "Created bucket key did not return credentials",
-          why: "Bucket key credentials are one-time-view secrets, but the Management API did not include them in this create response.",
-          fix: "Create another bucket key and store the returned credentials immediately.",
-          exitCode: 1,
-          nextSteps: [`prisma-cli bucket key create ${options.bucketId}`],
-        });
+        throw bucketKeySecretMissingError(options.bucketId);
       }
 
       return {
@@ -287,23 +283,94 @@ export function normalizeKey(raw: RawBucketKeyRecord): BucketKeySummary {
   };
 }
 
+const VERBOSE_LOG_FIX =
+  "Re-run with --log-level verbose for the underlying API response details.";
+
+function userChoice(label: string): NextAction {
+  return { kind: "user-choice", label };
+}
+
+function runCommand(command: string): NextAction {
+  return { kind: "run-command", label: command, command };
+}
+
+function bucketKeySecretMissingError(bucketId: string): CliStructuredError {
+  return new CliStructuredError(
+    "BUCKET.KEY_SECRET_MISSING",
+    "Created bucket key did not return credentials",
+    {
+      why: "Bucket key credentials are one-time-view secrets, but the Management API did not include them in this create response.",
+      nextActions: [
+        userChoice(
+          "Create another bucket key and store the returned credentials immediately.",
+        ),
+        runCommand(`${CLI_NAME} bucket key create ${bucketId}`),
+      ],
+    },
+  );
+}
+
+/** A 401 or 403 is the API refusing the caller, not a bucket problem. */
+function isRejectedCaller(status: number): boolean {
+  return status === 401 || status === 403;
+}
+
+function apiErrorWhy(status: number, message: string | undefined): string {
+  if (!isRejectedCaller(status)) {
+    return (
+      message ?? `The Management API returned status ${status || "unknown"}.`
+    );
+  }
+  const rejection = `The Management API rejected the request as ${status === 401 ? "unauthorized" : "forbidden"}.`;
+  return message ? `${rejection} ${message}` : rejection;
+}
+
+function apiErrorMeta(
+  status: number,
+  apiCode: string | undefined,
+): Record<string, unknown> | undefined {
+  if (!status && apiCode === undefined) {
+    return undefined;
+  }
+  return {
+    ...(status ? { status } : {}),
+    ...(apiCode === undefined ? {} : { apiCode }),
+  };
+}
+
+function apiErrorActions(
+  status: number,
+  hint: string | undefined,
+): NextAction[] {
+  if (!isRejectedCaller(status)) {
+    return [userChoice(hint ?? VERBOSE_LOG_FIX)];
+  }
+  return [
+    userChoice(
+      hint ??
+        `Sign in again with ${CLI_NAME} auth login, then retry the command.`,
+    ),
+    runCommand(`${CLI_NAME} auth login`),
+  ];
+}
+
+/**
+ * Every bucket Management API failure lands on the one registered code.
+ * The response's own error code is data, not an identity: it travels in
+ * `meta.apiCode` beside `meta.status` so a consumer can still branch on
+ * it without the CLI minting a code it never registered.
+ */
 function bucketApiError(
   summary: string,
   response: Response | undefined,
   error: RawApiErrorBody | undefined,
-): CliError {
+): CliStructuredError {
   const status = response?.status ?? 0;
-  return new CliError({
-    code: error?.error?.code ?? "BUCKET_API_ERROR",
-    domain: "bucket",
-    summary,
-    why:
-      error?.error?.message ??
-      `The Management API returned status ${status || "unknown"}.`,
-    fix:
-      error?.error?.hint ??
-      "Re-run with --trace for the underlying API response details.",
-    exitCode: 1,
-    nextSteps: [],
+  const meta = apiErrorMeta(status, error?.error?.code);
+
+  return new CliStructuredError("BUCKET.API_ERROR", summary, {
+    why: apiErrorWhy(status, error?.error?.message),
+    ...(meta === undefined ? {} : { meta }),
+    nextActions: apiErrorActions(status, error?.error?.hint),
   });
 }

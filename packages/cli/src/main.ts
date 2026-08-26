@@ -1,6 +1,7 @@
 import type { Cli } from "@prisma/cli-engine";
 import { buildCli } from "./cli";
 import { assembleRuntime, type HostProcess } from "./runtime";
+import { maybeWriteSkillsStaleNotice } from "./skills-check";
 import { maybeWriteCachedUpdateNotification } from "./update-check";
 
 /** The bin body: build, run, return the exit code. Signal policy lives
@@ -31,5 +32,17 @@ export async function main(
     stderr: proc.stderr,
   });
   const runtime = await assembleRuntime(proc);
-  return cli.run(proc.argv.slice(2), runtime);
+  const exitCode = await cli.run(proc.argv.slice(2), runtime);
+  // After the command, so the notice does not push its output down, and
+  // without touching the exit code: the skills being stale is not a
+  // failure of the command that reported it. It lives here rather than
+  // in the engine because every mounted family dispatches through this
+  // one call, so one check covers all of them.
+  await maybeWriteSkillsStaleNotice({
+    env: proc.env,
+    argv: proc.argv.slice(2),
+    cwd: proc.cwd(),
+    stderr: proc.stderr,
+  });
+  return exitCode;
 }

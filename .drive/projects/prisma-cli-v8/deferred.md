@@ -4,6 +4,47 @@ Work identified during a slice that is not part of that slice's
 contract. Each entry: what, why it was deferred, where it lands.
 Nothing here is tracked outside this file.
 
+## After the latest cutover (2026-08-25, PR #230)
+
+- **The engine 0.3.0 transition is in flight; both families still peer
+  0.2.3.** `@prisma/cli-engine` declared `@prisma/management-api-sdk` as
+  an ordinary dependency while re-exporting the SDK's client type across
+  its own public API (`ctx.api`). That is a shared type surface held as
+  a private copy: when the shell moved to a newer SDK, the engine's
+  `Client<paths>` and the shell's became unrelated types and every
+  command taking `ctx.api` into a CLI function stopped typechecking, so
+  the version could only ever move in all three manifests at once —
+  which changed the engine, which both families peer-pin exactly. 0.3.0
+  makes the SDK a peer of the engine (`^1.55.0`) with the two binaries
+  supplying the copy, so a future SDK bump touches the apps only. The
+  sequence from here, per `packages/cli/scripts/conformance.ts`: engine
+  0.3.0 publishes → `@prisma/composer-cli` and `@prisma/orm-toolchain`
+  republish peering 0.3.0 → a release PR here pins those versions and
+  deletes the two `exceptions` entries, restoring the empty list. Until
+  then conformance reports six allowed findings, including two copies of
+  the engine resolving in the sandbox install — the expected shape of a
+  transition, not a defect.
+
+- **A stale product `dev` dist-tag can block a release publish.** The
+  publish run checks the dev channel before the release leg, and the
+  dev channel resolves each product's `dev` tag with no fallback — so
+  when prisma/prisma released rc.7 without publishing a dev build
+  (their workflow's two publish kinds were alternatives), our rc.10
+  release run died in the dev conformance check with an
+  engine-pin-mismatch nothing in this repo caused. Unblocked by a
+  manual `npm dist-tag add @prisma/orm-toolchain@8.0.0-rc.7 dev`; a
+  separate agent is porting composer's dual-publish (composer #241) to
+  prisma/prisma, which removes the trigger. Open decision for THIS
+  repo: whether a dev-channel failure should stop the release leg at
+  all, or the release should publish and the run report the dev
+  failure after — the current ordering makes another repo's stale tag
+  this repo's release blocker.
+- **The `@prisma/cli` deprecation call is open.** Rollout-plan step 5
+  listed a deprecation notice pointing installers at `prisma`; the
+  package is now the scoped twin the workflow actively publishes, so
+  deprecating it may no longer make sense. Operator decision; needs npm auth either way
+  (`npm deprecate @prisma/cli@"<8.0.0" "..."`).
+
 ## After S7's first real publish
 
 - **The publish/Release shell in `publish.yml` should become a tested
@@ -86,14 +127,7 @@ composer can use it.
   it runs: engine `8.0.0-rc.N` publishes from this repo → orm-toolchain
   and composer bump their engine pins and publish → the rc1 bump PR
   here pins those versions.
-- **The prisma bin's mount makes composer's help examples wrong.**
-  Composer writes them as `{bin} deploy src/service.ts`; mounted under
-  the `composer` root the invocation is `prisma composer deploy`, and
-  the engine's `resolveExample` substitutes only `{bin}`. Fix needs both
-  repos: a mount-aware placeholder in the engine (`{command}` → the
-  command's mounted path) and composer's eight example strings — two on
-  each of the four commands — rewritten to use it. Recorded in
-  `assets/s2/parity-divergences-s3.md`.
+- **The prisma bin's mount makes composer's help examples wrong.** **Closed by the command grammar cleanup (2026-08-21):** `dev` and `deploy` moved to the root, so `{bin} deploy src/service.ts` renders correctly; `destroy` and `log` were dropped entirely. No engine placeholder needed. Recorded in `assets/s2/parity-divergences-s3.md`.
 
 ## The ORM family does not work through the assembled binary (found 2026-08-13, writing the e2e happy paths)
 
@@ -105,7 +139,7 @@ Running the shipped `prisma` binary against a scratch directory, rather than the
 
 ## The domain commands' branch default is a name no project has (found writing the e2e happy paths, verified against the API 2026-08-18)
 
-- **`service domain add` without `--branch` reports `SERVICE.SELECTION_INVALID` for a service that exists.** Root cause pinned: `resolveServiceDomainTarget` (`packages/cli/src/commands/service/target.ts:650`) defaults the branch to the literal name `"production"` and passes it as a filter to `listServices`; a project's production branch is actually named `main`, so the filtered listing is empty and the explicitly named service is judged missing. Verified against the real API on a fresh service: no `--branch` and `--branch production` both answer `SELECTION_INVALID` — "Selected service does not exist in the resolved project" — while `--branch main` proceeds to the genuine next refusal (`SERVICE.NO_DEPLOYMENTS` undeployed, the DNS check when deployed). The error also misreports the cause: the service exists, the branch doesn't. Same family as the name-vs-role bug below (`toBranchKind`); the fix is to resolve the production branch by role from the API's branch records rather than by literal name, which would repair both.
+- **`service domain add` without `--branch` reports `SERVICE.SELECTION_INVALID` for a service that exists.** Root cause pinned: `resolveServiceDomainTarget` in `packages/cli/src/commands/service/target.ts` (the `?? "production"` default, still present after the command-grammar rework) defaults the branch to the literal name `"production"` and passes it as a filter to `listServices`; a project's production branch is actually named `main`, so the filtered listing is empty and the explicitly named service is judged missing. Verified against the real API on a fresh service: no `--branch` and `--branch production` both answer `SELECTION_INVALID` — "Selected service does not exist in the resolved project" — while `--branch main` proceeds to the genuine next refusal (`SERVICE.NO_DEPLOYMENTS` undeployed, the DNS check when deployed). The error also misreports the cause: the service exists, the branch doesn't. Same family as the name-vs-role bug below (`toBranchKind`); the fix is to resolve the production branch by role from the API's branch records rather than by literal name, which would repair both.
 
 ## A live bug carried out of the port (found closing PR #92, 2026-08-12)
 
@@ -130,8 +164,7 @@ CLI does not do, and each restarts as engine work if wanted:
   secret handling before it is built.
 - **A `github` group for workspace-level GitHub connections** (#113):
   the engine ships repo-level `git connect|disconnect` only.
-- **Transient-read retry on `build logs` streaming** (#104): joins the
-  existing streaming follow-ups below.
+- **Transient-read retry on `build logs` streaming** (#104): moot — the `build` group was removed by the command grammar cleanup (2026-08-21).
 
 ## Ratified-as-shipped at the S2 sign-off (2026-08-12) — the gaps stay real
 
@@ -145,8 +178,7 @@ CLI does not do, and each restarts as engine work if wanted:
   `--follow` polls on a 2s interval rather than holding a socket open.
   The open remainder is the WebSocket live tail, in the closed
   `service logs` entry further down this file.
-- **`build logs` cannot exit 1 on a failed build** until the engine
-  grows a way for a stream to settle with a documented non-zero code.
+- **`build logs` cannot exit 1 on a failed build** — moot: the command was removed with the `build` group by the command grammar cleanup (2026-08-21). The engine gap (a stream settling with a documented non-zero code) remains real for future stream commands.
 - **The crash-recovery feedback action does not port** (the legacy
   crash envelope pre-filled a `feedback` command; the engine's crash
   path has no hook for it).
@@ -241,8 +273,15 @@ CLI does not do, and each restarts as engine work if wanted:
 
 ## Upstream, not ours to land
 
-- **alchemy-run/node-utils#6** (scope exit hooks to owned locks) is
-  open. Vendored as a pnpm patch in composer
+- **alchemy-run/node-utils#6** (scope exit hooks to owned locks).
+  **Closed by composer 0.13.0 (2026-08-25):** the release chain
+  delivered — alchemy 2.0.0-beta.74 carries the node-utils fix and
+  composer #254 retired the vendored patch, so a `prisma` install now
+  resolves a node-utils that registers no import-time signal listener.
+  The canary (`packages/cli/tests/composer-isolation.test.ts`) now
+  asserts zero listeners, so a regression in that chain says so. The
+  original entry follows for the record.
+  Was: open. Vendored as a pnpm patch in composer
   (`patches/@alchemy.run__node-utils@0.0.5.patch`, applied to both
   `lib/lockfile.js` and `src/lockfile.ts` because the exports map
   sends bun to `src/`). **Delete the patch when the release chain
@@ -449,3 +488,39 @@ Still open:
 - **Neither product repo installs its own tarball before publishing.** That is why an uninstallable `@prisma/composer-cli@0.6.0` sat on `latest` unnoticed. prisma-cli's check 3 does exactly this — pack, install into a clean sandbox with `npm --ignore-scripts`, start every declared bin — and is worth porting to both.
 - **The engine-pin check compares for equality, not peer satisfaction.** Both families now declare an exact peer equal to the shell's pin, so equality is correct and stricter today. Widening to range satisfaction belongs with the post-GA move to engine ranges (ADR 0004), not before.
 - **`credential-manager.ts` uses the banned word.** `packages/cli/src/auth/credential-manager.ts` has a private `#repin` method (about the active-workspace marker, a different concept from dependency versions). The operator banned the word outright; renaming it is a mechanical change to a private method, left out of the publish-channel work to keep that diff to one subject.
+
+## Left open by the command grammar cleanup (2026-08-21)
+
+The cleanup PR removed the compute config and `init`, made service commands parameter-only, renamed the six destructive `remove` commands to `delete`, moved `postgres restore`/`ref *`/`migrate`/`format`/`composer dev|deploy`, and dropped `composer destroy|log` and the `build` group. Deliberately left behind:
+
+- **The wire layer still speaks App/Deployment.** The CLI surface says Service/Version (ADR-012), while the adapter (`packages/cli/src/lib/app/app-provider.ts`), compute-sdk names, `/v1/deployments` paths, and `appId` keep platform vocabulary. They rename in pdp-control-plane's coordinated all-surfaces pass, and the adapter is the one file where both vocabularies are allowed to meet until then.
+
+- ~~**`project env` still infers scope from the current git branch.**~~ Closed on the PR branch (2026-08-21, operator ruling): `project env list` with no `--role`/`--branch` lists the overview instead of inferring from the checkout; `readLocalGitBranch` and `lib/git/local-branch.ts` are deleted.
+- ~~**`knownLiveDeploymentByProject` has no writer.**~~ Closed on the PR branch (2026-08-21): the local-state shape, its store methods, and `service delete`'s cleanup pass were deleted.
+- ~~**Upstream family cleanups.**~~ Closed (2026-08-22): composer#253 retired `destroy`/`log` and prisma#30102 rekeyed the ORM family to the mount paths and fixed its redirects; the shell now mounts both families as shipped and the wrapper arithmetic is deleted. Both pins are on released versions: composer-cli 0.12.0, orm-toolchain 8.0.0-rc.5.
+- ~~**`PRISMA_PROJECT_ID` is honoured only by the domain commands**~~ Closed on the PR branch (2026-08-21, operator ruling): the env var served the deleted `app deploy` headless flow and survived only in the domain commands by accident; it is removed entirely. Project targeting is `--project` and the link file.
+- ~~**orm-toolchain's shipped help examples name retired spellings.**~~ Closed (2026-08-22) by prisma#30102: the family keys are the mount paths and the examples follow; `tests/orm-mount.test.ts` now asserts upstream stays clean.
+- ~~**The deployment-id targeting asymmetry is undocumented.**~~ Closed on the PR branch (2026-08-21): every deployment-id command (`promote|start|stop|delete|show`, `logs --deployment`) now resolves the id globally with no service parameter, per the "Subjects are positional" ruling.
+- ~~**`GET /v1/deployments/{id}` omits the parent `appId`.**~~ Closed on this branch (2026-08-25): pdp-control-plane#4983 added the owner to the deployment representation as `serviceId` (ADR-012 vocabulary, not `appId`), compute-sdk 0.42.0 exposes it as `DeploymentDetail.serviceId`, and `showDeployment` now resolves the owner with one `GET /v1/apps/{id}` — `findAppForDeployment` and its per-service scan are deleted.
+
+## From the agent-skills delivery (project closed 2026-08-22)
+
+- **Config evaluation fails through unrealpath'd pnpm symlinks; the verified fix waits for the next engine release.** The engine's lazy `await import("c12")` (packages/cli-engine/src/config-loader.ts) resolves through a pnpm symlink without realpathing, so c12's own `pathe` import walks up from the symlink path and misses its store siblings — `CLI.CONFIG_UNREADABLE: Cannot find package 'pathe'`. Affects this repo's dev layout and pnpm `hoist=false` installs only; npm and default-pnpm installs work. The fix is one line, verified empirically: import c12 via `pathToFileURL(realpathSync(fileURLToPath(import.meta.resolve("c12"))))`. It was implemented on PR #219 and reverted because any engine change forces a version bump and the families (`@prisma/orm-toolchain`, `@prisma/composer-cli`) peer-pin the engine exactly, requiring a coordinated family release. Ship it with the next engine version train; the init e2e's rerun workaround (removing the config before the second binary run) comes out at the same time.
+
+
+The agent-skills project (skills sync/list, `prisma init`, the staleness notice; PR #219) closed with these items still open; details were in its own ledger, summarized here as the surviving record.
+
+- **When facade skill content diverges per database, split the skill by name — never add a carrier package** (operator concurred 2026-08-21). Today every facade ships an identical `prisma-8` skill and conflicts are arbitrated by highest version, safe only while content is identical and versions are lockstep. A transitive carrier package is unresolvable from the project root under pnpm; a direct-dependency skills package breaks the installed-version guarantee. The allowlist grows one deliberate line per facade either way.
+- **The browser login success page still shows a static `npx skills add prisma/skills` copy button** (`packages/cli/src/auth/login.ts` ~571) — the last surface promoting the retired third-party installer after the `agent` group's deletion. Decided 2026-08-24: the operator is having the responsible team remove it; not part of PR #219.
+- **Composer website hero copy** (prisma/composer `website/src/template.ts`): still says `npx skills add prisma/composer`; the replacement wording and its release timing belong to the site owner, and the new command only exists once the CLI ships.
+- **`check-skill-packaging.mjs` hardcodes `@prisma/composer`** (prisma/composer) while `stage-skills.mjs` is generic; generalize when a second skill-bearing composer package appears.
+- **Turbo race: `pnpm test` can rebuild `cli-engine` dist while `cli` tests import it** (intermittent `Failed to resolve entry for package "@prisma/cli-engine"`). Fix: `dependsOn` on the engine build in turbo.json.
+- **Windows CI: the credential-manager suite needs an owner** — two distinct timing-sensitive tests flaked on 2026-08-21 (`credential-manager.test.ts` "holds no lock while the workspace name is fetched", run 32477175789; `credential-manager-processes.test.ts` "exchanges one refresh token once", run 32497093995), both on pushes touching nothing near credentials. A third hit on 2026-08-24 (run 32737503671, PR #225): the "holds no lock" test again, failing on an EPERM temp-file rename on the Windows runner. Three flakes across two tests; the suite needs an owner.
+- **Windows CI: `skills-sync.test.ts` timed out once at the 5s default** (run 32474645762) with a teardown ENOTEMPTY from cleanup racing the timed-out test. If it recurs, raise the suite's per-test timeout on Windows rather than chasing the race.
+- **`isLikelyGlobalNpmEntrypoint` (update-check.ts) matches only `prisma-cli` install paths**, so a globally-installed `prisma` gets the docs-link fallback instead of a concrete update command; `selectUpdateInstruction` still names `@prisma/cli`. Newly conspicuous after the CLI_NAME → prisma rename.
+- **The feedback client's user-agent changed from `prisma-cli/<version>` to `prisma/<version>`** — wire-visible; whoever reads that dashboard should know.
+## Left open by the rc.8 broken release (2026-08-24)
+
+- **`prisma@8.0.0-rc.8` on npm is broken and immutable.** The `prisma` wrapper package carries its own copies of the product pins, and the grammar-cleanup branch bumped only `packages/cli/package.json` — so the published `prisma` bin resolved `@prisma/orm-toolchain@8.0.0-rc.4`, whose old family keys make the mount table's lookups undefined and every invocation crash ("Cannot read properties of undefined (reading 'needs')"). rc.9 fixes it. Consider `npm deprecate prisma@8.0.0-rc.8` (needs a maintainer's npm auth; CI publishes via OIDC and has no deprecate step).
+- ~~**The release checks did not catch a `prisma` bin that crashes on install.**~~ Closed (2026-08-24, on the rc.9 PR): worse than hoisting — check 3b never installed or started the wrapper's bin at all, only the shell's. Three guards now exist: `packages/cli/tests/manifest-pins.test.ts` (every PR: the wrapper's dependencies must deep-equal the shell's), the tarball check's new `sibling-pin-mismatch` finding (pack time: shared dependency names across packed manifests must carry identical specifiers), and per-package sandboxes in check 3b (every bin-bearing package installs and starts from its own tree). Each guard was proven against the planted rc.8 defect.
+- **Two manifests hand-carry the same pins.** `update-product-versions.mjs` rewrites both, and three checks now fail on divergence (see the closed entry above), so the class cannot ship again. Deriving one manifest from the other at pack time would remove the duplication itself — still a design call, no longer urgent.

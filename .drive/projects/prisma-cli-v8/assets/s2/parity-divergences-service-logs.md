@@ -107,3 +107,7 @@ signalled run at 128 + the signal "whatever the handler concluded"
 [`parity-divergences-s3.md`](parity-divergences-s3.md)). S2c would have
 settled 130 too. The exit code comes from the engine rule, not from
 anything this slice changed.
+
+## Command grammar cleanup (2026-08-21 PM review)
+
+`service logs` now requires a service target (`--service` or `PRISMA_SERVICE_ID`) unless `--deployment` names a deployment id with no service target, which resolves globally within the project. The picker and remembered selection are gone.

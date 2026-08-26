@@ -20,7 +20,6 @@ shot auth-help          "$ROOT" auth --help
 shot auth-whoami        "$ROOT" auth whoami
 shot project-help       "$ROOT" project --help
 shot project-link-help  "$ROOT" project link --help
-shot init-help          "$ROOT" init --help
 shot migration-help     "$ROOT" migration --help
 shot db-help            "$ROOT" db --help
 shot feedback-help      "$ROOT" feedback --help
@@ -34,7 +33,6 @@ shot service-list       "$ROOT/wip/gallery/linked-demo" service list
 shot branch-list        "$ROOT" branch list --project prisma-next-dev
 shot agent-status       "$ROOT/wip/gallery/linked-demo" agent status
 shot telemetry-status   "$ROOT" telemetry status
-shot init               "$ROOT/wip/gallery/demo-app2" init --no-interactive --no-link --no-install --framework hono --entry server.ts
 shot contract-emit      "$ROOT/wip/gallery/orm-demo" contract emit
 shot db-init            "$ROOT/wip/gallery/orm-demo" db init --yes
 shot db-verify          "$ROOT/wip/gallery/orm-demo" db verify

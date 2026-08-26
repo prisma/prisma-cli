@@ -6,22 +6,19 @@ import { forEachNdjsonRecord } from "../../lib/ndjson";
 import {
   adviceAction,
   deployFailedError,
-  deploymentDetachedError,
-  deploymentNotFoundError,
-  deploymentOutsideProjectError,
   logsRangeConflictError,
-  noDeploymentsError,
+  noVersionsError,
   runCommandAction,
+  versionNotFoundError,
 } from "./errors";
-import { requireDeploymentForService } from "./release";
-import type { ServiceDeploymentSummary } from "./results";
+import { requireVersionForService } from "./release";
+import type { ServiceVersionSummary } from "./results";
 import type { ServiceContext, ServiceReadState } from "./target";
 import {
-  applyLiveDeploymentHint,
-  listServices,
-  rememberSelectedService,
-  resolveCurrentLiveDeploymentId,
+  applyLiveVersionHint,
+  resolveCurrentLiveVersionId,
   resolveServiceReadState,
+  resolveVersionSubject,
 } from "./target";
 
 const TRAILING_NEWLINE = /\n$/;
@@ -84,7 +81,7 @@ type TerminalRecord = Extract<DeploymentLogRecord, { type: "terminal" }>;
 
 interface LogTarget {
   service: AppRecord;
-  deployment: ServiceDeploymentSummary;
+  version: ServiceVersionSummary;
 }
 
 function logsFailedError(
@@ -93,7 +90,7 @@ function logsFailedError(
 ): CliStructuredError {
   return new CliStructuredError(
     "SERVICE.LOGS_FAILED",
-    `Failed to read logs for deployment ${deploymentId}`,
+    `Failed to read logs for version ${deploymentId}`,
     {
       why: `The Management API returned HTTP ${status}.`,
       meta: { status },
@@ -102,8 +99,8 @@ function logsFailedError(
           "Retry the command, or rerun with --log-level verbose for more detail.",
         ),
         runCommandAction(
-          "Show the deployment",
-          `service deployment show ${deploymentId}`,
+          "Show the version",
+          `service version show ${deploymentId}`,
         ),
       ],
     },
@@ -119,7 +116,7 @@ function logsFailedError(
 function logsIncompleteError(deploymentId: string): CliStructuredError {
   return new CliStructuredError(
     "SERVICE.LOGS_INCOMPLETE",
-    `Incomplete log page for deployment ${deploymentId}`,
+    `Incomplete log page for version ${deploymentId}`,
     {
       why: "The response ended without the record that closes a page, so the lines shown may be only part of it.",
       nextActions: [adviceAction("Rerun the command to read the page again.")],
@@ -135,7 +132,7 @@ function logStreamFailedError(
 ): CliStructuredError {
   return new CliStructuredError(
     "SERVICE.LOGS_FAILED",
-    `Log stream failed for deployment ${deploymentId}`,
+    `Log stream failed for version ${deploymentId}`,
     {
       why: record.message,
       meta: {
@@ -145,8 +142,8 @@ function logStreamFailedError(
       },
       nextActions: [
         runCommandAction(
-          "Show the deployment",
-          `service deployment show ${deploymentId}`,
+          "Show the version",
+          `service version show ${deploymentId}`,
         ),
       ],
     },
@@ -156,102 +153,55 @@ function logStreamFailedError(
 function listDeployments(
   ctx: ServiceContext,
   provider: AppProvider,
-  serviceId: string,
+  service: Pick<AppRecord, "id" | "name">,
 ) {
   return provider
-    .listDeployments(serviceId, { signal: ctx.signal })
+    .listDeployments(service.id, { signal: ctx.signal })
     .catch((error): never => {
-      throw deployFailedError("Failed to list service deployments", error, [
-        runCommandAction("List deployments", "service deployment list"),
+      throw deployFailedError("Failed to list service versions", error, [
+        runCommandAction(
+          "List versions",
+          `service version list ${service.name}`,
+        ),
       ]);
     });
 }
 
-/** `--deployment <id>`: the id is global, so it is resolved directly and
- *  then checked against the resolved project — a deployment that exists
- *  but belongs elsewhere is reported as its own failure. */
-async function resolveExplicitDeployment(
+/** `--version-id <id>` with a service target: the id must belong to
+ *  the resolved service. */
+async function resolveVersionInService(
   ctx: ServiceContext,
   state: ServiceReadState,
-  serviceName: string | undefined,
   deploymentId: string,
 ): Promise<LogTarget> {
-  if (serviceName) {
-    if (!state.selected) {
-      throw noDeploymentsError(
-        "No deployments available to read logs from",
-        "The resolved project does not have any deployed service yet.",
-      );
-    }
-    const deploymentsResult = await listDeployments(
-      ctx,
-      state.provider,
-      state.selected.id,
-    );
-    const deployment = requireDeploymentForService(
-      deploymentsResult.deployments,
-      deploymentId,
-      state.selected.name,
-    );
-    await rememberSelectedService(
-      state.stateStore,
-      state.projectId,
-      deploymentsResult.app,
-    );
-    return { service: deploymentsResult.app, deployment };
-  }
-
-  const shown = await state.provider
-    .showDeployment(deploymentId, { signal: ctx.signal })
-    .catch((error) => {
-      throw deployFailedError("Failed to show deployment", error, [
-        runCommandAction("List deployments", "service deployment list"),
-      ]);
-    });
-  if (!shown) {
-    throw deploymentNotFoundError(deploymentId);
-  }
-  if (!shown.app) {
-    throw deploymentDetachedError(deploymentId);
-  }
-
-  const services = await listServices(
-    ctx,
-    state.provider,
-    state.projectId,
-    state.target.branch.name,
-  );
-  const owning = services.find((service) => service.id === shown.app?.id);
-  if (!owning) {
-    throw deploymentOutsideProjectError(deploymentId);
-  }
-
-  await rememberSelectedService(state.stateStore, state.projectId, owning);
-  return { service: owning, deployment: shown.deployment };
-}
-
-/** No `--deployment`: read whatever is live for the selected service. */
-async function resolveLiveDeployment(
-  ctx: ServiceContext,
-  state: ServiceReadState,
-): Promise<LogTarget> {
-  if (!state.selected) {
-    throw noDeploymentsError(
-      "No deployments available to read logs from",
-      "The resolved project does not have any deployed service yet.",
-    );
-  }
-
   const deploymentsResult = await listDeployments(
     ctx,
     state.provider,
-    state.selected.id,
+    state.service,
   );
-  const currentLiveDeploymentId = resolveCurrentLiveDeploymentId(
+  const deployment = requireVersionForService(
+    deploymentsResult.deployments,
+    deploymentId,
+    state.service.name,
+  );
+  return { service: deploymentsResult.app, version: deployment };
+}
+
+/** No `--version-id`: read whatever is live for the resolved service. */
+async function resolveLiveVersion(
+  ctx: ServiceContext,
+  state: ServiceReadState,
+): Promise<LogTarget> {
+  const deploymentsResult = await listDeployments(
+    ctx,
+    state.provider,
+    state.service,
+  );
+  const currentLiveDeploymentId = resolveCurrentLiveVersionId(
     deploymentsResult.app,
     deploymentsResult.deployments,
   );
-  const deployments = applyLiveDeploymentHint(
+  const deployments = applyLiveVersionHint(
     deploymentsResult.deployments,
     currentLiveDeploymentId,
   );
@@ -261,19 +211,14 @@ async function resolveLiveDeployment(
       ) ?? null)
     : null;
 
-  await rememberSelectedService(
-    state.stateStore,
-    state.projectId,
-    deploymentsResult.app,
-  );
-
   if (!deployment) {
-    throw noDeploymentsError(
-      "No deployments available to read logs from",
-      `The selected service "${deploymentsResult.app.name}" does not have a live deployment.`,
+    throw noVersionsError(
+      "No versions available to read logs from",
+      `The service "${deploymentsResult.app.name}" does not have a live version.`,
+      deploymentsResult.app.name,
     );
   }
-  return { service: deploymentsResult.app, deployment };
+  return { service: deploymentsResult.app, version: deployment };
 }
 
 /**
@@ -304,7 +249,7 @@ async function readPage(
   if (!response.ok || !body) {
     await body?.cancel().catch(() => undefined);
     throw response.status === 404
-      ? deploymentNotFoundError(deploymentId)
+      ? versionNotFoundError(deploymentId)
       : logsFailedError(deploymentId, response.status);
   }
 
@@ -344,12 +289,12 @@ function requireResumeCursor(
   if (cursor === null) {
     throw new CliStructuredError(
       "SERVICE.LOGS_NO_CURSOR",
-      `Cannot follow logs for deployment ${deploymentId}`,
+      `Cannot follow logs for version ${deploymentId}`,
       {
         why: "The log page ended without a resume cursor, so there is no point to continue reading from.",
         nextActions: [
           adviceAction(
-            "Rerun without --follow to read the page, or retry if the deployment is still starting.",
+            "Rerun without --follow to read the page, or retry if the version is still starting.",
           ),
         ],
       },
@@ -393,25 +338,74 @@ async function followPages(
   }
 }
 
+/**
+ * A globally-unique version id is a complete target on its own, so
+ * `--version-id` with no service argument resolves it directly, the
+ * way `service version show` does — no project resolution at all. A
+ * service argument scopes the lookup to that service.
+ */
+async function resolveLogsTarget(
+  ctx: ServiceContext,
+  options: {
+    service?: string | undefined;
+    project?: string | undefined;
+    branch?: string | undefined;
+    versionId?: string | undefined;
+  },
+): Promise<{ projectId: string | null; target: LogTarget }> {
+  const explicitVersionId = options.versionId;
+  const serviceRequested = options.service !== undefined;
+
+  if (explicitVersionId !== undefined && !serviceRequested) {
+    const subject = await resolveVersionSubject(ctx, explicitVersionId);
+    return {
+      projectId: null,
+      target: { service: subject.service, version: subject.version },
+    };
+  }
+  const readState = await resolveServiceReadState(ctx, {
+    ...(options.service !== undefined ? { serviceName: options.service } : {}),
+    ...(options.project !== undefined ? { projectRef: options.project } : {}),
+    ...(options.branch !== undefined ? { branchName: options.branch } : {}),
+    commandName: "service logs",
+  });
+  return {
+    projectId: readState.projectId,
+    target:
+      explicitVersionId !== undefined
+        ? await resolveVersionInService(ctx, readState, explicitVersionId)
+        : await resolveLiveVersion(ctx, readState),
+  };
+}
+
 export const serviceLogsCommand = defineSessionCommand({
   help: {
-    summary: "Read logs for a deployment of the service",
+    summary: "Read logs for a version of the service",
     examples: [
-      "service logs",
-      "service logs --tail 500",
-      "service logs --follow",
-      "service logs --deployment dep_123 --from-start",
+      "service logs my-service",
+      "service logs my-service --tail 500",
+      "service logs my-service --follow",
+      "service logs --version-id cpv_123 --from-start",
     ],
   },
   args: {
+    positionals: {
+      service: positional.optionalString({
+        brief: "Service id or name",
+        placeholder: "service",
+      }),
+    },
     flags: {
-      service: flag.string({ brief: "Service name", placeholder: "name" }),
       project: flag.string({
         brief: "Project id or name",
         placeholder: "id-or-name",
       }),
-      deployment: flag.string({
-        brief: "Deployment id to read (default: the live deployment)",
+      branch: flag.string({
+        brief: "Branch the service lives on (default: the default branch)",
+        placeholder: "name",
+      }),
+      versionId: flag.string({
+        brief: "Service version id to read (default: the live version)",
         placeholder: "id",
       }),
       tail: flag.number({
@@ -425,13 +419,6 @@ export const serviceLogsCommand = defineSessionCommand({
         brief: "Keep polling for new lines until interrupted",
       }),
     },
-    positionals: {
-      service: positional.optionalString({
-        brief:
-          "Service target from prisma.compute.ts when the config defines multiple services",
-        placeholder: "service",
-      }),
-    },
   },
   needs: { credentials: true },
   handler: async (args, ctx) => {
@@ -441,40 +428,18 @@ export const serviceLogsCommand = defineSessionCommand({
       throw logsRangeConflictError();
     }
 
-    // "A service was named" — by --service or by the config target. It
-    // decides whether an explicit deployment id is looked up within that
-    // service or resolved globally, and a global lookup needs no service
-    // selection at all (so it never prompts for one).
-    const serviceNamed = args.flags.service ?? args.positionals.service;
-    const resolveGlobally = Boolean(args.flags.deployment) && !serviceNamed;
-    const state = await resolveServiceReadState(ctx, {
-      ...(args.flags.service !== undefined
-        ? { serviceName: args.flags.service }
-        : {}),
-      ...(args.flags.project !== undefined
-        ? { projectRef: args.flags.project }
-        : {}),
-      ...(args.positionals.service !== undefined
-        ? { configTarget: args.positionals.service }
-        : {}),
-      commandName: "service logs",
-      skipSelection: resolveGlobally,
+    const { projectId, target } = await resolveLogsTarget(ctx, {
+      service: args.positionals.service,
+      ...args.flags,
     });
-
-    const target = args.flags.deployment
-      ? await resolveExplicitDeployment(
-          ctx,
-          state,
-          serviceNamed,
-          args.flags.deployment,
-        )
-      : await resolveLiveDeployment(ctx, state);
-    const deploymentId = target.deployment.id;
+    const versionId = target.version.id;
 
     for (const line of [
-      `project: ${state.projectId}`,
+      // A run targeted purely by deployment id resolves no project, so
+      // there is none to report.
+      ...(projectId === null ? [] : [`project: ${projectId}`]),
       `service: ${target.service.name}`,
-      `deployment: ${deploymentId}`,
+      `version: ${versionId}`,
     ]) {
       ctx.report({
         kind: "output",
@@ -489,9 +454,9 @@ export const serviceLogsCommand = defineSessionCommand({
       ? { from_start: "true" }
       : { tail: args.flags.tail ?? DEFAULT_TAIL };
 
-    const terminal = await readPage(ctx, deploymentId, firstPageQuery);
+    const terminal = await readPage(ctx, versionId, firstPageQuery);
     if (terminal.kind === "error") {
-      throw logStreamFailedError(deploymentId, terminal);
+      throw logStreamFailedError(versionId, terminal);
     }
     if (!args.flags.follow) {
       // The routine terminal record ends the page. Its cursor is the
@@ -499,6 +464,6 @@ export const serviceLogsCommand = defineSessionCommand({
       return ok(undefined);
     }
 
-    return followPages(ctx, deploymentId, terminal.cursor);
+    return followPages(ctx, versionId, terminal.cursor);
   },
 });

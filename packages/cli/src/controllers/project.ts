@@ -2,11 +2,14 @@ import { unlink } from "node:fs/promises";
 import path from "node:path";
 
 import { SERVICE_TOKEN_ENV_VAR } from "@prisma/cli-engine";
+import {
+  CliStructuredError,
+  type NextAction,
+} from "@prisma/cli-engine/protocol";
 import type { ManagementApiClient } from "@prisma/management-api-sdk";
 import { matchError } from "better-result";
 
 import type { GitHubRepositoryReference } from "../adapters/git";
-import { authRequiredError, CliError } from "../errors";
 import type { CommandContext } from "../legacy/runtime";
 import type { PrismaCliPackageCommandFormatter } from "../lib/agent/cli-command";
 import {
@@ -24,6 +27,20 @@ import type {
 
 export const GITHUB_INSTALL_POLL_INTERVAL_MS = 2_000;
 export const GITHUB_INSTALL_POLL_TIMEOUT_MS = 120_000;
+
+function runCommand(command: string): NextAction {
+  return { kind: "run-command", label: command, command };
+}
+
+function userChoice(label: string): NextAction {
+  return { kind: "user-choice", label };
+}
+
+/** A URL is not a command: putting one in `command` tells a consumer to
+ *  execute it. */
+function openUrl(url: string): NextAction {
+  return { kind: "open-url", label: url, url };
+}
 
 export async function readProjectListLocalBinding(
   cwd: string,
@@ -67,51 +84,59 @@ function localPinReadErrorToInvalidLocalBinding(
 
 export function transferRecipientRequiredError(
   formatCommand: PrismaCliPackageCommandFormatter,
-): CliError {
-  return new CliError({
-    code: "TRANSFER_RECIPIENT_REQUIRED",
-    domain: "project",
-    summary: "Transfer recipient required",
-    why: "Project transfer needs the receiving workspace.",
-    fix: "Pass --to-workspace <id-or-name> for a locally authenticated workspace, or --recipient-token <token> for a cross-account transfer.",
-    exitCode: 2,
-    nextSteps: [
-      formatCommand(["auth", "workspace", "list"]),
-      formatCommand([
-        "project",
-        "transfer",
-        "<project>",
-        "--to-workspace",
-        "<id-or-name>",
-        "--confirm",
-        "<project-id>",
-      ]),
-    ],
-  });
+): CliStructuredError {
+  return new CliStructuredError(
+    "PROJECT.TRANSFER_RECIPIENT_REQUIRED",
+    "Transfer recipient required",
+    {
+      why: "Project transfer needs the receiving workspace.",
+      nextActions: [
+        userChoice(
+          "Pass --to-workspace <id-or-name> for a locally authenticated workspace, or --recipient-token <token> for a cross-account transfer.",
+        ),
+        runCommand(formatCommand(["auth", "workspace", "list"])),
+        runCommand(
+          formatCommand([
+            "project",
+            "transfer",
+            "<project>",
+            "--to-workspace",
+            "<id-or-name>",
+            "--confirm",
+            "<project-id>",
+          ]),
+        ),
+      ],
+    },
+  );
 }
 
 export function transferRecipientUnavailableError(
   formatCommand: PrismaCliPackageCommandFormatter,
-): CliError {
-  return new CliError({
-    code: "TRANSFER_RECIPIENT_UNAVAILABLE",
-    domain: "project",
-    summary: "Local workspace sessions are unavailable",
-    why: `--to-workspace resolves locally stored OAuth sessions, but ${SERVICE_TOKEN_ENV_VAR} is set and service-token mode does not read them.`,
-    fix: "Pass --recipient-token <token> with an access token for the receiving workspace, or unset the service token.",
-    exitCode: 1,
-    nextSteps: [
-      formatCommand([
-        "project",
-        "transfer",
-        "<project>",
-        "--recipient-token",
-        "<token>",
-        "--confirm",
-        "<project-id>",
-      ]),
-    ],
-  });
+): CliStructuredError {
+  return new CliStructuredError(
+    "PROJECT.TRANSFER_RECIPIENT_UNAVAILABLE",
+    "Local workspace sessions are unavailable",
+    {
+      why: `--to-workspace resolves locally stored OAuth sessions, but ${SERVICE_TOKEN_ENV_VAR} is set and service-token mode does not read them.`,
+      nextActions: [
+        userChoice(
+          "Pass --recipient-token <token> with an access token for the receiving workspace, or unset the service token.",
+        ),
+        runCommand(
+          formatCommand([
+            "project",
+            "transfer",
+            "<project>",
+            "--recipient-token",
+            "<token>",
+            "--confirm",
+            "<project-id>",
+          ]),
+        ),
+      ],
+    },
+  );
 }
 
 export async function cleanupLocalPinForProject(
@@ -132,13 +157,11 @@ export async function cleanupLocalPinForProject(
   }
 
   try {
-    await unlink(
-      path.join(context.runtime.cwd, LOCAL_RESOLUTION_PIN_RELATIVE_PATH),
-    );
+    await unlink(path.join(pin.directory, LOCAL_RESOLUTION_PIN_RELATIVE_PATH));
     return true;
   } catch {
     hooks.onError(
-      `The local pin ${LOCAL_RESOLUTION_PIN_RELATIVE_PATH} points at the removed project but could not be deleted.`,
+      `The local pin ${LOCAL_RESOLUTION_PIN_RELATIVE_PATH} points at the deleted project but could not be deleted.`,
     );
     return false;
   }
@@ -164,7 +187,7 @@ export async function rewriteOrClearLocalPinForProject(
 
   if (recipientWorkspaceId) {
     const writeResult = await writeLocalResolutionPin(
-      context.runtime.cwd,
+      pin.directory,
       { workspaceId: recipientWorkspaceId, projectId },
       context.runtime.signal,
     );
@@ -178,9 +201,7 @@ export async function rewriteOrClearLocalPinForProject(
   }
 
   try {
-    await unlink(
-      path.join(context.runtime.cwd, LOCAL_RESOLUTION_PIN_RELATIVE_PATH),
-    );
+    await unlink(path.join(pin.directory, LOCAL_RESOLUTION_PIN_RELATIVE_PATH));
     return "cleared";
   } catch {
     hooks.onError(
@@ -493,11 +514,14 @@ async function findRepositoryInInstallationIfAvailable(
 }
 
 function isUnavailableScmInstallationError(error: unknown): boolean {
-  if (!(error instanceof CliError) || error.code !== "REPO_CONNECTION_FAILED") {
+  if (
+    !CliStructuredError.is(error) ||
+    error.code !== "GIT.REPO_CONNECTION_FAILED"
+  ) {
     return false;
   }
 
-  return error.meta.status === 404 || error.meta.status === 422;
+  return error.meta?.status === 404 || error.meta?.status === 422;
 }
 
 export async function createGitHubInstallIntent(
@@ -585,89 +609,103 @@ export function toRepositoryConnection(
   };
 }
 
-export function unsupportedRepositoryProviderError(): CliError {
-  return new CliError({
-    code: "REPO_PROVIDER_UNSUPPORTED",
-    domain: "project",
-    summary: "Repository provider is not supported",
-    why: "Repository connection supports GitHub repository URLs only.",
-    fix: "Pass a GitHub repository URL such as git@github.com:prisma/prisma-cli.git.",
-    exitCode: 2,
-    nextSteps: ["prisma-cli git connect git@github.com:owner/repo.git"],
-  });
+export function unsupportedRepositoryProviderError(): CliStructuredError {
+  return new CliStructuredError(
+    "GIT.REPO_PROVIDER_UNSUPPORTED",
+    "Repository provider is not supported",
+    {
+      why: "Repository connection supports GitHub repository URLs only.",
+      nextActions: [
+        userChoice(
+          "Pass a GitHub repository URL such as git@github.com:prisma/prisma-cli.git.",
+        ),
+        runCommand("prisma git connect git@github.com:owner/repo.git"),
+      ],
+    },
+  );
 }
 
-export function repoNotConnectedError(): CliError {
-  return new CliError({
-    code: "REPO_NOT_CONNECTED",
-    domain: "project",
-    summary: "No GitHub repository connected",
-    why: "The resolved project does not have an active GitHub repository connection.",
-    fix: "Run prisma-cli git connect before disconnecting.",
-    exitCode: 1,
-    nextSteps: ["prisma-cli git connect"],
-  });
+export function repoNotConnectedError(): CliStructuredError {
+  return new CliStructuredError(
+    "GIT.REPO_NOT_CONNECTED",
+    "No GitHub repository connected",
+    {
+      why: "The resolved project does not have an active GitHub repository connection.",
+      nextActions: [
+        userChoice("Run prisma git connect before disconnecting."),
+        runCommand("prisma git connect"),
+      ],
+    },
+  );
 }
 
 export function repoInstallationRequiredError(
   repository: GitHubRepositoryReference,
   installUrl: string,
-  opened: boolean,
-): CliError {
-  return new CliError({
-    code: "REPO_INSTALLATION_REQUIRED",
-    domain: "project",
-    summary: "GitHub App installation required",
-    why: `The selected workspace does not have a GitHub App installation that can be used to link ${repository.fullName}.`,
-    fix: opened
-      ? "Finish installing the GitHub App in the browser, then rerun prisma-cli git connect."
-      : "Open the GitHub App installation URL, approve access, then rerun prisma-cli git connect.",
-    meta: {
-      repository: repository.fullName,
-      installUrl,
-      opened,
+): CliStructuredError {
+  return new CliStructuredError(
+    "GIT.REPO_INSTALLATION_REQUIRED",
+    "GitHub App installation required",
+    {
+      why: `The selected workspace does not have a GitHub App installation that can be used to link ${repository.fullName}.`,
+      meta: {
+        repository: repository.fullName,
+        installUrl,
+      },
+      nextActions: [
+        userChoice(
+          "Finish installing the GitHub App in the browser, then rerun prisma git connect.",
+        ),
+        openUrl(installUrl),
+        runCommand(`prisma git connect ${repository.url}`),
+      ],
     },
-    exitCode: 1,
-    nextSteps: [installUrl, `prisma-cli git connect ${repository.url}`],
-  });
+  );
 }
 
 export function repoNotAccessibleError(
   repository: GitHubRepositoryReference,
   installUrl: string,
-  opened: boolean,
-): CliError {
-  return new CliError({
-    code: "REPO_NOT_ACCESSIBLE",
-    domain: "project",
-    summary: "GitHub repository is not accessible",
-    why: `The GitHub App installations connected to this workspace do not expose ${repository.fullName}.`,
-    fix: "Open the GitHub App installation URL, grant access to this repository, then rerun prisma-cli git connect.",
-    meta: {
-      repository: repository.fullName,
-      installUrl,
-      opened,
+): CliStructuredError {
+  return new CliStructuredError(
+    "GIT.REPO_NOT_ACCESSIBLE",
+    "GitHub repository is not accessible",
+    {
+      why: `The GitHub App installations connected to this workspace do not expose ${repository.fullName}.`,
+      meta: {
+        repository: repository.fullName,
+        installUrl,
+      },
+      nextActions: [
+        userChoice(
+          "Open the GitHub App installation URL, grant access to this repository, then rerun prisma git connect.",
+        ),
+        openUrl(installUrl),
+        runCommand(`prisma git connect ${repository.url}`),
+      ],
     },
-    exitCode: 1,
-    nextSteps: [installUrl, `prisma-cli git connect ${repository.url}`],
-  });
+  );
 }
 
 export function repoAlreadyConnectedError(
   repositoryFullName: string,
-): CliError {
-  return new CliError({
-    code: "REPO_ALREADY_CONNECTED",
-    domain: "project",
-    summary: "Project already has a GitHub repository connected",
-    why: `The resolved project is already connected to ${repositoryFullName}.`,
-    fix: "Disconnect the existing repository before connecting a different one.",
-    meta: {
-      repository: repositoryFullName,
+): CliStructuredError {
+  return new CliStructuredError(
+    "GIT.REPO_ALREADY_CONNECTED",
+    "Project already has a GitHub repository connected",
+    {
+      why: `The resolved project is already connected to ${repositoryFullName}.`,
+      meta: {
+        repository: repositoryFullName,
+      },
+      nextActions: [
+        userChoice(
+          "Disconnect the existing repository before connecting a different one.",
+        ),
+        runCommand("prisma git disconnect"),
+      ],
     },
-    exitCode: 1,
-    nextSteps: ["prisma-cli git disconnect"],
-  });
+  );
 }
 
 export function repositoryFullNamesMatch(left: string, right: string): boolean {
@@ -678,36 +716,37 @@ export function repoConnectionApiError(
   summary: string,
   response: Response | undefined,
   error: SourceRepositoryApiError | undefined,
-): CliError {
+): CliStructuredError {
   const status = response?.status ?? 0;
   const apiCode = error?.error?.code;
   const apiMessage = error?.error?.message;
   const apiHint = error?.error?.hint;
+  const unauthorized = status === 401 || status === 403;
 
-  if (status === 401 || status === 403) {
-    return authRequiredError(["prisma-cli auth login"]);
-  }
-
-  return new CliError({
-    code: "REPO_CONNECTION_FAILED",
-    domain: "project",
-    summary,
+  return new CliStructuredError("GIT.REPO_CONNECTION_FAILED", summary, {
     why:
       apiMessage ??
-      `The Management API returned status ${status || "unknown"}.`,
-    fix: apiHint ?? repoConnectionFixForStatus(status),
+      (unauthorized
+        ? `The Management API rejected the request as unauthorized (HTTP ${status}).`
+        : `The Management API returned status ${status || "unknown"}.`),
     meta: {
       status,
       ...(apiCode ? { apiCode } : {}),
     },
-    exitCode: 1,
-    nextSteps: ["prisma-cli project show"],
+    nextActions: [
+      userChoice(apiHint ?? repoConnectionFixForStatus(status)),
+      runCommand(unauthorized ? "prisma auth login" : "prisma project show"),
+    ],
   });
 }
 
 function repoConnectionFixForStatus(status: number): string {
+  if (status === 401 || status === 403) {
+    return "Sign in again with prisma auth login, then rerun the command.";
+  }
+
   if (status === 404) {
-    return "Install the GitHub App for this workspace, then rerun prisma-cli git connect.";
+    return "Install the GitHub App for this workspace, then rerun prisma git connect.";
   }
 
   if (status === 409) {
@@ -718,5 +757,5 @@ function repoConnectionFixForStatus(status: number): string {
     return "Make sure the GitHub App installation has access to this repository.";
   }
 
-  return "Re-run with --trace for the underlying API response details.";
+  return "Re-run with --log-level verbose for the underlying API response details.";
 }

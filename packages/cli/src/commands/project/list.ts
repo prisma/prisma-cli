@@ -1,6 +1,6 @@
 /** The `project list` command. */
 import { defineCommand, type Presentations } from "@prisma/cli-engine";
-import { notOk, ok } from "@prisma/cli-engine/protocol";
+import { ok } from "@prisma/cli-engine/protocol";
 import { CLI_NAME } from "../../cli-name";
 import { readProjectListLocalBinding } from "../../controllers/project";
 import {
@@ -12,8 +12,6 @@ import { serializeProjectList } from "../../presenters/project";
 import type { ProjectListResult } from "../../types/project";
 import { resolveActiveWorkspace } from "../resources-shared/workspace";
 import { listWorkspaceProjects } from "./context";
-import { mapProjectOperationError } from "./errors";
-import { toNextActions } from "./presentation";
 
 const TITLE = "Listing projects for the authenticated workspace.";
 
@@ -41,15 +39,13 @@ function nextActionsFor(result: ProjectListResult) {
   if (result.localBinding?.status === "linked") {
     return [];
   }
-  return toNextActions(
-    buildProjectSetupNextActions({
-      createCommand: `${CLI_NAME} project create <name>`,
-      reason:
-        result.localBinding?.status === "invalid"
-          ? "This directory has an invalid local Project binding. Ask the user which Prisma Project to link before running Project-scoped commands."
-          : "This directory is not linked to a Prisma Project. Project list shows available Projects, but none is selected for this directory.",
-    }),
-  );
+  return buildProjectSetupNextActions({
+    createCommand: `${CLI_NAME} project create <name>`,
+    reason:
+      result.localBinding?.status === "invalid"
+        ? "This directory has an invalid local Project binding. Ask the user which Prisma Project to link before running Project-scoped commands."
+        : "This directory is not linked to a Prisma Project. Project list shows available Projects, but none is selected for this directory.",
+  });
 }
 
 function listPresentations(result: ProjectListResult): Presentations {
@@ -91,26 +87,18 @@ export const projectListCommand = defineCommand({
   },
   needs: { credentials: true },
   handler: async (_args, ctx) => {
-    try {
-      const workspace = await resolveActiveWorkspace(ctx);
-      const projects = sortProjects(await listWorkspaceProjects(ctx));
-      const localBinding = await readProjectListLocalBinding(
-        ctx.cwd,
-        projects,
-        ctx.signal,
-      );
-      const result: ProjectListResult = {
-        workspace,
-        projects: projects.map(toProjectSummary),
-        localBinding,
-      };
-      return ok(ctx.present({ data: result }, listPresentations(result)));
-    } catch (error) {
-      const mapped = mapProjectOperationError(error);
-      if (mapped) {
-        return notOk(mapped);
-      }
-      throw error;
-    }
+    const workspace = await resolveActiveWorkspace(ctx);
+    const projects = sortProjects(await listWorkspaceProjects(ctx));
+    const localBinding = await readProjectListLocalBinding(
+      ctx.cwd,
+      projects,
+      ctx.signal,
+    );
+    const result: ProjectListResult = {
+      workspace,
+      projects: projects.map(toProjectSummary),
+      localBinding,
+    };
+    return ok(ctx.present({ data: result }, listPresentations(result)));
   },
 });

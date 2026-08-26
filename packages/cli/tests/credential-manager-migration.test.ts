@@ -9,7 +9,11 @@ import { mintTestJwt } from "@prisma/cli-engine/testing";
 import { beforeEach, describe, expect, it } from "vitest";
 
 import { FileCredentialManager } from "../src/auth/credential-manager";
-import { readCredentialState } from "../src/auth/state-file";
+import {
+  EMPTY_STATE,
+  readCredentialState,
+  writeCredentialState,
+} from "../src/auth/state-file";
 import { getAuthContextFilePath } from "../src/auth/token-storage";
 
 const WORKSPACE_A = "wksp_a";
@@ -289,5 +293,202 @@ describe("adopting the legacy store", () => {
     expect(state.sessions).toEqual([]);
     expect(state.currentWorkspaceId).toBeNull();
     await unlink(authFilePath);
+  });
+});
+
+describe("the legacy mirror", () => {
+  /** Reads the store exactly as the 3.x CLI does (#204): sessions come
+   *  from auth.json's `tokens` array (`data.tokens || []`), selected by
+   *  auth.context.json's `activeWorkspaceId`, and a record without a
+   *  workspaceId, token, and refreshToken is skipped. */
+  async function readAsLegacyCli() {
+    const data = JSON.parse(await readFile(authFilePath, "utf8")) as {
+      tokens?: unknown[];
+    };
+    const tokens = data.tokens || [];
+    const context = JSON.parse(await readFile(contextFilePath, "utf8")) as {
+      activeWorkspaceId?: string | null;
+      workspaces?: Record<string, { name?: string }>;
+    };
+    const active = context.activeWorkspaceId;
+    if (!active) return null;
+    const credential = tokens.find(
+      (entry) => (entry as { workspaceId?: string })?.workspaceId === active,
+    ) as
+      | { workspaceId: string; token?: string; refreshToken?: string }
+      | undefined;
+    if (!credential?.token || !credential.refreshToken) return null;
+    return {
+      workspaceId: credential.workspaceId,
+      accessToken: credential.token,
+      refreshToken: credential.refreshToken,
+    };
+  }
+
+  it("a token refresh keeps the session visible to the 3.x reader", async () => {
+    await writeLegacyStore([legacyEntry(WORKSPACE_A, "legacy-refresh")]);
+    await writeLegacyContext({
+      activeWorkspaceId: WORKSPACE_A,
+      workspaces: { [WORKSPACE_A]: { name: "Alpha" } },
+    });
+
+    const manager = makeManager();
+    await manager.activeCredential();
+    const storage = await manager.activeCredentialStorage();
+    const rotatedToken = mintToken(WORKSPACE_A);
+    await storage.setTokens({
+      workspaceId: WORKSPACE_A,
+      accessToken: rotatedToken,
+      refreshToken: "rotated-refresh",
+    });
+
+    expect(await readAsLegacyCli()).toEqual({
+      workspaceId: WORKSPACE_A,
+      accessToken: rotatedToken,
+      refreshToken: "rotated-refresh",
+    });
+
+    const context = JSON.parse(await readFile(contextFilePath, "utf8")) as {
+      workspaces: Record<string, { name?: string }>;
+    };
+    expect(context.workspaces[WORKSPACE_A]?.name).toBe("Alpha");
+  });
+
+  it("creating and selecting sessions moves the 3.x active pointer with them", async () => {
+    const manager = makeManager();
+    const tokenA = mintToken(WORKSPACE_A);
+    const tokenB = mintToken(WORKSPACE_B);
+    await manager.createSession(
+      { token: tokenA, refreshToken: "ra", expiresAt: undefined },
+      WORKSPACE_A,
+    );
+    await manager.createSession(
+      { token: tokenB, refreshToken: "rb", expiresAt: undefined },
+      WORKSPACE_B,
+    );
+
+    expect((await readAsLegacyCli())?.workspaceId).toBe(WORKSPACE_B);
+
+    await manager.selectSession(WORKSPACE_A);
+    expect(await readAsLegacyCli()).toEqual({
+      workspaceId: WORKSPACE_A,
+      accessToken: tokenA,
+      refreshToken: "ra",
+    });
+  });
+
+  it("the mirror is invisible to this CLI's own reader", async () => {
+    const manager = makeManager();
+    await manager.createSession(
+      {
+        token: mintToken(WORKSPACE_A),
+        refreshToken: "r",
+        expiresAt: undefined,
+      },
+      WORKSPACE_A,
+    );
+
+    const state = await readCredentialState(authFilePath);
+    expect(Object.keys(state)).toEqual([
+      "version",
+      "sessions",
+      "currentWorkspaceId",
+    ]);
+    expect(state.sessions).toHaveLength(1);
+  });
+});
+
+describe("the legacy mirror's context sync", () => {
+  it("a pointer move preserves the remembered-workspace name map", async () => {
+    await writeLegacyStore([
+      legacyEntry(WORKSPACE_A, "ra"),
+      legacyEntry(WORKSPACE_B, "rb"),
+    ]);
+    await writeLegacyContext({
+      activeWorkspaceId: WORKSPACE_A,
+      workspaces: {
+        [WORKSPACE_A]: { name: "Alpha" },
+        [WORKSPACE_B]: { name: "Bravo" },
+      },
+    });
+
+    await makeManager().selectSession(WORKSPACE_B);
+
+    const context = JSON.parse(await readFile(contextFilePath, "utf8")) as {
+      activeWorkspaceId: string | null;
+      workspaces: Record<string, { name?: string }>;
+    };
+    expect(context.activeWorkspaceId).toBe(WORKSPACE_B);
+    expect(context.workspaces[WORKSPACE_A]?.name).toBe("Alpha");
+    expect(context.workspaces[WORKSPACE_B]?.name).toBe("Bravo");
+  });
+
+  it("writes no context file when none exists and nothing is selected", async () => {
+    await writeCredentialState(authFilePath, EMPTY_STATE);
+
+    await expect(readFile(contextFilePath, "utf8")).rejects.toMatchObject({
+      code: "ENOENT",
+    });
+  });
+});
+
+describe("ending sessions and the legacy mirror", () => {
+  async function readLegacyView() {
+    const data = JSON.parse(await readFile(authFilePath, "utf8")) as {
+      tokens?: { workspaceId: string }[];
+    };
+    const context = JSON.parse(await readFile(contextFilePath, "utf8")) as {
+      activeWorkspaceId?: string | null;
+    };
+    return {
+      tokenWorkspaces: (data.tokens ?? []).map((entry) => entry.workspaceId),
+      activeWorkspaceId: context.activeWorkspaceId ?? null,
+    };
+  }
+
+  it("ending a non-active session keeps the active one visible to the 3.x reader", async () => {
+    const manager = makeManager();
+    await manager.createSession(
+      {
+        token: mintToken(WORKSPACE_A),
+        refreshToken: "ra",
+        expiresAt: undefined,
+      },
+      WORKSPACE_A,
+    );
+    await manager.createSession(
+      {
+        token: mintToken(WORKSPACE_B),
+        refreshToken: "rb",
+        expiresAt: undefined,
+      },
+      WORKSPACE_B,
+    );
+
+    await manager.endSession(WORKSPACE_A);
+
+    expect(await readLegacyView()).toEqual({
+      tokenWorkspaces: [WORKSPACE_B],
+      activeWorkspaceId: WORKSPACE_B,
+    });
+  });
+
+  it("ending the active session clears the 3.x pointer with it", async () => {
+    const manager = makeManager();
+    await manager.createSession(
+      {
+        token: mintToken(WORKSPACE_A),
+        refreshToken: "ra",
+        expiresAt: undefined,
+      },
+      WORKSPACE_A,
+    );
+
+    await manager.endSession(WORKSPACE_A);
+
+    expect(await readLegacyView()).toEqual({
+      tokenWorkspaces: [],
+      activeWorkspaceId: null,
+    });
   });
 });

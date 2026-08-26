@@ -4,34 +4,35 @@ import { deployFailedError, runCommandAction } from "./errors";
 import { showPresentations } from "./presentation";
 import type { ServiceShowResult } from "./results";
 import {
-  applyLiveDeploymentHint,
-  rememberSelectedService,
-  resolveCurrentLiveDeploymentId,
+  applyLiveVersionHint,
+  resolveCurrentLiveVersionId,
   resolveServiceReadState,
-  sortDeploymentsNewestFirst,
+  sortVersionsNewestFirst,
   toServiceSummary,
 } from "./target";
 
 export const serviceShowCommand = defineCommand({
   help: {
-    summary: "Show the service and its current deployment",
-    examples: ["service show", "service show --service my-service"],
+    summary: "Show the service and its current version",
+    examples: [
+      "service show my-service",
+      "service show my-service --branch feature-x",
+    ],
   },
   args: {
     flags: {
-      service: flag.string({
-        brief: "Service name",
-        placeholder: "name",
-      }),
       project: flag.string({
         brief: "Project id or name",
         placeholder: "id-or-name",
       }),
+      branch: flag.string({
+        brief: "Branch the service lives on (default: the default branch)",
+        placeholder: "name",
+      }),
     },
     positionals: {
       service: positional.optionalString({
-        brief:
-          "Service target from prisma.compute.ts when the config defines multiple services",
+        brief: "Service id or name",
         placeholder: "service",
       }),
     },
@@ -39,61 +40,47 @@ export const serviceShowCommand = defineCommand({
   needs: { credentials: true },
   handler: async (args, ctx) => {
     const state = await resolveServiceReadState(ctx, {
-      serviceName: args.flags.service,
+      serviceName: args.positionals.service,
       projectRef: args.flags.project,
-      configTarget: args.positionals.service,
+      branchName: args.flags.branch,
       commandName: "service show",
     });
 
-    if (!state.selected) {
-      const result: ServiceShowResult = {
-        projectId: state.projectId,
-        service: null,
-        liveDeployment: null,
-        liveUrl: null,
-        recentDeployments: [],
-      };
-      return ok(ctx.present({ data: result }, showPresentations(result)));
-    }
-
     const deploymentsResult = await state.provider
-      .listDeployments(state.selected.id, { signal: ctx.signal })
+      .listDeployments(state.service.id, { signal: ctx.signal })
       .catch((error) => {
         throw deployFailedError("Failed to inspect service", error, [
-          runCommandAction("List deployments", "service deployment list"),
+          runCommandAction(
+            "List versions",
+            `service version list ${state.service.name}`,
+          ),
         ]);
       });
-    const currentLiveDeploymentId = resolveCurrentLiveDeploymentId(
+    const currentLiveDeploymentId = resolveCurrentLiveVersionId(
       deploymentsResult.app,
       deploymentsResult.deployments,
     );
-    const deployments = sortDeploymentsNewestFirst(
-      applyLiveDeploymentHint(
+    const deployments = sortVersionsNewestFirst(
+      applyLiveVersionHint(
         deploymentsResult.deployments,
         currentLiveDeploymentId,
       ),
     );
-    const liveDeployment = currentLiveDeploymentId
+    const liveVersion = currentLiveDeploymentId
       ? (deployments.find(
           (deployment) => deployment.id === currentLiveDeploymentId,
         ) ?? null)
       : null;
 
-    await rememberSelectedService(
-      state.stateStore,
-      state.projectId,
-      deploymentsResult.app,
-    );
-
     const result: ServiceShowResult = {
       projectId: state.projectId,
       service: toServiceSummary(deploymentsResult.app),
-      liveDeployment,
+      liveVersion,
       // A service that was never promoted still carries an endpoint
       // domain, and that domain does not resolve. Only a service with a
       // live deployment has a URL to show.
-      liveUrl: liveDeployment ? deploymentsResult.app.liveUrl : null,
-      recentDeployments: deployments.slice(0, 5),
+      liveUrl: liveVersion ? deploymentsResult.app.liveUrl : null,
+      recentVersions: deployments.slice(0, 5),
     };
     return ok(ctx.present({ data: result }, showPresentations(result)));
   },

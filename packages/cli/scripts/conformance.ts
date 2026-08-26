@@ -71,6 +71,10 @@ async function importPurity(): Promise<readonly Finding[]> {
     label: "@prisma/cli-engine",
     output: await sweepBuiltOutput(join(ENGINE_DIR, "dist")),
     manifest: await manifest(ENGINE_DIR),
+    // c12 is reached via import.meta.resolve plus a realpath'd dynamic
+    // import (see config-loader.ts), which the lexer rightly does not
+    // count as an import of the bare specifier.
+    allowedUnimported: ["c12"],
     requiredSpecifiers: ["@stricli/core"],
   });
   return [...shell, ...unscoped, ...engine];
@@ -95,37 +99,38 @@ async function tarball(): Promise<readonly Finding[]> {
       packages: [
         { name: "@prisma/cli", dir: CLI_DIR },
         { name: "prisma", dir: PRISMA_DIR },
-        { name: "@prisma/cli-engine", dir: ENGINE_DIR },
+        {
+          name: "@prisma/cli-engine",
+          dir: ENGINE_DIR,
+          // Same excuse as check 1: c12 arrives via import.meta.resolve.
+          allowedUnimported: ["c12"],
+        },
       ],
       shellPackage: "@prisma/cli",
       enginePackage: "@prisma/cli-engine",
       familyPackages: ["@prisma/composer-cli", "@prisma/orm-toolchain"],
-      // The empty list is the goal state: both families peering the
-      // exact engine version this repo ships, one engine per install
-      // (ADR 0004). The two entries below are an engine version
-      // transition in flight — a family cannot peer an engine version
-      // that is not on the registry, so the engine publishes first and
-      // the mismatch is real until both families release against it.
-      // The entries expire with the versions they name, and the rc.5
-      // bump PR removes them; while they stand, a release could ship
-      // the two-engine install they describe, which is why they must
-      // not outlive the transition.
+      // An engine version transition is in flight: the engine must
+      // publish 0.3.0 before either family can peer it, so both still
+      // declare 0.2.3. The release PR that pins the families' new
+      // versions removes these entries and restores the empty list.
       exceptions: [
         {
           familyPackage: "@prisma/composer-cli",
-          familyPin: "0.1.1",
-          shellPin: "0.2.0",
-          reason: "engine 0.2.0 must publish before composer-cli can peer it",
+          familyPin: "0.2.3",
+          shellPin: "0.3.0",
+          reason:
+            "@prisma/cli-engine 0.3.0 moves @prisma/management-api-sdk to a peer dependency so one copy of the SDK's client type serves the engine and the shell. Breaking for the engine's consumers, so both families must republish against it.",
           removeWhen:
-            "composer-cli releases peering 0.2.0 and the 8.0.0-rc.5 bump PR pins that release",
+            "@prisma/composer-cli publishes a version peering @prisma/cli-engine 0.3.0 and this repo pins it.",
         },
         {
           familyPackage: "@prisma/orm-toolchain",
-          familyPin: "0.1.1",
-          shellPin: "0.2.0",
-          reason: "engine 0.2.0 must publish before orm-toolchain can peer it",
+          familyPin: "0.2.3",
+          shellPin: "0.3.0",
+          reason:
+            "@prisma/cli-engine 0.3.0 moves @prisma/management-api-sdk to a peer dependency so one copy of the SDK's client type serves the engine and the shell. Breaking for the engine's consumers, so both families must republish against it.",
           removeWhen:
-            "orm-toolchain releases peering 0.2.0 and the 8.0.0-rc.5 bump PR pins that release",
+            "@prisma/orm-toolchain publishes a version peering @prisma/cli-engine 0.3.0 and this repo pins it.",
         },
       ],
       channel: CHANNEL,

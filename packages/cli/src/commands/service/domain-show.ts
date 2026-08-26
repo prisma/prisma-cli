@@ -14,7 +14,7 @@ import {
 export const serviceDomainShowCommand = defineCommand({
   help: {
     summary: "Show custom domain status and certificate details",
-    examples: ["service domain show shop.acme.com"],
+    examples: ["service domain show shop.acme.com --service my-service"],
   },
   args: domainTargetArgs(),
   needs: { credentials: true },
@@ -24,7 +24,6 @@ export const serviceDomainShowCommand = defineCommand({
       serviceName: args.flags.service,
       projectRef: args.flags.project,
       branchName: args.flags.branch,
-      configTarget: args.positionals.service,
       commandName: `service domain show ${hostname}`,
     });
     const domain = await resolveDomainByHostname(

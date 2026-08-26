@@ -116,7 +116,7 @@ describe("update discovery and instructions", () => {
       argv: ["node", "/Users/alice/.npm/_npx/123/node_modules/.bin/prisma-cli"],
       expected: {
         type: "docs",
-        value: "https://www.prisma.io/docs/orm/tools/prisma-cli",
+        value: "https://www.prisma.io/docs/cli",
       },
     },
     {
@@ -128,7 +128,7 @@ describe("update discovery and instructions", () => {
       argv: ["node", "/repo/node_modules/.bin/prisma-cli"],
       expected: {
         type: "docs",
-        value: "https://www.prisma.io/docs/orm/tools/prisma-cli",
+        value: "https://www.prisma.io/docs/cli",
       },
     },
     {
@@ -137,7 +137,7 @@ describe("update discovery and instructions", () => {
       argv: ["node", "/Users/alice/.bun/install/cache/@prisma/cli/prisma-cli"],
       expected: {
         type: "docs",
-        value: "https://www.prisma.io/docs/orm/tools/prisma-cli",
+        value: "https://www.prisma.io/docs/cli",
       },
     },
     {
@@ -146,7 +146,7 @@ describe("update discovery and instructions", () => {
       argv: ["node", "/some/path/prisma-cli"],
       expected: {
         type: "docs",
-        value: "https://www.prisma.io/docs/orm/tools/prisma-cli",
+        value: "https://www.prisma.io/docs/cli",
       },
     },
   ])("selects update instructions for $name", ({ env, argv, expected }) => {

@@ -1,1189 +1,945 @@
+// biome-ignore-all lint/performance/noAwaitInLoops: each assertion reads the filesystem state the command left behind.
 /**
- * The `init` wizard on the engine. Assertions are semantic — the
- * envelope, the presented data, the events, the exit code — with one
- * deliberate exception: the config files init writes are data, not
- * rendering, so they are asserted byte for byte (R-S2d-1).
- *
- * Every test writes a skills-lock.json into its working directory so the
- * agent-setup offer finds the skill already installed and stays out of
- * the way; the offer itself is covered in init-agent-setup.test.ts.
+ * `prisma init` against real project fixtures: the postinstall hook it
+ * writes into package.json, the in-process skills sync it runs, and the
+ * diagnostics it answers with when either step has nothing safe to do.
  */
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { chmod, mkdir, readFile, rm, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
-import type { ManagementApiClient } from "@prisma/cli-engine";
-import { createTestCli, mintTestJwt } from "@prisma/cli-engine/testing";
-import { COMPUTE_CONFIG_JSON_SCHEMA_URL } from "@prisma/compute-sdk/config";
-import { beforeEach, describe, expect, it } from "vitest";
+import { createTestCli } from "@prisma/cli-engine/testing";
+import { describe, expect, it } from "vitest";
 
-import { initCommand } from "../src/commands/init/init";
-import { createTempCwd } from "./helpers";
-import { writeSkillsLockWithSkill } from "./helpers/skills-lock";
+import {
+  type InitResult,
+  initCommand,
+  POSTINSTALL_SCRIPT,
+} from "../src/commands/init";
+import { agentSkillDirs, DEFAULT_AGENTS } from "../src/lib/skills/allowlist";
+import { getCliVersion } from "../src/lib/version";
+import {
+  installPackage,
+  isolateModuleResolution,
+  makeProjectRoot,
+} from "./helpers/skills-fixture";
 
-const WORKSPACE_ID = "ws_123";
+isolateModuleResolution();
 
-/** A node that exits 0 without touching the network — what the types
- *  install step runs instead of a real package manager. */
-const FAKE_INSTALL = JSON.stringify(["node", "-e", "process.exit(0)"]);
-const FAILING_INSTALL = JSON.stringify(["node", "-e", "process.exit(1)"]);
+const HARNESS_SKILL_DIRS = agentSkillDirs(DEFAULT_AGENTS);
 
-let cwd: string;
-
-beforeEach(async () => {
-  cwd = await createTempCwd();
-  await writeSkillsLockWithSkill(cwd);
-});
-
-function sessionRecord(workspaceId: string) {
-  return {
-    workspaceId,
-    workspaceName: "Acme",
-    credential: {
-      token: mintTestJwt({ workspace_id: workspaceId, sub: "usr_1" }),
-      refreshToken: "r",
-      expiresAt: undefined,
-    },
-  };
-}
-
-function apiWithProjects(
-  projects: ReadonlyArray<{ id: string; name: string }>,
-): ManagementApiClient {
-  return {
-    GET: async () => ({
-      data: {
-        data: projects.map((project) => ({
-          ...project,
-          slug: project.name,
-          workspace: { id: WORKSPACE_ID, name: "Acme" },
-        })),
-      },
-      response: { status: 200 },
-    }),
-  } as unknown as ManagementApiClient;
-}
-
-const OFFLINE_API = {
-  GET: async () => {
-    throw new Error("offline");
-  },
-} as unknown as ManagementApiClient;
-
-function makeCli(spec?: {
-  readonly signedIn?: boolean;
-  readonly client?: ManagementApiClient;
-}) {
+/** `config` is what evaluating prisma.config.ts yields, section by
+ *  section — the test CLI never reads the fixture's file, so any test
+ *  whose config file matters supplies its evaluated form here. */
+function makeCli(config?: Record<string, unknown>) {
   return createTestCli({
     commands: { init: initCommand },
-    sessions: spec?.signedIn === true ? [sessionRecord(WORKSPACE_ID)] : [],
-    selectedWorkspaceId: spec?.signedIn === true ? WORKSPACE_ID : undefined,
-    managementApi: { client: spec?.client ?? OFFLINE_API },
+    config,
     now: () => new Date(0),
   });
 }
 
-type RunOptions = Parameters<ReturnType<typeof makeCli>["run"]>[1];
-
-function run(
-  argv: readonly string[],
-  opts?: RunOptions & {
-    signedIn?: boolean;
-    client?: ManagementApiClient;
-  },
-) {
-  const { signedIn, client, ...runOpts } = opts ?? {};
-  return makeCli({ signedIn, client }).run(argv, {
-    cwd,
-    ...runOpts,
-    env: { PRISMA_CLI_INIT_INSTALL_COMMAND: FAKE_INSTALL, ...runOpts?.env },
-  });
-}
-
-type ResultFrame = {
-  readonly kind: string;
-  readonly envelope: {
-    readonly ok: boolean;
-    readonly error?: Record<string, unknown>;
-    readonly result?: unknown;
-    readonly diagnostics?: ReadonlyArray<Record<string, unknown>>;
-    readonly nextActions?: ReadonlyArray<Record<string, unknown>>;
+async function runInit(
+  cwd: string,
+  argv: readonly string[] = [],
+  config?: Record<string, unknown>,
+): Promise<{
+  exitCode: number;
+  result: InitResult;
+  diagnosticCodes: string[];
+  adviceFor: (code: string) => string[];
+}> {
+  const run = await makeCli(config).run(["init", ...argv], { cwd });
+  const diagnostics = run.presented?.diagnostics ?? [];
+  return {
+    exitCode: run.exitCode,
+    result: run.presented?.data as InitResult,
+    diagnosticCodes: diagnostics.map((diagnostic) => diagnostic.code),
+    adviceFor: (code) =>
+      diagnostics
+        .filter((diagnostic) => diagnostic.code === code)
+        .flatMap((diagnostic) => diagnostic.nextActions ?? [])
+        .map((action) => action.label),
   };
-};
+}
 
-function envelopeOf(result: { readonly json: readonly unknown[] }) {
-  const frame = (result.json as readonly ResultFrame[]).find(
-    (candidate) => candidate.kind === "result",
-  );
-  if (frame === undefined) {
-    throw new Error("expected a terminal result frame");
+const ADD_DEPENDENCY_ADVICE = `Add "prisma": "${getCliVersion()}" to devDependencies yourself, then run your package manager's install.`;
+
+async function readManifest(root: string): Promise<Record<string, unknown>> {
+  return JSON.parse(await readFile(path.join(root, "package.json"), "utf8"));
+}
+
+async function exists(target: string): Promise<boolean> {
+  try {
+    await stat(target);
+    return true;
+  } catch {
+    return false;
   }
-  return frame.envelope;
 }
 
-function errorOf(result: { readonly json: readonly unknown[] }) {
-  const envelope = envelopeOf(result);
-  if (envelope.ok) {
-    throw new Error("expected an errored result frame");
-  }
-  return envelope.error as Record<string, unknown>;
-}
+describe("init", () => {
+  it("adds the postinstall hook and syncs the skills on a fresh project", async () => {
+    const root = await makeProjectRoot("init-");
+    await installPackage(root, {
+      name: "@prisma/orm-postgres",
+      version: "8.1.0",
+      skills: ["prisma-8"],
+    });
 
-function resultOf(result: { readonly json: readonly unknown[] }) {
-  const envelope = envelopeOf(result);
-  if (!envelope.ok) {
-    throw new Error(
-      `expected an ok result frame, got ${JSON.stringify(envelope.error)}`,
+    const { exitCode, result } = await runInit(root);
+
+    expect(exitCode).toBe(0);
+    expect(result.postinstall).toEqual({
+      outcome: "added",
+      script: POSTINSTALL_SCRIPT,
+      dependency: "added",
+    });
+    expect(result.config).toEqual({
+      outcome: "created",
+      agents: [...DEFAULT_AGENTS],
+    });
+    const scaffold = await readFile(
+      path.join(root, "prisma.config.ts"),
+      "utf8",
     );
-  }
-  return envelope.result as Record<string, never>;
-}
-
-async function readConfig(directory = cwd): Promise<string> {
-  return readFile(path.join(directory, "prisma.compute.ts"), "utf8");
-}
-
-async function readJsonConfig(directory = cwd): Promise<string> {
-  return readFile(path.join(directory, "prisma.compute.json"), "utf8");
-}
-
-async function writePackageJson(
-  directory: string,
-  contents: Record<string, unknown>,
-): Promise<void> {
-  await writeFile(
-    path.join(directory, "package.json"),
-    `${JSON.stringify(contents, null, 2)}\n`,
-    "utf8",
-  );
-}
-
-/** The compute SDK's canonical key order, which is what "byte-identical
- *  to the legacy command" means: both call the same serializer. */
-const BILLING_API_TS =
-  `import { defineComputeConfig } from "@prisma/compute-sdk/config";\n` +
-  `\n` +
-  `export default defineComputeConfig({\n` +
-  `  app: {\n` +
-  `    name: "billing-api",\n` +
-  `    region: "us-east-1",\n` +
-  `    framework: "hono",\n` +
-  `    entry: "src/index.ts",\n` +
-  `    httpPort: 8080,\n` +
-  `  },\n` +
-  `});\n`;
-
-describe("init writes the config", () => {
-  it("writes a config for an explicit framework without auth or prompts", async () => {
-    await writePackageJson(cwd, { name: "billing-api" });
-
-    const result = await run([
-      "init",
-      "--framework",
-      "hono",
-      "--entry",
-      "src/index.ts",
-      "--no-install",
-      "--no-link",
-      "--json",
-    ]);
-
-    expect(result.exitCode).toBe(0);
-    expect(resultOf(result)).toMatchObject({
-      configPath: "prisma.compute.ts",
-      format: "typescript",
-      converted: false,
-      app: {
-        name: "billing-api",
-        framework: "hono",
-        entry: "src/index.ts",
-        httpPort: 3000,
-      },
-      types: {
-        status: "skipped",
-        package: "@prisma/compute-sdk",
-        installCommand: "npm install -D @prisma/compute-sdk",
-      },
-      link: { status: "skipped", project: null },
-    });
-  });
-
-  it("writes the exact bytes the compute SDK serializes", async () => {
-    await writePackageJson(cwd, { name: "billing-api" });
-
-    await run([
-      "init",
-      "--framework",
-      "hono",
-      "--entry",
-      "src/index.ts",
-      "--http-port",
-      "8080",
-      "--region",
-      "us-east-1",
-      "--no-install",
-      "--no-link",
-      "--json",
-    ]);
-
-    expect(await readConfig()).toBe(BILLING_API_TS);
-  });
-
-  it("appends the commented build stub for the custom framework, byte for byte", async () => {
-    await run([
-      "init",
-      "--framework",
-      "custom",
-      "--name",
-      "api",
-      "--no-install",
-      "--no-link",
-      "--json",
-    ]);
-
-    expect(await readConfig()).toContain(
-      `\n` +
-        `// framework "custom" deploys a prebuilt artifact. Add its build settings:\n` +
-        `// build: {\n` +
-        `//   command: "npm run build",\n` +
-        `//   outputDirectory: "dist",\n` +
-        `//   entrypoint: "server.js",\n` +
-        `// },\n`,
+    expect(scaffold).toContain(
+      'import { definePrismaConfig } from "prisma/config";',
     );
-  });
-
-  it("writes prisma.compute.json byte for byte under --config-format json", async () => {
-    await writePackageJson(cwd, { name: "billing-api" });
-
-    const result = await run([
-      "init",
-      "--framework",
-      "hono",
-      "--entry",
-      "src/index.ts",
-      "--no-link",
-      "--config-format",
-      "json",
-      "--json",
-    ]);
-
-    expect(result.exitCode).toBe(0);
-    expect(resultOf(result)).toMatchObject({
-      configPath: "prisma.compute.json",
-      format: "json",
-      // The JSON format is dependency-free by design, so the types step
-      // never runs and offers no install hint.
-      types: {
-        status: "skipped",
-        package: "@prisma/compute-sdk",
-        installCommand: null,
-      },
-    });
-    expect(await readJsonConfig()).toBe(
-      `{\n` +
-        `  "app": {\n` +
-        `    "name": "billing-api",\n` +
-        `    "framework": "hono",\n` +
-        `    "entry": "src/index.ts",\n` +
-        `    "httpPort": 3000\n` +
-        `  }\n` +
-        `}\n`,
+    expect(scaffold).toContain(
+      'agents: ["claude", "cursor", "agents", "devin"]',
     );
-    await expect(readConfig()).rejects.toMatchObject({ code: "ENOENT" });
-  });
-
-  it("detects the framework from the directory and uses its default port", async () => {
-    await writePackageJson(cwd, { name: "web" });
-    await writeFile(path.join(cwd, "next.config.ts"), "export default {};\n");
-
-    const result = await run(["init", "--no-install", "--no-link", "--json"]);
-
-    expect(result.exitCode).toBe(0);
-    expect(resultOf(result)).toMatchObject({
-      app: { name: "web", framework: "nextjs", httpPort: 3000 },
-    });
-    expect(resultOf(result).settings).toContainEqual(
-      expect.objectContaining({
-        key: "framework",
-        source: expect.stringContaining("next.config.ts"),
-      }),
+    expect(result.skills.outcome).toBe("synced");
+    expect(result.skills.sync?.synced.map((skill) => skill.skill)).toEqual([
+      "prisma-8",
+    ]);
+    const manifest = await readManifest(root);
+    expect((manifest.scripts as Record<string, unknown>).postinstall).toBe(
+      POSTINSTALL_SCRIPT,
     );
+    expect(manifest.devDependencies).toEqual({ prisma: getCliVersion() });
+    expect(
+      await exists(path.join(root, ".claude/skills", "prisma-8", "SKILL.md")),
+    ).toBe(true);
   });
 
-  it("falls back to the directory name when package.json has none", async () => {
-    const result = await run([
-      "init",
-      "--framework",
-      "hono",
-      "--no-install",
-      "--no-link",
-      "--json",
-    ]);
-
-    expect(result.exitCode).toBe(0);
-    expect(resultOf(result)).toMatchObject({
-      app: { name: path.basename(cwd) },
-      directory: `./${path.basename(cwd)}`,
-    });
-  });
-
-  it("previews the settings, reports the write as a step, and puts the path on stdout", async () => {
-    const result = await run(
-      [
-        "init",
-        "--framework",
-        "hono",
-        "--name",
-        "api",
-        "--http-port",
-        "8080",
-        "--no-install",
-        "--no-link",
-      ],
-      { isTty: { stdout: true, stderr: true } },
-    );
-
-    expect(result.exitCode).toBe(0);
-    expect(result.events).toContainEqual({
-      kind: "message",
-      severity: "info",
-      text:
-        "  app        api   flag\n" +
-        "  framework  Hono  flag\n" +
-        "  http port  8080  flag",
-    });
-    expect(result.events).toContainEqual({
-      kind: "step-finished",
-      step: "write-config",
-      outcome: "ok",
-      data: { path: "prisma.compute.ts" },
-    });
-    // Both streams are the same terminal here, so the machine mirror is
-    // suppressed; the path still travels in the presented stdout lines.
-    expect(result.stdout).toBe("");
-    expect(result.presented?.presentation.stdout).toEqual([
-      "prisma.compute.ts",
-    ]);
-    expect(result.presented?.presentation.human).toContainEqual({
-      kind: "summary",
-      status: "ok",
-      text: "Wrote prisma.compute.ts",
-    });
-  });
-
-  it("offers deploy and link as next actions when nothing is linked", async () => {
-    const result = await run([
-      "init",
-      "--framework",
-      "hono",
-      "--name",
-      "api",
-      "--no-install",
-      "--no-link",
-      "--json",
-    ]);
-
-    expect(envelopeOf(result).nextActions).toEqual([
-      expect.objectContaining({
-        command: "npm install -D @prisma/compute-sdk",
-      }),
-      expect.objectContaining({
-        command: "npx -y @prisma/cli@latest app deploy",
-      }),
-      expect.objectContaining({
-        command: "npx -y @prisma/cli@latest project link",
-      }),
-    ]);
-  });
-});
-
-describe("init refuses to clobber", () => {
-  it("fails with INIT.CONFIG_EXISTS here and in an ancestor", async () => {
+  it("keeps the file's indentation and its other fields", async () => {
+    const root = await makeProjectRoot("init-");
     await writeFile(
-      path.join(cwd, "prisma.compute.ts"),
-      'export default { app: { framework: "hono" } };\n',
+      path.join(root, "package.json"),
+      `{\n    "name": "four-spaces",\n    "version": "1.2.3",\n    "scripts": {\n        "build": "tsc"\n    }\n}\n`,
+      "utf8",
     );
 
-    const direct = await run(["init", "--framework", "hono", "--json"]);
-    expect(direct.exitCode).toBe(2);
-    expect(errorOf(direct).code).toBe("INIT.CONFIG_EXISTS");
-    expect(errorOf(direct).meta).toMatchObject({
-      existingConfigPath: expect.stringContaining("prisma.compute.ts"),
-    });
+    await runInit(root);
 
-    await mkdir(path.join(cwd, ".git"), { recursive: true });
-    const nested = path.join(cwd, "apps", "api");
-    await mkdir(nested, { recursive: true });
-    const fromNested = await makeCli().run(
-      ["init", "--framework", "hono", "--json"],
-      { cwd: nested },
-    );
-    expect(fromNested.exitCode).toBe(2);
-    expect(errorOf(fromNested).code).toBe("INIT.CONFIG_EXISTS");
+    const source = await readFile(path.join(root, "package.json"), "utf8");
+    expect(source).toContain('    "name": "four-spaces"');
+    expect(source).toContain('        "build": "tsc"');
+    expect(source).toContain(`        "postinstall": "${POSTINSTALL_SCRIPT}"`);
+    expect(source.endsWith("\n")).toBe(true);
+    expect((await readManifest(root)).version).toBe("1.2.3");
   });
 
-  it("refuses plain init and a repeated --config-format json over prisma.compute.json", async () => {
-    await writeFile(
-      path.join(cwd, "prisma.compute.json"),
-      `${JSON.stringify({ app: { framework: "hono" } })}\n`,
-    );
+  it("reports a hook that is already ours without rewriting the file", async () => {
+    const root = await makeProjectRoot("init-");
+    await runInit(root);
+    const before = await readFile(path.join(root, "package.json"), "utf8");
 
-    for (const argv of [
-      ["init", "--framework", "hono", "--json"],
-      ["init", "--framework", "hono", "--config-format", "json", "--json"],
-    ]) {
-      // biome-ignore lint/performance/noAwaitInLoops: both spellings run in the same sandbox directory, so the first must settle before the second checks the same file.
-      const result = await run(argv);
-      expect(result.exitCode).toBe(2);
-      expect(errorOf(result).code).toBe("INIT.CONFIG_EXISTS");
-      expect(errorOf(result).meta).toMatchObject({
-        existingConfigPath: expect.stringContaining("prisma.compute.json"),
+    const { exitCode, result, diagnosticCodes } = await runInit(root, [], {
+      skills: { agents: [...DEFAULT_AGENTS] },
+    });
+
+    expect(exitCode).toBe(0);
+    expect(result.postinstall.outcome).toBe("exists");
+    expect(diagnosticCodes).toEqual([]);
+    expect(await readFile(path.join(root, "package.json"), "utf8")).toBe(
+      before,
+    );
+  });
+
+  it("never touches a postinstall script the user wrote", async () => {
+    const root = await makeProjectRoot("init-");
+    await writeFile(
+      path.join(root, "package.json"),
+      `${JSON.stringify(
+        {
+          name: "fixture-project",
+          scripts: { postinstall: "husky install" },
+        },
+        null,
+        2,
+      )}\n`,
+      "utf8",
+    );
+    const before = await readFile(path.join(root, "package.json"), "utf8");
+
+    const { exitCode, result, diagnosticCodes, adviceFor } =
+      await runInit(root);
+
+    expect(exitCode).toBe(0);
+    expect(result.postinstall).toEqual({
+      outcome: "kept",
+      script: "husky install",
+      dependency: "skipped",
+    });
+    expect(diagnosticCodes).toContain("INIT.POSTINSTALL_KEPT");
+    expect(adviceFor("INIT.POSTINSTALL_KEPT")).toContain(ADD_DEPENDENCY_ADVICE);
+    expect(await readFile(path.join(root, "package.json"), "utf8")).toBe(
+      before,
+    );
+  });
+
+  // chmod bits do not deny writes on Windows the way they do on POSIX.
+  it.skipIf(process.platform === "win32")(
+    "reports an unwritable package.json without failing",
+    async () => {
+      const root = await makeProjectRoot("init-");
+      const manifestPath = path.join(root, "package.json");
+      const before = await readFile(manifestPath, "utf8");
+      await chmod(manifestPath, 0o444);
+
+      const { exitCode, result, diagnosticCodes } = await runInit(root);
+      await chmod(manifestPath, 0o644);
+
+      expect(exitCode).toBe(0);
+      expect(result.postinstall).toEqual({
+        outcome: "skipped",
+        script: null,
+        dependency: "skipped",
       });
-    }
-  });
+      expect(diagnosticCodes).toContain("INIT.PACKAGE_JSON_UNWRITABLE");
+      expect(await readFile(manifestPath, "utf8")).toBe(before);
+    },
+  );
 
-  it("fails with INIT.CONVERT_UNSUPPORTED for a TypeScript config and --config-format json", async () => {
+  it.skipIf(process.platform === "win32")(
+    "an unwritable package.json that already declares prisma reports the dependency declared",
+    async () => {
+      const root = await makeProjectRoot("init-");
+      const manifestPath = path.join(root, "package.json");
+      await writeFile(
+        manifestPath,
+        `${JSON.stringify(
+          { name: "fixture-project", devDependencies: { prisma: "^7.0.0" } },
+          null,
+          2,
+        )}\n`,
+        "utf8",
+      );
+      await chmod(manifestPath, 0o444);
+
+      const { exitCode, result, diagnosticCodes } = await runInit(root, [
+        "--skills=none",
+      ]);
+      await chmod(manifestPath, 0o644);
+
+      expect(exitCode).toBe(0);
+      expect(result.postinstall).toEqual({
+        outcome: "skipped",
+        script: null,
+        dependency: "declared",
+      });
+      expect(diagnosticCodes).toContain("INIT.PACKAGE_JSON_UNWRITABLE");
+    },
+  );
+
+  it.skipIf(process.platform === "win32")(
+    "an unreadable ancestor package.json does not fail init after the edit landed",
+    async () => {
+      const root = await makeProjectRoot("init-");
+      const ancestorManifest = path.join(root, "package.json");
+      const app = path.join(root, "app");
+      await mkdir(app);
+      await writeFile(
+        path.join(app, "package.json"),
+        `${JSON.stringify({ name: "nested-app" }, null, 2)}\n`,
+        "utf8",
+      );
+      // The install-command detection walks ancestors; this one throws
+      // EACCES instead of ENOENT.
+      await chmod(ancestorManifest, 0o000);
+
+      const run = await makeCli().run(["init", "--skills=none"], { cwd: app });
+      await chmod(ancestorManifest, 0o644);
+      const result = run.presented?.data as InitResult;
+
+      expect(run.exitCode).toBe(0);
+      expect(result.postinstall.dependency).toBe("added");
+      expect((await readManifest(app)).devDependencies).toEqual({
+        prisma: getCliVersion(),
+      });
+      expect(run.presented?.presentation.next).toEqual([
+        {
+          kind: "user-choice",
+          label:
+            "Run your package manager's install to fetch the added prisma dev dependency.",
+        },
+      ]);
+    },
+  );
+
+  it("leaves a non-object scripts value untouched", async () => {
+    const root = await makeProjectRoot("init-");
     await writeFile(
-      path.join(cwd, "prisma.compute.ts"),
-      'export default { app: { framework: "hono" } };\n',
+      path.join(root, "package.json"),
+      `{\n  "name": "fixture-project",\n  "scripts": "oops"\n}\n`,
+      "utf8",
+    );
+    const before = await readFile(path.join(root, "package.json"), "utf8");
+
+    const { exitCode, result, diagnosticCodes, adviceFor } =
+      await runInit(root);
+
+    expect(exitCode).toBe(0);
+    expect(result.postinstall).toEqual({
+      outcome: "kept",
+      script: null,
+      dependency: "skipped",
+    });
+    expect(diagnosticCodes).toContain("INIT.SCRIPTS_NOT_AN_OBJECT");
+    expect(adviceFor("INIT.SCRIPTS_NOT_AN_OBJECT")).toContain(
+      ADD_DEPENDENCY_ADVICE,
+    );
+    expect(await readFile(path.join(root, "package.json"), "utf8")).toBe(
+      before,
+    );
+  });
+
+  it("keeps a UTF-8 BOM and still adds the hook", async () => {
+    const root = await makeProjectRoot("init-");
+    await writeFile(
+      path.join(root, "package.json"),
+      `\uFEFF{\n  "name": "bom-project"\n}\n`,
+      "utf8",
     );
 
-    const result = await run([
-      "init",
-      "--framework",
-      "hono",
-      "--config-format",
-      "json",
-      "--json",
+    const { exitCode, result } = await runInit(root);
+
+    expect(exitCode).toBe(0);
+    expect(result.postinstall.outcome).toBe("added");
+    const source = await readFile(path.join(root, "package.json"), "utf8");
+    expect(source.startsWith("\uFEFF")).toBe(true);
+    expect(source).toContain(`"postinstall": "${POSTINSTALL_SCRIPT}"`);
+  });
+
+  it("preserves CRLF line endings", async () => {
+    const root = await makeProjectRoot("init-");
+    await writeFile(
+      path.join(root, "package.json"),
+      `{\r\n  "name": "crlf-project"\r\n}\r\n`,
+      "utf8",
+    );
+
+    const { exitCode, result } = await runInit(root);
+
+    expect(exitCode).toBe(0);
+    expect(result.postinstall.outcome).toBe("added");
+    const source = await readFile(path.join(root, "package.json"), "utf8");
+    expect(source.endsWith("\r\n")).toBe(true);
+    expect(source.split("\r\n").length).toBe(source.split("\n").length);
+  });
+
+  it("skips the hook with a diagnostic when there is no package.json", async () => {
+    const root = await makeProjectRoot("init-");
+    await rm(path.join(root, "package.json"));
+
+    const { exitCode, result, diagnosticCodes, adviceFor } =
+      await runInit(root);
+
+    expect(exitCode).toBe(0);
+    expect(result.postinstall).toEqual({
+      outcome: "skipped",
+      script: null,
+      dependency: "skipped",
+    });
+    expect(diagnosticCodes).toContain("INIT.NO_PACKAGE_JSON");
+    expect(adviceFor("INIT.NO_PACKAGE_JSON")).toContain(ADD_DEPENDENCY_ADVICE);
+    expect(await exists(path.join(root, "package.json"))).toBe(false);
+  });
+
+  it("reports an unparseable package.json with hook and dependency advice", async () => {
+    const root = await makeProjectRoot("init-");
+    await writeFile(path.join(root, "package.json"), "{ not json", "utf8");
+    const before = await readFile(path.join(root, "package.json"), "utf8");
+
+    const { exitCode, result, diagnosticCodes, adviceFor } =
+      await runInit(root);
+
+    expect(exitCode).toBe(0);
+    expect(result.postinstall).toEqual({
+      outcome: "skipped",
+      script: null,
+      dependency: "skipped",
+    });
+    expect(diagnosticCodes).toContain("INIT.PACKAGE_JSON_UNREADABLE");
+    expect(adviceFor("INIT.PACKAGE_JSON_UNREADABLE")).toContain(
+      ADD_DEPENDENCY_ADVICE,
+    );
+    expect(await readFile(path.join(root, "package.json"), "utf8")).toBe(
+      before,
+    );
+  });
+
+  it("skips the hook on --no-postinstall and still syncs", async () => {
+    const root = await makeProjectRoot("init-");
+    await installPackage(root, {
+      name: "@prisma/orm-postgres",
+      version: "8.1.0",
+      skills: ["prisma-8"],
+    });
+
+    const { exitCode, result } = await runInit(root, ["--no-postinstall"]);
+
+    expect(exitCode).toBe(0);
+    expect(result.postinstall).toEqual({
+      outcome: "skipped",
+      script: null,
+      dependency: "skipped",
+    });
+    const manifest = await readManifest(root);
+    expect(manifest.scripts).toBeUndefined();
+    // The dependency add rides the manifest edit, so the opt-out skips
+    // both; the config loader's guidance covers the missing package.
+    expect(manifest.devDependencies).toBeUndefined();
+    expect(result.skills.outcome).toBe("synced");
+  });
+
+  it("records --skills=none as an empty agents scaffold, skips the sync, and still adds the hook", async () => {
+    const root = await makeProjectRoot("init-");
+    await installPackage(root, {
+      name: "@prisma/orm-postgres",
+      version: "8.1.0",
+      skills: ["prisma-8"],
+    });
+
+    const { exitCode, result, diagnosticCodes } = await runInit(root, [
+      "--skills=none",
     ]);
 
-    expect(result.exitCode).toBe(2);
-    expect(errorOf(result).code).toBe("INIT.CONVERT_UNSUPPORTED");
-    await expect(readJsonConfig()).rejects.toMatchObject({ code: "ENOENT" });
-  });
-});
-
-describe("init argument validation", () => {
-  it("rejects a bad port, region and framework before writing anything", async () => {
-    const cases: ReadonlyArray<readonly [readonly string[], string]> = [
-      [
-        ["init", "--framework", "hono", "--http-port", "70000", "--json"],
-        "INIT.HTTP_PORT_INVALID",
-      ],
-      [
-        ["init", "--framework", "hono", "--region", "mars-1", "--json"],
-        "INIT.REGION_UNKNOWN",
-      ],
-      [["init", "--framework", "rails", "--json"], "INIT.FRAMEWORK_UNKNOWN"],
-      [
-        ["init", "--framework", "hono", "--name", "  ", "--json"],
-        "INIT.NAME_EMPTY",
-      ],
-      [
-        ["init", "--framework", "nextjs", "--entry", "src/index.ts", "--json"],
-        "INIT.ENTRY_UNSUPPORTED",
-      ],
-      [
-        [
-          "init",
-          "--framework",
-          "hono",
-          "--install",
-          "--config-format",
-          "json",
-          "--json",
-        ],
-        "INIT.INSTALL_NOT_APPLICABLE",
-      ],
-      [
-        ["init", "--framework", "custom", "--config-format", "json", "--json"],
-        "INIT.CUSTOM_FRAMEWORK_NEEDS_TYPESCRIPT",
-      ],
-    ];
-
-    for (const [argv, code] of cases) {
-      // biome-ignore lint/performance/noAwaitInLoops: the cases share one sandbox, and the per-case failure message needs them one at a time.
-      const result = await run(argv);
-      expect(result.exitCode, code).toBe(2);
-      expect(errorOf(result).code).toBe(code);
+    expect(exitCode).toBe(0);
+    expect(result.skills).toEqual({ outcome: "skipped", sync: null });
+    expect(result.config).toEqual({ outcome: "created", agents: [] });
+    expect(result.postinstall.outcome).toBe("added");
+    expect(diagnosticCodes).toEqual([]);
+    const scaffold = await readFile(
+      path.join(root, "prisma.config.ts"),
+      "utf8",
+    );
+    expect(scaffold).toContain("agents: [],");
+    for (const dir of HARNESS_SKILL_DIRS) {
+      expect(await exists(path.join(root, dir))).toBe(false);
     }
-
-    await expect(readConfig()).rejects.toMatchObject({ code: "ENOENT" });
-    await expect(readJsonConfig()).rejects.toMatchObject({ code: "ENOENT" });
   });
 
-  it("rejects an unknown --config-format value through the engine's parser", async () => {
-    const result = await run([
-      "init",
-      "--framework",
-      "hono",
-      "--config-format",
-      "yaml",
-      "--json",
+  it("reruns --skills=none idempotently over its own scaffold", async () => {
+    const root = await makeProjectRoot("init-");
+    await runInit(root, ["--skills=none"]);
+    const before = await readFile(path.join(root, "prisma.config.ts"), "utf8");
+
+    const { exitCode, result, diagnosticCodes } = await runInit(
+      root,
+      ["--skills=none"],
+      { skills: { agents: [] } },
+    );
+
+    expect(exitCode).toBe(0);
+    expect(result.config).toEqual({ outcome: "exists", agents: null });
+    expect(result.skills).toEqual({ outcome: "skipped", sync: null });
+    expect(diagnosticCodes).toEqual([]);
+    expect(await readFile(path.join(root, "prisma.config.ts"), "utf8")).toBe(
+      before,
+    );
+  });
+
+  it("advises the empty snippet when --skills=none meets a config init cannot edit", async () => {
+    const root = await makeProjectRoot("init-");
+    const configPath = path.join(root, "prisma.config.ts");
+    const before = "export default { $prismaConfig: 1 };\n";
+    await writeFile(configPath, before, "utf8");
+
+    const run = await makeCli().run(["init", "--skills=none"], {
+      cwd: root,
+      isTty: { stdout: true, stderr: true },
+    });
+    const result = run.presented?.data as InitResult;
+
+    expect(run.exitCode).toBe(0);
+    expect(result.config).toEqual({ outcome: "exists", agents: null });
+    expect(
+      (run.presented?.diagnostics ?? []).map((diagnostic) => diagnostic.code),
+    ).toContain("INIT.CONFIG_KEPT");
+    expect(run.stderr).toContain("skills: { agents: [] }");
+    expect(await readFile(configPath, "utf8")).toBe(before);
+  });
+
+  it("reruns idempotently: both steps report already done", async () => {
+    const root = await makeProjectRoot("init-");
+    await installPackage(root, {
+      name: "@prisma/orm-postgres",
+      version: "8.1.0",
+      skills: ["prisma-8"],
+    });
+    await runInit(root);
+
+    // The rerun evaluates the scaffold the first run wrote; the test
+    // CLI stubs config loading, so its evaluated form is passed in.
+    const { exitCode, result, diagnosticCodes } = await runInit(root, [], {
+      skills: { agents: [...DEFAULT_AGENTS] },
+    });
+
+    expect(exitCode).toBe(0);
+    expect(result.postinstall.outcome).toBe("exists");
+    // The scaffold init itself wrote already carries skills.agents, so
+    // the rerun neither edits it nor warns about it.
+    expect(result.config).toEqual({ outcome: "exists", agents: null });
+    expect(diagnosticCodes).toEqual([]);
+    expect(result.skills.outcome).toBe("up-to-date");
+    expect(result.skills.sync?.synced).toEqual([]);
+    expect(result.skills.sync?.pruned).toEqual([]);
+  });
+
+  it("reports no-skills when the installed packages ship none", async () => {
+    const root = await makeProjectRoot("init-");
+    await installPackage(root, {
+      name: "@prisma/orm-postgres",
+      version: "6.9.0",
+    });
+
+    const run = await makeCli().run(["init"], {
+      cwd: root,
+      isTty: { stdout: true, stderr: true },
+    });
+    const result = run.presented?.data as InitResult;
+
+    expect(run.exitCode).toBe(0);
+    expect(result.skills.outcome).toBe("no-skills");
+    expect(run.stderr).toContain(
+      "No Prisma dependencies in your project ship agent skills to sync.",
+    );
+    expect(run.stderr).not.toContain("up to date");
+  });
+
+  it("reports no-packages when no allowlisted package is installed", async () => {
+    const root = await makeProjectRoot("init-");
+
+    const { exitCode, result } = await runInit(root);
+
+    expect(exitCode).toBe(0);
+    expect(result.skills.outcome).toBe("no-packages");
+    expect(result.skills.sync?.packages).toEqual([]);
+  });
+
+  it("reports no-agents when the config records agents: []", async () => {
+    const root = await makeProjectRoot("init-");
+    await installPackage(root, {
+      name: "@prisma/orm-postgres",
+      version: "8.1.0",
+      skills: ["prisma-8"],
+    });
+
+    const { exitCode, result } = await runInit(root, [], {
+      skills: { agents: [] },
+    });
+
+    expect(exitCode).toBe(0);
+    expect(result.skills.outcome).toBe("no-agents");
+  });
+
+  it("surfaces a refused directory instead of claiming the skills are current", async () => {
+    const root = await makeProjectRoot("init-");
+    await installPackage(root, {
+      name: "@prisma/orm-postgres",
+      version: "8.1.0",
+      skills: ["prisma-8"],
+    });
+    const userSkill = path.join(root, ".claude/skills", "prisma-8");
+    await mkdir(userSkill, { recursive: true });
+    await writeFile(
+      path.join(userSkill, "SKILL.md"),
+      "---\nname: prisma-8\n---\n\nMy own notes.\n",
+      "utf8",
+    );
+
+    const run = await makeCli().run(["init"], {
+      cwd: root,
+      isTty: { stdout: true, stderr: true },
+    });
+    const result = run.presented?.data as InitResult;
+
+    expect(run.exitCode).toBe(0);
+    expect(result.skills.sync?.refused).toEqual([
+      { skill: "prisma-8", dirs: [".claude/skills"] },
+    ]);
+    expect(
+      (run.presented?.diagnostics ?? []).map((diagnostic) => diagnostic.code),
+    ).toContain("SKILLS.UNMANAGED_DIRECTORY");
+    expect(run.stderr).toContain(
+      ".claude/skills/prisma-8 is not managed by this CLI, so it was left untouched.",
+    );
+    expect(run.stderr).not.toContain("Agent skills are up to date.");
+  });
+
+  it("writes the --skills list into the scaffold and syncs only those agents", async () => {
+    const root = await makeProjectRoot("init-");
+    await installPackage(root, {
+      name: "@prisma/orm-postgres",
+      version: "8.1.0",
+      skills: ["prisma-8"],
+    });
+
+    const { exitCode, result } = await runInit(root, [
+      "--skills=claude,cursor",
     ]);
 
-    expect(result.exitCode).toBe(2);
-    expect(errorOf(result).code).toBe("CLI.INVALID_ARGUMENTS");
-  });
-
-  it("fails with INIT.DETECTION_FAILED when nothing is detectable and nobody can be asked", async () => {
-    const result = await run(["init", "--no-install", "--no-link", "--json"]);
-
-    expect(result.exitCode).toBe(2);
-    expect(errorOf(result).code).toBe("INIT.DETECTION_FAILED");
-    expect(errorOf(result).meta).toMatchObject({
-      frameworks: expect.arrayContaining(["hono"]),
-    });
-  });
-});
-
-describe("init prompt modes", () => {
-  it("interactive: asks for a framework when detection finds nothing", async () => {
-    const result = await run(["init", "--no-install", "--no-link", "--json"], {
-      isTty: { stdin: true },
-      answers: ["hono", false],
-    });
-
-    expect(result.exitCode).toBe(0);
-    expect(resultOf(result)).toMatchObject({
-      app: { framework: "hono" },
-      settings: expect.arrayContaining([
-        { key: "framework", value: "Hono", source: "selected" },
-      ]),
-    });
-  });
-
-  it("interactive: adjusts the framework and port when the user says yes", async () => {
-    await writePackageJson(cwd, { name: "api" });
-
-    const result = await run(
-      ["init", "--framework", "hono", "--no-install", "--no-link", "--json"],
-      { isTty: { stdin: true }, answers: [true, "nextjs", "4321"] },
-    );
-
-    expect(result.exitCode).toBe(0);
-    expect(resultOf(result)).toMatchObject({
-      app: { framework: "nextjs", httpPort: 4321 },
-    });
-  });
-
-  it("interactive: keeps the resolved settings when the adjust prompt is declined", async () => {
-    await writePackageJson(cwd, { name: "api" });
-
-    const result = await run(
-      ["init", "--framework", "hono", "--no-install", "--no-link", "--json"],
-      { isTty: { stdin: true }, answers: [false] },
-    );
-
-    expect(result.exitCode).toBe(0);
-    expect(resultOf(result)).toMatchObject({
-      app: { framework: "hono", httpPort: 3000 },
-    });
-  });
-
-  it("interactive: an out-of-range port typed at the adjust prompt is rejected", async () => {
-    await writePackageJson(cwd, { name: "api" });
-
-    const result = await run(
-      ["init", "--framework", "hono", "--no-install", "--no-link", "--json"],
-      { isTty: { stdin: true }, answers: [true, "hono", "70000"] },
-    );
-
-    expect(result.exitCode).toBe(2);
-    expect(errorOf(result).code).toBe("INIT.HTTP_PORT_INVALID");
-  });
-
-  it("--yes takes every prompt default: settings as resolved, no install, no link", async () => {
-    await writePackageJson(cwd, { name: "api" });
-
-    const result = await run([
-      "init",
-      "--framework",
-      "hono",
-      "--yes",
-      "--json",
-    ]);
-
-    expect(result.exitCode).toBe(0);
-    expect(resultOf(result)).toMatchObject({
-      app: { framework: "hono", httpPort: 3000 },
-      types: { status: "declined" },
-      link: { status: "declined", project: null },
-    });
-    expect(await readConfig()).toContain('framework: "hono"');
-  });
-
-  it("non-interactive takes the same defaults as --yes", async () => {
-    await writePackageJson(cwd, { name: "api" });
-
-    const result = await run(["init", "--framework", "hono", "--json"], {
-      signedIn: true,
-      client: apiWithProjects([{ id: "proj_1", name: "One" }]),
-    });
-
-    expect(result.exitCode).toBe(0);
-    expect(resultOf(result)).toMatchObject({
-      types: { status: "declined" },
-      link: { status: "declined", project: null },
-    });
-    await expect(
-      readFile(path.join(cwd, ".prisma/local.json"), "utf8"),
-    ).rejects.toMatchObject({ code: "ENOENT" });
-  });
-
-  it("cancelled before the write settles at exit 3 and writes nothing", async () => {
-    const result = await run(["init", "--no-install", "--no-link", "--json"], {
-      isTty: { stdin: true },
-      stdin: "",
-    });
-
-    expect(result.exitCode).toBe(3);
-    expect(errorOf(result).code).toBe("CLI.PROMPT_CANCELLED");
-    await expect(readConfig()).rejects.toMatchObject({ code: "ENOENT" });
-  });
-
-  it("cancelled at the link question settles at exit 3, leaving the written config", async () => {
-    await writePackageJson(cwd, { name: "api" });
-
-    const result = await run(
-      ["init", "--framework", "hono", "--no-install", "--json"],
-      { isTty: { stdin: true }, stdin: "n\n" },
-    );
-
-    expect(result.exitCode).toBe(3);
-    expect(errorOf(result).code).toBe("CLI.PROMPT_CANCELLED");
-    expect(await readConfig()).toContain('framework: "hono"');
-  });
-});
-
-describe("init types install", () => {
-  it("reports already-installed when the sdk is a devDependency", async () => {
-    await writePackageJson(cwd, {
-      name: "api",
-      devDependencies: { "@prisma/compute-sdk": "^0.1.0" },
-    });
-
-    const result = await run([
-      "init",
-      "--framework",
-      "hono",
-      "--no-link",
-      "--json",
-    ]);
-
-    expect(result.exitCode).toBe(0);
-    expect(resultOf(result).types).toEqual({
-      status: "already-installed",
-      package: "@prisma/compute-sdk",
-      installCommand: null,
-    });
-    expect(envelopeOf(result).nextActions).not.toContainEqual(
-      expect.objectContaining({
-        command: "npm install -D @prisma/compute-sdk",
-      }),
-    );
-  });
-
-  it("skips with --no-install and keeps the hint as a next action", async () => {
-    await writePackageJson(cwd, { name: "api" });
-
-    const result = await run([
-      "init",
-      "--framework",
-      "hono",
-      "--no-install",
-      "--no-link",
-      "--json",
-    ]);
-
-    expect(resultOf(result).types).toMatchObject({ status: "skipped" });
-    expect(envelopeOf(result).nextActions).toContainEqual(
-      expect.objectContaining({
-        command: "npm install -D @prisma/compute-sdk",
-      }),
-    );
-  });
-
-  it("installs with --install and reports success without findings", async () => {
-    await writePackageJson(cwd, { name: "api" });
-
-    const result = await run([
-      "init",
-      "--framework",
-      "hono",
-      "--install",
-      "--no-link",
-      "--json",
-    ]);
-
-    expect(result.exitCode).toBe(0);
-    expect(resultOf(result).types).toMatchObject({ status: "installed" });
-    expect(envelopeOf(result).diagnostics).toEqual([]);
-    expect(result.events).toContainEqual({
-      kind: "step-finished",
-      step: "install-types",
-      outcome: "ok",
-      data: { status: "installed" },
-    });
-  });
-
-  it("installs when the prompt is answered yes", async () => {
-    await writePackageJson(cwd, { name: "api" });
-
-    const result = await run(
-      ["init", "--framework", "hono", "--no-link", "--json"],
-      { isTty: { stdin: true }, answers: [false, true] },
-    );
-
-    expect(resultOf(result).types).toMatchObject({ status: "installed" });
-  });
-
-  it("declines the install when the prompt is answered no", async () => {
-    await writePackageJson(cwd, { name: "api" });
-
-    const result = await run(
-      ["init", "--framework", "hono", "--no-link", "--json"],
-      { isTty: { stdin: true }, answers: [false, false] },
-    );
-
-    expect(resultOf(result).types).toMatchObject({ status: "declined" });
-  });
-
-  it("downgrades a failed install to a warn diagnostic and keeps the config", async () => {
-    await writePackageJson(cwd, { name: "api" });
-
-    const result = await run(
-      ["init", "--framework", "hono", "--install", "--no-link", "--json"],
-      { env: { PRISMA_CLI_INIT_INSTALL_COMMAND: FAILING_INSTALL } },
-    );
-
-    expect(result.exitCode).toBe(0);
-    expect(resultOf(result).types).toMatchObject({ status: "failed" });
-    expect(envelopeOf(result).diagnostics).toContainEqual(
-      expect.objectContaining({
-        code: "INIT.TYPES_INSTALL_FAILED",
-        severity: "warn",
-      }),
-    );
-    expect(await readConfig()).toContain('framework: "hono"');
-  });
-
-  it("keeps the written config when package.json cannot be read", async () => {
-    await writeFile(path.join(cwd, "package.json"), "{ not json", "utf8");
-
-    const result = await run([
-      "init",
-      "--framework",
-      "hono",
-      "--entry",
-      "src/index.ts",
-      "--name",
-      "api",
-      "--install",
-      "--no-link",
-      "--json",
-    ]);
-
-    expect(result.exitCode).toBe(0);
-    expect(resultOf(result).types).toMatchObject({ status: "skipped" });
-    expect(envelopeOf(result).diagnostics).toContainEqual(
-      expect.objectContaining({
-        code: "INIT.TYPES_PACKAGE_JSON_UNREADABLE",
-      }),
-    );
-    expect(await readConfig()).toContain('framework: "hono"');
-  });
-});
-
-describe("init link step", () => {
-  it("links to an explicit --project and writes the pin", async () => {
-    await writePackageJson(cwd, { name: "api" });
-
-    const result = await run(
-      [
-        "init",
-        "--framework",
-        "hono",
-        "--no-install",
-        "--project",
-        "proj_123",
-        "--json",
-      ],
-      {
-        signedIn: true,
-        client: apiWithProjects([{ id: "proj_123", name: "Acme Dashboard" }]),
-      },
-    );
-
-    expect(result.exitCode).toBe(0);
-    expect(resultOf(result).link).toEqual({
-      status: "linked",
-      project: { id: "proj_123", name: "Acme Dashboard" },
+    expect(exitCode).toBe(0);
+    expect(result.config).toEqual({
+      outcome: "created",
+      agents: ["claude", "cursor"],
     });
     expect(
-      JSON.parse(await readFile(path.join(cwd, ".prisma/local.json"), "utf8")),
-    ).toEqual({ workspaceId: WORKSPACE_ID, projectId: "proj_123" });
-    expect(envelopeOf(result).nextActions).not.toContainEqual(
-      expect.objectContaining({
-        command: "npx -y @prisma/cli@latest project link",
-      }),
-    );
+      await readFile(path.join(root, "prisma.config.ts"), "utf8"),
+    ).toContain('agents: ["claude", "cursor"]');
+    expect(result.skills.sync?.synced[0]?.dirs).toEqual([
+      ".claude/skills",
+      ".cursor/skills",
+    ]);
+    expect(await exists(path.join(root, ".devin"))).toBe(false);
   });
 
-  it("reads the auth state instead of forcing a login, and offers sign-in", async () => {
-    await writePackageJson(cwd, { name: "api" });
+  it("rejects --skills naming an unknown agent", async () => {
+    const root = await makeProjectRoot("init-");
 
-    const result = await run([
-      "init",
-      "--framework",
-      "hono",
-      "--no-install",
-      "--project",
-      "proj_123",
-      "--json",
+    const run = await makeCli().run(["init", "--skills=claude,zed"], {
+      cwd: root,
+      isTty: { stdout: true, stderr: true },
+    });
+
+    expect(run.exitCode).not.toBe(0);
+    expect(run.stderr).toContain("'zed'");
+    expect(await exists(path.join(root, "prisma.config.ts"))).toBe(false);
+  });
+
+  it("rejects none mixed with agent names", async () => {
+    const root = await makeProjectRoot("init-");
+
+    const run = await makeCli().run(["init", "--skills=none,claude"], {
+      cwd: root,
+      isTty: { stdout: true, stderr: true },
+    });
+
+    expect(run.exitCode).not.toBe(0);
+    expect(run.stderr).toContain("cannot be combined");
+  });
+
+  it("never edits an existing prisma.config.ts, and says what to add", async () => {
+    const root = await makeProjectRoot("init-");
+    const configPath = path.join(root, "prisma.config.ts");
+    const before = "export default { $prismaConfig: 1 };\n";
+    await writeFile(configPath, before, "utf8");
+
+    const { exitCode, result, diagnosticCodes } = await runInit(root, [
+      "--skills=claude",
     ]);
 
-    expect(result.exitCode).toBe(0);
-    expect(resultOf(result).link).toEqual({
-      status: "unauthenticated",
-      project: null,
-    });
-    expect(envelopeOf(result).diagnostics).toContainEqual(
-      expect.objectContaining({
-        code: "INIT.LINK_REQUIRES_SIGN_IN",
-        severity: "warn",
-        nextActions: [
-          expect.objectContaining({ command: "prisma-cli auth login" }),
-        ],
-      }),
-    );
-    expect(await readConfig()).toContain('framework: "hono"');
+    expect(exitCode).toBe(0);
+    expect(result.config).toEqual({ outcome: "exists", agents: null });
+    expect(diagnosticCodes).toContain("INIT.CONFIG_KEPT");
+    expect(await readFile(configPath, "utf8")).toBe(before);
   });
 
-  it("downgrades a project that does not exist to a warn diagnostic", async () => {
-    await writePackageJson(cwd, { name: "api" });
-
-    const result = await run(
-      [
-        "init",
-        "--framework",
-        "hono",
-        "--no-install",
-        "--project",
-        "nope",
-        "--json",
-      ],
-      { signedIn: true, client: apiWithProjects([]) },
-    );
-
-    expect(result.exitCode).toBe(0);
-    expect(resultOf(result).link).toMatchObject({ status: "failed" });
-    expect(envelopeOf(result).diagnostics).toContainEqual(
-      expect.objectContaining({
-        code: "INIT.LINK_FAILED",
-        summary: expect.stringContaining("Project link failed"),
-      }),
-    );
-  });
-
-  it("reports an already-linked directory without asking", async () => {
-    await writePackageJson(cwd, { name: "api" });
-    await mkdir(path.join(cwd, ".prisma"), { recursive: true });
+  it("still advises when the file's text merely mentions skills and agents", async () => {
+    // `skills:` and `agents:` both appear, but skills.agents is not
+    // set: a text match would go quiet, the evaluated config does not.
+    const root = await makeProjectRoot("init-");
+    const configPath = path.join(root, "prisma.config.ts");
     await writeFile(
-      path.join(cwd, ".prisma/local.json"),
-      `${JSON.stringify({ workspaceId: WORKSPACE_ID, projectId: "proj_9" })}\n`,
+      configPath,
+      'export default definePrismaConfig({\n  skills: { check: false },\n  // agents: ["claude"]\n});\n',
+      "utf8",
     );
 
-    const result = await run([
-      "init",
-      "--framework",
-      "hono",
-      "--no-install",
-      "--json",
+    const { exitCode, result, diagnosticCodes } = await runInit(root, [], {
+      skills: { check: false },
+    });
+
+    expect(exitCode).toBe(0);
+    expect(result.config).toEqual({ outcome: "exists", agents: null });
+    expect(diagnosticCodes).toContain("INIT.CONFIG_KEPT");
+  });
+
+  it("stays quiet for a config that sets skills.agents in a spelling no text match sees", async () => {
+    // Shorthand properties: the file never spells `agents:`, yet the
+    // evaluated config carries skills.agents.
+    const root = await makeProjectRoot("init-");
+    await writeFile(
+      path.join(root, "prisma.config.ts"),
+      'const agents = ["claude"];\nconst skills = { agents };\nexport default definePrismaConfig({ skills });\n',
+      "utf8",
+    );
+
+    const { exitCode, result, diagnosticCodes } = await runInit(root, [], {
+      skills: { agents: ["claude"] },
+    });
+
+    expect(exitCode).toBe(0);
+    expect(result.config).toEqual({ outcome: "exists", agents: null });
+    expect(diagnosticCodes).toEqual([]);
+  });
+
+  it("shows the exact snippet for the agents the user asked for", async () => {
+    const root = await makeProjectRoot("init-");
+    await writeFile(
+      path.join(root, "prisma.config.ts"),
+      "export default { $prismaConfig: 1 };\n",
+      "utf8",
+    );
+
+    const run = await makeCli().run(["init", "--skills=claude,cursor"], {
+      cwd: root,
+      isTty: { stdout: true, stderr: true },
+    });
+
+    expect(run.stderr).toContain('skills: { agents: ["claude", "cursor"] }');
+  });
+
+  it("adds the prisma dev dependency at the CLI's exact version, with install advice", async () => {
+    const root = await makeProjectRoot("init-");
+
+    const run = await makeCli().run(["init", "--skills=none"], { cwd: root });
+    const result = run.presented?.data as InitResult;
+
+    expect(run.exitCode).toBe(0);
+    expect(result.postinstall.dependency).toBe("added");
+    expect((await readManifest(root)).devDependencies).toEqual({
+      prisma: getCliVersion(),
+    });
+    expect(run.presented?.presentation.next).toEqual([
+      {
+        kind: "run-command",
+        label: "Install the added prisma dev dependency",
+        command: "npm install",
+      },
+    ]);
+  });
+
+  const DECLARING_FIELDS = [
+    "dependencies",
+    "devDependencies",
+    "optionalDependencies",
+    "peerDependencies",
+  ] as const;
+
+  for (const field of DECLARING_FIELDS) {
+    it(`leaves every dependency field alone when prisma is in ${field}`, async () => {
+      const root = await makeProjectRoot("init-");
+      await writeFile(
+        path.join(root, "package.json"),
+        `${JSON.stringify(
+          { name: "fixture-project", [field]: { prisma: "^7.0.0" } },
+          null,
+          2,
+        )}\n`,
+        "utf8",
+      );
+
+      const { exitCode, result } = await runInit(root, ["--skills=none"]);
+
+      expect(exitCode).toBe(0);
+      expect(result.postinstall.outcome).toBe("added");
+      expect(result.postinstall.dependency).toBe("declared");
+      const manifest = await readManifest(root);
+      expect(manifest[field]).toEqual({ prisma: "^7.0.0" });
+      const others = DECLARING_FIELDS.filter((name) => name !== field);
+      expect(others.map((name) => manifest[name])).toEqual([
+        undefined,
+        undefined,
+        undefined,
+      ]);
+    });
+  }
+
+  const MALFORMED_DEV_DEPENDENCIES = [
+    ["a string", "oops"],
+    ["an array", ["prisma"]],
+  ] as const;
+
+  for (const [shape, value] of MALFORMED_DEV_DEPENDENCIES) {
+    it(`leaves a devDependencies field that is ${shape} untouched and reports the dependency skipped`, async () => {
+      const root = await makeProjectRoot("init-");
+      await writeFile(
+        path.join(root, "package.json"),
+        `${JSON.stringify(
+          {
+            name: "fixture-project",
+            scripts: { postinstall: POSTINSTALL_SCRIPT },
+            devDependencies: value,
+          },
+          null,
+          2,
+        )}\n`,
+        "utf8",
+      );
+      const before = await readFile(path.join(root, "package.json"), "utf8");
+
+      const { exitCode, result, diagnosticCodes, adviceFor } = await runInit(
+        root,
+        ["--skills=none"],
+      );
+
+      expect(exitCode).toBe(0);
+      expect(result.postinstall).toEqual({
+        outcome: "exists",
+        script: POSTINSTALL_SCRIPT,
+        dependency: "skipped",
+      });
+      expect(diagnosticCodes).toContain("INIT.DEV_DEPENDENCIES_NOT_AN_OBJECT");
+      expect(adviceFor("INIT.DEV_DEPENDENCIES_NOT_AN_OBJECT")).toEqual([
+        `Fix the devDependencies field so it is an object, then add "prisma": "${getCliVersion()}" yourself and run your package manager's install.`,
+      ]);
+      expect(await readFile(path.join(root, "package.json"), "utf8")).toBe(
+        before,
+      );
+    });
+  }
+
+  it("still adds the hook when devDependencies is malformed, preserving the field", async () => {
+    const root = await makeProjectRoot("init-");
+    await writeFile(
+      path.join(root, "package.json"),
+      `${JSON.stringify(
+        { name: "fixture-project", devDependencies: "oops" },
+        null,
+        2,
+      )}\n`,
+      "utf8",
+    );
+
+    const { exitCode, result, diagnosticCodes } = await runInit(root, [
+      "--skills=none",
     ]);
 
-    expect(result.exitCode).toBe(0);
-    expect(resultOf(result).link).toEqual({
-      status: "already-linked",
-      project: null,
+    expect(exitCode).toBe(0);
+    expect(result.postinstall).toEqual({
+      outcome: "added",
+      script: POSTINSTALL_SCRIPT,
+      dependency: "skipped",
+    });
+    expect(diagnosticCodes).toContain("INIT.DEV_DEPENDENCIES_NOT_AN_OBJECT");
+    const manifest = await readManifest(root);
+    expect((manifest.scripts as Record<string, unknown>).postinstall).toBe(
+      POSTINSTALL_SCRIPT,
+    );
+    expect(manifest.devDependencies).toBe("oops");
+  });
+
+  it("a kept foreign postinstall carries no dependency advice when prisma is declared", async () => {
+    const root = await makeProjectRoot("init-");
+    await writeFile(
+      path.join(root, "package.json"),
+      `${JSON.stringify(
+        {
+          name: "fixture-project",
+          scripts: { postinstall: "husky install" },
+          dependencies: { prisma: "8.0.0" },
+        },
+        null,
+        2,
+      )}\n`,
+      "utf8",
+    );
+
+    const { result, adviceFor } = await runInit(root, ["--skills=none"]);
+
+    expect(result.postinstall.dependency).toBe("declared");
+    expect(adviceFor("INIT.POSTINSTALL_KEPT")).not.toContain(
+      ADD_DEPENDENCY_ADVICE,
+    );
+  });
+
+  it("reports no install advice when prisma is already declared", async () => {
+    const root = await makeProjectRoot("init-");
+    await writeFile(
+      path.join(root, "package.json"),
+      `${JSON.stringify(
+        { name: "fixture-project", dependencies: { prisma: "8.0.0" } },
+        null,
+        2,
+      )}\n`,
+      "utf8",
+    );
+
+    const run = await makeCli().run(["init", "--skills=none"], { cwd: root });
+
+    expect(run.exitCode).toBe(0);
+    expect(run.presented?.presentation.next).toEqual([]);
+  });
+
+  it("keeps indentation, BOM and CRLF around the added dependency", async () => {
+    const root = await makeProjectRoot("init-");
+    await writeFile(
+      path.join(root, "package.json"),
+      `\uFEFF{\r\n    "name": "windows-project"\r\n}\r\n`,
+      "utf8",
+    );
+
+    const { result } = await runInit(root, ["--skills=none"]);
+
+    expect(result.postinstall.dependency).toBe("added");
+    const source = await readFile(path.join(root, "package.json"), "utf8");
+    expect(source.startsWith("\uFEFF")).toBe(true);
+    expect(source.endsWith("\r\n")).toBe(true);
+    expect(source.split("\r\n").length).toBe(source.split("\n").length);
+    expect(source).toContain(`    "prisma": "${getCliVersion()}"`);
+  });
+
+  it("a rerun whose hook exists still adds a dependency the user removed", async () => {
+    const root = await makeProjectRoot("init-");
+    await runInit(root, ["--skills=none"]);
+    const manifest = await readManifest(root);
+    delete (manifest as { devDependencies?: unknown }).devDependencies;
+    await writeFile(
+      path.join(root, "package.json"),
+      `${JSON.stringify(manifest, null, 2)}\n`,
+      "utf8",
+    );
+
+    const { result } = await runInit(root, ["--skills=none"], {
+      skills: { agents: [] },
+    });
+
+    expect(result.postinstall).toEqual({
+      outcome: "exists",
+      script: POSTINSTALL_SCRIPT,
+      dependency: "added",
+    });
+    expect((await readManifest(root)).devDependencies).toEqual({
+      prisma: getCliVersion(),
     });
   });
 
-  it("picks a project through the same picker project link uses", async () => {
-    await writePackageJson(cwd, { name: "api" });
+  it.skipIf(process.platform === "win32")(
+    "turns a sync failure into a diagnostic on a successful init",
+    async () => {
+      const root = await makeProjectRoot("init-");
+      await installPackage(root, {
+        name: "@prisma/orm-postgres",
+        version: "8.1.0",
+        skills: ["prisma-8"],
+      });
+      // A parent the sync cannot create the skill directory in.
+      const skillsDir = path.join(root, ".claude", "skills");
+      await mkdir(skillsDir, { recursive: true });
+      await chmod(skillsDir, 0o555);
 
-    const result = await run(
-      ["init", "--framework", "hono", "--no-install", "--link", "--json"],
-      {
-        signedIn: true,
-        client: apiWithProjects([
-          { id: "proj_1", name: "One" },
-          { id: "proj_2", name: "Two" },
-        ]),
-        isTty: { stdin: true },
-        answers: [false, "proj_2"],
-      },
-    );
+      try {
+        const { exitCode, result, diagnosticCodes } = await runInit(root);
 
-    expect(result.exitCode).toBe(0);
-    expect(resultOf(result).link).toEqual({
-      status: "linked",
-      project: { id: "proj_2", name: "Two" },
-    });
-  });
-
-  it("offers the picker's cancel choice, which downgrades to a warning", async () => {
-    await writePackageJson(cwd, { name: "api" });
-
-    const result = await run(
-      ["init", "--framework", "hono", "--no-install", "--link", "--json"],
-      {
-        signedIn: true,
-        client: apiWithProjects([{ id: "proj_1", name: "One" }]),
-        isTty: { stdin: true },
-        answers: [false, "__cancel__"],
-      },
-    );
-
-    expect(result.exitCode).toBe(0);
-    expect(resultOf(result).link).toMatchObject({ status: "failed" });
-    expect(envelopeOf(result).diagnostics).toContainEqual(
-      expect.objectContaining({
-        code: "INIT.LINK_FAILED",
-        summary: expect.stringContaining("Project setup canceled"),
-      }),
-    );
-  });
-
-  it("declines the link when the question is answered no", async () => {
-    await writePackageJson(cwd, { name: "api" });
-
-    const result = await run(
-      ["init", "--framework", "hono", "--no-install", "--json"],
-      { isTty: { stdin: true }, answers: [false, false] },
-    );
-
-    expect(resultOf(result).link).toEqual({
-      status: "declined",
-      project: null,
-    });
-  });
-
-  it("has nobody to answer the picker under --link non-interactively, so the step warns", async () => {
-    await writePackageJson(cwd, { name: "api" });
-
-    const result = await run(
-      ["init", "--framework", "hono", "--no-install", "--link", "--json"],
-      {
-        signedIn: true,
-        client: apiWithProjects([
-          { id: "proj_1", name: "One" },
-          { id: "proj_2", name: "Two" },
-        ]),
-      },
-    );
-
-    expect(result.exitCode).toBe(0);
-    expect(resultOf(result).link).toMatchObject({ status: "failed" });
-    expect(envelopeOf(result).diagnostics).toContainEqual(
-      expect.objectContaining({ code: "INIT.LINK_FAILED" }),
-    );
-  });
-});
-
-describe("init conversion", () => {
-  const jsonConfig = `${JSON.stringify(
-    {
-      $schema: COMPUTE_CONFIG_JSON_SCHEMA_URL,
-      app: {
-        name: "billing-api",
-        framework: "hono",
-        entry: "src/index.ts",
-        httpPort: 8080,
-        region: "us-east-1",
-      },
+        expect(exitCode).toBe(0);
+        expect(result.skills).toEqual({ outcome: "failed", sync: null });
+        expect(diagnosticCodes).toContain("INIT.SKILLS_SYNC_FAILED");
+        expect(result.postinstall.outcome).toBe("added");
+      } finally {
+        await chmod(skillsDir, 0o755);
+      }
     },
-    null,
-    2,
-  )}\n`;
-
-  it("converts prisma.compute.json to prisma.compute.ts byte for byte", async () => {
-    await writeFile(path.join(cwd, "prisma.compute.json"), jsonConfig);
-
-    const result = await run([
-      "init",
-      "--config-format",
-      "ts",
-      "--no-install",
-      "--no-link",
-      "--json",
-    ]);
-
-    expect(result.exitCode).toBe(0);
-    expect(resultOf(result)).toMatchObject({
-      configPath: "prisma.compute.ts",
-      format: "typescript",
-      converted: true,
-      app: {
-        name: "billing-api",
-        framework: "hono",
-        entry: "src/index.ts",
-        httpPort: 8080,
-        region: "us-east-1",
-      },
-    });
-    expect(resultOf(result).settings).toContainEqual({
-      key: "framework",
-      value: "Hono",
-      source: "prisma.compute.json",
-    });
-    expect(await readConfig()).toBe(BILLING_API_TS);
-    await expect(readJsonConfig()).rejects.toMatchObject({ code: "ENOENT" });
-  });
-
-  it("reports no app identity for a multi-app config", async () => {
-    await writeFile(
-      path.join(cwd, "prisma.compute.json"),
-      `${JSON.stringify({
-        apps: {
-          web: {
-            framework: "nextjs",
-            root: "apps/web",
-            build: { command: null },
-          },
-          api: {
-            framework: "hono",
-            root: "apps/api",
-            entry: "src/index.ts",
-          },
-        },
-      })}\n`,
-    );
-
-    const result = await run([
-      "init",
-      "--config-format",
-      "ts",
-      "--no-install",
-      "--no-link",
-      "--json",
-    ]);
-
-    expect(result.exitCode).toBe(0);
-    expect(resultOf(result)).toMatchObject({ converted: true, app: null });
-    // Nothing to preview when no single app was transported.
-    expect(result.events).not.toContainEqual(
-      expect.objectContaining({ kind: "message" }),
-    );
-    expect(await readConfig()).toContain("command: null");
-  });
-
-  it("rejects resolution flags during conversion and changes nothing on disk", async () => {
-    const source = `${JSON.stringify({
-      app: { name: "api", framework: "hono", httpPort: 8080 },
-    })}\n`;
-    await writeFile(path.join(cwd, "prisma.compute.json"), source);
-
-    const result = await run([
-      "init",
-      "--config-format",
-      "ts",
-      "--framework",
-      "nextjs",
-      "--http-port",
-      "3000",
-      "--json",
-    ]);
-
-    expect(result.exitCode).toBe(2);
-    expect(errorOf(result).code).toBe("INIT.CONVERSION_FLAGS_NOT_APPLICABLE");
-    expect(errorOf(result).summary).toContain("--framework");
-    expect(errorOf(result).summary).toContain("--http-port");
-    await expect(readConfig()).rejects.toMatchObject({ code: "ENOENT" });
-    expect(await readJsonConfig()).toBe(source);
-  });
-
-  it("fails with INIT.COMPUTE_CONFIG_INVALID for a malformed JSON config", async () => {
-    await writeFile(path.join(cwd, "prisma.compute.json"), "{ not json");
-
-    const result = await run(["init", "--config-format", "ts", "--json"]);
-
-    expect(result.exitCode).toBe(2);
-    expect(errorOf(result).code).toBe("INIT.COMPUTE_CONFIG_INVALID");
-    await expect(readConfig()).rejects.toMatchObject({ code: "ENOENT" });
-  });
-
-  it("runs the conversion's side effects where the config lives, not where init ran", async () => {
-    await mkdir(path.join(cwd, ".git"), { recursive: true });
-    await writePackageJson(cwd, { name: "root-app" });
-    await writeFile(
-      path.join(cwd, "prisma.compute.json"),
-      `${JSON.stringify({ app: { framework: "hono", httpPort: 8080 } })}\n`,
-    );
-    const nested = path.join(cwd, "apps", "api");
-    await mkdir(nested, { recursive: true });
-    await writePackageJson(nested, { name: "api" });
-
-    const result = await makeCli({
-      signedIn: true,
-      client: apiWithProjects([{ id: "proj_123", name: "Acme Dashboard" }]),
-    }).run(
-      [
-        "init",
-        "--config-format",
-        "ts",
-        "--install",
-        "--project",
-        "proj_123",
-        "--json",
-      ],
-      {
-        cwd: nested,
-        env: {
-          // The fake installer records where it ran.
-          PRISMA_CLI_INIT_INSTALL_COMMAND: JSON.stringify([
-            "node",
-            "-e",
-            "require('fs').writeFileSync('install-cwd.txt','ok')",
-          ]),
-        },
-      },
-    );
-
-    expect(result.exitCode).toBe(0);
-    expect(resultOf(result)).toMatchObject({
-      configPath: path.join("..", "..", "prisma.compute.ts"),
-      types: { status: "installed" },
-      link: { status: "linked", project: { id: "proj_123" } },
-    });
-    await expect(
-      readFile(path.join(cwd, "install-cwd.txt"), "utf8"),
-    ).resolves.toBe("ok");
-    await expect(
-      readFile(path.join(nested, "install-cwd.txt"), "utf8"),
-    ).rejects.toMatchObject({ code: "ENOENT" });
-    await expect(
-      readFile(path.join(cwd, ".prisma/local.json"), "utf8"),
-    ).resolves.toContain("proj_123");
-    await expect(
-      readFile(path.join(nested, ".prisma/local.json"), "utf8"),
-    ).rejects.toMatchObject({ code: "ENOENT" });
-  });
-
-  it("presents the conversion summary in human mode", async () => {
-    await writeFile(
-      path.join(cwd, "prisma.compute.json"),
-      `${JSON.stringify({ app: { framework: "hono", httpPort: 8080 } })}\n`,
-    );
-
-    const result = await run(
-      ["init", "--config-format", "ts", "--no-install", "--no-link"],
-      { isTty: { stdout: true, stderr: true } },
-    );
-
-    expect(result.exitCode).toBe(0);
-    expect(result.presented?.presentation.human).toContainEqual({
-      kind: "summary",
-      status: "ok",
-      text: "Converted prisma.compute.json to prisma.compute.ts",
-    });
-  });
+  );
 });

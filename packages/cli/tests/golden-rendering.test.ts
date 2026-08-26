@@ -97,7 +97,7 @@ describe("golden rendering", () => {
         "ended:  1\n" +
         "\n" +
         "✔ Ended 1 workspace session.\n" +
-        "→ Sign in: prisma-cli auth login\n",
+        "→ Sign in: prisma auth login\n",
     );
     expect(result.stdout).toBe("ended: 1\n");
   });
@@ -164,7 +164,7 @@ describe("golden rendering", () => {
     expect(result.stderr).toBe(
       "✘ [AUTH.WORKSPACE_AMBIGUOUS] More than one workspace session is named 'Acme Inc'.\n" +
         "  why: Matching workspaces: ws_1, ws_9.\n" +
-        "→ List your workspace sessions and pass a workspace id: prisma-cli auth workspace list\n",
+        "→ List your workspace sessions and pass a workspace id: prisma auth workspace list\n",
     );
     expect(result.stdout).toBe("");
   });
