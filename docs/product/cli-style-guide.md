@@ -94,7 +94,7 @@ Rules:
 - align keys in a compact column
 - use accent color for keys and default text for values
 - prefer display labels in default human output and keep opaque ids in JSON unless a later verbose mode explicitly asks for them
-- mask sensitive values rather than omitting their presence entirely when the value matters to the flow
+- print values bare; a secret the command exists to hand over is never masked, because the human card is where its owner reads it (operator ruling, 2026-08-26)
 - include only rows that are actually known for the current command
 - use human labels such as `Not linked` instead of internal resolution terms such as `unbound`
 - hide internal resolution terms such as `local pin` from default human output when the visible binding is clearer
@@ -212,8 +212,7 @@ Non-TTY behavior should be automation-friendly:
 
 - Do not rely on color alone.
 - Keep text compact and translatable.
-- Never print secrets.
-- Scrub sensitive values in logs, errors, and previews.
+- Never leak secrets into logs, errors, telemetry, or previews. A secret the command exists to hand over prints bare, once.
 
 ## Design Rule
 

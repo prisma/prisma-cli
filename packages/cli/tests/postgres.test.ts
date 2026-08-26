@@ -736,7 +736,6 @@ describe("prisma postgres create", () => {
           {
             label: "connection URL",
             value: "postgres://user:pass@host/db",
-            sensitive: true,
           },
         ],
       },
@@ -2105,7 +2104,6 @@ describe("prisma postgres connection create", () => {
         {
           label: "connection URL",
           value: "postgres://pooled/db",
-          sensitive: true,
         },
       ],
     });

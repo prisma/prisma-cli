@@ -40,16 +40,8 @@ function createPresentations(result: BucketKeyCreateResult): Presentations {
         kind: "fields",
         rows: [
           { label: "S3_ENDPOINT", value: result.endpoint },
-          {
-            label: "S3_ACCESS_KEY_ID",
-            value: result.accessKeyId,
-            sensitive: true,
-          },
-          {
-            label: "S3_SECRET_ACCESS_KEY",
-            value: result.secretAccessKey,
-            sensitive: true,
-          },
+          { label: "S3_ACCESS_KEY_ID", value: result.accessKeyId },
+          { label: "S3_SECRET_ACCESS_KEY", value: result.secretAccessKey },
           { label: "S3_BUCKET", value: result.bucketName },
         ],
       },

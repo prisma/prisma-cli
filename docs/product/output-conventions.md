@@ -186,16 +186,13 @@ No current MVP command uses `verify` or `inspect`, but new commands must still c
 
 ### One-Time Secret Output
 
-Commands that create one-time-view secrets may write the raw secret value to
-stdout in human mode. This is still machine-readable output, not decorative
-human output.
+Commands that create one-time-view secrets print the secret bare in the human card and write the raw value to stdout. The card is the only place an interactive user ever sees the secret — when stdout and stderr render to one screen the stdout mirror is skipped, so masking the card would hide the secret from everyone including its owner (operator ruling, 2026-08-26). The stdout line is machine-readable output for pipes and redirection.
 
 Rules:
 
-- write exactly one raw secret value per successful create command
-- write human creation summaries to stderr before writing the raw secret to stdout
-- do not repeat the secret on stderr
-- do not wrap the secret in labels such as `DATABASE_URL=`
+- show the bare secret in the human card on stderr
+- write exactly one raw secret value per successful create command to stdout
+- do not wrap the stdout secret in labels such as `DATABASE_URL=`
 - use `--verbose` for human metadata such as resource ids; keep generated names and opaque ids out of default human output unless they are the user-selected target
 - `--quiet` suppresses successful human stderr output and still writes the raw secret to stdout
 - list and show commands must never print or return secret values
@@ -270,7 +267,7 @@ Rules:
 
 - use a flat aligned key-value card with no bullets
 - keys use the accent color and values use the default foreground unless status coloring applies
-- sensitive values are masked rather than omitted
+- values print bare; a secret the command exists to hand over is never masked (operator ruling, 2026-08-26)
 - human output prefers display labels, URLs, and statuses over opaque ids
 
 #### `mutate`
