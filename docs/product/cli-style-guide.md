@@ -149,19 +149,20 @@ Shared flag rules:
 - short aliases exist only for high-frequency flags
 - flags should mean the same thing across commands whenever possible
 
-Shared global flags for the MVP:
+Shared global flags, defined by the engine in `SHARED_FLAG_PARAMETERS` (`packages/cli-engine/src/execution/shared-flags.ts`, the source of truth for this list):
 
-- `--json`
-- `-q`, `--quiet`
-- `-v`, `--verbose`
-- `--trace`
-- `--interactive`
-- `--no-interactive`
-- `-y`, `--yes`
-- `--color`
-- `--no-color`
+- `--format <human|json>`
+- `--json` (shorthand for `--format json`)
+- `--log-level <error|warn|info|verbose>`
+- `-v`, `--verbose` (shorthand for `--log-level verbose`)
+- `-q`, `--quiet` (shorthand for `--log-level error`)
+- `-y`, `--yes` (accept prompt defaults)
+- `--confirm <value>` (grant a consent prompt non-interactively; repeatable)
+- `--interactive`, `--no-interactive`
+- `--color`, `--no-color`
+- `--config <path>`
 
-`--quiet`, `--verbose`, and `--trace` affect human output detail, not the JSON schema.
+`--log-level` and its `--verbose`/`--quiet` shorthands affect human commentary detail, not the JSON schema.
 
 ## Interactivity
 

@@ -21,7 +21,7 @@ import { runEnvUpdateFile } from "../../controllers/app-env-file";
 import { formatScopeLabel } from "../../lib/app/env-config";
 import { runCommand, userChoice } from "../../lib/app/env-errors";
 import type { EnvUpdateResult } from "../../types/app-env";
-import { legacyOperationContext } from "./context";
+import { operationContext } from "./context";
 import {
   branchFlag,
   fileFlag,
@@ -89,7 +89,7 @@ export const projectEnvUpdateCommand = defineCommand({
     );
     const scope = requireEnvScope(args.flags, "update");
     const input = await resolveEnvWriteInput(
-      legacyOperationContext(ctx),
+      operationContext(ctx),
       source,
       "update",
     );
@@ -103,7 +103,7 @@ export const projectEnvUpdateCommand = defineCommand({
 
     if (input.kind === "file") {
       const written = await runEnvUpdateFile(
-        legacyOperationContext(ctx),
+        operationContext(ctx),
         ctx.api,
         projectId,
         resolved,

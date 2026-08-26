@@ -1,7 +1,7 @@
 import { mkdtemp, readFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import type { CliRuntime, CommandContext } from "../src/legacy/runtime";
+import type { CliRuntime, CommandContext } from "../src/controllers/context";
 
 export async function createTempCwd(): Promise<string> {
   return mkdtemp(path.join(os.tmpdir(), "prisma-cli-"));

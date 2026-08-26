@@ -5,8 +5,6 @@ import {
   type NextAction,
 } from "@prisma/cli-engine/protocol";
 import type { ManagementApiClient } from "@prisma/management-api-sdk";
-import type { CommandSuccess } from "../legacy/output";
-import type { CommandContext } from "../legacy/runtime";
 import { type EnvScope, formatScopeLabel } from "../lib/app/env-config";
 import { runCommand, userChoice } from "../lib/app/env-errors";
 import type { EnvFileAssignment } from "../lib/app/env-file";
@@ -23,9 +21,18 @@ import {
   type ResolvedEnvApiScope,
   toMetadata,
 } from "./app-env-api";
+import type { CommandContext } from "./context";
 
 export interface ResolvedEnvFileScope extends ResolvedEnvApiScope {
   scope: EnvScope;
+}
+
+/** What an env-file controller returns: the result plus the findings it
+ *  collected along the way, which the command turns into diagnostics. */
+export interface CommandSuccess<T> {
+  command: string;
+  result: T;
+  warnings: string[];
 }
 
 export async function runEnvAddFile(

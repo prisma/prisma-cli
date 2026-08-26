@@ -174,7 +174,7 @@ describe("prisma service list", () => {
     });
   });
 
-  it("settles an unknown project as SERVICE.PROJECT_NOT_FOUND with exit 2", async () => {
+  it("settles an unknown project as PROJECT.NOT_FOUND with exit 2", async () => {
     const harness = await makeServiceCli({
       routes: readFlowRoutes({
         "GET /v1/apps": () => ({
@@ -194,7 +194,7 @@ describe("prisma service list", () => {
     if (frame?.kind !== "result" || frame.envelope.ok) {
       throw new Error("expected an errored envelope");
     }
-    expect(frame.envelope.error.code).toBe("SERVICE.PROJECT_NOT_FOUND");
+    expect(frame.envelope.error.code).toBe("PROJECT.NOT_FOUND");
   });
 
   it("fails early with the engine sign-in error when unauthenticated", async () => {

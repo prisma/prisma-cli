@@ -1,9 +1,8 @@
 /**
- * The legacy-context adapter. `commands/project/context.ts` hands the legacy
- * operations an object carrying three of the shell `CommandContext`'s
- * fields, cast to the whole type. The structural fix belongs to S2d,
- * when the legacy shell dies; until then the adapter refuses a read it
- * cannot serve and names the field, so a legacy edit that starts
+ * The operation-context adapter. `commands/project/context.ts` hands the
+ * controllers an object carrying the three fields their `CommandContext`
+ * declares. The adapter refuses a read it
+ * cannot serve and names the field, so a controller edit that starts
  * reading a fourth fails where the mistake is rather than as
  * `Cannot read properties of undefined` somewhere downstream — worst
  * case inside `project transfer`, after the project has already moved.
@@ -16,7 +15,7 @@ import os from "node:os";
 import path from "node:path";
 import type { CommandContext, ManagementApiClient } from "@prisma/cli-engine";
 import { describe, expect, it } from "vitest";
-import { legacyOperationContext } from "../src/commands/project/context";
+import { operationContext } from "../src/commands/project/context";
 import { resolveEnvWriteInput } from "../src/controllers/app-env";
 import { runEnvAddFile } from "../src/controllers/app-env-file";
 import {
@@ -42,7 +41,7 @@ function stubContext(cwd: string): ProjectCommandContext {
 }
 
 async function pinnedCwd() {
-  const cwd = await mkdtemp(path.join(os.tmpdir(), "legacy-context-"));
+  const cwd = await mkdtemp(path.join(os.tmpdir(), "operation-context-"));
   await mkdir(path.join(cwd, ".prisma"), { recursive: true });
   await writeFile(
     path.join(cwd, ".prisma", "local.json"),
@@ -52,9 +51,9 @@ async function pinnedCwd() {
   return cwd;
 }
 
-describe("the legacy-context adapter", () => {
+describe("the operation-context adapter", () => {
   it("serves the three fields it declares", () => {
-    const context = legacyOperationContext(stubContext("/somewhere"));
+    const context = operationContext(stubContext("/somewhere"));
 
     expect(context.runtime.cwd).toBe("/somewhere");
     expect(context.runtime.env).toEqual({ HOME: "/home/test" });
@@ -62,28 +61,28 @@ describe("the legacy-context adapter", () => {
   });
 
   it("refuses a runtime field it cannot serve, and names it", () => {
-    const context = legacyOperationContext(stubContext("/somewhere"));
+    const context = operationContext(stubContext("/somewhere"));
 
     expect(
       () => (context.runtime as unknown as { stdout: unknown }).stdout,
     ).toThrow(
-      "the legacy-context adapter provides only runtime.cwd, runtime.env and runtime.signal; runtime.stdout was read",
+      "the operation-context adapter provides only runtime.cwd, runtime.env and runtime.signal; runtime.stdout was read",
     );
   });
 
   it("refuses a top-level field it cannot serve, and names it", () => {
-    const context = legacyOperationContext(stubContext("/somewhere"));
+    const context = operationContext(stubContext("/somewhere"));
 
     expect(() => (context as unknown as { ui: unknown }).ui).toThrow(
-      "the legacy-context adapter provides only runtime.cwd, runtime.env and runtime.signal; ui was read",
+      "the operation-context adapter provides only runtime.cwd, runtime.env and runtime.signal; ui was read",
     );
   });
 
   it("lets the language probe it without throwing", async () => {
-    const context = legacyOperationContext(stubContext("/somewhere"));
+    const context = operationContext(stubContext("/somewhere"));
 
     // Symbols and `then` are how the runtime inspects an object, not how
-    // the legacy code reads a field. Awaiting the adapter reads `then`;
+    // a controller reads a field. Awaiting the adapter reads `then`;
     // throwing there would be the very failure the trap exists to remove.
     expect(
       (context as unknown as Record<symbol, unknown>)[Symbol.toStringTag],
@@ -93,7 +92,7 @@ describe("the legacy-context adapter", () => {
   });
 
   it("carries resolveProjectTarget", async () => {
-    const context = legacyOperationContext(stubContext(await pinnedCwd()));
+    const context = operationContext(stubContext(await pinnedCwd()));
 
     const target = await resolveProjectTarget({
       context,
@@ -106,7 +105,7 @@ describe("the legacy-context adapter", () => {
   });
 
   it("carries cleanupLocalPinForProject", async () => {
-    const context = legacyOperationContext(stubContext(await pinnedCwd()));
+    const context = operationContext(stubContext(await pinnedCwd()));
     const warnings: string[] = [];
 
     const cleared = await cleanupLocalPinForProject(context, "proj_1", {
@@ -118,7 +117,7 @@ describe("the legacy-context adapter", () => {
   });
 
   it("carries rewriteOrClearLocalPinForProject", async () => {
-    const context = legacyOperationContext(stubContext(await pinnedCwd()));
+    const context = operationContext(stubContext(await pinnedCwd()));
     const warnings: string[] = [];
 
     const action = await rewriteOrClearLocalPinForProject(
@@ -135,7 +134,7 @@ describe("the legacy-context adapter", () => {
   it("carries resolveEnvWriteInput, for both a single assignment and a file", async () => {
     const cwd = await pinnedCwd();
     await writeFile(path.join(cwd, ".env"), "STRIPE_KEY=sk_test\n", "utf8");
-    const context = legacyOperationContext(stubContext(cwd));
+    const context = operationContext(stubContext(cwd));
 
     expect(
       await resolveEnvWriteInput(
@@ -159,7 +158,7 @@ describe("the legacy-context adapter", () => {
   });
 
   it("carries runEnvAddFile", async () => {
-    const context = legacyOperationContext(stubContext(await pinnedCwd()));
+    const context = operationContext(stubContext(await pinnedCwd()));
     const created = {
       id: "env_1",
       key: "STRIPE_KEY",
