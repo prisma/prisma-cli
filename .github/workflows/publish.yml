@@ -96,18 +96,35 @@ jobs:
           pnpm test:scripts
           pnpm check:conformance
 
+      # The engine has no dev channel (ADR 0004: its line carries no
+      # pre-releases), so the dev stamp leaves its manifest alone and
+      # this run holds its committed version. Publishing it here, under
+      # `latest`, is the same rule the other packages follow — a merged
+      # version bump publishes that version under `latest` — applied at
+      # the engine's own bump, which is the first run to carry it. An
+      # already-published engine version is a no-op.
+      - name: Publish the engine release
+        if: ${{ github.event_name != 'workflow_dispatch' || github.event.inputs.dry-run != 'true' }}
+        env:
+          NPM_CONFIG_PROVENANCE: "true"
+        run: bash scripts/publish-packages.sh latest @prisma/cli-engine
+
       - name: Publish the dev version
         if: ${{ github.event_name != 'workflow_dispatch' || github.event.inputs.dry-run != 'true' }}
         env:
           NPM_CONFIG_PROVENANCE: "true"
-        run: bash scripts/publish-packages.sh dev @prisma/cli-engine @prisma/cli prisma
+        run: bash scripts/publish-packages.sh dev @prisma/cli prisma
 
       - name: Verify the dev version resolves
         if: ${{ github.event_name != 'workflow_dispatch' || github.event.inputs.dry-run != 'true' }}
         env:
           DEV_VERSION: ${{ steps.version.outputs.devVersion }}
         run: |
-          node scripts/verify-published.mjs "@prisma/cli@$DEV_VERSION" "prisma@$DEV_VERSION"
+          engine=$(node -p "require('./packages/cli-engine/package.json').version")
+          node scripts/verify-published.mjs \
+            "@prisma/cli-engine@$engine" \
+            "@prisma/cli@$DEV_VERSION" \
+            "prisma@$DEV_VERSION"
 
       # --- The release: only when the committed version changed. ---
 
