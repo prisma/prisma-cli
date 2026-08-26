@@ -15,11 +15,11 @@ import {
 } from "../../lib/project/local-pin";
 import {
   type ProjectCandidate,
-  projectResolutionErrorToCliError,
+  projectResolutionErrorToStructured,
   type ResolvedProjectTarget,
   resolveProjectTarget,
 } from "../../lib/project/resolution";
-import { projectDirectoryBindingErrorToCliError } from "../../lib/project/setup";
+import { projectDirectoryBindingErrorToStructured } from "../../lib/project/setup";
 import type { AuthWorkspace } from "../../types/auth";
 import type { ProjectSetupResult, ProjectSummary } from "../../types/project";
 
@@ -87,7 +87,7 @@ export async function resolvePinnedProject(
     commandName,
   });
   if (target.isErr()) {
-    throw projectResolutionErrorToCliError(target.error);
+    throw projectResolutionErrorToStructured(target.error);
   }
   return target.value;
 }
@@ -106,12 +106,12 @@ export async function bindDirectoryToProject(
     ctx.signal,
   );
   if (written.isErr()) {
-    throw projectDirectoryBindingErrorToCliError(written.error);
+    throw projectDirectoryBindingErrorToStructured(written.error);
   }
 
   const ignored = await ensureLocalResolutionPinGitignore(ctx.cwd, ctx.signal);
   if (ignored.isErr()) {
-    throw projectDirectoryBindingErrorToCliError(ignored.error);
+    throw projectDirectoryBindingErrorToStructured(ignored.error);
   }
 
   return {

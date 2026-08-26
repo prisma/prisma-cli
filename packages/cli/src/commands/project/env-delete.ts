@@ -5,14 +5,14 @@ import {
   type Presentations,
   positional,
 } from "@prisma/cli-engine";
-import { notOk, ok } from "@prisma/cli-engine/protocol";
+import { CliStructuredError, ok } from "@prisma/cli-engine/protocol";
 import { formatScopeFlag } from "../../controllers/app-env";
 import {
   apiCallError,
   findVariableByNaturalKey,
 } from "../../controllers/app-env-api";
-import { CliError } from "../../errors";
 import { formatScopeLabel } from "../../lib/app/env-config";
+import { runCommand, userChoice } from "../../lib/app/env-errors";
 import { scopeLabel } from "../../presenters/app-env";
 import type { EnvRmResult } from "../../types/app-env";
 import {
@@ -22,7 +22,6 @@ import {
   resolveEnvTarget,
   roleFlag,
 } from "./env-shared";
-import { mapProjectOperationError } from "./errors";
 
 const TITLE = "Deleting the environment variable from the scope.";
 
@@ -69,59 +68,55 @@ export const projectEnvDeleteCommand = defineCommand({
   },
   needs: { credentials: true },
   handler: async (args, ctx) => {
-    try {
-      const key = args.positionals.key;
-      const scope = requireEnvScope(args.flags, "delete");
-      const { projectId, resolved } = await resolveEnvTarget(
-        ctx,
-        args.flags,
-        scope,
-        "project env delete",
-        false,
-      );
+    const key = args.positionals.key;
+    const scope = requireEnvScope(args.flags, "delete");
+    const { projectId, resolved } = await resolveEnvTarget(
+      ctx,
+      args.flags,
+      scope,
+      "project env delete",
+      false,
+    );
 
-      const existing = await findVariableByNaturalKey(
-        ctx.api,
-        projectId,
-        key,
-        resolved,
-        ctx.signal,
-      );
-      if (!existing) {
-        throw new CliError({
-          code: "ENV_VARIABLE_NOT_FOUND",
-          domain: "app",
-          summary: `Variable "${key}" not found in ${formatScopeLabel(scope)}`,
-          why: "No variable with this key exists in the targeted scope, so there is nothing to delete.",
-          fix: "Run prisma project env list with the same scope to see the available variables.",
-          exitCode: 1,
-          nextSteps: [`prisma project env list ${formatScopeFlag(scope)}`],
-        });
-      }
-
-      const { error, response } = await ctx.api.DELETE(
-        "/v1/environment-variables/{envVarId}",
+    const existing = await findVariableByNaturalKey(
+      ctx.api,
+      projectId,
+      key,
+      resolved,
+      ctx.signal,
+    );
+    if (!existing) {
+      throw new CliStructuredError(
+        "PROJECT.ENV_VARIABLE_NOT_FOUND",
+        `Variable "${key}" not found in ${formatScopeLabel(scope)}`,
         {
-          params: { path: { envVarId: existing.id } },
-          signal: ctx.signal,
+          why: "No variable with this key exists in the targeted scope, so there is nothing to delete.",
+          nextActions: [
+            userChoice(
+              "Run prisma project env list with the same scope to see the available variables.",
+            ),
+            runCommand(`prisma project env list ${formatScopeFlag(scope)}`),
+          ],
         },
       );
-      if (error) {
-        throw apiCallError(`Failed to delete ${key}`, response, error);
-      }
-
-      const result: EnvRmResult = {
-        projectId,
-        scope: resolved.descriptor,
-        key,
-      };
-      return ok(ctx.present({ data: result }, deletePresentations(result)));
-    } catch (error) {
-      const mapped = mapProjectOperationError(error);
-      if (mapped) {
-        return notOk(mapped);
-      }
-      throw error;
     }
+
+    const { error, response } = await ctx.api.DELETE(
+      "/v1/environment-variables/{envVarId}",
+      {
+        params: { path: { envVarId: existing.id } },
+        signal: ctx.signal,
+      },
+    );
+    if (error) {
+      throw apiCallError(`Failed to delete ${key}`, response, error);
+    }
+
+    const result: EnvRmResult = {
+      projectId,
+      scope: resolved.descriptor,
+      key,
+    };
+    return ok(ctx.present({ data: result }, deletePresentations(result)));
   },
 });

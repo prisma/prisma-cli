@@ -296,7 +296,13 @@ describe("prisma project list", () => {
     expect(result.exitCode).toBe(2);
     expect(resultFrame(result.json).envelope).toMatchObject({
       ok: false,
-      error: { code: "PROJECT.forbidden", summary: "Failed to list projects" },
+      error: {
+        code: "PROJECT.API_ERROR",
+        summary: "Failed to list projects",
+        // The API's own code is data, never the error code: a code the
+        // registry does not list is a code no caller can branch on.
+        meta: { status: 403, apiCode: "forbidden" },
+      },
     });
   });
 
@@ -1571,7 +1577,7 @@ describe("prisma project env add", () => {
     });
   });
 
-  it("maps a forbidden API write to PROJECT.AUTH_REQUIRED", async () => {
+  it("reports a forbidden API write as PROJECT.ENV_API_ERROR pointing at sign-in", async () => {
     const result = await makeCli(
       envClient({ failWriteFor: "STRIPE_KEY", failWriteStatus: 403 }),
     ).run(
@@ -1591,14 +1597,11 @@ describe("prisma project env add", () => {
     expect(resultFrame(result.json).envelope).toMatchObject({
       ok: false,
       error: {
-        code: "PROJECT.AUTH_REQUIRED",
-        summary: "Authentication required",
-        why: "This command needs an authenticated session.",
+        code: "PROJECT.ENV_API_ERROR",
+        summary: "Failed to add STRIPE_KEY",
+        why: "The Management API rejected the request as unauthorized or forbidden.",
+        meta: { status: 403 },
         nextActions: [
-          {
-            kind: "user-choice",
-            label: "Run prisma auth login.",
-          },
           {
             kind: "run-command",
             label: "prisma auth login",
@@ -2147,6 +2150,14 @@ describe("prisma project env list", () => {
         code: "PROJECT.ENV_API_ERROR",
         summary: "Failed to list environment variables",
         why: "boom",
+        meta: { status: 500 },
+        nextActions: [
+          {
+            kind: "user-choice",
+            label:
+              "Re-run with --log-level verbose for the underlying API response details.",
+          },
+        ],
       },
     });
   });

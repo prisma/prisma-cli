@@ -6,7 +6,7 @@ import {
   positional,
 } from "@prisma/cli-engine";
 import type { Diagnostic } from "@prisma/cli-engine/protocol";
-import { notOk, ok } from "@prisma/cli-engine/protocol";
+import { ok } from "@prisma/cli-engine/protocol";
 import { cleanupLocalPinForProject } from "../../controllers/project";
 import { createManagementProjectProvider } from "../../lib/project/provider";
 import {
@@ -16,7 +16,6 @@ import {
 import type { ProjectDeleteResult } from "../../types/project";
 import { resolveActiveWorkspace } from "../resources-shared/workspace";
 import { legacyOperationContext, listWorkspaceProjects } from "./context";
-import { mapProjectOperationError } from "./errors";
 import { localPinDiagnostics } from "./presentation";
 
 const CONSENT_QUESTION =
@@ -65,46 +64,38 @@ export const projectDeleteCommand = defineCommand({
   },
   needs: { credentials: true },
   handler: async (args, ctx) => {
-    try {
-      const workspace = await resolveActiveWorkspace(ctx);
-      const projects = await listWorkspaceProjects(ctx);
-      const project = toProjectSummary(
-        resolveProjectForSetup(
-          args.positionals.project.trim(),
-          projects,
-          workspace,
-        ),
-      );
-
-      await ctx.prompt.consent(CONSENT_QUESTION, { token: project.id });
-
-      await createManagementProjectProvider(ctx.api).removeProject({
-        projectId: project.id,
-        signal: ctx.signal,
-      });
-
-      const warnings: string[] = [];
-      const cleared = await cleanupLocalPinForProject(
-        legacyOperationContext(ctx),
-        project.id,
-        { onError: (message) => warnings.push(message) },
-      );
-
-      const result: ProjectDeleteResult = {
+    const workspace = await resolveActiveWorkspace(ctx);
+    const projects = await listWorkspaceProjects(ctx);
+    const project = toProjectSummary(
+      resolveProjectForSetup(
+        args.positionals.project.trim(),
+        projects,
         workspace,
-        project,
-        localPin: { cleared },
-      };
-      const diagnostics: Diagnostic[] = localPinDiagnostics(warnings);
-      return ok(
-        ctx.present({ data: result, diagnostics }, deletePresentations(result)),
-      );
-    } catch (error) {
-      const mapped = mapProjectOperationError(error);
-      if (mapped) {
-        return notOk(mapped);
-      }
-      throw error;
-    }
+      ),
+    );
+
+    await ctx.prompt.consent(CONSENT_QUESTION, { token: project.id });
+
+    await createManagementProjectProvider(ctx.api).removeProject({
+      projectId: project.id,
+      signal: ctx.signal,
+    });
+
+    const warnings: string[] = [];
+    const cleared = await cleanupLocalPinForProject(
+      legacyOperationContext(ctx),
+      project.id,
+      { onError: (message) => warnings.push(message) },
+    );
+
+    const result: ProjectDeleteResult = {
+      workspace,
+      project,
+      localPin: { cleared },
+    };
+    const diagnostics: Diagnostic[] = localPinDiagnostics(warnings);
+    return ok(
+      ctx.present({ data: result, diagnostics }, deletePresentations(result)),
+    );
   },
 });

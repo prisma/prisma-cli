@@ -1,10 +1,8 @@
 import type { NextAction } from "@prisma/cli-engine/protocol";
 import { CliStructuredError } from "@prisma/cli-engine/protocol";
 import { CLI_NAME } from "../../cli-name";
-import type { CliError } from "../../errors";
 import { DomainApiError, type DomainRecord } from "../../lib/app/app-provider";
 import { formatDomainFailureFix } from "../../lib/app/domain-guidance";
-import type { NextAction as LegacyNextAction } from "../../next-actions";
 
 type DomainCommand = "add" | "show" | "delete" | "retry" | "wait";
 
@@ -16,47 +14,8 @@ export function adviceAction(label: string): NextAction {
   return { kind: "user-choice", label };
 }
 
-function toEngineNextAction(action: LegacyNextAction): NextAction {
-  return {
-    kind: action.kind,
-    label: action.label,
-    ...(action.command !== undefined ? { command: action.command } : {}),
-    ...(action.commands !== undefined ? { commands: action.commands } : {}),
-    ...(action.reason !== undefined ? { reason: action.reason } : {}),
-  };
-}
-
 const CNAME_HINT = /\bcname(?:s)?\s+to\b/;
 const PRISMA_BUILD_HOST = /\b((?:[a-z0-9-]+\.)+prisma\.build)\b/i;
-
-/**
- * Maps a legacy CliError onto the engine error protocol: the flat code
- * becomes `SERVICE.<code>`, the free-text fix becomes a user-choice
- * action carried alongside any typed legacy actions, and each nextSteps
- * command line becomes a run-command action. Copy passes through
- * unchanged: the producers write the commands a user types today.
- */
-export function fromLegacyCliError(error: CliError): CliStructuredError {
-  const fixAction = error.fix ? [adviceAction(error.fix)] : [];
-  const nextActions: NextAction[] =
-    error.nextActions.length > 0
-      ? [...error.nextActions.map(toEngineNextAction), ...fixAction]
-      : [
-          ...fixAction,
-          ...error.nextSteps.map((step) => ({
-            kind: "run-command" as const,
-            label: "Run",
-            command: step,
-          })),
-        ];
-  return new CliStructuredError(`SERVICE.${error.code}`, error.summary, {
-    ...(error.why ? { why: error.why } : {}),
-    nextActions,
-    ...(error.where ? { where: { path: error.where } } : {}),
-    ...(Object.keys(error.meta).length > 0 ? { meta: error.meta } : {}),
-    ...(error.docsUrl ? { docsUrl: error.docsUrl } : {}),
-  });
-}
 
 /**
  * Consent declined interactively. The engine settles this code as a

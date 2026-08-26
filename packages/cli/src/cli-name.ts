@@ -8,8 +8,14 @@
  */
 export const CLI_NAME = "prisma";
 
-/** The CLI docs page (also the update-check fallback instruction URL).
- *  The old /docs/orm/tools/prisma-cli path 308-redirects to the ORM CLI
- *  reference — the wrong docs for the unified CLI — so this points at
- *  the docs root until the unified CLI has its own page. */
-export const CLI_DOCS_URL = "https://www.prisma.io/docs";
+/** The unified CLI's docs section (also the update-check fallback
+ *  instruction URL). */
+export const CLI_DOCS_URL = "https://www.prisma.io/docs/cli";
+
+/**
+ * Base URL for structured-error documentation links. The engine composes
+ * each diagnostic's docsUrl as base + code; every code is documented at
+ * this page (registry: docs/reference/error-reference.md).
+ */
+export const DOCS_ERRORS_BASE_URL =
+  "https://www.prisma.io/docs/cli/error-reference/";

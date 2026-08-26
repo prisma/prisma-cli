@@ -1,16 +1,16 @@
 import { readFile } from "node:fs/promises";
 import path from "node:path";
-
+import {
+  CliStructuredError,
+  type NextAction as EngineNextAction,
+} from "@prisma/cli-engine/protocol";
 import {
   matchError,
   Result,
   TaggedError,
   type UnhandledException,
 } from "better-result";
-
 import { formatCommandArgument } from "../../command-arguments";
-import { CliError } from "../../errors";
-import type { NextAction } from "../../next-actions";
 import type { AuthWorkspace } from "../../types/auth";
 import type {
   BoundProjectShowResult,
@@ -218,130 +218,153 @@ export async function inspectProjectBinding(
   });
 }
 
+function runCommand(command: string, reason?: string): EngineNextAction {
+  return {
+    kind: "run-command",
+    label: command,
+    command,
+    ...(reason === undefined ? {} : { reason }),
+  };
+}
+
+function userChoice(label: string): EngineNextAction {
+  return { kind: "user-choice", label };
+}
+
 export function projectNotFoundError(
   projectRef: string,
   workspace: AuthWorkspace,
-): CliError {
-  return projectResolutionErrorToCliError(
+): CliStructuredError {
+  return projectResolutionErrorToStructured(
     new ProjectNotFoundError(projectRef, workspace),
   );
 }
 
-function projectNotFoundCliError(
+function projectNotFoundStructuredError(
   projectRef: string,
   workspace: AuthWorkspace,
-): CliError {
-  return new CliError({
-    code: "PROJECT_NOT_FOUND",
-    domain: "project",
-    summary: "Project not found",
+): CliStructuredError {
+  return new CliStructuredError("PROJECT.NOT_FOUND", "Project not found", {
     why: `The project "${projectRef}" does not exist in workspace "${workspace.name}" or is not accessible.`,
-    fix: "Pass a project id or name from prisma project list.",
-    exitCode: 1,
-    nextSteps: ["prisma project list"],
+    nextActions: [
+      userChoice("Pass a project id or name from prisma project list."),
+      runCommand("prisma project list"),
+    ],
   });
 }
 
 export function projectAmbiguousError(
   projectRef: string | null,
   matches: ProjectCandidate[],
-): CliError {
-  return projectResolutionErrorToCliError(
+): CliStructuredError {
+  return projectResolutionErrorToStructured(
     new ProjectAmbiguousError(projectRef, matches),
   );
 }
 
-function projectAmbiguousCliError(
+function projectAmbiguousStructuredError(
   projectRef: string | null,
   matches: ProjectCandidate[],
-): CliError {
+): CliStructuredError {
   const firstMatch = matches[0];
-  const nextSteps = ["prisma project list"];
+  const nextActions = [
+    userChoice("Pass --project <id-or-name> to choose the project explicitly."),
+    runCommand("prisma project list"),
+  ];
   if (firstMatch) {
     // Surface the matched id verbatim so the user can copy the exact
     // shape of a disambiguating reference instead of guessing.
-    nextSteps.push(`prisma project link ${firstMatch.id}`);
+    nextActions.push(runCommand(`prisma project link ${firstMatch.id}`));
   }
 
-  return new CliError({
-    code: "PROJECT_AMBIGUOUS",
-    domain: "project",
-    summary: "Project resolution is ambiguous",
-    why: projectRef
-      ? `Multiple projects matched "${projectRef}".`
-      : "Multiple projects matched the current directory context.",
-    fix: "Pass --project <id-or-name> to choose the project explicitly.",
-    meta: {
-      matches: matches.map((project) => ({
-        id: project.id,
-        name: project.name,
-      })),
+  return new CliStructuredError(
+    "PROJECT.AMBIGUOUS",
+    "Project resolution is ambiguous",
+    {
+      why: projectRef
+        ? `Multiple projects matched "${projectRef}".`
+        : "Multiple projects matched the current directory context.",
+      meta: {
+        matches: matches.map((project) => ({
+          id: project.id,
+          name: project.name,
+        })),
+      },
+      nextActions,
     },
-    exitCode: 1,
-    nextSteps,
-  });
+  );
 }
 
-function localStateStaleCliError(): CliError {
-  return new CliError({
-    code: "LOCAL_STATE_STALE",
-    domain: "project",
-    summary: "Local project binding is stale",
-    why: `The target recorded in ${LOCAL_RESOLUTION_PIN_RELATIVE_PATH} is no longer available in the selected workspace.`,
-    fix: `Delete ${LOCAL_RESOLUTION_PIN_RELATIVE_PATH}, then choose a Project explicitly.`,
-    meta: {
-      pinPath: LOCAL_RESOLUTION_PIN_RELATIVE_PATH,
+function localStateStaleStructuredError(): CliStructuredError {
+  return new CliStructuredError(
+    "PROJECT.LOCAL_STATE_STALE",
+    "Local project binding is stale",
+    {
+      why: `The target recorded in ${LOCAL_RESOLUTION_PIN_RELATIVE_PATH} is no longer available in the selected workspace.`,
+      meta: {
+        pinPath: LOCAL_RESOLUTION_PIN_RELATIVE_PATH,
+      },
+      nextActions: [
+        userChoice(
+          `Delete ${LOCAL_RESOLUTION_PIN_RELATIVE_PATH}, then choose a Project explicitly.`,
+        ),
+        runCommand("prisma project list"),
+        runCommand("prisma project link <id-or-name>"),
+      ],
     },
-    exitCode: 1,
-    nextSteps: ["prisma project list", "prisma project link <id-or-name>"],
-  });
+  );
 }
 
-function localProjectWorkspaceMismatchCliError(options: {
+function localProjectWorkspaceMismatchStructuredError(options: {
   pinnedWorkspaceId: string;
   pinnedProjectId: string;
   activeWorkspace: AuthWorkspace;
-}): CliError {
-  return new CliError({
-    code: "LOCAL_PROJECT_WORKSPACE_MISMATCH",
-    domain: "project",
-    summary: "Project link uses another workspace",
-    why: `${LOCAL_RESOLUTION_PIN_RELATIVE_PATH} links this directory to project ${options.pinnedProjectId} in workspace ${options.pinnedWorkspaceId}, but your current CLI session is workspace "${options.activeWorkspace.name}" (${options.activeWorkspace.id}).`,
-    fix: "Switch to the linked workspace, or relink this directory to a project in the current workspace.",
-    meta: {
-      pinPath: LOCAL_RESOLUTION_PIN_RELATIVE_PATH,
-      pinnedWorkspaceId: options.pinnedWorkspaceId,
-      pinnedProjectId: options.pinnedProjectId,
-      activeWorkspaceId: options.activeWorkspace.id,
-      activeWorkspaceName: options.activeWorkspace.name,
+}): CliStructuredError {
+  return new CliStructuredError(
+    "PROJECT.LOCAL_WORKSPACE_MISMATCH",
+    "Project link uses another workspace",
+    {
+      why: `${LOCAL_RESOLUTION_PIN_RELATIVE_PATH} links this directory to project ${options.pinnedProjectId} in workspace ${options.pinnedWorkspaceId}, but your current CLI session is workspace "${options.activeWorkspace.name}" (${options.activeWorkspace.id}).`,
+      meta: {
+        pinPath: LOCAL_RESOLUTION_PIN_RELATIVE_PATH,
+        pinnedWorkspaceId: options.pinnedWorkspaceId,
+        pinnedProjectId: options.pinnedProjectId,
+        activeWorkspaceId: options.activeWorkspace.id,
+        activeWorkspaceName: options.activeWorkspace.name,
+      },
+      nextActions: [
+        userChoice(
+          "Switch to the linked workspace, or relink this directory to a project in the current workspace.",
+        ),
+        runCommand(`prisma auth workspace use ${options.pinnedWorkspaceId}`),
+        runCommand("prisma project list"),
+        runCommand("prisma project link <id-or-name>"),
+      ],
     },
-    exitCode: 1,
-    nextSteps: [
-      `prisma auth workspace use ${options.pinnedWorkspaceId}`,
-      "prisma project list",
-      "prisma project link <id-or-name>",
-    ],
-  });
+  );
 }
 
 /**
- * Converts expected project-resolution variants to command-boundary CliErrors.
+ * Converts expected project-resolution variants to the structured errors
+ * a command boundary raises — the codes here are the registered PROJECT.*
+ * codes, assigned at origin.
  * `LocalResolutionPinReadAbortedError` and `UnhandledException` intentionally
  * propagate as exceptions; callers such as `resolveProjectShowInRealMode`
  * throw this helper's result, so passthrough variants should keep bubbling.
  */
-export function projectResolutionErrorToCliError(
+export function projectResolutionErrorToStructured(
   error: ProjectResolutionError,
-): CliError {
+): CliStructuredError {
   return matchError(error, {
     ProjectNotFoundError: (error) =>
-      projectNotFoundCliError(error.projectRef, error.workspace),
+      projectNotFoundStructuredError(error.projectRef, error.workspace),
     ProjectAmbiguousError: (error) =>
-      projectAmbiguousCliError(error.projectRef, error.matches),
-    ProjectSetupRequiredError: (error) => projectSetupRequiredCliError(error),
-    LocalStateStaleError: () => localStateStaleCliError(),
+      projectAmbiguousStructuredError(error.projectRef, error.matches),
+    ProjectSetupRequiredError: (error) =>
+      projectSetupRequiredStructuredError(error),
+    LocalStateStaleError: () => localStateStaleStructuredError(),
     LocalProjectWorkspaceMismatchError: (error) =>
-      localProjectWorkspaceMismatchCliError({
+      localProjectWorkspaceMismatchStructuredError({
         pinnedWorkspaceId: error.pinnedWorkspaceId,
         pinnedProjectId: error.pinnedProjectId,
         activeWorkspace: error.activeWorkspace,
@@ -389,24 +412,22 @@ export async function projectSetupRequiredError(options: {
   });
 }
 
-function projectSetupRequiredCliError(
+function projectSetupRequiredStructuredError(
   error: ProjectSetupRequiredError,
-): CliError {
+): CliStructuredError {
   const suggestion = error.suggestion;
-  return new CliError({
-    code: "PROJECT_SETUP_REQUIRED",
-    domain: "project",
-    summary: "Choose a Project before running this command",
-    why: error.message,
-    fix: "Link the directory to an existing Project, or pass --project <id-or-name> for this command.",
-    meta: { ...suggestion },
-    exitCode: 1,
-    nextSteps: ["prisma project list", ...suggestion.recoveryCommands],
-    nextActions: buildProjectSetupNextActions({
-      commandName: error.commandName,
-      suggestedProjectName: suggestion.suggestedProjectName,
-    }),
-  });
+  return new CliStructuredError(
+    "PROJECT.SETUP_REQUIRED",
+    "Choose a Project before running this command",
+    {
+      why: error.message,
+      meta: { ...suggestion },
+      nextActions: buildProjectSetupNextActions({
+        commandName: error.commandName,
+        suggestedProjectName: suggestion.suggestedProjectName,
+      }),
+    },
+  );
 }
 
 export function buildProjectSetupNextActions(
@@ -419,7 +440,7 @@ export function buildProjectSetupNextActions(
      *  generic `--project <id-or-name>` template does not fit. */
     retryCommand?: string;
   } = {},
-): NextAction[] {
+): EngineNextAction[] {
   const recoveryCommands = buildProjectRecoveryCommands(options.commandName);
   const linkCommand = recoveryCommands[0] ?? "prisma project link <id-or-name>";
   const retryCommand = options.retryCommand ?? recoveryCommands[1];
@@ -429,10 +450,9 @@ export function buildProjectSetupNextActions(
     ...(retryCommand ? [retryCommand] : []),
   ];
 
-  const actions: NextAction[] = [
+  const actions: EngineNextAction[] = [
     {
       kind: "user-choice",
-      journey: "project-setup",
       label:
         "Ask the user whether to link an existing Project or create a new one",
       commands,
@@ -442,7 +462,6 @@ export function buildProjectSetupNextActions(
     },
     {
       kind: "run-command",
-      journey: "project-setup",
       label: "Link the chosen Project",
       command: linkCommand,
       reason:
@@ -458,7 +477,6 @@ export function buildProjectSetupNextActions(
   if (createCommand) {
     actions.push({
       kind: "run-command",
-      journey: "project-setup",
       label: "Create and link a new Project",
       command: createCommand,
       reason:
@@ -469,7 +487,6 @@ export function buildProjectSetupNextActions(
   if (options.commandName) {
     actions.push({
       kind: "run-command",
-      journey: "recover",
       label: "Retry with an explicit Project",
       command:
         retryCommand ?? `prisma ${options.commandName} --project <id-or-name>`,

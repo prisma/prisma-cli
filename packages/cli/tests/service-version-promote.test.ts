@@ -4,7 +4,6 @@ import { describe, expect, it } from "vitest";
 
 import {
   makeServiceCli,
-  page,
   presentedSummary,
   releaseRoutes,
 } from "./service-testkit";
@@ -188,7 +187,12 @@ describe("prisma service version promote", () => {
 
   it("settles a deployment with no owning service as SERVICE.VERSION_DETACHED", async () => {
     const harness = await makeServiceCli({
-      routes: releaseRoutes({ "GET /v1/apps": () => ({ data: page([]) }) }),
+      routes: releaseRoutes({
+        "GET /v1/apps/{appId}": () => ({
+          error: { error: { message: "not found" } },
+          status: 404,
+        }),
+      }),
     });
 
     const result = await harness.cli.run(

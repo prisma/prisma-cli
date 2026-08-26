@@ -86,6 +86,31 @@ jobs:
       - name: Check grammar completeness
         run: pnpm check:grammar
 
+  error-reference:
+    name: Error Reference Completeness
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with:
+          persist-credentials: false
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@0e279bb959325dab635dd2c09392533439d90093 # v6.0.8
+
+      - name: Set up Node.js
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
+        with:
+          node-version-file: .node-version
+
+      # Every structured error code in production source must have an entry
+      # in docs/reference/error-reference.md, the canonical registry behind
+      # https://docs.prisma.io/docs/cli/error-reference. The scanner has no
+      # dependencies, so no install step is needed.
+      - name: Check error-reference completeness
+        run: pnpm check:error-reference
+
   test:
     name: Test
     runs-on: ubuntu-latest

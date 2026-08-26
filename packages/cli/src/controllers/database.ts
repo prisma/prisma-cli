@@ -1,6 +1,9 @@
 import { randomBytes } from "node:crypto";
-import { CliError, usageError } from "../errors";
-import type { PrismaCliPackageCommandFormatter } from "../lib/agent/cli-command";
+import {
+  CliStructuredError,
+  type NextAction,
+} from "@prisma/cli-engine/protocol";
+import { CLI_NAME } from "../cli-name";
 import type { DatabaseProvider } from "../lib/database/provider";
 import type { ResolvedProjectTarget } from "../lib/project/resolution";
 import type { DatabaseSummary } from "../types/database";
@@ -8,11 +11,23 @@ import type { DatabaseSummary } from "../types/database";
 const USAGE_DATE_ONLY_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
 const USAGE_DATETIME_PATTERN = /^\d{4}-\d{2}-\d{2}T/;
 
+const LIST_DATABASES_COMMAND = `${CLI_NAME} postgres list`;
+
+/** The corrected `postgres usage` form both period errors point at. */
+export const USAGE_PERIOD_EXAMPLE_COMMAND = `${CLI_NAME} postgres usage <database> --from 2026-06-01 --to 2026-06-30`;
+
+function userChoice(label: string): NextAction {
+  return { kind: "user-choice", label };
+}
+
+function runCommand(command: string): NextAction {
+  return { kind: "run-command", label: command, command };
+}
+
 export function parseUsageDate(
   value: string | undefined,
   flagName: string,
   dayBoundary: "start" | "end",
-  formatCommand: PrismaCliPackageCommandFormatter,
 ): string | undefined {
   if (value === undefined) {
     return undefined;
@@ -39,23 +54,13 @@ export function parseUsageDate(
     return trimmed;
   }
 
-  throw usageError(
-    "Invalid usage period",
-    `${flagName} must be an ISO date such as 2026-06-01 or an ISO datetime such as 2026-06-01T12:00:00Z.`,
-    `Pass an ISO date or datetime to ${flagName}.`,
-    [
-      formatCommand([
-        "database",
-        "usage",
-        "<database>",
-        "--from",
-        "2026-06-01",
-        "--to",
-        "2026-06-30",
-      ]),
+  throw new CliStructuredError("POSTGRES.USAGE_ERROR", "Invalid usage period", {
+    why: `${flagName} must be an ISO date such as 2026-06-01 or an ISO datetime such as 2026-06-01T12:00:00Z.`,
+    nextActions: [
+      userChoice(`Pass an ISO date or datetime to ${flagName}.`),
+      runCommand(USAGE_PERIOD_EXAMPLE_COMMAND),
     ],
-    "database",
-  );
+  });
 }
 
 function isValidCalendarDate(datePart: string): boolean {
@@ -68,7 +73,6 @@ function isValidCalendarDate(datePart: string): boolean {
 
 export function parseBackupLimit(
   value: string | undefined,
-  formatCommand: PrismaCliPackageCommandFormatter,
 ): number | undefined {
   if (value === undefined) {
     return undefined;
@@ -76,21 +80,16 @@ export function parseBackupLimit(
 
   const limit = Number(value.trim());
   if (!Number.isInteger(limit) || limit < 1 || limit > 100) {
-    throw usageError(
+    throw new CliStructuredError(
+      "POSTGRES.USAGE_ERROR",
       "Invalid backup limit",
-      "--limit must be an integer between 1 and 100.",
-      "Pass a --limit between 1 and 100.",
-      [
-        formatCommand([
-          "database",
-          "backup",
-          "list",
-          "<database>",
-          "--limit",
-          "50",
-        ]),
-      ],
-      "database",
+      {
+        why: "--limit must be an integer between 1 and 100.",
+        nextActions: [
+          userChoice("Pass a --limit between 1 and 100."),
+          runCommand(`${CLI_NAME} postgres backup list <database> --limit 50`),
+        ],
+      },
     );
   }
 
@@ -106,12 +105,16 @@ export async function resolveDatabase(
 ): Promise<DatabaseSummary> {
   const ref = databaseRef.trim();
   if (!ref) {
-    throw usageError(
+    throw new CliStructuredError(
+      "POSTGRES.USAGE_ERROR",
       "Database id or name required",
-      "This command needs a database id or name.",
-      "Pass a database id or name.",
-      ["prisma database list"],
-      "database",
+      {
+        why: "This command needs a database id or name.",
+        nextActions: [
+          userChoice("Pass a database id or name."),
+          runCommand(LIST_DATABASES_COMMAND),
+        ],
+      },
     );
   }
 
@@ -157,15 +160,15 @@ export async function resolveDatabase(
 function databaseRemovedDuringResolutionError(
   database: DatabaseSummary,
   projectName: string,
-): CliError {
-  return new CliError({
-    code: "DATABASE_NOT_FOUND",
-    domain: "database",
-    summary: "Database not found",
+): CliStructuredError {
+  return new CliStructuredError("POSTGRES.NOT_FOUND", "Database not found", {
     why: `"${database.name}" (${database.id}) was listed for project "${projectName}", but reading it returned 404. It was most likely removed while this command was running.`,
-    fix: "Re-run the command, or list the project's databases to see what is there now.",
-    exitCode: 1,
-    nextSteps: ["prisma database list"],
+    nextActions: [
+      userChoice(
+        "Re-run the command, or list the project's databases to see what is there now.",
+      ),
+      runCommand(LIST_DATABASES_COMMAND),
+    ],
   });
 }
 
@@ -203,18 +206,16 @@ function databaseNotFoundError(
   databaseRef: string,
   projectName?: string,
   branchName?: string,
-): CliError {
+): CliStructuredError {
   const scope = projectName
     ? ` in project "${projectName}"${branchName ? ` on branch "${branchName}"` : ""}`
     : "";
-  return new CliError({
-    code: "DATABASE_NOT_FOUND",
-    domain: "database",
-    summary: "Database not found",
+  return new CliStructuredError("POSTGRES.NOT_FOUND", "Database not found", {
     why: `No database matched "${databaseRef}"${scope}.`,
-    fix: "Pass a database id or name from prisma database list.",
-    exitCode: 1,
-    nextSteps: ["prisma database list"],
+    nextActions: [
+      userChoice(`Pass a database id or name from ${LIST_DATABASES_COMMAND}.`),
+      runCommand(LIST_DATABASES_COMMAND),
+    ],
   });
 }
 
@@ -222,23 +223,27 @@ function databaseAmbiguousError(
   databaseRef: string,
   matches: DatabaseSummary[],
   branchName: string | undefined,
-): CliError {
-  return new CliError({
-    code: "DATABASE_AMBIGUOUS",
-    domain: "database",
-    summary: "Database resolution is ambiguous",
-    why: branchName
-      ? `Multiple databases matched "${databaseRef}" on branch "${branchName}".`
-      : `Multiple databases matched "${databaseRef}".`,
-    fix: "Pass the database id, or pass --branch <git-name> to narrow the match.",
-    exitCode: 1,
-    nextSteps: ["prisma database list"],
-    meta: {
-      matches: matches.map((database) => ({
-        id: database.id,
-        name: database.name,
-        branchName: database.branchName,
-      })),
+): CliStructuredError {
+  return new CliStructuredError(
+    "POSTGRES.AMBIGUOUS",
+    "Database resolution is ambiguous",
+    {
+      why: branchName
+        ? `Multiple databases matched "${databaseRef}" on branch "${branchName}".`
+        : `Multiple databases matched "${databaseRef}".`,
+      meta: {
+        matches: matches.map((database) => ({
+          id: database.id,
+          name: database.name,
+          branchName: database.branchName,
+        })),
+      },
+      nextActions: [
+        userChoice(
+          "Pass the database id, or pass --branch <git-name> to narrow the match.",
+        ),
+        runCommand(LIST_DATABASES_COMMAND),
+      ],
     },
-  });
+  );
 }

@@ -6,6 +6,25 @@ Nothing here is tracked outside this file.
 
 ## After the latest cutover (2026-08-25, PR #230)
 
+- **The engine 0.3.0 transition is in flight; both families still peer
+  0.2.3.** `@prisma/cli-engine` declared `@prisma/management-api-sdk` as
+  an ordinary dependency while re-exporting the SDK's client type across
+  its own public API (`ctx.api`). That is a shared type surface held as
+  a private copy: when the shell moved to a newer SDK, the engine's
+  `Client<paths>` and the shell's became unrelated types and every
+  command taking `ctx.api` into a CLI function stopped typechecking, so
+  the version could only ever move in all three manifests at once —
+  which changed the engine, which both families peer-pin exactly. 0.3.0
+  makes the SDK a peer of the engine (`^1.55.0`) with the two binaries
+  supplying the copy, so a future SDK bump touches the apps only. The
+  sequence from here, per `packages/cli/scripts/conformance.ts`: engine
+  0.3.0 publishes → `@prisma/composer-cli` and `@prisma/orm-toolchain`
+  republish peering 0.3.0 → a release PR here pins those versions and
+  deletes the two `exceptions` entries, restoring the empty list. Until
+  then conformance reports six allowed findings, including two copies of
+  the engine resolving in the sandbox install — the expected shape of a
+  transition, not a defect.
+
 - **A stale product `dev` dist-tag can block a release publish.** The
   publish run checks the dev channel before the release leg, and the
   dev channel resolves each product's `dev` tag with no fallback — so
@@ -481,7 +500,7 @@ The cleanup PR removed the compute config and `init`, made service commands para
 - ~~**`PRISMA_PROJECT_ID` is honoured only by the domain commands**~~ Closed on the PR branch (2026-08-21, operator ruling): the env var served the deleted `app deploy` headless flow and survived only in the domain commands by accident; it is removed entirely. Project targeting is `--project` and the link file.
 - ~~**orm-toolchain's shipped help examples name retired spellings.**~~ Closed (2026-08-22) by prisma#30102: the family keys are the mount paths and the examples follow; `tests/orm-mount.test.ts` now asserts upstream stays clean.
 - ~~**The deployment-id targeting asymmetry is undocumented.**~~ Closed on the PR branch (2026-08-21): every deployment-id command (`promote|start|stop|delete|show`, `logs --deployment`) now resolves the id globally with no service parameter, per the "Subjects are positional" ruling.
-- **`GET /v1/deployments/{id}` omits the parent `appId`.** Verified against `@prisma/management-api-sdk@1.55.0`: the response carries id/status/url/previewDomain/envVars/createdAt and no owning-app pointer, so `showDeployment` finds the owner via `findAppForDeployment` — a scan of every project's service list and each service's deployments — and every id-targeted command pays it per run. The fix is in pdp-control-plane: include `appId` in the deployment representation; the CLI then swaps the scan for one `GET /v1/apps/{appId}`.
+- ~~**`GET /v1/deployments/{id}` omits the parent `appId`.**~~ Closed on this branch (2026-08-25): pdp-control-plane#4983 added the owner to the deployment representation as `serviceId` (ADR-012 vocabulary, not `appId`), compute-sdk 0.42.0 exposes it as `DeploymentDetail.serviceId`, and `showDeployment` now resolves the owner with one `GET /v1/apps/{id}` — `findAppForDeployment` and its per-service scan are deleted.
 
 ## From the agent-skills delivery (project closed 2026-08-22)
 
@@ -520,7 +539,7 @@ The design in `specs/config-file-resolution.md` is decided (per-key merge with s
 
 Post-merge review of the config-chain slice confirmed two issues that could not be fixed inside prisma-cli alone. The operator ruled that the family path resolution is not acceptable to defer, so it was fixed in tandem across all three repositories:
 
-- **Root-declared family sections resolved their relative paths against cwd — FIXED, in tandem.** The chain delivers a root config's `composer`/`orm` sections to subdirectory runs, and the family packages resolved `configPath`, contract inputs/output, and `migrations.dir` against `ctx.cwd`. The engine gained the seam that makes declaring-file resolution possible: `ConfigSection.validate` now takes a second argument, `validate(raw, provenance)`, and a validator resolves its path-valued keys through `resolveSectionPath(provenance, key, path)`, returning absolute paths so downstream code never resolves against cwd. A one-argument validator stays assignable, so shipped sections keep working. Upstream adoption: composer https://github.com/prisma/composer/pull/262 and orm https://github.com/prisma/prisma/pull/30128, both waiting on engine 0.3.0 publishing before their CI can install.
+- **Root-declared family sections resolved their relative paths against cwd — FIXED, in tandem.** The chain delivers a root config's `composer`/`orm` sections to subdirectory runs, and the family packages resolved `configPath`, contract inputs/output, and `migrations.dir` against `ctx.cwd`. The engine gained the seam that makes declaring-file resolution possible: `ConfigSection.validate` now takes a second argument, `validate(raw, provenance)`, and a validator resolves its path-valued keys through `resolveSectionPath(provenance, key, path)`, returning absolute paths so downstream code never resolves against cwd. A one-argument validator stays assignable, so shipped sections keep working. Upstream adoption: composer https://github.com/prisma/composer/pull/262 and orm https://github.com/prisma/prisma/pull/30128, both waiting on the engine release carrying this work — 0.4.0, since 0.3.0 shipped the SDK-peer change on 2026-08-26 — publishing before their CI can install.
 - **A marker-less Prisma 7 `prisma.config.ts` at the repo root blocks every config-needing command — including `prisma init` — in every subdirectory. RULED 2026-08-26: keep it fatal.** Chain evaluation is deliberately no-skip (ratified: a broken file anywhere fails resolution), and the missing-marker error is chain-fatal, so a repository migrating from Prisma 7 cannot run the v8 migration entry point anywhere until the old root config is updated or removed. The error does name the file and the fix. The operator ruled the case is not worth an escape path: erroring out without doing anything untoward is safe, if inconvenient, and a Prisma 8 install inside a Prisma 7 repository needs far more plumbing than this anyway. No warn-and-ignore softening; the no-skip rule stands as ratified.
 
-Discovered while doing the above: **engine 0.3.0's removal of the deprecated `defineConfig` alias breaks 307 files in the orm repository** that still import it from `@prisma/cli-engine` (mostly `prisma.config.ts` test fixtures). `definePrismaConfig` has been the name since engine 0.2.0, so the rename lands on the current 0.2.3 pin without waiting for anything; it is a prerequisite for the orm engine bump. Composer is unaffected.
+Discovered while doing the above: **the chain engine release's removal of the deprecated `defineConfig` alias (written as 0.3.0, now 0.4.0 after the SDK-peer change took 0.3.0) breaks 307 files in the orm repository** that still import it from `@prisma/cli-engine` (mostly `prisma.config.ts` test fixtures). `definePrismaConfig` has been the name since engine 0.2.0, so the rename lands on the current 0.2.3 pin without waiting for anything; it is a prerequisite for the orm engine bump. Composer is unaffected.

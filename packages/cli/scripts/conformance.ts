@@ -113,25 +113,25 @@ async function tarball(): Promise<readonly Finding[]> {
       // in flight: the engine must publish before a family can peer it,
       // so the mismatch is real until both families release against it.
       // The entries expire with the versions they name, and the PR that
-      // pins the families' 0.3.0-peering releases removes them; while
+      // pins the families' 0.4.0-peering releases removes them; while
       // they stand, a release could ship the two-engine install they
       // describe, which is why they must not outlive the transition.
       exceptions: [
         {
           familyPackage: "@prisma/composer-cli",
-          familyPin: "0.2.3",
-          shellPin: "0.3.0",
-          reason: "engine 0.3.0 must publish before composer-cli can peer it",
+          familyPin: "0.3.0",
+          shellPin: "0.4.0",
+          reason: "engine 0.4.0 must publish before composer-cli can peer it",
           removeWhen:
-            "composer-cli releases peering 0.3.0 and the follow-up bump PR pins that release",
+            "composer-cli releases peering 0.4.0 and the follow-up bump PR pins that release",
         },
         {
           familyPackage: "@prisma/orm-toolchain",
-          familyPin: "0.2.3",
-          shellPin: "0.3.0",
-          reason: "engine 0.3.0 must publish before orm-toolchain can peer it",
+          familyPin: "0.3.0",
+          shellPin: "0.4.0",
+          reason: "engine 0.4.0 must publish before orm-toolchain can peer it",
           removeWhen:
-            "orm-toolchain releases peering 0.3.0 and the follow-up bump PR pins that release",
+            "orm-toolchain releases peering 0.4.0 and the follow-up bump PR pins that release",
         },
       ],
       channel: CHANNEL,

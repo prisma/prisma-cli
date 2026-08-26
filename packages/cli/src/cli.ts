@@ -8,7 +8,7 @@ import {
 } from "@prisma/cli-engine";
 import { createComposerFamily } from "@prisma/composer-cli/family";
 import { ormCommandFamily as ormToolchainFamily } from "@prisma/orm-toolchain/cli";
-import { CLI_DOCS_URL, CLI_NAME } from "./cli-name";
+import { CLI_DOCS_URL, CLI_NAME, DOCS_ERRORS_BASE_URL } from "./cli-name";
 import { authLoginCommand } from "./commands/auth/login";
 import { authLogoutCommand } from "./commands/auth/logout";
 import { authWhoamiCommand } from "./commands/auth/whoami";
@@ -70,6 +70,7 @@ import { skillsCommandFamily } from "./commands/skills/family";
 import { getCliVersion } from "./lib/version";
 
 export const platformCommandFamily: CommandFamily = defineCommandFamily({
+  docsBaseUrl: DOCS_ERRORS_BASE_URL,
   commands: {
     login: authLoginCommand,
     logout: authLogoutCommand,

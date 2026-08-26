@@ -11,7 +11,7 @@ import { projectApiError } from "../../lib/project/provider";
 import {
   type ProjectCandidate,
   type ProjectResolutionContext,
-  projectResolutionErrorToCliError,
+  projectResolutionErrorToStructured,
   resolveProjectTarget,
   sortProjects,
 } from "../../lib/project/resolution";
@@ -25,7 +25,6 @@ import {
   domainCommandError,
   domainHostnameInvalidError,
   domainNotFoundError,
-  fromLegacyCliError,
   projectNotFoundError,
   runCommandAction,
   serviceSelectionInvalidError,
@@ -126,9 +125,7 @@ async function listWorkspaceProjects(
     signal: ctx.signal,
   });
   if (error || !data) {
-    throw fromLegacyCliError(
-      projectApiError("Failed to list projects", response, error),
-    );
+    throw projectApiError("Failed to list projects", response, error);
   }
   return sortProjects(
     (data.data ?? []).map((project) => ({
@@ -183,9 +180,7 @@ export async function resolveServiceProjectContext(
     commandName: options.commandName,
   });
   if (resolvedResult.isErr()) {
-    throw fromLegacyCliError(
-      projectResolutionErrorToCliError(resolvedResult.error),
-    );
+    throw projectResolutionErrorToStructured(resolvedResult.error);
   }
   const resolved = resolvedResult.value;
   const requested = options.branchName

@@ -1,8 +1,7 @@
 /** The `project link` command. */
 import { defineCommand, positional } from "@prisma/cli-engine";
-import { notOk, ok } from "@prisma/cli-engine/protocol";
+import { CliStructuredError, ok } from "@prisma/cli-engine/protocol";
 import { formatCommandArgument } from "../../command-arguments";
-import { usageError } from "../../errors";
 import { createAppProvider } from "../../lib/app/app-provider";
 import {
   inferTargetName,
@@ -24,19 +23,35 @@ import {
   listWorkspaceProjects,
   type ProjectCommandContext,
 } from "./context";
-import { mapProjectOperationError } from "./errors";
 import { setupPresentations } from "./presentation";
 
 const CREATE_CHOICE = "__create__";
 const CANCEL_CHOICE = "__cancel__";
 
-function setupCanceledError() {
-  return usageError(
+function setupCanceledError(): CliStructuredError {
+  return new CliStructuredError(
+    "PROJECT.USAGE_ERROR",
     "Project setup canceled",
-    "Project link needs a Project before it can continue.",
-    "Choose an existing Project or create a new one, then rerun project link.",
-    ["prisma project link <id-or-name>", "prisma project create <name>"],
-    "project",
+    {
+      why: "Project link needs a Project before it can continue.",
+      nextActions: [
+        {
+          kind: "user-choice",
+          label:
+            "Choose an existing Project or create a new one, then rerun project link.",
+        },
+        {
+          kind: "run-command",
+          label: "prisma project link <id-or-name>",
+          command: "prisma project link <id-or-name>",
+        },
+        {
+          kind: "run-command",
+          label: "prisma project create <name>",
+          command: "prisma project create <name>",
+        },
+      ],
+    },
   );
 }
 
@@ -174,19 +189,8 @@ export const projectLinkCommand = defineCommand({
   },
   needs: { credentials: true },
   handler: async (args, ctx) => {
-    try {
-      const result = await linkDirectoryToProject(
-        ctx,
-        args.positionals.project,
-      );
+    const result = await linkDirectoryToProject(ctx, args.positionals.project);
 
-      return ok(ctx.present({ data: result }, setupPresentations(result)));
-    } catch (error) {
-      const mapped = mapProjectOperationError(error);
-      if (mapped) {
-        return notOk(mapped);
-      }
-      throw error;
-    }
+    return ok(ctx.present({ data: result }, setupPresentations(result)));
   },
 });

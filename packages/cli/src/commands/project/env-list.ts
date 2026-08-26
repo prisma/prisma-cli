@@ -5,7 +5,7 @@ import {
   flag,
   type Presentations,
 } from "@prisma/cli-engine";
-import { notOk, ok } from "@prisma/cli-engine/protocol";
+import { ok } from "@prisma/cli-engine/protocol";
 import { CLI_NAME } from "../../cli-name";
 import {
   formatScopeFlag,
@@ -25,7 +25,6 @@ import {
   variableRows,
   variableStdoutRows,
 } from "./env-shared";
-import { mapProjectOperationError } from "./errors";
 
 const TITLE = "Listing environment variables for the selected scope.";
 
@@ -95,58 +94,50 @@ export const projectEnvListCommand = defineCommand({
   },
   needs: { credentials: true },
   handler: async (args, ctx) => {
-    try {
-      const explicit = resolveEnvScope(
-        { roleName: args.flags.role, branchName: args.flags.branch },
-        { requireExplicit: false, command: "list" },
-      );
-      const workspace = await resolveActiveWorkspace(ctx);
-      const target = await resolvePinnedProject(
-        ctx,
-        workspace,
-        args.flags.project,
-        "project env list",
-      );
-      const projectId = target.project.id;
-      const resolved = await resolveListScopeToApi(
-        ctx.api,
-        projectId,
-        explicit ?? undefined,
-        { signal: ctx.signal },
-      );
+    const explicit = resolveEnvScope(
+      { roleName: args.flags.role, branchName: args.flags.branch },
+      { requireExplicit: false, command: "list" },
+    );
+    const workspace = await resolveActiveWorkspace(ctx);
+    const target = await resolvePinnedProject(
+      ctx,
+      workspace,
+      args.flags.project,
+      "project env list",
+    );
+    const projectId = target.project.id;
+    const resolved = await resolveListScopeToApi(
+      ctx.api,
+      projectId,
+      explicit ?? undefined,
+      { signal: ctx.signal },
+    );
 
-      const rows =
-        resolved.kind === "scoped"
-          ? await listVariables(
-              ctx.api,
-              projectId,
-              {
-                scope: resolved.addScope,
-                descriptor: resolved.descriptor,
-                apiTarget: resolved.apiTarget,
-              },
-              ctx.signal,
-            )
-          : await listOverviewVariables(ctx.api, projectId, ctx.signal);
+    const rows =
+      resolved.kind === "scoped"
+        ? await listVariables(
+            ctx.api,
+            projectId,
+            {
+              scope: resolved.addScope,
+              descriptor: resolved.descriptor,
+              apiTarget: resolved.apiTarget,
+            },
+            ctx.signal,
+          )
+        : await listOverviewVariables(ctx.api, projectId, ctx.signal);
 
-      const result: EnvListResult = {
-        projectId,
-        scope: resolved.descriptor,
-        target: resolved.target,
-        variables: rows.map((row) => toMetadata(row, resolved.descriptor)),
-      };
-      return ok(
-        ctx.present(
-          { data: result },
-          listPresentations(result, formatScopeFlag(resolved.addScope)),
-        ),
-      );
-    } catch (error) {
-      const mapped = mapProjectOperationError(error);
-      if (mapped) {
-        return notOk(mapped);
-      }
-      throw error;
-    }
+    const result: EnvListResult = {
+      projectId,
+      scope: resolved.descriptor,
+      target: resolved.target,
+      variables: rows.map((row) => toMetadata(row, resolved.descriptor)),
+    };
+    return ok(
+      ctx.present(
+        { data: result },
+        listPresentations(result, formatScopeFlag(resolved.addScope)),
+      ),
+    );
   },
 });
