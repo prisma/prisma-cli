@@ -403,6 +403,39 @@ describe("the skills check off switches", () => {
     expect(proc.stderrText).toBe("");
   });
 
+  it("honors a repository root's skills.check from a nested directory", async () => {
+    // The stale install lives in packages/app; the config that turns
+    // the check off lives at the repository root. The first run, before
+    // the root config exists, proves the fixture is genuinely stale
+    // from the nested directory.
+    const root = await makeProjectRoot("check-");
+    await mkdir(path.join(root, ".git"), { recursive: true });
+    const member = path.join(root, "packages", "app");
+    await installPackage(root, {
+      name: "@prisma/orm-postgres",
+      version: "8.1.0",
+      skills: ["prisma-8"],
+      member: "packages/app",
+    });
+    await seedSyncedSkill(member, ".claude/skills", {
+      skill: "prisma-8",
+      library: "@prisma/orm-postgres",
+      version: "8.0.0",
+    });
+    const before = makeProcess({ cwd: member });
+    await main(before, stubCli());
+    expect(before.stderrText).toContain(NOTICE);
+
+    await writeFile(
+      path.join(root, "prisma.config.ts"),
+      configSource({ check: false }),
+      "utf8",
+    );
+    const after = makeProcess({ cwd: member });
+    await main(after, stubCli());
+    expect(after.stderrText).toBe("");
+  });
+
   it("still reports a stale copy inside the configured agents", async () => {
     const root = await makeStaleProject();
     await writeFile(

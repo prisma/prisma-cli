@@ -101,6 +101,8 @@ The scaffolded config imports `definePrismaConfig` from `prisma/config` and spel
 
 `init` calls no platform API, never prompts, and never edits a file the user already owns: a `postinstall` script the user wrote and an existing `prisma.config.ts` are both left alone and reported as diagnostics — the config diagnostic shows the exact `skills: { agents: [...] }` snippet to add by hand. A `prisma` declaration in any dependency field, at any version or range, is likewise left alone; only a project that declares it nowhere gets the dev dependency added. Everything lands in the current directory: the hook in its `package.json`, the config beside it, the skill copies in the agent directories under it. Rerunning is safe; each step reports what is already done and the command exits 0.
 
+`init` acts on the directory it runs in, with no special-casing of the scaffold: init at the repository root makes the root config, init in a package directory makes the package config, and config discovery wires them together. When the discovered config chain already holds a file in another directory — an ancestor `prisma.config.ts`, or one an explicit `parent` names — init writes only the config scaffold: the postinstall hook, the `prisma` dev dependency, and the skills sync belong at the repository root, so each is skipped and reported with that reason (`reason: "governing-config"` in the JSON reports). `--postinstall` opts the manifest edits back in and `--skills` opts the sync back in. Init in a directory with no governing config — the root case — is unchanged.
+
 ### `logs`
 
 Resolve a service version and show or stream its logs.

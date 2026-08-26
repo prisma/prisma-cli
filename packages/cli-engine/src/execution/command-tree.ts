@@ -181,10 +181,12 @@ function validateSectionOwnership(
  *  a section may only be named something the file format leaves free:
  *  not `$`-prefixed (those are metadata — $prismaConfig is the version
  *  marker, and a $meta key is deleted before the loader ever sees it),
- *  and not `extends` (the key config loaders take as an instruction to
- *  merge another file in). Both the families and the commands mounted
- *  without one are checked: whoever declares the section, claiming a
- *  reserved name is broken at build time, not at a user's runtime. */
+ *  not `parent` (the engine's chain directive, read and stripped by
+ *  the loader), and not `extends` (the key config loaders take as an
+ *  instruction to merge another file in). Both the families and the
+ *  commands mounted without one are checked: whoever declares the
+ *  section, claiming a reserved name is broken at build time, not at a
+ *  user's runtime. */
 function validateConfigSectionNames(spec: EngineSpec): void {
   for (const commandFamily of spec.commandFamilies) {
     rejectReservedSectionName("command family", commandFamily.configSection);
@@ -202,7 +204,7 @@ function rejectReservedSectionName(
     return;
   }
   throw constructionError(
-    `${owner} declares config section '${section.name}', a name the config file reserves ('extends' is a config loader's merge directive, and '$'-prefixed keys are metadata)`,
+    `${owner} declares config section '${section.name}', a name the config file reserves ('parent' is the engine's chain directive, 'extends' is a config loader's merge directive, and '$'-prefixed keys are metadata)`,
   );
 }
 

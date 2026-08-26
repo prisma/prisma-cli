@@ -45,10 +45,16 @@ export {
   type SpawnDeclarations,
 } from "../commands";
 export {
-  defineConfig,
   definePrismaConfig,
   loadConfig,
+  realpathOr,
 } from "../config-loader";
+export {
+  type ResolvedSection,
+  resolveSectionOverChain,
+  resolveSectionPath,
+  type SectionProvenance,
+} from "../config-merge";
 export {
   type ConfigSection,
   defineConfigSection,
@@ -122,6 +128,7 @@ export {
   type HostProcess,
   type InputStream,
   type LoadedConfig,
+  type LoadedConfigFile,
   type OutputStream,
   PRISMA_CONFIG_VERSION,
   type Runtime,

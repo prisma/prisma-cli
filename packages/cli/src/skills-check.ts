@@ -9,7 +9,10 @@
  * conditioned on a TTY: agents run without one and are who this is for.
  */
 import { detectCI } from "@prisma/cli-engine";
-import { readProjectSkillsConfig } from "./commands/skills/config";
+import {
+  type ProjectConfigLoader,
+  readProjectSkillsConfig,
+} from "./commands/skills/config";
 import { agentSkillDirs, DEFAULT_AGENTS } from "./lib/skills/allowlist";
 import { readSkillsCheckDisabled } from "./lib/skills/opt-out";
 import {
@@ -24,6 +27,9 @@ export interface SkillsCheckRuntime {
   readonly argv: readonly string[];
   readonly cwd: string;
   readonly stderr: { write(text: string): unknown };
+  /** The Runtime's config loader, so the notice reads the same chain
+   *  through the same seam as the commands. */
+  readonly loadConfig: ProjectConfigLoader;
 }
 
 export const SKILLS_CHECK_ENV_VAR = "PRISMA_SKILLS_CHECK";
@@ -56,7 +62,7 @@ export async function maybeWriteSkillsStaleNotice(
       return;
     }
     const config = await readProjectSkillsConfig(
-      runtime.cwd,
+      runtime.loadConfig,
       configPathFromArgv(runtime.argv),
     );
     if (config !== null && !config.check) {
@@ -183,8 +189,8 @@ function isSuppressedByInvocation(runtime: SkillsCheckRuntime): boolean {
   );
 }
 
-/** The file an explicit --config names, so the check reads the same
- *  config the command did. Discovery is otherwise cwd-only. */
+/** The file an explicit --config names, so the check anchors the same
+ *  chain the command did. Discovery otherwise anchors at cwd. */
 function configPathFromArgv(argv: readonly string[]): string | undefined {
   const tokens = flagTokens(argv);
   for (let index = 0; index < tokens.length; index += 1) {

@@ -70,13 +70,16 @@ export interface Runtime {
    */
   readonly onSignal: (cb: (signal: "SIGINT" | "SIGTERM") => void) => () => void;
   /**
-   * Reads prisma.config.ts, on demand. The engine calls it only when
-   * the command it is about to run declares a config section, so a run
-   * that needs no config never touches the file. `configPath` is the
-   * file `--config` named: the loader resolves it against the runtime's
-   * cwd and reports its absence. Absent means look for prisma.config.ts
-   * in cwd, where absence is not an error. The bin wires the real disk
-   * loader; tests hand in fixtures.
+   * Resolves the prisma.config.ts chain, on demand. The engine calls it
+   * only when the command it is about to run declares a config section,
+   * so a run that needs no config never touches a file. `configPath` is
+   * the file `--config` named: the loader resolves it against the
+   * runtime's cwd, reports its absence, makes it the first chain link,
+   * and resumes discovery strictly above its directory — a
+   * prisma.config.ts beside it is not collected. Absent means
+   * discover from cwd, where finding no file is
+   * not an error. The bin wires the real disk loader; tests hand in
+   * fixtures.
    */
   readonly loadConfig: (configPath?: string) => Promise<LoadedConfig>;
   /**
@@ -181,26 +184,34 @@ export interface HostProcess {
   exit(code: number): never;
 }
 
-export interface LoadedConfig {
-  /**
-   * The file this config came from, absolute: the one `--config` named,
-   * or prisma.config.ts in cwd. A loader that found no file still names
-   * the file it looked for — with no file there are no sections, and
-   * the engine reads the path only to name the file when it reports a
-   * top-level key that is not one of the CLI's sections.
-   */
+/** One file on the resolved config chain. */
+export interface LoadedConfigFile {
+  /** Where the file is, absolute; every diagnostic about it names it. */
   readonly path: string;
   /**
-   * Raw section values by name; validation happens per command via its
-   * command family's section token. The engine, not the loader, checks
-   * these names against the sections the CLI declares, so the closed
-   * set holds whatever loader a host wires.
+   * Raw section values by name — the file's top-level keys minus the
+   * engine-reserved ones (`$prismaConfig`, `parent`); validation
+   * happens per command via its command family's section token. The
+   * engine, not the loader, checks these names against the sections
+   * the CLI declares, so the closed set holds whatever loader a host
+   * wires.
    */
   readonly sections: Readonly<Record<string, unknown>>;
+}
+
+export interface LoadedConfig {
   /**
-   * File-level problems (unevaluable module, missing version marker)
-   * carry section: null and fail only commands with a needs.config
-   * section; commands with no config need run normally.
+   * The resolved chain, nearest-first: the anchor file (the one
+   * `--config` named, or prisma.config.ts discovered from cwd), then
+   * each ancestor or declared parent. Empty when discovery found no
+   * file at all — the section validators own absence.
+   */
+  readonly files: ReadonlyArray<LoadedConfigFile>;
+  /**
+   * File-level problems anywhere on the chain (unevaluable module,
+   * missing version marker, a broken `parent` link) carry
+   * section: null and fail only commands with a needs.config section;
+   * commands with no config need run normally.
    */
   readonly diagnostics: ReadonlyArray<{
     readonly section: string | null;
@@ -209,7 +220,7 @@ export interface LoadedConfig {
 }
 
 /**
- * The config contract version defineConfig writes as the structural
+ * The config contract version definePrismaConfig writes as the structural
  * `$prismaConfig` marker; the loader checks it before interpreting
  * anything.
  */

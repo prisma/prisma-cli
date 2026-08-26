@@ -35,6 +35,7 @@ interface InitEnvelope {
   readonly result: {
     readonly postinstall: {
       readonly outcome: string;
+      readonly reason?: string;
       readonly script: string | null;
       readonly dependency: string;
     };
@@ -44,6 +45,7 @@ interface InitEnvelope {
     };
     readonly skills: {
       readonly outcome: string;
+      readonly reason?: string;
       readonly sync: { readonly packages: readonly unknown[] } | null;
     };
   };
@@ -181,39 +183,62 @@ describe("prisma init", () => {
     const loaded = await loadConfig(workdir);
 
     expect(loaded.diagnostics).toEqual([]);
-    expect(loaded.sections.skills).toEqual({
+    expect(loaded.files[0]?.sections.skills).toEqual({
       agents: ["claude", "cursor", "agents", "devin"],
     });
   });
 
-  // A rerun with the config still present cannot run against the built
-  // binary yet: the binary fails to evaluate ANY prisma.config.ts in
-  // this repository's development layout ("Cannot find package 'pathe'
-  // imported from .../cli-engine/node_modules/c12/dist/index.mjs" —
-  // c12 resolves through the pnpm symlink without reaching its store
-  // siblings). A verified one-line engine fix exists (import c12 via
-  // its realpath) but changing the engine forces a coordinated family
-  // release, so it ships with the next engine version. The
-  // config-exists rerun is covered by tests/init.test.ts; this rerun
-  // removes the config first so it exercises the binary's idempotency
-  // for the other steps and the scaffold's recreation.
-  it("reruns safely: the hook is kept and a removed config is recreated", async () => {
-    await rm(path.join(workdir, "prisma.config.ts"));
+  // The binary evaluates the scaffold it wrote in the first test: the
+  // engine imports c12 via its realpath, so the pnpm development
+  // layout that once broke this rerun ("Cannot find package 'pathe'")
+  // no longer does. The removed-config recreation the old rerun shape
+  // exercised instead is covered by tests/init.test.ts.
+  it("reruns safely over its own scaffold: every step reports already done", async () => {
     const envelope = await runInit(workdir);
 
     expect(envelope.ok).toBe(true);
     expect(envelope.result.postinstall.outcome).toBe("exists");
     expect(envelope.result.postinstall.dependency).toBe("declared");
-    expect(envelope.result.config.outcome).toBe("created");
+    expect(envelope.result.config.outcome).toBe("exists");
     expect(envelope.result.skills.outcome).toBe("no-packages");
-    expect(envelope.diagnostics.map((d) => d.code)).not.toContain(
-      "INIT.CONFIG_KEPT",
+    expect(envelope.diagnostics).toEqual([]);
+  });
+
+  it("below an ancestor config, init scaffolds only and skips the root-level steps", async () => {
+    const repo = await mkdtemp(path.join(os.tmpdir(), "prisma-e2e-subinit-"));
+    await mkdir(path.join(repo, ".git"));
+    await writeFile(
+      path.join(repo, "prisma.config.ts"),
+      "export default { $prismaConfig: 1 };\n",
+      "utf8",
+    );
+    const nested = path.join(repo, "packages", "db");
+    await mkdir(nested, { recursive: true });
+    await writeFile(
+      path.join(nested, "package.json"),
+      `${JSON.stringify({ name: "e2e-sub-fixture", version: "0.0.0" }, null, 2)}\n`,
+      "utf8",
     );
 
-    const reloaded = await loadConfig(workdir);
-    expect(reloaded.diagnostics).toEqual([]);
-    expect(reloaded.sections.skills).toEqual({
-      agents: ["claude", "cursor", "agents", "devin"],
+    const envelope = await runInit(nested);
+
+    expect(envelope.ok).toBe(true);
+    expect(envelope.result.postinstall).toEqual({
+      outcome: "skipped",
+      reason: "governing-config",
+      script: null,
+      dependency: "skipped",
     });
+    expect(envelope.result.skills.outcome).toBe("skipped");
+    expect(envelope.result.skills.reason).toBe("governing-config");
+    expect(envelope.result.config.outcome).toBe("created");
+    expect(envelope.diagnostics).toEqual([]);
+    const manifest = JSON.parse(
+      await readFile(path.join(nested, "package.json"), "utf8"),
+    ) as { scripts?: unknown; devDependencies?: unknown };
+    expect(manifest.scripts).toBeUndefined();
+    expect(manifest.devDependencies).toBeUndefined();
+    expect(existsSync(path.join(nested, "prisma.config.ts"))).toBe(true);
+    await rm(repo, { recursive: true, force: true });
   });
 });

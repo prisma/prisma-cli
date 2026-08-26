@@ -29,7 +29,6 @@ describe("main export", () => {
       "credentialsRequiredError",
       "defineCommand",
       "defineCommandFamily",
-      "defineConfig",
       "defineConfigSection",
       "definePrismaConfig",
       "defineServerCommand",
@@ -42,6 +41,9 @@ describe("main export", () => {
       "noSessionForWorkspaceError",
       "positional",
       "readActiveAccessToken",
+      "realpathOr",
+      "resolveSectionOverChain",
+      "resolveSectionPath",
       "telemetryCommandGroup",
     ]);
   });

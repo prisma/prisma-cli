@@ -2,6 +2,7 @@ import { createRequire } from "node:module";
 import { resolve } from "node:path";
 import type { AnyCommand } from "../commands";
 import { CONFIG_FILE_NAME } from "../config-loader";
+import { resolveSectionOverChain } from "../config-merge";
 import type { ConfigSection, SectionValidation } from "../config-section";
 import { credentialsRequiredError } from "../credential-errors";
 import type { ActiveCredential } from "../credential-manager";
@@ -11,7 +12,7 @@ import {
   resolvePackageManager,
 } from "../package-manager";
 import { CliStructuredError, type Diagnostic } from "../protocol";
-import type { LoadedConfig } from "../runtime";
+import type { LoadedConfig, LoadedConfigFile } from "../runtime";
 import type { Invocation } from "./engine";
 import { makePaint } from "./palette";
 import { withDocsUrl, writeDiagnostic } from "./rendering";
@@ -29,6 +30,9 @@ export type NeedsOutcome =
   | {
       readonly kind: "ok";
       readonly config: unknown;
+      /** The chain the config check loaded, for ctx.configFiles; empty
+       *  when the command has no config need. */
+      readonly configFiles: readonly LoadedConfigFile[];
       /** The credential resolved for a `credentials: "child"` command,
        *  carried forward so the spawn path never re-resolves it. */
       readonly spawnCredential: ActiveCredential | undefined;
@@ -89,6 +93,7 @@ export async function checkNeeds(
   return {
     kind: "ok",
     config: undefined,
+    configFiles: [],
     spawnCredential: credentials.spawnCredential,
   };
 }
@@ -231,14 +236,18 @@ function unknownSectionDiagnostic(
   };
 }
 
+/** Every file on the chain is checked — a typo'd key in a nested file
+ *  errors even when the command's section resolved elsewhere. */
 function unknownSections(
   loaded: LoadedConfig,
   configSections: readonly string[],
 ): readonly Diagnostic[] {
   const declared = new Set(configSections);
-  return Object.keys(loaded.sections)
-    .filter((key) => !declared.has(key))
-    .map((key) => unknownSectionDiagnostic(loaded.path, key, configSections));
+  return loaded.files.flatMap((file) =>
+    Object.keys(file.sections)
+      .filter((key) => !declared.has(key))
+      .map((key) => unknownSectionDiagnostic(file.path, key, configSections)),
+  );
 }
 
 /** The config file is read HERE and nowhere else, so a command with no
@@ -264,29 +273,27 @@ async function checkConfiguration(
       fileLevel.slice(1),
     );
   }
-  return validateConfigSection(
-    section,
-    loaded,
-    invocation,
-    configPath ?? CONFIG_FILE_NAME,
-  );
+  return validateConfigSection(section, loaded, invocation);
 }
 
-/** Validates the command's needed config section. The validator
- *  owns absence (it receives undefined when the section is missing) and
- *  never throws — a throw is an engine-boundary bug, settled as one.
- *  `configFile` is named in the error so a run under --config points at
- *  the file it actually read. */
+/** Validates the command's needed config section, resolved per key over
+ *  the chain nearest-first. The validator owns absence (it receives
+ *  undefined when no file declares the section) and never throws — a
+ *  throw is an engine-boundary bug, settled as one. */
 function validateConfigSection(
   section: ConfigSection<unknown>,
   loaded: LoadedConfig,
   invocation: Invocation,
-  configFile: string,
 ): NeedsOutcome {
-  const raw = loaded.sections[section.name];
+  const resolved = resolveSectionOverChain(section, loaded.files);
+  if (!resolved.ok) {
+    return needsErrored(
+      sectionUnreadableError(section.name, resolved.file, resolved.cause),
+    );
+  }
   let validation: SectionValidation<unknown>;
   try {
-    validation = section.validate(raw);
+    validation = section.validate(resolved.value, resolved.provenance);
   } catch (cause) {
     return {
       kind: "bug",
@@ -298,24 +305,97 @@ function validateConfigSection(
   }
   if (!validation.ok) {
     return needsErrored(
-      new CliStructuredError(
-        "CLI.CONFIG_SECTION_INVALID",
-        `The '${section.name}' section of ${configFile} is invalid.`,
-        {
-          nextActions: [
-            {
-              kind: "user-choice",
-              label:
-                "Fix the reported problems in that section, then run the command again.",
-            },
-          ],
-        },
-      ),
+      sectionInvalidError(section.name, resolved.contributors, loaded.files),
       validation.diagnostics,
     );
   }
   writeSectionWarnings(invocation, validation.diagnostics);
-  return { kind: "ok", config: validation.value, spawnCredential: undefined };
+  return {
+    kind: "ok",
+    config: validation.value,
+    configFiles: Object.freeze(loaded.files),
+    spawnCredential: undefined,
+  };
+}
+
+/** A section value's property getters and a section's custom merge are
+ *  user code alike; a throw from either is a config error naming the
+ *  file, never an engine bug. */
+function sectionUnreadableError(
+  name: string,
+  file: string,
+  cause: unknown,
+): CliStructuredError {
+  const message = cause instanceof Error ? cause.message : String(cause);
+  return new CliStructuredError(
+    "CLI.CONFIG_SECTION_INVALID",
+    `The '${name}' section of ${file} is invalid: resolving its value threw '${message.split("\n", 1)[0].trim()}'.`,
+    {
+      nextActions: [
+        {
+          kind: "user-choice",
+          label:
+            "Fix the reported problems in that section, then run the command again.",
+        },
+      ],
+    },
+  );
+}
+
+/** Provenance decides which file the error names: the one declaring
+ *  file, the nearest of several with the chain listed, or — when no
+ *  file declares the section at all — the fact that it is missing. */
+function sectionInvalidError(
+  name: string,
+  contributors: readonly LoadedConfigFile[],
+  files: readonly LoadedConfigFile[],
+): CliStructuredError {
+  const fix = {
+    kind: "user-choice" as const,
+    label:
+      "Fix the reported problems in that section, then run the command again.",
+  };
+  if (contributors.length === 1) {
+    return new CliStructuredError(
+      "CLI.CONFIG_SECTION_INVALID",
+      `The '${name}' section of ${contributors[0].path} is invalid.`,
+      { nextActions: [fix] },
+    );
+  }
+  if (contributors.length > 1) {
+    const paths = contributors.map((file) => file.path);
+    const parents =
+      paths.length === 2 ? "its parent config file" : "its parent config files";
+    return new CliStructuredError(
+      "CLI.CONFIG_SECTION_INVALID",
+      `The '${name}' section, merged from ${paths[0]} and ${parents}, is invalid.`,
+      {
+        why: `The resolved section combines these files, nearest first: ${paths.join(", ")}.`,
+        nextActions: [fix],
+      },
+    );
+  }
+  const target = files[0]?.path ?? CONFIG_FILE_NAME;
+  return new CliStructuredError(
+    "CLI.CONFIG_SECTION_INVALID",
+    `The '${name}' section is missing: ${
+      files.length === 0
+        ? "no config file was found"
+        : "no loaded config file declares it"
+    }.`,
+    {
+      why:
+        files.length === 0
+          ? undefined
+          : `Config files loaded, nearest first: ${files.map((file) => file.path).join(", ")}.`,
+      nextActions: [
+        {
+          kind: "user-choice",
+          label: `Declare the '${name}' section in ${target}, then run the command again.`,
+        },
+      ],
+    },
+  );
 }
 
 /** Diagnostics on an OK validation are warnings: written to stderr as

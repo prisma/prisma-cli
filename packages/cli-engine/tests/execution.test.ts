@@ -606,8 +606,7 @@ describe("needs preconditions", () => {
       },
       onSignal: () => () => {},
       loadConfig: async () => ({
-        path: "/prisma.config.ts",
-        sections: {},
+        files: [],
         diagnostics: [
           {
             section: null,
@@ -669,6 +668,75 @@ describe("needs preconditions", () => {
       signedIn: true,
     });
     expect(credentialsMet.stderr).toContain("CONFIG.UNREADABLE");
+  });
+});
+
+describe("ctx.configFiles", () => {
+  function chainReporter(withConfigNeed: boolean) {
+    return defineCommand({
+      help: { summary: "Reports the chain the context carries" },
+      ...(withConfigNeed
+        ? {
+            needs: {
+              config: defineConfigSection<null>({
+                name: "toy",
+                validate: () => ({ ok: true, value: null, diagnostics: [] }),
+              }),
+            },
+          }
+        : {}),
+      handler: async (_args, ctx) => {
+        const paths = ctx.configFiles.map((file) => file.path);
+        return ok(
+          ctx.present(
+            { data: paths },
+            {
+              human: () => [],
+              stdout: () => [],
+              json: () => paths,
+              next: () => [],
+            },
+          ),
+        );
+      },
+    });
+  }
+
+  test("a command with a config need sees the loaded chain, nearest-first", async () => {
+    const cli = createTestCli({
+      commands: { report: chainReporter(true) },
+      loadConfig: async () => ({
+        files: [
+          { path: "/repo/pkg/prisma.config.ts", sections: {} },
+          { path: "/repo/prisma.config.ts", sections: {} },
+        ],
+        diagnostics: [],
+      }),
+      now: EPOCH,
+    });
+
+    const result = await cli.run(["report", "--json"]);
+
+    expect(result.exitCode).toBe(0);
+    expect(result.presented?.data).toEqual([
+      "/repo/pkg/prisma.config.ts",
+      "/repo/prisma.config.ts",
+    ]);
+  });
+
+  test("a command with no config need carries an empty chain and never loads", async () => {
+    const cli = createTestCli({
+      commands: { report: chainReporter(false) },
+      loadConfig: async () => {
+        throw new Error("loadConfig must not be called without a config need");
+      },
+      now: EPOCH,
+    });
+
+    const result = await cli.run(["report", "--json"]);
+
+    expect(result.exitCode).toBe(0);
+    expect(result.presented?.data).toEqual([]);
   });
 });
 
@@ -826,8 +894,7 @@ describe("report() after the handler resolved", () => {
       },
       onSignal: () => () => {},
       loadConfig: async () => ({
-        path: "/prisma.config.ts",
-        sections: {},
+        files: [],
         diagnostics: [],
       }),
       managementApi: { baseUrl: "https://test.invalid" },
@@ -901,8 +968,7 @@ describe("credentials that cannot be read", () => {
       },
       onSignal: () => () => {},
       loadConfig: async () => ({
-        path: "/prisma.config.ts",
-        sections: {},
+        files: [],
         diagnostics: [],
       }),
       credentialManager: {

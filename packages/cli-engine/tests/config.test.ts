@@ -1,19 +1,27 @@
 /**
- * The config loader behind Runtime.loadConfig — cwd-only discovery,
+ * The config loader behind Runtime.loadConfig — chain discovery from
+ * the anchor upward to the repository boundary, the `parent` directive,
  * definePrismaConfig marker semantics with the pinned Prisma 7 fail-early
  * diagnostic, the engine's closed set of section names, and
  * needs.config validation wired end to end through the harness.
  */
 import { spawnSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
-import { dirname, join, relative } from "node:path";
+import {
+  mkdirSync,
+  mkdtempSync,
+  realpathSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from "node:fs";
+import { tmpdir } from "node:os";
+import { dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
   type ConfigSection,
   createCli,
   defineCommand,
   defineCommandFamily,
-  defineConfig,
   defineConfigSection,
   definePrismaConfig,
   flag,
@@ -22,18 +30,43 @@ import {
   PRISMA_CONFIG_VERSION,
   positional,
   type Runtime,
+  resolveSectionOverChain,
+  resolveSectionPath,
+  type SectionProvenance,
   type SectionValidation,
 } from "@prisma/cli-engine";
 import { ok } from "@prisma/cli-engine/protocol";
-import { createTestCli } from "@prisma/cli-engine/testing";
+import { createTestCli, type TestCli } from "@prisma/cli-engine/testing";
 import { afterAll, describe, expect, test } from "vitest";
+import { CONFIG_FILE_NAME } from "../src/config-loader";
 
 const TESTS_DIR = dirname(fileURLToPath(import.meta.url));
 
-const FIXTURES = join(TESTS_DIR, "fixtures", "config");
+// realpath'd because the loader resolves the anchor directory through
+// symlinks, so the paths it reports are real ones.
+const FIXTURES = realpathSync(join(TESTS_DIR, "fixtures", "config"));
+
+// Every marked fixture under FIXTURES declares parent: false, and every
+// broken one fails resolution at itself, so no fixture chain can walk
+// into this repository's real ancestors and pick up a config file the
+// checkout happens to contain. Tests about absence (no file anywhere)
+// use temp directories outside the repository instead.
 
 const EPOCH = () => new Date(0);
 const T0 = "1970-01-01T00:00:00.000Z";
+
+/** In a temp directory outside the repository: an anchor with no
+ *  config anywhere yields an empty chain and no error. */
+async function expectEmptyChainInIsolatedDirectory(): Promise<void> {
+  const empty = realpathSync(
+    mkdtempSync(join(tmpdir(), "prisma-config-empty-")),
+  );
+  try {
+    expect(await loadConfig(empty)).toEqual({ files: [], diagnostics: [] });
+  } finally {
+    rmSync(empty, { recursive: true, force: true });
+  }
+}
 
 describe("definePrismaConfig", () => {
   test("stamps the version marker on the config object", () => {
@@ -42,46 +75,40 @@ describe("definePrismaConfig", () => {
       $prismaConfig: PRISMA_CONFIG_VERSION,
     });
   });
-
-  test("the deprecated defineConfig alias stamps the same marker", () => {
-    expect(defineConfig({ toy: { greeting: "hi" } })).toEqual(
-      definePrismaConfig({ toy: { greeting: "hi" } }),
-    );
-  });
 });
 
 describe("loadConfig", { timeout: 60_000 }, () => {
   test("a marked file yields raw sections without the marker key, and names the file it read", async () => {
     expect(await loadConfig(join(FIXTURES, "marked"))).toEqual({
-      path: join(FIXTURES, "marked", "prisma.config.ts"),
-      sections: { toy: { greeting: "hello" }, other: { level: 2 } },
+      files: [
+        {
+          path: join(FIXTURES, "marked", "prisma.config.ts"),
+          sections: { toy: { greeting: "hello" }, other: { level: 2 } },
+        },
+      ],
       diagnostics: [],
     });
   });
 
-  /** With no file there are no sections, so nothing ever asks which
-   *  file they came from; the path still names the one that was looked
-   *  for rather than going absent. */
-  test("no file at all yields no sections and no error — validators own absence", async () => {
-    expect(await loadConfig(FIXTURES)).toEqual({
-      path: join(FIXTURES, "prisma.config.ts"),
-      sections: {},
-      diagnostics: [],
-    });
+  test("no file at all yields an empty chain and no error — validators own absence", async () => {
+    await expectEmptyChainInIsolatedDirectory();
   });
 
-  test("discovery is cwd-only: a config in the parent directory is not found", async () => {
+  test("discovery walks upward: a parent directory's config is the chain from a bare subdirectory", async () => {
     expect(await loadConfig(join(FIXTURES, "marked", "nested"))).toEqual({
-      path: join(FIXTURES, "marked", "nested", "prisma.config.ts"),
-      sections: {},
+      files: [
+        {
+          path: join(FIXTURES, "marked", "prisma.config.ts"),
+          sections: { toy: { greeting: "hello" }, other: { level: 2 } },
+        },
+      ],
       diagnostics: [],
     });
   });
 
   test("an evaluated file without the marker fails early with the pinned Prisma 7 diagnostic", async () => {
     expect(await loadConfig(join(FIXTURES, "unmarked"))).toEqual({
-      path: join(FIXTURES, "unmarked", "prisma.config.ts"),
-      sections: {},
+      files: [],
       diagnostics: [
         {
           section: null,
@@ -106,8 +133,7 @@ describe("loadConfig", { timeout: 60_000 }, () => {
 
   test("a marker version other than the supported one fails with a file-level diagnostic", async () => {
     expect(await loadConfig(join(FIXTURES, "wrong-version"))).toEqual({
-      path: join(FIXTURES, "wrong-version", "prisma.config.ts"),
-      sections: {},
+      files: [],
       diagnostics: [
         {
           section: null,
@@ -134,8 +160,9 @@ describe("loadConfig", { timeout: 60_000 }, () => {
   test("a section value keeps its types — arrays and Dates survive the loader", async () => {
     const loaded = await loadConfig(join(FIXTURES, "passthrough"));
     expect(loaded.diagnostics).toEqual([]);
-    expect(Object.keys(loaded.sections)).toEqual(["values"]);
-    const values = loaded.sections.values as {
+    expect(loaded.files).toHaveLength(1);
+    expect(Object.keys(loaded.files[0].sections)).toEqual(["values"]);
+    const values = loaded.files[0].sections.values as {
       readonly list: unknown;
       readonly when: unknown;
     };
@@ -145,7 +172,7 @@ describe("loadConfig", { timeout: 60_000 }, () => {
 
   test("a file that throws while evaluating yields a file-level diagnostic", async () => {
     const loaded = await loadConfig(join(FIXTURES, "unreadable"));
-    expect(loaded.sections).toEqual({});
+    expect(loaded.files).toEqual([]);
     expect(loaded.diagnostics).toHaveLength(1);
     expect(loaded.diagnostics[0].section).toBeNull();
     expect(loaded.diagnostics[0].diagnostic.code).toBe("CLI.CONFIG_UNREADABLE");
@@ -164,7 +191,7 @@ describe("loadConfig", { timeout: 60_000 }, () => {
   test("a config whose 'prisma/config' import cannot resolve says to install prisma", async () => {
     const path = join(FIXTURES, "missing-prisma", "prisma.config.ts");
     const loaded = await loadConfig(join(FIXTURES, "missing-prisma"));
-    expect(loaded.sections).toEqual({});
+    expect(loaded.files).toEqual([]);
     expect(loaded.diagnostics).toEqual([
       {
         section: null,
@@ -233,6 +260,318 @@ describe("loadConfig", { timeout: 60_000 }, () => {
   });
 });
 
+/**
+ * Chain discovery over real directory trees. Every tree lives in its
+ * own temp directory outside this repository, with `.git` markers
+ * written where the scenario's repository boundary belongs, so the
+ * checkout's own layout can never reach into a chain. The fixture
+ * files carry the version marker literally rather than importing
+ * definePrismaConfig: nothing resolves from a bare temp directory.
+ */
+describe("chain discovery", { timeout: 60_000 }, () => {
+  const sandboxes: string[] = [];
+
+  function sandbox(): string {
+    const root = realpathSync(
+      mkdtempSync(join(tmpdir(), "prisma-config-chain-")),
+    );
+    sandboxes.push(root);
+    return root;
+  }
+
+  afterAll(() => {
+    for (const root of sandboxes) {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  function writeConfig(dir: string, body: string): string {
+    mkdirSync(dir, { recursive: true });
+    const path = join(dir, "prisma.config.ts");
+    writeFileSync(
+      path,
+      `export default { $prismaConfig: ${PRISMA_CONFIG_VERSION}, ${body} };\n`,
+    );
+    return path;
+  }
+
+  function markRepository(dir: string): void {
+    mkdirSync(join(dir, ".git"), { recursive: true });
+  }
+
+  test("collects every config from the anchor up to the repository boundary, nearest first", async () => {
+    const repo = join(sandbox(), "repo");
+    markRepository(repo);
+    const rootFile = writeConfig(repo, `deploy: { target: "root" }`);
+    const dbFile = writeConfig(
+      join(repo, "packages", "db"),
+      `orm: { fromDb: true }`,
+    );
+
+    expect(await loadConfig(join(repo, "packages", "db"))).toEqual({
+      files: [
+        { path: dbFile, sections: { orm: { fromDb: true } } },
+        { path: rootFile, sections: { deploy: { target: "root" } } },
+      ],
+      diagnostics: [],
+    });
+  });
+
+  test("a directory between anchor and boundary with no config contributes nothing", async () => {
+    const repo = join(sandbox(), "repo");
+    markRepository(repo);
+    const rootFile = writeConfig(repo, `deploy: {}`);
+    const deep = join(repo, "packages", "db", "src");
+    mkdirSync(deep, { recursive: true });
+
+    const loaded = await loadConfig(deep);
+    expect(loaded.files.map((file) => file.path)).toEqual([rootFile]);
+  });
+
+  test("the walk stops at the first .git: a config above the repository is not collected", async () => {
+    const base = sandbox();
+    writeConfig(base, `outer: {}`);
+    const repo = join(base, "repo");
+    markRepository(repo);
+    const repoFile = writeConfig(repo, `inner: {}`);
+
+    expect((await loadConfig(repo)).files.map((file) => file.path)).toEqual([
+      repoFile,
+    ]);
+  });
+
+  test("no .git at or above the anchor means the anchor directory only", async () => {
+    const base = sandbox();
+    writeConfig(join(base, "parent"), `above: {}`);
+    const childFile = writeConfig(join(base, "parent", "child"), `below: {}`);
+
+    expect(
+      (await loadConfig(join(base, "parent", "child"))).files.map(
+        (file) => file.path,
+      ),
+    ).toEqual([childFile]);
+
+    const bare = join(base, "parent", "empty");
+    mkdirSync(bare);
+    expect(await loadConfig(bare)).toEqual({ files: [], diagnostics: [] });
+  });
+
+  test("parent: false ends collection at that file, and the key never becomes a section", async () => {
+    const repo = join(sandbox(), "repo");
+    markRepository(repo);
+    writeConfig(repo, `root: {}`);
+    const midFile = writeConfig(join(repo, "mid"), `mine: {}, parent: false`);
+    const leaf = join(repo, "mid", "leaf");
+    mkdirSync(leaf);
+
+    expect(await loadConfig(leaf)).toEqual({
+      files: [{ path: midFile, sections: { mine: {} } }],
+      diagnostics: [],
+    });
+  });
+
+  test('parent: "path" names the next link explicitly, and may cross the repository boundary', async () => {
+    const base = sandbox();
+    const repo = join(base, "repo");
+    markRepository(repo);
+    const repoFile = writeConfig(
+      repo,
+      `mine: {}, parent: "../shared/prisma.config.ts"`,
+    );
+    const sharedFile = writeConfig(join(base, "shared"), `theirs: {}`);
+
+    expect(await loadConfig(repo)).toEqual({
+      files: [
+        { path: repoFile, sections: { mine: {} } },
+        { path: sharedFile, sections: { theirs: {} } },
+      ],
+      diagnostics: [],
+    });
+  });
+
+  test("after an explicit parent, automatic discovery resumes from the parent file's own directory", async () => {
+    const repo = join(sandbox(), "repo");
+    markRepository(repo);
+    const rootFile = writeConfig(repo, `root: {}`);
+    const pkgFile = writeConfig(
+      join(repo, "pkg"),
+      `mine: {}, parent: "../vendor/lib/prisma.config.ts"`,
+    );
+    const vendorFile = writeConfig(join(repo, "vendor", "lib"), `vendored: {}`);
+
+    expect(
+      (await loadConfig(join(repo, "pkg"))).files.map((file) => file.path),
+    ).toEqual([pkgFile, vendorFile, rootFile]);
+  });
+
+  test("a parent cycle is a file-level error naming the file that closed it", async () => {
+    const base = sandbox();
+    const aFile = writeConfig(
+      join(base, "a"),
+      `a: {}, parent: "../b/prisma.config.ts"`,
+    );
+    const bFile = writeConfig(
+      join(base, "b"),
+      `b: {}, parent: "../a/prisma.config.ts"`,
+    );
+
+    const loaded = await loadConfig(join(base, "a"));
+    expect(loaded.files.map((file) => file.path)).toEqual([aFile, bFile]);
+    expect(loaded.diagnostics).toHaveLength(1);
+    const { diagnostic } = loaded.diagnostics[0];
+    expect(diagnostic.code).toBe("CLI.CONFIG_PARENT_CYCLE");
+    expect(diagnostic.summary).toContain(bFile);
+    expect(diagnostic.summary).toContain(aFile);
+    expect(diagnostic.where).toEqual({ path: bFile });
+  });
+
+  test("a parent path with no file there is a file-level error naming both paths", async () => {
+    const base = sandbox();
+    const file = writeConfig(
+      join(base, "a"),
+      `a: {}, parent: "./nowhere.config.ts"`,
+    );
+
+    const loaded = await loadConfig(join(base, "a"));
+    expect(loaded.files.map((entry) => entry.path)).toEqual([file]);
+    expect(loaded.diagnostics[0]?.diagnostic.code).toBe(
+      "CLI.CONFIG_PARENT_NOT_FOUND",
+    );
+    expect(loaded.diagnostics[0]?.diagnostic.summary).toContain(file);
+    expect(loaded.diagnostics[0]?.diagnostic.summary).toContain(
+      join(base, "a", "nowhere.config.ts"),
+    );
+  });
+
+  test("a parent that is neither false nor a string is a file-level error", async () => {
+    const base = sandbox();
+    writeConfig(join(base, "a"), `a: {}, parent: true`);
+
+    const loaded = await loadConfig(join(base, "a"));
+    expect(loaded.diagnostics[0]?.diagnostic.code).toBe(
+      "CLI.CONFIG_PARENT_INVALID",
+    );
+    expect(loaded.diagnostics[0]?.diagnostic.summary).toContain("parent: true");
+  });
+
+  test("a broken file anywhere on the chain fails resolution, naming that file", async () => {
+    const repo = join(sandbox(), "repo");
+    markRepository(repo);
+    mkdirSync(join(repo, "pkg"), { recursive: true });
+    writeFileSync(
+      join(repo, "prisma.config.ts"),
+      `export default { toy: {} };\n`,
+    );
+    const pkgFile = writeConfig(join(repo, "pkg"), `mine: {}`);
+
+    const loaded = await loadConfig(join(repo, "pkg"));
+    expect(loaded.files.map((file) => file.path)).toEqual([pkgFile]);
+    expect(loaded.diagnostics[0]?.diagnostic.code).toBe(
+      "CLI.CONFIG_MISSING_MARKER",
+    );
+    expect(loaded.diagnostics[0]?.diagnostic.summary).toContain(
+      join(repo, "prisma.config.ts"),
+    );
+  });
+
+  test.skipIf(process.platform === "win32")(
+    "a symlinked anchor resolves to real paths before the walk",
+    async () => {
+      const base = sandbox();
+      const repo = join(base, "repo");
+      markRepository(repo);
+      const file = writeConfig(repo, `mine: {}`);
+      const link = join(base, "link");
+      symlinkSync(repo, link, "dir");
+
+      expect((await loadConfig(link)).files.map((entry) => entry.path)).toEqual(
+        [file],
+      );
+    },
+  );
+
+  test("--config anchors the chain at the named file's directory, never cwd's lineage", async () => {
+    const base = sandbox();
+    const repo = join(base, "repo");
+    markRepository(repo);
+    const rootFile = writeConfig(repo, `root: {}`);
+    mkdirSync(join(repo, "pkg"), { recursive: true });
+    const named = join(repo, "pkg", "custom.config.ts");
+    writeFileSync(
+      named,
+      `export default { $prismaConfig: ${PRISMA_CONFIG_VERSION}, custom: {} };\n`,
+    );
+    const elsewhere = join(base, "elsewhere");
+    markRepository(elsewhere);
+    writeConfig(elsewhere, `cwdside: {}`);
+
+    expect(await loadConfig(elsewhere, named)).toEqual({
+      files: [
+        { path: named, sections: { custom: {} } },
+        { path: rootFile, sections: { root: {} } },
+      ],
+      diagnostics: [],
+    });
+  });
+
+  test.skipIf(process.platform === "win32")(
+    "a symlinked --config file resolves to real paths and anchors at the real directory",
+    async () => {
+      const base = sandbox();
+      const repo = join(base, "repo");
+      markRepository(repo);
+      const rootFile = writeConfig(repo, `root: {}`);
+      const pkgFile = writeConfig(join(repo, "pkg"), `mine: {}`);
+      const link = join(base, "link.config.ts");
+      symlinkSync(pkgFile, link, "file");
+
+      expect(await loadConfig(base, link)).toEqual({
+        files: [
+          { path: pkgFile, sections: { mine: {} } },
+          { path: rootFile, sections: { root: {} } },
+        ],
+        diagnostics: [],
+      });
+    },
+  );
+
+  test.skipIf(process.platform === "win32")(
+    "a symlinked parent resolves to real paths and discovery resumes from the real directory",
+    async () => {
+      const base = sandbox();
+      const repo = join(base, "repo");
+      markRepository(repo);
+      const rootFile = writeConfig(repo, `root: {}`);
+      const sharedFile = writeConfig(join(repo, "shared"), `theirs: {}`);
+      const anchorFile = writeConfig(
+        join(base, "anchor"),
+        `mine: {}, parent: "./link.config.ts"`,
+      );
+      symlinkSync(sharedFile, join(base, "anchor", "link.config.ts"), "file");
+
+      expect(await loadConfig(join(base, "anchor"))).toEqual({
+        files: [
+          { path: anchorFile, sections: { mine: {} } },
+          { path: sharedFile, sections: { theirs: {} } },
+          { path: rootFile, sections: { root: {} } },
+        ],
+        diagnostics: [],
+      });
+    },
+  );
+
+  test("a directory named prisma.config.ts is not a config file — discovery skips it", async () => {
+    const repo = join(sandbox(), "repo");
+    markRepository(repo);
+    const rootFile = writeConfig(repo, `root: {}`);
+    mkdirSync(join(repo, "pkg", "prisma.config.ts"), { recursive: true });
+
+    expect(
+      (await loadConfig(join(repo, "pkg"))).files.map((file) => file.path),
+    ).toEqual([rootFile]);
+  });
+});
+
 describe("top-level keys that are not sections", { timeout: 60_000 }, () => {
   /** The check is the engine's, not the loader's: loadConfig hands back
    *  every top-level key the file had, and the run fails on the ones no
@@ -281,8 +620,12 @@ describe("top-level keys that are not sections", { timeout: 60_000 }, () => {
     const cli = createTestCli({
       commands: { show: showCommand(toySection(), ran) },
       loadConfig: async () => ({
-        path: "/host/picked/this.config.ts",
-        sections: { toy: { greeting: "hi" }, telemtry: { enabled: true } },
+        files: [
+          {
+            path: "/host/picked/this.config.ts",
+            sections: { toy: { greeting: "hi" }, telemtry: { enabled: true } },
+          },
+        ],
         diagnostics: [],
       }),
     });
@@ -293,6 +636,55 @@ describe("top-level keys that are not sections", { timeout: 60_000 }, () => {
     expect(run.stderr).toContain("'telemtry'");
     expect(run.stderr).toContain("/host/picked/this.config.ts");
     expect(run.stderr).toContain("recognises are: toy");
+  });
+
+  /** The per-file check: a typo'd key in an ancestor file errors even
+   *  when the command's section resolved from the nearest one. */
+  test("an unrecognised key anywhere on the chain fails the run, naming that file", async () => {
+    const ran = { value: false };
+    const cli = createTestCli({
+      commands: { show: showCommand(toySection(), ran) },
+      loadConfig: async () => ({
+        files: [
+          {
+            path: "/repo/pkg/prisma.config.ts",
+            sections: { toy: { greeting: "hi" } },
+          },
+          {
+            path: "/repo/prisma.config.ts",
+            sections: { telemtry: { enabled: true } },
+          },
+        ],
+        diagnostics: [],
+      }),
+    });
+    const run = await cli.run(["show"], { isTty: { stdout: true } });
+    expect(run.exitCode).toBe(2);
+    expect(ran.value).toBe(false);
+    expect(run.stderr).toContain("CLI.CONFIG_UNKNOWN_SECTION");
+    expect(run.stderr).toContain("'telemtry'");
+    expect(run.stderr).toContain("/repo/prisma.config.ts");
+  });
+
+  /** Fall-through: a section only an ancestor declares resolves to
+   *  that ancestor's value, whole. */
+  test("a section declared only by an ancestor file still reaches the handler", async () => {
+    const cli = createTestCli({
+      commands: { show: showCommand(toySection()) },
+      loadConfig: async () => ({
+        files: [
+          { path: "/repo/pkg/prisma.config.ts", sections: {} },
+          {
+            path: "/repo/prisma.config.ts",
+            sections: { toy: { greeting: "from the root" } },
+          },
+        ],
+        diagnostics: [],
+      }),
+    });
+    const run = await cli.run(["show"], { isTty: { stdout: true } });
+    expect(run.exitCode).toBe(0);
+    expect(run.presented?.data).toEqual({ greeting: "from the root" });
   });
 
   /**
@@ -307,7 +699,7 @@ describe("top-level keys that are not sections", { timeout: 60_000 }, () => {
    */
   test("a top-level 'extends' is data, not an instruction to merge another file", async () => {
     const loaded = await loadConfig(join(FIXTURES, "extends-key"));
-    expect(loaded.sections).toEqual({
+    expect(loaded.files[0]?.sections).toEqual({
       extends: "./base.config.ts",
       values: { list: [1, 2] },
     });
@@ -319,7 +711,9 @@ describe("top-level keys that are not sections", { timeout: 60_000 }, () => {
    *  it; here it is data like any other string. */
   test("an 'extends' value that names a URL is not fetched", async () => {
     const loaded = await loadConfig(join(FIXTURES, "extends-remote"));
-    expect(loaded.sections.extends).toBe("http://127.0.0.1:1/evil.tar.gz");
+    expect(loaded.files[0]?.sections.extends).toBe(
+      "http://127.0.0.1:1/evil.tar.gz",
+    );
     expect(loaded.diagnostics).toEqual([]);
   });
 
@@ -333,7 +727,7 @@ describe("top-level keys that are not sections", { timeout: 60_000 }, () => {
    */
   test("a top-level '$meta' can never be reported as an unknown section", async () => {
     const loaded = await loadConfig(join(FIXTURES, "meta-key"));
-    expect(loaded.sections).toEqual({});
+    expect(loaded.files).toEqual([]);
     expect(loaded.diagnostics.map(({ diagnostic }) => diagnostic.code)).toEqual(
       ["CLI.CONFIG_UNREADABLE"],
     );
@@ -351,8 +745,8 @@ describe("top-level keys that are not sections", { timeout: 60_000 }, () => {
    */
   test("a top-level '__proto__' never reaches the loader at all", async () => {
     const loaded = await loadConfig(join(FIXTURES, "proto-key"));
-    expect(loaded.sections).toEqual({ toy: { greeting: "hello" } });
-    expect(Object.hasOwn(loaded.sections, "__proto__")).toBe(false);
+    expect(loaded.files[0]?.sections).toEqual({ toy: { greeting: "hello" } });
+    expect(Object.hasOwn(loaded.files[0].sections, "__proto__")).toBe(false);
     expect(loaded.diagnostics).toEqual([]);
   });
 
@@ -360,8 +754,12 @@ describe("top-level keys that are not sections", { timeout: 60_000 }, () => {
     const cli = createTestCli({
       commands: { show: showCommand(toySection()) },
       loadConfig: async () => ({
-        path: "/host/picked/this.config.ts",
-        sections: { toy: { greeting: "hi" } },
+        files: [
+          {
+            path: "/host/picked/this.config.ts",
+            sections: { toy: { greeting: "hi" } },
+          },
+        ],
         diagnostics: [],
       }),
     });
@@ -395,8 +793,12 @@ describe("--config", { timeout: 60_000 }, () => {
   test("the named file is loaded instead of the one in cwd", async () => {
     const loaded = await loadConfig(join(FIXTURES, "marked"), OUTSIDE);
     expect(loaded).toEqual({
-      path: OUTSIDE,
-      sections: { toy: { greeting: "from the named file" } },
+      files: [
+        {
+          path: OUTSIDE,
+          sections: { toy: { greeting: "from the named file" } },
+        },
+      ],
       diagnostics: [],
     });
   });
@@ -406,8 +808,8 @@ describe("--config", { timeout: 60_000 }, () => {
       FIXTURES,
       join("named", "elsewhere.config.ts"),
     );
-    expect(loaded.path).toBe(OUTSIDE);
-    expect(loaded.sections).toEqual({
+    expect(loaded.files[0]?.path).toBe(OUTSIDE);
+    expect(loaded.files[0]?.sections).toEqual({
       toy: { greeting: "from the named file" },
     });
   });
@@ -415,7 +817,7 @@ describe("--config", { timeout: 60_000 }, () => {
   test("a named file that does not exist is an error, not an empty config", async () => {
     const missing = join(FIXTURES, "named", "nope.config.ts");
     const loaded = await loadConfig(FIXTURES, missing);
-    expect(loaded.sections).toEqual({});
+    expect(loaded.files).toEqual([]);
     expect(loaded.diagnostics).toEqual([
       {
         section: null,
@@ -428,7 +830,7 @@ describe("--config", { timeout: 60_000 }, () => {
             {
               kind: "user-choice",
               label:
-                "Correct the path passed to --config, or drop the flag to use the prisma.config.ts in the current directory.",
+                "Correct the path passed to --config, or drop the flag to let the CLI discover prisma.config.ts from the current directory.",
             },
           ],
           where: { path: missing },
@@ -438,11 +840,7 @@ describe("--config", { timeout: 60_000 }, () => {
   });
 
   test("without the flag, a missing prisma.config.ts stays an empty config", async () => {
-    expect(await loadConfig(join(FIXTURES, "named"))).toEqual({
-      path: join(FIXTURES, "named", "prisma.config.ts"),
-      sections: {},
-      diagnostics: [],
-    });
+    await expectEmptyChainInIsolatedDirectory();
   });
 
   /** A diagnostic's summary is the line a user reads first, so it has
@@ -462,8 +860,12 @@ describe("--config", { timeout: 60_000 }, () => {
     const cli = createTestCli({
       commands: { show: showCommand(toySection()) },
       loadConfig: async (configPath) => ({
-        path: configPath ?? "prisma.config.ts",
-        sections: { toy: { greeting: 5 } },
+        files: [
+          {
+            path: configPath ?? "prisma.config.ts",
+            sections: { toy: { greeting: 5 } },
+          },
+        ],
         diagnostics: [],
       }),
     });
@@ -489,7 +891,7 @@ describe("a relative cwd", { timeout: 60_000 }, () => {
 
   test("discovery reads the config under a relative cwd", async () => {
     const loaded = await loadConfig(join(RELATIVE_FIXTURES, "marked"));
-    expect(loaded.sections).toEqual({
+    expect(loaded.files[0]?.sections).toEqual({
       toy: { greeting: "hello" },
       other: { level: 2 },
     });
@@ -500,14 +902,14 @@ describe("a relative cwd", { timeout: 60_000 }, () => {
       RELATIVE_FIXTURES,
       join("named", "elsewhere.config.ts"),
     );
-    expect(loaded.sections).toEqual({
+    expect(loaded.files[0]?.sections).toEqual({
       toy: { greeting: "from the named file" },
     });
   });
 
   test("the path a diagnostic reports is absolute even so", async () => {
     const loaded = await loadConfig(join(RELATIVE_FIXTURES, "unmarked"));
-    expect(loaded.path).toBe(join(FIXTURES, "unmarked", "prisma.config.ts"));
+    expect(loaded.files).toEqual([]);
     expect(loaded.diagnostics[0]?.diagnostic.where).toEqual({
       path: join(FIXTURES, "unmarked", "prisma.config.ts"),
     });
@@ -545,14 +947,14 @@ describe("NODE_ENV does not change the effective config", {
     const loaded = await underNodeEnv("production", () =>
       loadConfig(join(FIXTURES, "env-overlay")),
     );
-    expect(loaded.sections.toy).toEqual({ greeting: "plain" });
+    expect(loaded.files[0]?.sections.toy).toEqual({ greeting: "plain" });
   });
 
   test("a $env block does not overlay a section value", async () => {
     const loaded = await underNodeEnv("production", () =>
       loadConfig(join(FIXTURES, "env-block")),
     );
-    expect(loaded.sections.toy).toEqual({ greeting: "plain" });
+    expect(loaded.files[0]?.sections.toy).toEqual({ greeting: "plain" });
   });
 
   /** An empty diagnostics list is the marker being accepted; the unused
@@ -563,7 +965,7 @@ describe("NODE_ENV does not change the effective config", {
       loadConfig(join(FIXTURES, "env-overlay")),
     );
     expect(loaded.diagnostics).toEqual([]);
-    expect(loaded.sections.$production).toEqual({
+    expect(loaded.files[0]?.sections.$production).toEqual({
       toy: { greeting: "overlaid by $production" },
     });
   });
@@ -599,7 +1001,7 @@ process.stdout.write("__PROBE__" + JSON.stringify({
   loaded,
   named,
   missingNamed: {
-    sections: missing.sections,
+    files: missing.files,
     code: missing.diagnostics[0]?.diagnostic.code ?? null,
   },
 }));
@@ -611,23 +1013,17 @@ const NAMED_CONFIG = `import { definePrismaConfig } from "@prisma/cli-engine";
 
 const greeting: string = "from the file --config named";
 
-export default definePrismaConfig({ toy: { greeting } });
+// parent: false — the sandbox lives inside this repository, and the
+// chain must not walk out of it.
+export default definePrismaConfig({ toy: { greeting }, parent: false });
 `;
 
 interface ProbeResult {
   readonly directImportError: string | null;
-  readonly loaded: {
-    readonly path: unknown;
-    readonly sections: unknown;
-    readonly diagnostics: unknown;
-  };
-  readonly named: {
-    readonly path: unknown;
-    readonly sections: unknown;
-    readonly diagnostics: unknown;
-  };
+  readonly loaded: { readonly files: unknown; readonly diagnostics: unknown };
+  readonly named: { readonly files: unknown; readonly diagnostics: unknown };
   readonly missingNamed: {
-    readonly sections: unknown;
+    readonly files: unknown;
     readonly code: string | null;
   };
 }
@@ -639,7 +1035,7 @@ function runProbeOnPlainNode(
   nodeArgs: string[],
 ): ProbeResult & { readonly configPath: string; readonly namedPath: string } {
   mkdirSync(SANDBOX_ROOT, { recursive: true });
-  const root = mkdtempSync(join(SANDBOX_ROOT, "plain-node-"));
+  const root = realpathSync(mkdtempSync(join(SANDBOX_ROOT, "plain-node-")));
   const cwd = join(root, "project");
   const elsewhere = join(root, "elsewhere");
   mkdirSync(cwd);
@@ -683,23 +1079,31 @@ describe("loadConfig on a Node that cannot execute TypeScript", {
 
 const greeting: string = "hello from plain node";
 
-export default definePrismaConfig({ toy: { greeting } });
+export default definePrismaConfig({ toy: { greeting }, parent: false });
 `,
       ["--no-experimental-strip-types"],
     );
     expect(probe.directImportError).toBe("ERR_UNKNOWN_FILE_EXTENSION");
     expect(probe.loaded).toEqual({
-      path: probe.configPath,
-      sections: { toy: { greeting: "hello from plain node" } },
+      files: [
+        {
+          path: probe.configPath,
+          sections: { toy: { greeting: "hello from plain node" } },
+        },
+      ],
       diagnostics: [],
     });
     expect(probe.named).toEqual({
-      path: probe.namedPath,
-      sections: { toy: { greeting: "from the file --config named" } },
+      files: [
+        {
+          path: probe.namedPath,
+          sections: { toy: { greeting: "from the file --config named" } },
+        },
+      ],
       diagnostics: [],
     });
     expect(probe.missingNamed).toEqual({
-      sections: {},
+      files: [],
       code: "CLI.CONFIG_NOT_FOUND",
     });
   });
@@ -712,7 +1116,10 @@ enum Level {
   Verbose = "verbose",
 }
 
-export default definePrismaConfig({ toy: { greeting: Level.Verbose } });
+export default definePrismaConfig({
+  toy: { greeting: Level.Verbose },
+  parent: false,
+});
 `,
       [],
     );
@@ -722,8 +1129,9 @@ export default definePrismaConfig({ toy: { greeting: Level.Verbose } });
     // the direct import fails where loadConfig, below, succeeds.
     expect(probe.directImportError).toEqual(expect.any(String));
     expect(probe.loaded).toEqual({
-      path: probe.configPath,
-      sections: { toy: { greeting: "verbose" } },
+      files: [
+        { path: probe.configPath, sections: { toy: { greeting: "verbose" } } },
+      ],
       diagnostics: [],
     });
   });
@@ -855,7 +1263,8 @@ describe("needs.config", { timeout: 60_000 }, () => {
           error: {
             code: "CLI.CONFIG_SECTION_INVALID",
             severity: "error",
-            summary: "The 'toy' section of prisma.config.ts is invalid.",
+            // The harness seeds the config in the run's cwd ("/").
+            summary: `The 'toy' section of ${resolve("/", CONFIG_FILE_NAME)} is invalid.`,
             nextActions: [
               {
                 kind: "user-choice",
@@ -1021,11 +1430,475 @@ describe("needs.config", { timeout: 60_000 }, () => {
     );
     const cli = createTestCli({
       commands: { show: showCommand(toySection()) },
-      config: loaded.sections,
+      config: loaded.files[0]?.sections,
     });
     const run = await cli.run(["show"], { isTty: { stdout: true } });
     expect(run.exitCode).toBe(0);
     expect(run.presented?.data).toEqual({ greeting: "from the named file" });
+  });
+});
+
+/**
+ * Per-key resolution of a section over the chain: the nearest file's
+ * keys win, unwritten keys fall through to ancestors, values below the
+ * section's top level replace whole, and the resolved value carries
+ * provenance naming the file each key came from.
+ */
+describe("sections merge per key over the chain", { timeout: 60_000 }, () => {
+  const PKG = "/repo/pkg/prisma.config.ts";
+  const ROOT = "/repo/prisma.config.ts";
+
+  function chainFiles(
+    pkg: Readonly<Record<string, unknown>>,
+    root: Readonly<Record<string, unknown>>,
+  ) {
+    return [
+      { path: PKG, sections: pkg },
+      { path: ROOT, sections: root },
+    ];
+  }
+
+  function passthroughSection(
+    merge?: (parent: unknown, child: unknown) => unknown,
+  ): ConfigSection<unknown> {
+    return defineConfigSection<unknown>({
+      name: "toy",
+      validate: (raw) => ({ ok: true, value: raw, diagnostics: [] }),
+      merge,
+    });
+  }
+
+  /** Fails on absence, the way the ORM section does. */
+  function requiredSection(): ConfigSection<unknown> {
+    return defineConfigSection<unknown>({
+      name: "toy",
+      validate: (raw) =>
+        raw === undefined
+          ? {
+              ok: false,
+              diagnostics: [
+                {
+                  code: "TOY.MISSING",
+                  severity: "error",
+                  summary: "A toy section is required.",
+                  nextActions: [],
+                },
+              ],
+            }
+          : { ok: true, value: raw, diagnostics: [] },
+    });
+  }
+
+  function presentCommand(section: ConfigSection<unknown>) {
+    return defineCommand({
+      help: { summary: "Present the resolved toy config" },
+      needs: { config: section },
+      handler: async (_args, ctx) =>
+        ok(
+          ctx.present(
+            { data: ctx.config },
+            {
+              human: () => [],
+              stdout: () => [],
+              json: () => ctx.config,
+              next: () => [],
+            },
+          ),
+        ),
+    });
+  }
+
+  function chainCli(
+    files: ReturnType<typeof chainFiles>,
+    section: ConfigSection<unknown>,
+  ) {
+    return createTestCli({
+      commands: { show: presentCommand(section) },
+      loadConfig: async () => ({ files, diagnostics: [] }),
+    });
+  }
+
+  function erroredEnvelope(run: Awaited<ReturnType<TestCli["run"]>>) {
+    const frame = run.json[run.json.length - 1];
+    if (frame?.kind !== "result" || frame.envelope.ok) {
+      throw new Error(`expected an errored result frame, got ${run.stderr}`);
+    }
+    return frame.envelope;
+  }
+
+  test("the nearest file's key shadows the ancestor's; unwritten keys fall through", async () => {
+    const cli = chainCli(
+      chainFiles(
+        { toy: { greeting: "pkg", agents: ["a"] } },
+        { toy: { greeting: "root", check: false } },
+      ),
+      passthroughSection(),
+    );
+    const run = await cli.run(["show"], { isTty: { stdout: true } });
+    expect(run.exitCode).toBe(0);
+    expect(run.presented?.data).toEqual({
+      greeting: "pkg",
+      agents: ["a"],
+      check: false,
+    });
+  });
+
+  test("below the top level values replace whole: nested objects and arrays come from the nearer file", async () => {
+    const cli = chainCli(
+      chainFiles(
+        { toy: { nested: { a: 1 }, list: [1] } },
+        { toy: { nested: { b: 2 }, list: [2, 3], only: "root" } },
+      ),
+      passthroughSection(),
+    );
+    const run = await cli.run(["show"], { isTty: { stdout: true } });
+    expect(run.exitCode).toBe(0);
+    expect(run.presented?.data).toEqual({
+      nested: { a: 1 },
+      list: [1],
+      only: "root",
+    });
+  });
+
+  test("a section written as undefined does not shadow an ancestor's section", async () => {
+    const cli = chainCli(
+      chainFiles({ toy: undefined }, { toy: { greeting: "root" } }),
+      passthroughSection(),
+    );
+    const run = await cli.run(["show"], { isTty: { stdout: true } });
+    expect(run.exitCode).toBe(0);
+    expect(run.presented?.data).toEqual({ greeting: "root" });
+  });
+
+  test("a key written as undefined does not shadow the ancestor's key", async () => {
+    const cli = chainCli(
+      chainFiles(
+        { toy: { greeting: undefined, extra: 1 } },
+        { toy: { greeting: "root" } },
+      ),
+      passthroughSection(),
+    );
+    const run = await cli.run(["show"], { isTty: { stdout: true } });
+    expect(run.exitCode).toBe(0);
+    expect(run.presented?.data).toEqual({ greeting: "root", extra: 1 });
+  });
+
+  test("a section's own merge() replaces the default, folded from the farthest file to the nearest", async () => {
+    const concat = (parent: unknown, child: unknown): unknown => ({
+      list: [
+        ...(parent as { readonly list: readonly number[] }).list,
+        ...(child as { readonly list: readonly number[] }).list,
+      ],
+    });
+    const cli = createTestCli({
+      commands: { show: presentCommand(passthroughSection(concat)) },
+      loadConfig: async () => ({
+        files: [
+          {
+            path: "/repo/a/b/prisma.config.ts",
+            sections: { toy: { list: [3] } },
+          },
+          {
+            path: "/repo/a/prisma.config.ts",
+            sections: { toy: { list: [2] } },
+          },
+          { path: ROOT, sections: { toy: { list: [1] } } },
+        ],
+        diagnostics: [],
+      }),
+    });
+    const run = await cli.run(["show"], { isTty: { stdout: true } });
+    expect(run.exitCode).toBe(0);
+    expect(run.presented?.data).toEqual({ list: [1, 2, 3] });
+  });
+
+  test("merging constructs fresh objects and never mutates the frozen file exports", async () => {
+    const pkgToy = Object.freeze({ greeting: "pkg" });
+    const rootToy = Object.freeze({
+      greeting: "root",
+      check: Object.freeze({ deep: true }),
+    });
+    const cli = chainCli(
+      chainFiles({ toy: pkgToy }, { toy: rootToy }),
+      passthroughSection(),
+    );
+    const run = await cli.run(["show"], { isTty: { stdout: true } });
+    expect(run.exitCode).toBe(0);
+    expect(run.presented?.data).toEqual({
+      greeting: "pkg",
+      check: { deep: true },
+    });
+    expect(pkgToy).toEqual({ greeting: "pkg" });
+    expect(rootToy).toEqual({ greeting: "root", check: { deep: true } });
+  });
+
+  test("a required section's absence error fires only when no file on the chain declares it", async () => {
+    const present = chainCli(
+      chainFiles({}, { toy: { greeting: "root" } }),
+      requiredSection(),
+    );
+    const withAncestor = await present.run(["show"], {
+      isTty: { stdout: true },
+    });
+    expect(withAncestor.exitCode).toBe(0);
+
+    const absent = chainCli(chainFiles({}, {}), requiredSection());
+    const run = await absent.run(["show", "--json"]);
+    expect(run.exitCode).toBe(2);
+    const envelope = erroredEnvelope(run);
+    expect(envelope.error.code).toBe("CLI.CONFIG_SECTION_INVALID");
+    expect(envelope.error.summary).toBe(
+      "The 'toy' section is missing: no loaded config file declares it.",
+    );
+    expect(envelope.error.why).toBe(
+      `Config files loaded, nearest first: ${PKG}, ${ROOT}.`,
+    );
+    expect(envelope.error.nextActions).toEqual([
+      {
+        kind: "user-choice",
+        label: `Declare the 'toy' section in ${PKG}, then run the command again.`,
+      },
+    ]);
+    expect(envelope.diagnostics[0]?.code).toBe("TOY.MISSING");
+  });
+
+  test("an invalid merged section names the nearest contributing file and lists the chain", async () => {
+    const cli = chainCli(
+      chainFiles({ toy: { extra: true } }, { toy: { greeting: 5 } }),
+      toySection(),
+    );
+    const run = await cli.run(["show", "--json"]);
+    expect(run.exitCode).toBe(2);
+    const envelope = erroredEnvelope(run);
+    expect(envelope.error.summary).toBe(
+      `The 'toy' section, merged from ${PKG} and its parent config file, is invalid.`,
+    );
+    expect(envelope.error.why).toBe(
+      `The resolved section combines these files, nearest first: ${PKG}, ${ROOT}.`,
+    );
+  });
+
+  test("an invalid section only an ancestor declares names that file, not the anchor", async () => {
+    const cli = chainCli(
+      chainFiles({}, { toy: { greeting: 5 } }),
+      toySection(),
+    );
+    const run = await cli.run(["show", "--json"]);
+    expect(run.exitCode).toBe(2);
+    const envelope = erroredEnvelope(run);
+    expect(envelope.error.summary).toBe(
+      `The 'toy' section of ${ROOT} is invalid.`,
+    );
+    expect(envelope.error.why).toBeUndefined();
+  });
+
+  function resolvedOk(files: ReturnType<typeof chainFiles>) {
+    const resolved = resolveSectionOverChain(passthroughSection(), files);
+    if (!resolved.ok) {
+      throw new Error(`expected resolution to succeed, got ${resolved.file}`);
+    }
+    return resolved;
+  }
+
+  function resolvedValue(files: ReturnType<typeof chainFiles>): unknown {
+    return resolvedOk(files).value;
+  }
+
+  test("the resolved section carries provenance: the contributors and the declaring file per key", () => {
+    const resolved = resolvedOk([
+      { path: PKG, sections: { toy: { out: "./dist", shared: 1 } } },
+      {
+        path: ROOT,
+        sections: { toy: { migrations: "./migrations", shared: 2 } },
+      },
+    ]);
+    expect(resolved.provenance).toEqual({
+      files: [PKG, ROOT],
+      keys: { out: PKG, shared: PKG, migrations: ROOT },
+    });
+  });
+
+  test("a single file's section is normalized like a merged one: undefined keys are absent and the value is frozen", () => {
+    const value = resolvedValue([
+      { path: PKG, sections: { toy: { greeting: undefined, extra: 1 } } },
+    ]);
+    expect(value).toEqual({ extra: 1 });
+    expect(Object.hasOwn(value as object, "greeting")).toBe(false);
+    expect(Object.isFrozen(value)).toBe(true);
+  });
+
+  test("an own __proto__ key on the merged section stays data and never reaches the prototype", () => {
+    const pkgToy = Object.fromEntries([
+      ["__proto__", { polluted: true }],
+      ["greeting", "pkg"],
+    ]);
+    const value = resolvedValue(
+      chainFiles({ toy: pkgToy }, { toy: { greeting: "root", check: false } }),
+    ) as Record<string, unknown>;
+    expect(Object.hasOwn(value, "__proto__")).toBe(true);
+    expect(value.greeting).toBe("pkg");
+    expect(value.check).toBe(false);
+    expect(Object.getPrototypeOf(value)).toBe(Object.prototype);
+    expect(({} as { polluted?: boolean }).polluted).toBeUndefined();
+    expect(Object.isFrozen(value)).toBe(true);
+  });
+
+  test("a throwing property getter in a section is a config error naming the file, not an engine bug", async () => {
+    const cli = chainCli(
+      [
+        {
+          path: PKG,
+          sections: {
+            toy: {
+              get greeting(): string {
+                throw new Error("getter boom");
+              },
+            },
+          },
+        },
+        { path: ROOT, sections: {} },
+      ],
+      passthroughSection(),
+    );
+    const run = await cli.run(["show", "--json"]);
+    expect(run.exitCode).toBe(2);
+    const envelope = erroredEnvelope(run);
+    expect(envelope.error.code).toBe("CLI.CONFIG_SECTION_INVALID");
+    expect(envelope.error.summary).toBe(
+      `The 'toy' section of ${PKG} is invalid: resolving its value threw 'getter boom'.`,
+    );
+  });
+
+  test("a throwing custom merge is a config error naming the nearest file, not an engine bug", async () => {
+    const cli = chainCli(
+      chainFiles({ toy: { greeting: "pkg" } }, { toy: { greeting: "root" } }),
+      passthroughSection(() => {
+        throw new Error("merge boom");
+      }),
+    );
+    const run = await cli.run(["show", "--json"]);
+    expect(run.exitCode).toBe(2);
+    const envelope = erroredEnvelope(run);
+    expect(envelope.error.code).toBe("CLI.CONFIG_SECTION_INVALID");
+    expect(envelope.error.summary).toBe(
+      `The 'toy' section of ${PKG} is invalid: resolving its value threw 'merge boom'.`,
+    );
+  });
+
+  test("resolveSectionPath resolves a relative path against the file that declared its key", () => {
+    const { provenance } = resolvedOk([
+      { path: PKG, sections: { toy: { out: "./dist" } } },
+      { path: ROOT, sections: { toy: { migrations: "./migrations" } } },
+    ]);
+    expect(resolveSectionPath(provenance, "migrations", "./migrations")).toBe(
+      resolve("/repo", "migrations"),
+    );
+    expect(resolveSectionPath(provenance, "out", "./dist")).toBe(
+      resolve("/repo/pkg", "dist"),
+    );
+    const absolute = resolve("/somewhere/else");
+    expect(resolveSectionPath(provenance, "out", absolute)).toBe(absolute);
+  });
+
+  test("the validator receives the resolved section's provenance and can return declaring-file-absolute paths", async () => {
+    const seen: SectionProvenance[] = [];
+    const section = defineConfigSection<unknown>({
+      name: "toy",
+      validate: (raw, provenance) => {
+        seen.push(provenance);
+        const { out, migrations } = raw as {
+          out: string;
+          migrations: string;
+        };
+        return {
+          ok: true,
+          value: {
+            out: resolveSectionPath(provenance, "out", out),
+            migrations: resolveSectionPath(
+              provenance,
+              "migrations",
+              migrations,
+            ),
+          },
+          diagnostics: [],
+        };
+      },
+    });
+    const cli = chainCli(
+      chainFiles(
+        { toy: { out: "./dist" } },
+        { toy: { migrations: "./migrations" } },
+      ),
+      section,
+    );
+    const run = await cli.run(["show"], { isTty: { stdout: true } });
+    expect(run.exitCode).toBe(0);
+    expect(seen).toEqual([
+      { files: [PKG, ROOT], keys: { out: PKG, migrations: ROOT } },
+    ]);
+    expect(run.presented?.data).toEqual({
+      out: resolve("/repo/pkg", "dist"),
+      migrations: resolve("/repo", "migrations"),
+    });
+  });
+
+  test("a one-argument validator keeps working unchanged", async () => {
+    const oneArg = defineConfigSection<unknown>({
+      name: "toy",
+      validate: (raw) => ({ ok: true, value: raw, diagnostics: [] }),
+    });
+    const cli = chainCli(chainFiles({ toy: { greeting: "pkg" } }, {}), oneArg);
+    const run = await cli.run(["show"], { isTty: { stdout: true } });
+    expect(run.exitCode).toBe(0);
+    expect(run.presented?.data).toEqual({ greeting: "pkg" });
+  });
+
+  test("a primitive resolved value still carries provenance naming its contributors", () => {
+    const resolved = resolvedOk([{ path: PKG, sections: { toy: "compact" } }]);
+    expect(resolved.value).toBe("compact");
+    expect(resolved.provenance).toEqual({ files: [PKG], keys: {} });
+  });
+
+  test("resolveSectionPath refuses a key the resolved section does not carry at its top level", () => {
+    const { provenance } = resolvedOk([
+      { path: PKG, sections: { toy: { out: "./dist" } } },
+    ]);
+    expect(() =>
+      resolveSectionPath(provenance, "migrations", "./migrations"),
+    ).toThrow("only top-level section keys");
+  });
+
+  /** The spec's primary layout, from disk: a root config and a package
+   *  config, discovered and merged through the real loader. The temp
+   *  tree carries its own .git marker, so the walk never reaches this
+   *  repository's real ancestors. */
+  test("the two-file monorepo layout resolves merged from disk, end to end", async () => {
+    const base = realpathSync(
+      mkdtempSync(join(tmpdir(), "prisma-config-merge-")),
+    );
+    try {
+      const repo = join(base, "repo");
+      mkdirSync(join(repo, ".git"), { recursive: true });
+      writeFileSync(
+        join(repo, "prisma.config.ts"),
+        `export default { $prismaConfig: ${PRISMA_CONFIG_VERSION}, toy: { greeting: "root", check: false } };\n`,
+      );
+      const pkg = join(repo, "packages", "db");
+      mkdirSync(pkg, { recursive: true });
+      writeFileSync(
+        join(pkg, "prisma.config.ts"),
+        `export default { $prismaConfig: ${PRISMA_CONFIG_VERSION}, toy: { greeting: "pkg" } };\n`,
+      );
+      const cli = createTestCli({
+        commands: { show: presentCommand(passthroughSection()) },
+        loadConfig: (configPath) => loadConfig(pkg, configPath),
+      });
+      const run = await cli.run(["show"], { isTty: { stdout: true } });
+      expect(run.exitCode).toBe(0);
+      expect(run.presented?.data).toEqual({ greeting: "pkg", check: false });
+    } finally {
+      rmSync(base, { recursive: true, force: true });
+    }
   });
 });
 
@@ -1048,8 +1921,12 @@ describe("--config on the command line", { timeout: 60_000 }, () => {
       loadConfig: async (configPath) => {
         asked.push(configPath);
         return {
-          path: configPath ?? "prisma.config.ts",
-          sections: { toy: { greeting: "hi" } },
+          files: [
+            {
+              path: configPath ?? "prisma.config.ts",
+              sections: { toy: { greeting: "hi" } },
+            },
+          ],
           diagnostics: [],
         };
       },

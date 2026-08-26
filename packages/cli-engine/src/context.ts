@@ -3,7 +3,7 @@ import type { EngineEvent } from "./events";
 import type { ManagementApiClient } from "./management-api";
 import type { Outcome, Presentations, PresentedResult } from "./presentation";
 import type { CliStructuredError, Result } from "./protocol";
-import type { Host } from "./runtime";
+import type { Host, LoadedConfigFile } from "./runtime";
 import type { ChildResult, SpawnOptions } from "./spawn";
 
 /** The handler context — the whole world arrives as one argument. */
@@ -17,6 +17,22 @@ export interface CommandContext<
    * validator. Commands with no config need get undefined.
    */
   readonly config: TConfig;
+
+  /**
+   * The config chain the needs check resolved, nearest-first — the
+   * same load ctx.config was validated from, including files whose
+   * sections this command did not need. Empty when the command
+   * declares no config need, and when discovery found no file.
+   */
+  readonly configFiles: ReadonlyArray<LoadedConfigFile>;
+
+  /**
+   * The file `--config` named, exactly as the user wrote it, or
+   * undefined when the flag was absent. Handlers that load config out
+   * of band (outside needs.config) pass it on, so the file the user
+   * named governs those reads too.
+   */
+  readonly configPath: string | undefined;
 
   /**
    * Builds the PresentedResult for the active format. The only
