@@ -27,6 +27,14 @@ export interface CommandContext<
   readonly configFiles: ReadonlyArray<LoadedConfigFile>;
 
   /**
+   * The file `--config` named, exactly as the user wrote it, or
+   * undefined when the flag was absent. Handlers that load config out
+   * of band (outside needs.config) pass it on, so the file the user
+   * named governs those reads too.
+   */
+  readonly configPath: string | undefined;
+
+  /**
    * Builds the PresentedResult for the active format. The only
    * constructor of PresentedResult.
    */

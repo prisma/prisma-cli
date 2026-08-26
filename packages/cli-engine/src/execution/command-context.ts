@@ -145,6 +145,7 @@ export function makeContext(
   const context: CommandContext<unknown, number> = {
     config,
     configFiles,
+    configPath: state.configPath,
     present: present as CommandContext<unknown, number>["present"],
     activeCredential: (): Promise<ActiveCredential | null> =>
       invocation.runtime.credentialManager?.activeCredential() ??

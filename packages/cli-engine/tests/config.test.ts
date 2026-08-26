@@ -55,6 +55,19 @@ const FIXTURES = realpathSync(join(TESTS_DIR, "fixtures", "config"));
 const EPOCH = () => new Date(0);
 const T0 = "1970-01-01T00:00:00.000Z";
 
+/** In a temp directory outside the repository: an anchor with no
+ *  config anywhere yields an empty chain and no error. */
+async function expectEmptyChainInIsolatedDirectory(): Promise<void> {
+  const empty = realpathSync(
+    mkdtempSync(join(tmpdir(), "prisma-config-empty-")),
+  );
+  try {
+    expect(await loadConfig(empty)).toEqual({ files: [], diagnostics: [] });
+  } finally {
+    rmSync(empty, { recursive: true, force: true });
+  }
+}
+
 describe("definePrismaConfig", () => {
   test("stamps the version marker on the config object", () => {
     expect(definePrismaConfig({ toy: { greeting: "hi" } })).toEqual({
@@ -77,17 +90,8 @@ describe("loadConfig", { timeout: 60_000 }, () => {
     });
   });
 
-  /** In a temp directory outside the repository: an anchor with no
-   *  config anywhere is the one shape parent: false cannot pin. */
   test("no file at all yields an empty chain and no error — validators own absence", async () => {
-    const empty = realpathSync(
-      mkdtempSync(join(tmpdir(), "prisma-config-empty-")),
-    );
-    try {
-      expect(await loadConfig(empty)).toEqual({ files: [], diagnostics: [] });
-    } finally {
-      rmSync(empty, { recursive: true, force: true });
-    }
+    await expectEmptyChainInIsolatedDirectory();
   });
 
   test("discovery walks upward: a parent directory's config is the chain from a bare subdirectory", async () => {
@@ -836,14 +840,7 @@ describe("--config", { timeout: 60_000 }, () => {
   });
 
   test("without the flag, a missing prisma.config.ts stays an empty config", async () => {
-    const empty = realpathSync(
-      mkdtempSync(join(tmpdir(), "prisma-config-empty-")),
-    );
-    try {
-      expect(await loadConfig(empty)).toEqual({ files: [], diagnostics: [] });
-    } finally {
-      rmSync(empty, { recursive: true, force: true });
-    }
+    await expectEmptyChainInIsolatedDirectory();
   });
 
   /** A diagnostic's summary is the line a user reads first, so it has

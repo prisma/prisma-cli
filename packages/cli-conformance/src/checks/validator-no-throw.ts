@@ -1,5 +1,5 @@
 import type { Finding } from "../findings";
-import type { CheckableSection } from "../subjects";
+import type { CheckableProvenance, CheckableSection } from "../subjects";
 
 /** One hostile value, with a label that names it in a finding. */
 export interface HostileInput {
@@ -119,8 +119,9 @@ function checkOne(
   let firstError: string | undefined;
   for (const hostile of corpus) {
     let returned: unknown;
+    const value = hostile.make();
     try {
-      returned = section.validate(hostile.make(), { files: [], keys: {} });
+      returned = section.validate(value, provenanceFor(value));
     } catch (error) {
       threw.push(hostile.label);
       firstError ??= error instanceof Error ? error.message : String(error);
@@ -150,6 +151,38 @@ function checkOne(
           ),
         ]),
   ];
+}
+
+const SYNTHETIC_DECLARING_FILE = "/conformance-hostile/prisma.config.ts";
+
+/**
+ * The provenance the engine would supply: every top-level key of a
+ * plain-object section value maps to a declaring file, so a validator
+ * that calls resolveSectionPath on a well-formed hostile input (a
+ * frozen `{ configPath: "x" }`) resolves instead of throwing. Any other
+ * value — and any object whose key enumeration itself throws — gets
+ * empty provenance, matching the engine's atomic-carry behaviour.
+ */
+function provenanceFor(value: unknown): CheckableProvenance {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    return { files: [], keys: {} };
+  }
+  const proto = Object.getPrototypeOf(value);
+  if (proto !== Object.prototype && proto !== null) {
+    return { files: [], keys: {} };
+  }
+  let names: string[];
+  try {
+    names = Object.keys(value);
+  } catch {
+    return { files: [], keys: {} };
+  }
+  return {
+    files: [SYNTHETIC_DECLARING_FILE],
+    keys: Object.fromEntries(
+      names.map((name) => [name, SYNTHETIC_DECLARING_FILE]),
+    ),
+  };
 }
 
 function finding(

@@ -3,10 +3,12 @@
  * ordered chain of config files, evaluate each, check every one for the
  * definePrismaConfig version marker, and produce LoadedConfig.
  *
- * Discovery starts at the anchor directory — cwd, or with `--config`
- * the named file's own directory — and walks upward collecting every
- * prisma.config.ts, stopping at the repository boundary: the first
- * directory containing `.git`. No `.git` at or above the anchor means
+ * Without `--config`, discovery starts at cwd and walks upward
+ * collecting every prisma.config.ts, stopping at the repository
+ * boundary: the first directory containing `.git`. With `--config`,
+ * the named file is the first chain link and discovery resumes
+ * strictly above its directory — a prisma.config.ts beside the named
+ * file is never collected. No `.git` at or above the anchor means
  * the anchor directory only — every file on the chain is executed
  * TypeScript, and nothing outside the repository runs without explicit
  * consent. A file may end collection itself with `parent: false`, or

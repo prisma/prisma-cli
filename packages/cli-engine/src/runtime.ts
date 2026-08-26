@@ -74,8 +74,10 @@ export interface Runtime {
    * only when the command it is about to run declares a config section,
    * so a run that needs no config never touches a file. `configPath` is
    * the file `--config` named: the loader resolves it against the
-   * runtime's cwd, reports its absence, and anchors discovery at its
-   * directory. Absent means discover from cwd, where finding no file is
+   * runtime's cwd, reports its absence, makes it the first chain link,
+   * and resumes discovery strictly above its directory — a
+   * prisma.config.ts beside it is not collected. Absent means
+   * discover from cwd, where finding no file is
    * not an error. The bin wires the real disk loader; tests hand in
    * fixtures.
    */
