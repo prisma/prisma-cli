@@ -140,7 +140,6 @@ export type Block =
       readonly rows: ReadonlyArray<{
         readonly label: Text;
         readonly value: Text;
-        readonly sensitive?: boolean;
       }>;
       /** Draws the dim `│` rail down the left of the card. A command
        *  knows whether it is drawing a header card or a plain one, so
