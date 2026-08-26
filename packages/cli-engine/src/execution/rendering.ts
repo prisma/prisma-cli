@@ -83,6 +83,7 @@ const STATUS_SYMBOL: Readonly<Record<Status, string>> = {
   info: "ℹ",
 };
 
+const MASK = "********";
 const COLUMN_GAP = "  ";
 const RAIL = "│";
 const BRANCH = "├─";
@@ -174,6 +175,7 @@ function writeFields(
   rows: ReadonlyArray<{
     readonly label: Text;
     readonly value: Text;
+    readonly sensitive?: boolean;
   }>,
   rail: boolean,
   paint: Paint,
@@ -181,7 +183,7 @@ function writeFields(
 ): void {
   const cells = rows.map((row) => ({
     label: toned(extend(row.label, ":"), "heading"),
-    value: orPlaceholder(row.value),
+    value: row.sensitive === true ? MASK : orPlaceholder(row.value),
   }));
   const width = Math.max(0, ...cells.map((cell) => textWidth(cell.label)));
   const prefix = rail ? `${paint("structure", RAIL)}${COLUMN_GAP}` : "";

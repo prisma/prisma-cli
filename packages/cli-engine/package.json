@@ -1,6 +1,6 @@
 {
   "name": "@prisma/cli-engine",
-  "version": "0.4.0",
+  "version": "0.3.0",
   "description": "The execution engine of the unified Prisma CLI.",
   "type": "module",
   "exports": {

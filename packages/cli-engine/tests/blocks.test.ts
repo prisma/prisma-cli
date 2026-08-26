@@ -150,18 +150,18 @@ describe("fields", () => {
     );
   });
 
-  test("a credential value renders bare — the card is where a human reads it", async () => {
+  test("a sensitive value is masked and the mask is what gets aligned", async () => {
     expect(
       await render([
         {
           kind: "fields",
           rows: [
-            { label: "key", value: "AKIA" },
+            { label: "key", value: "AKIA", sensitive: true },
             { label: "endpoint", value: "https://s3.prisma.io" },
           ],
         },
       ]),
-    ).toBe("key:       AKIA\nendpoint:  https://s3.prisma.io\n");
+    ).toBe("key:       ********\nendpoint:  https://s3.prisma.io\n");
   });
 });
 

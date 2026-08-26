@@ -735,7 +735,7 @@ describe("undocumented completion exit codes", () => {
   });
 });
 
-describe("credential field rows", () => {
+describe("sensitive field rows", () => {
   const reveal = defineCommand({
     help: { summary: "Show a credential" },
     handler: async (_args, ctx) =>
@@ -748,7 +748,7 @@ describe("credential field rows", () => {
                 kind: "fields",
                 rows: [
                   { label: "name", value: "deploy key" },
-                  { label: "token", value: "tok_secret" },
+                  { label: "token", value: "tok_secret", sensitive: true },
                 ],
               },
             ],
@@ -760,13 +760,13 @@ describe("credential field rows", () => {
       ),
   });
 
-  test("human rendering prints a credential value bare", async () => {
+  test("human rendering masks a sensitive field value", async () => {
     const cli = createTestCli({ commands: { reveal }, now: EPOCH });
     const result = await cli.run(["reveal", "--format", "human"]);
 
     expect(result.exitCode).toBe(0);
     expect(result.stdout).toBe("");
-    expect(result.stderr).toBe("name:   deploy key\ntoken:  tok_secret\n");
+    expect(result.stderr).toBe("name:   deploy key\ntoken:  ********\n");
   });
 
   test("the json result payload is the command's own and stays unmasked", async () => {
