@@ -109,13 +109,30 @@ async function tarball(): Promise<readonly Finding[]> {
       shellPackage: "@prisma/cli",
       enginePackage: "@prisma/cli-engine",
       familyPackages: ["@prisma/composer-cli", "@prisma/orm-toolchain"],
-      // No exceptions. Both families declare @prisma/cli-engine as an
-      // exact peer at the version this repo ships, so one engine
-      // resolves in an install — what ADR 0004 asks for. An entry here
-      // exists only while an engine version transition is in flight
-      // (the engine must publish before a family can peer it), and the
-      // release PR that pins the families' new versions removes it.
-      exceptions: [],
+      // An engine version transition is in flight: the engine must
+      // publish 0.3.0 before either family can peer it, so both still
+      // declare 0.2.3. The release PR that pins the families' new
+      // versions removes these entries and restores the empty list.
+      exceptions: [
+        {
+          familyPackage: "@prisma/composer-cli",
+          familyPin: "0.2.3",
+          shellPin: "0.3.0",
+          reason:
+            "@prisma/cli-engine 0.3.0 moves @prisma/management-api-sdk to a peer dependency so one copy of the SDK's client type serves the engine and the shell. Breaking for the engine's consumers, so both families must republish against it.",
+          removeWhen:
+            "@prisma/composer-cli publishes a version peering @prisma/cli-engine 0.3.0 and this repo pins it.",
+        },
+        {
+          familyPackage: "@prisma/orm-toolchain",
+          familyPin: "0.2.3",
+          shellPin: "0.3.0",
+          reason:
+            "@prisma/cli-engine 0.3.0 moves @prisma/management-api-sdk to a peer dependency so one copy of the SDK's client type serves the engine and the shell. Breaking for the engine's consumers, so both families must republish against it.",
+          removeWhen:
+            "@prisma/orm-toolchain publishes a version peering @prisma/cli-engine 0.3.0 and this repo pins it.",
+        },
+      ],
       channel: CHANNEL,
       sandboxDir: join(WORK_DIR, "sandbox"),
     },
