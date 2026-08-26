@@ -116,6 +116,18 @@ The evaluated `prisma.config.ts` default export carries no `$prismaConfig` versi
 
 The file `--config` named does not exist. Only an explicitly named file is an error — an absent `prisma.config.ts` found by discovery is fine, because section validators own absence and supply defaults. The path is in `where.path`. Meta: none.
 
+### CLI.CONFIG_PARENT_CYCLE
+
+A config file's explicit `parent` names a file that is already on the config chain, which would loop forever. Raised by the config loader while following the chain; the declaring file's absolute path is in `where.path` and the summary names both files. The fix is to point `parent` elsewhere or set it to `false`. Meta: none.
+
+### CLI.CONFIG_PARENT_INVALID
+
+A config file declares `parent` with a value that is neither `false` nor a path string. Raised by the config loader while following the chain; the declaring file's absolute path is in `where.path`. Meta: none.
+
+### CLI.CONFIG_PARENT_NOT_FOUND
+
+A config file's explicit `parent` names a file that does not exist. Naming a parent is deliberate, so its absence is an error — unlike discovery, where finding no file is fine. Raised by the config loader while following the chain; the declaring file's absolute path is in `where.path` and the summary names the missing target. Meta: none.
+
 ### CLI.CONFIG_SECTION_INVALID
 
 The config section a command declared in `needs.config` failed its validator; the individual problems travel as accompanying diagnostics on the envelope, and the summary names the section and the config file actually read (respecting `--config`). Raised by the engine's needs check before the handler runs. Meta: none.
