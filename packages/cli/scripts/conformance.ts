@@ -59,12 +59,16 @@ async function importPurity(): Promise<readonly Finding[]> {
     label: "@prisma/cli",
     output: await sweepBuiltOutput(join(CLI_DIR, "dist")),
     manifest: await manifest(CLI_DIR),
+    // Composer resolves this package dynamically from the installed CLI
+    // when it starts the local Postgres emulator.
+    allowedUnimported: ["@prisma/dev"],
     requiredSpecifiers: ["@prisma/cli-engine", "@prisma/composer-cli/family"],
   });
   const unscoped = checkImportPurity({
     label: "prisma",
     output: await sweepBuiltOutput(join(PRISMA_DIR, "dist")),
     manifest: await manifest(PRISMA_DIR),
+    allowedUnimported: ["@prisma/dev"],
     requiredSpecifiers: ["@prisma/cli-engine", "@prisma/composer-cli/family"],
   });
   const engine = checkImportPurity({
@@ -97,8 +101,16 @@ async function tarball(): Promise<readonly Finding[]> {
   return checkTarball(
     {
       packages: [
-        { name: "@prisma/cli", dir: CLI_DIR },
-        { name: "prisma", dir: PRISMA_DIR },
+        {
+          name: "@prisma/cli",
+          dir: CLI_DIR,
+          allowedUnimported: ["@prisma/dev"],
+        },
+        {
+          name: "prisma",
+          dir: PRISMA_DIR,
+          allowedUnimported: ["@prisma/dev"],
+        },
         {
           name: "@prisma/cli-engine",
           dir: ENGINE_DIR,
