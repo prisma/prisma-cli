@@ -3,7 +3,7 @@ name: prisma-platform-core-concepts
 metadata:
   library: "prisma"
   library_version: "8.0.0-rc.11"
-  version: 2026.8.27
+  version: 2026.8.28
 description: >-
   Use when hosting, deploying, or operating an app on the Prisma Platform:
   projects, branches, preview environments, services and their versions,
@@ -249,29 +249,6 @@ own work:
    the Composer local stack is what mirrors the deployed wiring.
 
 Windows is not supported for the local stack yet.
-
-## The CLI in one map
-
-Command groups and what each manages; run `prisma <group> --help` for the
-commands, before assuming a capability exists or is missing:
-
-| Group | Manages |
-| --- | --- |
-| `auth`, `auth workspace` | Login, identity, workspace sessions |
-| `project`, `project env` | Projects, directory binding, environment variables |
-| `branch` | Listing platform branches |
-| `git` | The GitHub repository connection |
-| `service`, `service version`, `service domain` | Services, their versions, custom domains |
-| `postgres`, `postgres backup`, `postgres connection` | Databases, backups, connection strings |
-| `bucket`, `bucket key` | Object storage and its access keys |
-| `deploy`, `dev` | Deploying the Composer app; running it locally |
-| `contract`, `db`, `migration`, `orm` | The ORM surface (see `prisma-orm-core-concepts`) |
-| `init`, `skills` | Repo setup; keeping these agent skills current |
-| `feedback` | Sending feedback to the Prisma team |
-
-Destructive commands (deleting or transferring a project, deleting a
-database, restoring a backup, and similar) require re-typing the exact
-resource id as confirmation; script them accordingly.
 
 ## Failure modes quick reference
 
