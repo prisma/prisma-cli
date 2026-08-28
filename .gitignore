@@ -10,6 +10,8 @@ tmp/
 # Build and test output
 artifacts/
 dist/
+# Staged by scripts/stage-skills.mjs at prepack; source of truth is /skills
+/packages/prisma/skills/
 .publish/
 coverage/
 .vitest/

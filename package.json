@@ -12,6 +12,7 @@
     "build:compute": "pnpm --filter @prisma/compute build",
     "check:grammar": "turbo run check:grammar",
     "check:error-reference": "node scripts/list-error-codes.mjs --verify docs/reference/error-reference.md",
+    "check:skill-packaging": "node scripts/check-skill-packaging.mjs",
     "format": "biome format . --write",
     "lint": "biome check . --error-on-warnings",
     "lint:fix": "biome check . --write",
