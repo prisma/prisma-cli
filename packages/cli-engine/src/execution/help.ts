@@ -12,7 +12,7 @@ import {
   type PositionalSpec,
   positionalRuntime,
 } from "../args";
-import type { AnyCommand } from "../commands";
+import type { AnyCommand, WorkflowStep } from "../commands";
 import type { CommandTreeEntry, CommandTreeNode } from "./command-tree";
 import type { EngineSpec } from "./engine";
 import { makePaint, type Paint, textWidth } from "./palette";
@@ -243,6 +243,35 @@ function exampleLines(
   }
 }
 
+/** The group's common path: `$`-prefixed copy-pastable steps in mount
+ *  order, purpose column muted, aligned like every other row block. */
+function workflowLines(
+  workflow: readonly WorkflowStep[] | undefined,
+  cliName: string,
+  paint: Paint,
+  lines: string[],
+): void {
+  if (workflow === undefined || workflow.length === 0) {
+    return;
+  }
+  lines.push(rail(paint));
+  lines.push(sectionLabel(paint, "Workflow"));
+  const steps = workflow.map((step) => ({
+    run: resolveExample(step.run, cliName),
+    brief: step.brief,
+  }));
+  const width = Math.max(...steps.map((step) => textWidth(step.run)));
+  for (const step of steps) {
+    const pad = " ".repeat(width - textWidth(step.run));
+    lines.push(
+      rail(
+        paint,
+        `${GAP}${paint("muted", "$")} ${step.run}${pad}${GAP}${paint("muted", step.brief)}`,
+      ),
+    );
+  }
+}
+
 function docsLine(
   url: string | undefined,
   paint: Paint,
@@ -428,6 +457,11 @@ function renderNodeHelp(
     lines.push(rail(paint));
     proseLines(description, paint, lines);
   }
+
+  const workflow = atRoot
+    ? spec.help?.workflow
+    : spec.groups[groupPath]?.workflow;
+  workflowLines(workflow, spec.name, paint, lines);
 
   if (atRoot) {
     lines.push(rail(paint));

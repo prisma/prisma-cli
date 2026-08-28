@@ -118,10 +118,7 @@ export const telemetryStatusCommand = defineCommand({
   help: {
     summary: "Show whether anonymous CLI telemetry is enabled and why",
     description:
-      "Reports whether telemetry is currently enabled or disabled and the reason\n" +
-      "(default-on, stored opt-out, environment opt-out, or CI), the path to your\n" +
-      "user-level config file, and whether an installation ID has been stored.\n" +
-      "Read-only: never sends an event, never mints an ID, never writes anything.",
+      "Reports whether telemetry is currently enabled or disabled and the reason (default-on, stored opt-out, environment opt-out, or CI), the path to your user-level config file, and whether an installation ID has been stored. Read-only: never sends an event, never mints an ID, never writes anything.",
     examples: ["telemetry status", "telemetry status --json"],
   },
   handler: async (_args, ctx) => {
@@ -142,8 +139,7 @@ export const telemetryEnableCommand = defineCommand({
   help: {
     summary: "Enable anonymous CLI telemetry",
     description:
-      'Stores "enableTelemetry": true in your user-level config and mints an\n' +
-      "installation ID if one is not already stored.",
+      'Stores "enableTelemetry": true in your user-level config and mints an installation ID if one is not already stored.',
     examples: ["telemetry enable"],
   },
   handler: async (_args, ctx) => {
@@ -169,8 +165,7 @@ export const telemetryDisableCommand = defineCommand({
   help: {
     summary: "Disable anonymous CLI telemetry",
     description:
-      'Stores "enableTelemetry": false in your user-level config. No installation\n' +
-      "ID is minted and no event is sent.",
+      'Stores "enableTelemetry": false in your user-level config. No installation ID is minted and no event is sent.',
     examples: ["telemetry disable"],
   },
   handler: async (_args, ctx) => {

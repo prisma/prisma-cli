@@ -54,13 +54,16 @@ function listPresentations(result: BranchListResult): Presentations {
 
 export const branchListCommand = defineCommand({
   help: {
-    summary: "List Platform branches for the resolved project",
+    summary: "List a project's Platform branches",
+    description:
+      "A Branch maps to a Git branch of the connected repository. Each one is an isolated environment with its own services, databases, buckets, and environment variables: the production branch serves live traffic, every other branch is a preview.",
     examples: ["branch list", "branch list --project my-app"],
   },
   args: {
     flags: {
       project: flag.string({
-        brief: "Project id or name",
+        brief:
+          "Project id or name (default: the project this directory is linked to)",
         placeholder: "id-or-name",
       }),
     },

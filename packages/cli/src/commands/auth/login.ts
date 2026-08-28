@@ -114,6 +114,8 @@ export const authLoginCommand = defineCommand({
   managesCredentials: true,
   help: {
     summary: "Log in to your Prisma platform account",
+    description:
+      "Opens a browser sign-in and stores a session for one workspace, the account-level container that holds your Projects. Run it again to add a session for another workspace; 'auth workspace use' switches between stored sessions. In CI or other non-interactive environments, skip login and set PRISMA_SERVICE_TOKEN instead.",
     examples: ["auth login"],
   },
   handler: async (_args, ctx) => {

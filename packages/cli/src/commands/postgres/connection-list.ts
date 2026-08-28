@@ -77,6 +77,8 @@ export const postgresConnectionListCommand = defineCommand({
   },
   help: {
     summary: "List database connection metadata without secret values",
+    description:
+      "Each connection is an independent credential for the same database, so one consumer's access can be rotated or revoked without breaking the others. Listing shows metadata only; connection URLs print once, at create or rotate, and never again.",
     examples: [
       "postgres connection list db_123",
       "postgres connection list acme-preview --branch preview --json",

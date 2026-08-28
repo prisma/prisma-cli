@@ -17,7 +17,8 @@ export const postgresCreateCommand = defineCommand({
     },
     flags: {
       region: flag.string({
-        brief: "Prisma Postgres region id",
+        brief:
+          "Prisma Postgres region id; set it when the data must live near a location",
         placeholder: "region",
       }),
       project: projectFlag,
@@ -27,6 +28,8 @@ export const postgresCreateCommand = defineCommand({
   help: {
     summary:
       "Create a Prisma Postgres database and print its one-time connection URL",
+    description:
+      "Creates a database in a Branch of the project and prints its connection URL exactly once; store it now, nothing prints it again. Mint further URLs for other consumers with 'postgres connection create'.",
     examples: [
       "postgres create my-db",
       "postgres create my-db --branch feature/foo --region eu-central-1",

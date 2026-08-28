@@ -119,6 +119,10 @@ Rules:
 
 ## Help and Usage
 
+The wording contract for help text, and the reasoning behind it, is
+`cli-help-standard.md`. This section covers the card structure and
+formatting.
+
 Help should feel like the rest of the CLI:
 
 - concise
@@ -139,6 +143,26 @@ Help output should:
 - keep examples indented and copy-pastable
 
 Unknown commands should show "Did you mean ..." suggestions when there is a clear close match.
+
+### Descriptions Describe Intent
+
+Help text is read by people and by agents that have never seen the platform's resource model. Help is a manual, not a summary. Write for both:
+
+- The summary states what the command does. When the command name already says it, the summary stays a plain restatement (`project list` → "List the projects in your workspace") and no description is added.
+- A description earns its place by adding intent: when to run the command, what it operates on, and what happens next. It must not paraphrase the command name.
+- A group's brief is a short lead sentence, then the scope of what lives beneath it ("Manage S3-compatible object-store buckets for a project. CRUD operations and access keys"). "CRUD" may stand in for the common verbs; operations a reader would not guess (link, transfer, promote) are named.
+- A group's description defines every term its command rows rely on. If a row says "linked", the group card says what linking is before the reader opens the leaf.
+- Do not assume the reader knows Prisma nouns. The first time a group or command depends on one, define it in one clause: a Project groups one product or codebase inside a workspace; a Branch maps to a Git branch and is an isolated environment with its own services, databases, and buckets.
+- Internal resolution terms stay out of help: no "binding", "resolved", "pinned", or "active" without a plain-language definition in the same card. Prefer the plain phrase outright ("the project this directory is linked to" over "the resolved project").
+- Refer to Prisma ORM by that name. Do not use retired product names such as "Prisma Next" in help text.
+
+### Flag Briefs Say When
+
+A flag brief states what the flag does; when the flag exists for a distinct situation, it also says when to reach for it ("--branch: target a preview branch instead of the default branch"). Defaults render as an automatic suffix, so briefs do not repeat them.
+
+### Workflow Sections
+
+A group card may declare a workflow: the ordered commands of that group's common path, each with a short purpose column. The engine renders it as a `Workflow` section, before any examples, with each step `$`-prefixed and copy-pastable. Declare a workflow only where a real multi-command path exists; a group of independent commands has no workflow.
 
 ## Flags
 

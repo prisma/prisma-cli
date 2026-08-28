@@ -99,7 +99,9 @@ export const authWorkspaceUseCommand = defineCommand({
     },
   },
   help: {
-    summary: "Make one of your workspace sessions current",
+    summary: "Make a workspace session current: commands target that workspace",
+    description:
+      "Switches which workspace subsequent commands target. This changes local CLI state only; nothing is created or modified on the platform. Run without an argument to pick from your stored sessions.",
     examples: ["auth workspace use", "auth workspace use my-workspace"],
   },
   handler: async (args, ctx) => {

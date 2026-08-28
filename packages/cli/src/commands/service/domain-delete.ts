@@ -13,6 +13,8 @@ import {
 export const serviceDomainDeleteCommand = defineCommand({
   help: {
     summary: "Delete a custom domain from the service",
+    description:
+      "The hostname stops routing to the service immediately; the service itself and its generated URL keep working. Pass the hostname with --confirm to run non-interactively.",
     examples: [
       "service domain delete shop.acme.com --service my-service",
       "service domain delete shop.acme.com --service my-service --confirm shop.acme.com",

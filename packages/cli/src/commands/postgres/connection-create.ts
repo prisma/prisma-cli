@@ -18,14 +18,20 @@ export const postgresConnectionCreateCommand = defineCommand({
   args: {
     positionals: { database: databasePositional },
     flags: {
-      name: flag.string({ brief: "Connection name", placeholder: "name" }),
+      name: flag.string({
+        brief:
+          "Connection name; use it to record which consumer holds the credential",
+        placeholder: "name",
+      }),
       project: projectFlag,
       branch: branchFlag,
     },
   },
   help: {
     summary:
-      "Create a database connection and print its one-time connection URL",
+      "Create an additional connection URL for a database; printed exactly once",
+    description:
+      "Mints an additional credential for an existing database, shown exactly once. Give each consumer (an app, CI, a teammate) its own named connection, so its access can later be rotated or revoked without touching the others.",
     examples: [
       "postgres connection create db_123",
       "postgres connection create db_123 --name readonly",

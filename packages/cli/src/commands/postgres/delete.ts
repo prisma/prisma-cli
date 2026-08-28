@@ -47,6 +47,8 @@ export const postgresDeleteCommand = defineCommand({
   },
   help: {
     summary: "Delete a database after exact id confirmation",
+    description:
+      "Deletion is permanent and destroys the data. The exact database id is the consent token; pass it with --confirm to run non-interactively.",
     examples: ["postgres delete db_123 --confirm db_123"],
   },
   needs: { credentials: true },

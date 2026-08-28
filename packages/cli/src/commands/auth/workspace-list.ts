@@ -81,6 +81,8 @@ export const authWorkspaceListCommand = defineCommand({
   managesCredentials: true,
   help: {
     summary: "List your workspace sessions",
+    description:
+      "Each 'auth login' stores one session per workspace. This lists the sessions on this machine and marks the current one, which every workspace-scoped command targets.",
     examples: ["auth workspace list", "auth workspace list --json"],
   },
   handler: async (_args, ctx) => {

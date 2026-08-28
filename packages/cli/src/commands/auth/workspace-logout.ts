@@ -82,6 +82,8 @@ export const authWorkspaceLogoutCommand = defineCommand({
   },
   help: {
     summary: "End one workspace session",
+    description:
+      "Removes the stored session for one workspace and leaves the others in place. To clear every session on this machine, use 'auth logout'.",
     examples: ["auth workspace logout my-workspace"],
   },
   handler: async (args, ctx) => {

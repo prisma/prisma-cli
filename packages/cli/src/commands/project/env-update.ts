@@ -72,7 +72,9 @@ export const projectEnvUpdateCommand = defineCommand({
     },
   },
   help: {
-    summary: "Replace an existing environment variable's value.",
+    summary: "Replace an existing environment variable's value",
+    description:
+      "Overwrites one variable's value in one scope; the variable must already exist there (use 'project env add' to create it). The new value reaches services on their next deploy.",
     examples: [
       "project env update STRIPE_KEY=sk_new_xxx --role production",
       "project env update STRIPE_KEY=sk_new_xxx --role preview",
