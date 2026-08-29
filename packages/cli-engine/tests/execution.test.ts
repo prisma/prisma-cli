@@ -601,6 +601,7 @@ describe("needs preconditions", () => {
       cwd: process.cwd(),
       env: {},
       isTty: { stdin: opts.interactive, stdout: false, stderr: false },
+      outputStreamsShareDevice: true,
       exit: (code: number): never => {
         throw new Error(`runtime.exit(${code})`);
       },
@@ -821,6 +822,7 @@ describe("report() after the handler resolved", () => {
       cwd: "/",
       env: {},
       isTty: { stdin: false, stdout: false, stderr: false },
+      outputStreamsShareDevice: true,
       exit: (code: number): never => {
         throw new Error(`runtime.exit(${code})`);
       },
@@ -896,6 +898,7 @@ describe("credentials that cannot be read", () => {
       cwd: "/",
       env: {},
       isTty: { stdin: false, stdout: false, stderr: false },
+      outputStreamsShareDevice: true,
       exit: (code: number): never => {
         throw new Error(`runtime.exit(${code})`);
       },

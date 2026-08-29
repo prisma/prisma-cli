@@ -474,6 +474,7 @@ export const runtimeShape: Runtime = {
   cwd: "/",
   env: { CI: "1" },
   isTty: { stdin: true, stdout: true, stderr: true },
+  outputStreamsShareDevice: true,
   exit: (code: number): never => {
     throw new Error(String(code));
   },

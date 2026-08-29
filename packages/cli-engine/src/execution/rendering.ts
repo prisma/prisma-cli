@@ -438,12 +438,11 @@ export function renderCompletedHuman(
    *  (amends the 2026-08-09 "always" ruling; any redirection of either
    *  stream keeps the mirror, so pipes still receive exactly the data
    *  lines). A harness that allocates two separate PTYs reports
-   *  outputStreamsShareDevice false and keeps its mirror; a host that
-   *  cannot tell is treated as one terminal. */
+   *  outputStreamsShareDevice false and keeps its mirror. */
   const oneScreen =
     runtime.isTty.stdout &&
     runtime.isTty.stderr &&
-    runtime.outputStreamsShareDevice !== false;
+    runtime.outputStreamsShareDevice;
   if (!oneScreen) {
     for (const line of presented.presentation.stdout) {
       runtime.stdout.write(`${line}\n`);

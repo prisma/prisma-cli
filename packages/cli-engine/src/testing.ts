@@ -130,6 +130,11 @@ export interface TestCli {
       readonly onSettled?: (summary: RunSummary) => void;
       readonly cwd?: string;
       readonly isTty?: { stdin?: boolean; stdout?: boolean; stderr?: boolean };
+      /** Whether stdout and stderr are the same open device. Defaults to
+       *  true — two TTYs are one terminal far more often than not — which
+       *  suppresses the stdout mirror. Set false to assert a command's
+       *  stdout payload the way a caller with separate sinks receives it. */
+      readonly outputStreamsShareDevice?: boolean;
       /** Terminal width, as the stream would report it. Absent means
        *  not a terminal, which is what ui.width reads as unbounded. */
       readonly columns?: { stderr?: number };
@@ -361,6 +366,7 @@ export function createTestCli(spec: {
           stdout: opts?.isTty?.stdout ?? false,
           stderr: opts?.isTty?.stderr ?? false,
         },
+        outputStreamsShareDevice: opts?.outputStreamsShareDevice ?? true,
         isCIOverride: opts?.isCI ?? spec.isCI,
         exit: (code: number): never => {
           throw new Error(
