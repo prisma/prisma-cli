@@ -131,6 +131,8 @@ composer can use it.
 
 ## The ORM family does not work through the assembled binary (found 2026-08-13, writing the e2e happy paths)
 
+**Resolved 2026-08-17 (the presentations half):** `@prisma/orm-toolchain@8.0.0-rc.2` declares all four presentations, prisma-cli pins it, and the engine's two defensive `?.()` calls are gone. The `orm init` config mismatch below is untouched and still live.
+
 Running the shipped `prisma` binary against a scratch directory, rather than the ORM family through the test harness, turns up three things. The first is a defect a user hits on their first command.
 
 - **`prisma orm init` scaffolds a project the `prisma` binary cannot read.** It writes `prisma-next.config.ts` — the standalone `prisma-next` bin's config file — and then fails its own last step, `Emit the contract`, with exit 5 and `Config is not a defineConfig result`. Nine files are already on disk at that point. Running any ORM command afterwards fails again, differently: the mounted family reads its configuration from an `orm` section of `prisma.config.ts` (`ormConfigSection`, `packages/1-framework/3-tooling/cli/src/orm/config-section.ts` in prisma/prisma), so it reports `CLI.CONFIG_SECTION_INVALID` and `CONFIG.FILE_NOT_FOUND` — "The orm config section is absent, so prisma-next.config.ts was never evaluated." So `prisma orm init && prisma contract emit` cannot work, and the two config surfaces have different shapes: the section nests the whole config under `orm`, while the scaffolded file exports a `defineConfig` result. Which side moves is the ORM's call; that it is broken today is not in question.

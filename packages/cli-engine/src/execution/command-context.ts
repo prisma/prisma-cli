@@ -55,24 +55,18 @@ export function makeUi(colorEnabled: boolean, stderr: OutputStream): Ui {
 /** Materializes ONLY the active format's presentation functions, at the
  *  return site: human → human + stdout + next; json → json + next.
  *
- *  `stdout` and `next` may be absent at runtime, so both are called with
- *  `?.()`. `Presentations` requires all four, so no command compiled
- *  against this engine can omit one — but `@prisma/orm-toolchain` is
- *  built against engine `0.0.9`, where three of the four were optional,
- *  and its published commands took that up: `migration list` declares
- *  `human` and `json` and neither of the others. Calling them
- *  unconditionally makes it exit 2 — `stdout` in human mode, `next` in
- *  both.
+ *  Every one is called unconditionally, because `Presentations` requires
+ *  all four and nothing reaches here that did not satisfy that type.
  *
- *  `json` is called unconditionally, and stays that way: a missing json
- *  presentation is the defect this change removes, and every ORM command
- *  already declares one.
- *
- *  This is version skew in our own code, not a foreign contract. The fix
- *  is in prisma/prisma: declare the missing presentations in the ORM
- *  commands and build orm-toolchain against this engine, where the type
- *  refuses to compile without them. Delete both `?.()` when that
- *  version is pinned here. */
+ *  Two of these calls were briefly written `?.()`, to tolerate
+ *  `@prisma/orm-toolchain` built against engine `0.0.9`, where three of
+ *  the four were optional and its commands took that up. That was a
+ *  consumer working around a producer it shares an owner with. The
+ *  producer was fixed instead (prisma/prisma#30004), and this repo pins
+ *  a version that declares all four, so the defensive calls are gone.
+ *  Anything that omits one now fails loudly rather than silently
+ *  publishing an empty surface — which is the whole point of requiring
+ *  them. */
 function materializePresentation(
   state: RunState,
   ui: Ui,
@@ -83,14 +77,14 @@ function materializePresentation(
       human: [],
       stdout: [],
       json: presentations.json(),
-      next: presentations.next?.() ?? [],
+      next: presentations.next(),
     };
   }
   return {
     human: presentations.human(ui),
-    stdout: presentations.stdout?.() ?? [],
+    stdout: presentations.stdout(),
     json: undefined,
-    next: presentations.next?.() ?? [],
+    next: presentations.next(),
   };
 }
 
