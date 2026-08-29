@@ -64,19 +64,31 @@ function tarEntry(name: string, contents: string): Buffer {
 }
 
 /** The smallest thing the platform will run: an HTTP server that
- *  answers, so a started deployment reaches `running` rather than
- *  crash-looping. */
+ *  answers, so a started deployment actually boots and serves rather
+ *  than crash-looping. The layout is what Composer's archiver produces
+ *  and the runner requires — files under `bundle/`, and a root
+ *  `compute.manifest.json` naming the entrypoint; without the manifest
+ *  the runner exits before ever starting the app. The server logs on
+ *  startup and per request, so `service logs` has lines to read; the
+ *  "e2e-fixture" markers are what the logs test looks for. */
 function artifact(): Buffer {
   const tar = Buffer.concat([
     tarEntry(
-      "package.json",
+      "compute.manifest.json",
+      '{"manifestVersion":"1","entrypoint":"bundle/index.js"}',
+    ),
+    tarEntry(
+      "bundle/package.json",
       '{"name":"e2e-fixture","version":"1.0.0","type":"module","main":"index.js"}',
     ),
     tarEntry(
-      "index.js",
+      "bundle/index.js",
       'import{createServer}from"node:http";' +
-        'createServer((_,response)=>{response.writeHead(200);response.end("ok")})' +
-        ".listen(process.env.PORT||3000);",
+        "createServer((request,response)=>{" +
+        'console.log("e2e-fixture served "+request.url);' +
+        'response.writeHead(200);response.end("ok")})' +
+        ".listen(process.env.PORT||3000," +
+        '()=>console.log("e2e-fixture listening"));',
     ),
     Buffer.alloc(1024), // two zero blocks end the archive
   ]);

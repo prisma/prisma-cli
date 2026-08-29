@@ -113,11 +113,6 @@ const EXCLUSIONS: Readonly<Record<string, string>> = {
  * starts and promotes it through the CLI. That covered seven commands,
  * and what is left needs something the deployment alone does not give.
  *
- * `service version rollback` needs a SECOND promoted deployment to
- * roll back from. The fixture makes one; making two and promoting them
- * in order is more run time and more teardown, and is the next thing to
- * write.
- *
  * The five `service domain *` commands need a hostname whose DNS we
  * control. With a promoted deployment in place, `service domain add`
  * gets all the way to `SERVICE.DOMAIN_DNS_NOT_CONFIGURED` — "DNS
@@ -125,16 +120,8 @@ const EXCLUSIONS: Readonly<Record<string, string>> = {
  * switchboard.ewr.prisma.build." No fixture inside this repo can satisfy
  * that; it needs a domain the test account owns and a DNS record.
  *
- *
- * `service logs` arrived while this was being written, excluded because
- * only Composer's deploy produced a deployment to read logs from. That
- * is no longer true, so it is owed rather than excused — it needs a
- * deployment that has actually served traffic, which is a little more
- * than the fixture does today.
  */
 const AWAITING_COVERAGE: readonly string[] = [
-  "service version rollback",
-  "service logs",
   "service domain add",
   "service domain show",
   "service domain delete",
