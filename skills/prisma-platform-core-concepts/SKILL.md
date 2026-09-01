@@ -190,8 +190,9 @@ container image to author and no platform emulator to install locally.
 
 The runtime has no global `Temporal` (stock Node 24 lacks one too). Code
 that reads an ORM `DateTime` column compiles and deploys, then throws on
-the first read. Either `import 'temporal-polyfill/global'` at the service
-entry, or use the `*String` column types such as `TimestamptzString`.
+the first read. Either add the `temporal-polyfill` dependency and
+`import 'temporal-polyfill/full/global'` at the service entry, or use the
+`*String` column types such as `TimestamptzString`.
 
 An idle service **sleeps**: the platform snapshots its memory after a short
 period of inactivity and resumes it from the snapshot on the next request.
