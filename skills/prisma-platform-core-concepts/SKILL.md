@@ -2,8 +2,8 @@
 name: prisma-platform-core-concepts
 metadata:
   library: "prisma"
-  library_version: "8.0.0-rc.11"
-  version: 2026.8.28
+  library_version: "8.0.0-rc.12"
+  version: 2026.9.1
 description: >-
   Use when hosting, deploying, or operating an app on the Prisma Platform:
   projects, branches, preview environments, services and their versions,
@@ -12,7 +12,7 @@ description: >-
   Platform", "Prisma Compute", "Prisma Postgres", "Prisma Storage",
   "preview environment", `prisma deploy`, `prisma dev`, `prisma auth`,
   `prisma project`, `prisma branch`, `prisma service`, `prisma postgres`,
-  `prisma bucket`, `prisma git`, promote, rollback.
+  `prisma bucket`, `prisma git`, `prisma.config.ts`, promote, rollback.
 ---
 
 # Prisma Platform core concepts
@@ -54,6 +54,43 @@ the source of truth: deploying converges the platform to it, re-deploying
 applies only the difference, and removing a resource from the module removes
 it from the platform on the next deploy. There is no separate provisioning
 step and no connection strings to wire by hand; Composer injects them.
+
+## Project setup
+
+The CLI carries every command named here, but an app's own code needs its
+dependencies installed. Start from:
+
+```sh
+npm install prisma @prisma/composer @prisma/composer-prisma-cloud
+```
+
+`@prisma/composer` is what the module declaration imports;
+`@prisma/composer-prisma-cloud` is the Prisma Cloud target and brings
+`@prisma/orm-postgres` with it. The sibling skills travel inside these
+packages (`prisma-composer-core-concepts` in `@prisma/composer`,
+`prisma-orm-core-concepts` in `@prisma/orm-postgres`), so they appear after
+this install plus `prisma skills sync`, not before.
+
+Two config files with different owners:
+
+1. `prisma.config.ts` configures the CLI. Each top-level key is a section
+   owned by one product, and this CLI recognises exactly three: `orm`,
+   `composer`, and `skills`. The composed shape:
+
+   ```ts
+   import { definePrismaConfig } from "prisma/config";
+   import { defineConfig } from "@prisma/orm-postgres/config";
+
+   export default definePrismaConfig({
+     orm: defineConfig({ contract: "./src/prisma/contract.prisma" }),
+     skills: { agents: ["claude"] },
+   });
+   ```
+
+2. `prisma-composer.config.ts` configures Composer itself and is a separate,
+   mandatory file for `dev` and `deploy`: without it `dev` fails with
+   `CONFIG.FILE_MISSING`. Its contents belong to
+   `prisma-composer-core-concepts`.
 
 ## The resource model
 
@@ -150,6 +187,11 @@ failed on missing DNS is retried after the record exists.
 
 Services run on Bun, next to their Prisma Postgres database. There is no
 container image to author and no platform emulator to install locally.
+
+The runtime has no global `Temporal` (stock Node 24 lacks one too). Code
+that reads an ORM `DateTime` column compiles and deploys, then throws on
+the first read. Either `import 'temporal-polyfill/global'` at the service
+entry, or use the `*String` column types such as `TimestamptzString`.
 
 An idle service **sleeps**: the platform snapshots its memory after a short
 period of inactivity and resumes it from the snapshot on the next request.
@@ -273,6 +315,14 @@ Windows is not supported for the local stack yet.
 8. **A resource disappeared from the platform after a deploy.** It was
    removed from `module.ts`; the module is the source of truth and deploy
    converges to it. Restore the declaration and re-deploy.
+9. **`dev` or `deploy` rejects the app graph (`COMPOSE.GRAPH_INVALID`) over
+   a name.** Resource ids declared in the module (`provision()` ids,
+   `compute({ name })`) allow `[A-Za-z0-9]` only. A hyphenated id passes
+   authoring and typecheck, then fails here. Module and project names do
+   accept hyphens, so never derive a resource id from them.
+10. **A deployed service errors on its first timestamp read
+    (`RUNTIME.TEMPORAL_UNAVAILABLE`).** The runtime has no global
+    `Temporal`; see the Compute runtime section for the polyfill.
 
 ## What the platform doesn't do yet
 
