@@ -310,7 +310,7 @@ export const cliGroups: Readonly<
     brief:
       "Manage a service's deploy versions. List, inspect, promote, roll back, start, stop, delete",
     description:
-      "Every deploy produces an immutable version; at most one serves traffic at a time on each branch. List and show inspect them; promote, rollback, start, stop, and delete change which one runs.",
+      "Every deploy produces an immutable version; at most one serves traffic at a time on each branch. List and show inspect them. Promote and rollback choose which version serves traffic; start, stop, and delete drive one version's lifecycle.",
   },
   "auth workspace": {
     brief:
