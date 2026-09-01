@@ -52,7 +52,9 @@ function listPresentations(result: BucketListResult): Presentations {
 export const bucketListCommand = defineCommand({
   args: { flags: { project: projectFlag, branch: branchFlag } },
   help: {
-    summary: "List object-store buckets for the resolved project",
+    summary: "List a project's object-store buckets",
+    description:
+      "A bucket is blob storage for files and uploads. Buckets are branch-bound: each belongs to one Branch, the isolated environment for one Git branch.",
     examples: [
       "bucket list",
       "bucket list --branch preview",

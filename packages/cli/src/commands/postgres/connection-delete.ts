@@ -19,6 +19,8 @@ export const postgresConnectionDeleteCommand = defineCommand({
   },
   help: {
     summary: "Delete a database connection after exact id confirmation",
+    description:
+      "Revokes the credential: anything still using its URL loses access to the database. The database itself and its other connections are untouched. The exact connection id is the consent token.",
     examples: ["postgres connection delete conn_123 --confirm conn_123"],
   },
   needs: { credentials: true },

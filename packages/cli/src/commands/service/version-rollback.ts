@@ -22,6 +22,8 @@ import {
 export const serviceVersionRollbackCommand = defineCommand({
   help: {
     summary: "Roll back production to a previous service version",
+    description:
+      "Returns production traffic to an already-built version without rebuilding, which makes it the fastest way out of a bad release. Defaults to the version before the live one; name an exact target with --to.",
     examples: [
       "service version rollback my-service",
       "service version rollback my-service --to cpv_123",
@@ -40,7 +42,7 @@ export const serviceVersionRollbackCommand = defineCommand({
       }),
       to: flag.string({
         brief:
-          "Version id to roll back to (default: the version before the live one)",
+          "Version id to roll back to; use when the last good version is further back (default: the version before the live one)",
         placeholder: "version",
       }),
     },

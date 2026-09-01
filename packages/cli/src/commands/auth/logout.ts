@@ -53,6 +53,8 @@ export const authLogoutCommand = defineCommand({
   managesCredentials: true,
   help: {
     summary: "Clear stored authentication credentials",
+    description:
+      "Ends every workspace session stored on this machine. To end just one and keep the others, use 'auth workspace logout' instead. A credential supplied via PRISMA_SERVICE_TOKEN is not stored here and stays in force.",
     examples: ["auth logout"],
   },
   handler: async (_args, ctx) => {

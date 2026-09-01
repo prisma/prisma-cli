@@ -11,6 +11,8 @@ export const serviceVersionPromoteCommand = defineCommand({
   help: {
     summary:
       "Promote a service version to production by rebuilding with production env vars",
+    description:
+      "The normal release path: take a version that proved itself on a preview branch, rebuild its source with production environment variables, and switch production traffic to the result. To undo a release, use 'service version rollback', which needs no rebuild.",
     examples: ["service version promote cpv_123"],
   },
   args: {

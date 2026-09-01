@@ -60,17 +60,21 @@ export const bucketKeyCreateCommand = defineCommand({
     positionals: { bucketId: bucketPositional },
     flags: {
       role: flag.enum({
-        brief: "Access role (default: read_write)",
+        brief:
+          "Access role; read_write unless set, use read for consumers that only download",
         values: ["read", "read_write"],
       }),
       name: flag.string({
-        brief: "Key display name (auto-generated if omitted)",
+        brief:
+          "Key display name; use it to record which consumer holds the key (auto-generated if omitted)",
         placeholder: "name",
       }),
     },
   },
   help: {
     summary: "Create a bucket access key and print its one-time credentials",
+    description:
+      "Mints S3-compatible credentials for one bucket, shown exactly once; store them now, nothing prints them again. Give each consumer its own key so one can be revoked without breaking the others, and grant read-only consumers --role read.",
     examples: [
       "bucket key create bkt_123",
       "bucket key create bkt_123 --role read",
