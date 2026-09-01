@@ -15,7 +15,7 @@ export const serviceVersionListCommand = defineCommand({
   help: {
     summary: "List versions of the service",
     description:
-      "Every deploy produces an immutable service version; exactly one serves traffic at a time. Use the listed ids with 'service version' promote, rollback, start, stop, and delete.",
+      "Every deploy produces an immutable service version; at most one serves traffic at a time. Use the listed ids with 'service version' promote, rollback, start, stop, and delete.",
     examples: [
       "service version list my-service",
       "service version list my-service --branch feature-x",

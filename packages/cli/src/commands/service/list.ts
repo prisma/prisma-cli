@@ -13,7 +13,7 @@ export const serviceListCommand = defineCommand({
   help: {
     summary: "List the services in a project",
     description:
-      "A service is one HTTP application (a frontend or a backend) deployed on a Branch of the project. Each deploy produces a service version; exactly one version serves traffic at a time.",
+      "A service is one HTTP application (a frontend or a backend) deployed on a Branch of the project. Each deploy produces a service version; at most one version serves traffic at a time.",
     examples: ["service list", "service list --project my-app --json"],
   },
   args: {

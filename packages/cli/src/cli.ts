@@ -270,7 +270,7 @@ export const cliGroups: Readonly<
     brief:
       "Manage deployed services. Logs, versions, promote and rollback releases, custom domains",
     description:
-      "A service is one HTTP application (a frontend or a backend) deployed on a Branch. Every deploy produces an immutable service version; exactly one serves traffic at a time. The 'version' subcommands move which one that is: promote releases a preview build into production, rollback returns production to a previous version without rebuilding. 'logs' reads and streams output, and 'domain' attaches hostnames you own.",
+      "A service is one HTTP application (a frontend or a backend) deployed on a Branch. Every deploy produces an immutable service version; at most one serves traffic at a time. The 'version' subcommands move which one that is: promote releases a preview build into production, rollback returns production to a previous version without rebuilding. 'logs' reads and streams output, and 'domain' attaches hostnames you own.",
     workflow: [
       {
         run: "service logs my-api --follow",
@@ -310,7 +310,7 @@ export const cliGroups: Readonly<
     brief:
       "Manage a service's deploy versions. List, inspect, promote, roll back, start, stop, delete",
     description:
-      "Every deploy produces an immutable version; one serves traffic at a time on each branch. List and show inspect them; promote, rollback, start, stop, and delete change which one runs.",
+      "Every deploy produces an immutable version; at most one serves traffic at a time on each branch. List and show inspect them; promote, rollback, start, stop, and delete change which one runs.",
   },
   "auth workspace": {
     brief:

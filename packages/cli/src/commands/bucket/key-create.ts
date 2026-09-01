@@ -60,7 +60,8 @@ export const bucketKeyCreateCommand = defineCommand({
     positionals: { bucketId: bucketPositional },
     flags: {
       role: flag.enum({
-        brief: "Access role; use read for consumers that only download",
+        brief:
+          "Access role; read_write unless set, use read for consumers that only download",
         values: ["read", "read_write"],
       }),
       name: flag.string({

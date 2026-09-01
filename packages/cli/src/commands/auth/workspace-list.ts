@@ -82,7 +82,7 @@ export const authWorkspaceListCommand = defineCommand({
   help: {
     summary: "List your workspace sessions",
     description:
-      "Each 'auth login' stores one session per workspace. This lists the sessions on this machine and marks the current one, which every workspace-scoped command targets.",
+      "Each 'auth login' stores one session per workspace. This lists the sessions on this machine and marks the current one, which every workspace-scoped command targets unless a PRISMA_SERVICE_TOKEN credential is set; that credential overrides stored sessions.",
     examples: ["auth workspace list", "auth workspace list --json"],
   },
   handler: async (_args, ctx) => {

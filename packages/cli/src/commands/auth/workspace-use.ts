@@ -101,7 +101,7 @@ export const authWorkspaceUseCommand = defineCommand({
   help: {
     summary: "Make a workspace session current: commands target that workspace",
     description:
-      "Switches which workspace subsequent commands target. This changes local CLI state only; nothing is created or modified on the platform. Run without an argument to pick from your stored sessions.",
+      "Switches which workspace subsequent commands target. This changes local CLI state only; nothing is created or modified on the platform. Run without an argument to pick from your stored sessions. A PRISMA_SERVICE_TOKEN credential, when set, overrides stored sessions: commands keep targeting its workspace regardless of the selection here.",
     examples: ["auth workspace use", "auth workspace use my-workspace"],
   },
   handler: async (args, ctx) => {

@@ -15,7 +15,7 @@ export const serviceShowCommand = defineCommand({
   help: {
     summary: "Show a service and the version currently serving traffic",
     description:
-      "Shows the version currently serving traffic, its status, and the service's live URL. Inspect other versions with 'service version list' and 'service version show'.",
+      "Shows the version serving traffic and the service's live URL, when the service has a live version; a service that has never deployed has none yet. Inspect other versions with 'service version list' and 'service version show'.",
     examples: [
       "service show my-service",
       "service show my-service --branch feature-x",

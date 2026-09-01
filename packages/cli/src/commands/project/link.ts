@@ -183,7 +183,7 @@ export const projectLinkCommand = defineCommand({
     summary:
       "Link this directory to a Project: commands run here target it by default",
     description:
-      "Records locally that this directory belongs to an existing Project, so later commands resolve it without --project. Linking changes local state only; nothing on the platform is created or modified. Run without an argument to pick from your workspace's projects.",
+      "Records locally that this directory belongs to an existing Project, so later commands resolve it without --project. Linking itself changes local state only. Run without an argument to pick from your workspace's projects; that picker also offers creating a new Project, which does create one on the platform.",
     examples: [
       "project link",
       "project link proj_123",
