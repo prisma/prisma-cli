@@ -15,7 +15,7 @@ import {
 } from "../../lib/project/setup";
 import type { ProjectDeleteResult } from "../../types/project";
 import { resolveActiveWorkspace } from "../resources-shared/workspace";
-import { legacyOperationContext, listWorkspaceProjects } from "./context";
+import { listWorkspaceProjects, operationContext } from "./context";
 import { localPinDiagnostics } from "./presentation";
 
 const CONSENT_QUESTION =
@@ -83,7 +83,7 @@ export const projectDeleteCommand = defineCommand({
 
     const warnings: string[] = [];
     const cleared = await cleanupLocalPinForProject(
-      legacyOperationContext(ctx),
+      operationContext(ctx),
       project.id,
       { onError: (message) => warnings.push(message) },
     );

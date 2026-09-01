@@ -1,6 +1,6 @@
 {
   "name": "prisma",
-  "version": "8.0.0-rc.11",
+  "version": "8.0.0-rc.12",
   "description": "The Prisma CLI: one binary for the ORM, Composer, and the Prisma Developer Platform.",
   "type": "module",
   "bin": {
@@ -51,7 +51,7 @@
   "dependencies": {
     "@manypkg/tools": "^2.1.2",
     "@prisma/cli-engine": "workspace:0.3.0",
-    "@prisma/composer-cli": "0.15.0",
+    "@prisma/composer-cli": "0.16.0",
     "@prisma/compute-sdk": "0.42.0",
     "@prisma/management-api-sdk": "1.69.0",
     "@prisma/orm-toolchain": "8.0.0-rc.8",
@@ -62,10 +62,10 @@
     "open": "^11.0.0"
   },
   "devDependencies": {
-    "@prisma/cli": "workspace:8.0.0-rc.11",
+    "@prisma/cli": "workspace:8.0.0-rc.12",
     "@prisma/credentials-store": "^7.8.0",
-    "@repo/cli-telemetry": "workspace:8.0.0-rc.11",
-    "@repo/tsconfig": "workspace:8.0.0-rc.11",
+    "@repo/cli-telemetry": "workspace:8.0.0-rc.12",
+    "@repo/tsconfig": "workspace:8.0.0-rc.12",
     "@types/node": "^22.19.19",
     "tsdown": "^0.21.10",
     "typescript": "^6.0.3",
