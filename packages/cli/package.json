@@ -50,7 +50,7 @@
   "dependencies": {
     "@manypkg/tools": "^2.1.2",
     "@prisma/cli-engine": "workspace:0.3.0",
-    "@prisma/composer-cli": "0.16.0",
+    "@prisma/composer-cli": "0.17.0",
     "@prisma/compute-sdk": "0.42.0",
     "@prisma/management-api-sdk": "1.69.0",
     "@prisma/orm-toolchain": "8.0.0-rc.8",
@@ -61,7 +61,7 @@
     "open": "^11.0.0"
   },
   "devDependencies": {
-    "@prisma/composer": "0.16.0",
+    "@prisma/composer": "0.17.0",
     "@prisma/credentials-store": "^7.8.0",
     "@repo/cli-conformance": "workspace:8.0.0-rc.12",
     "@repo/cli-telemetry": "workspace:8.0.0-rc.12",
