@@ -1,6 +1,6 @@
 {
   "name": "prisma-cli",
-  "version": "8.0.0-rc.12",
+  "version": "8.0.0-rc.13",
   "private": true,
   "engines": {
     "node": ">=24"
