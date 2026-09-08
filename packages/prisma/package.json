@@ -56,6 +56,7 @@
     "@prisma/orm-toolchain": "8.0.0-rc.8",
     "@vercel/detect-agent": "^1.2.3",
     "better-result": "^2.9.2",
+    "cross-spawn": "^7.0.6",
     "dotenv": "^17.4.2",
     "execa": "^9.6.1",
     "open": "^11.0.0"

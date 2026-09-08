@@ -14,17 +14,19 @@ import { beforeEach, describe, expect, test, vi } from "vitest";
 
 const spawnOptionsSeen = vi.hoisted(() => [] as Array<Record<string, unknown>>);
 
-vi.mock("node:child_process", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("node:child_process")>();
+vi.mock("cross-spawn", async (importOriginal) => {
+  const actual = await importOriginal<{
+    default: typeof import("cross-spawn");
+  }>();
   return {
     ...actual,
-    spawn: (
+    default: (
       command: string,
       args: readonly string[],
       options: Record<string, unknown>,
     ) => {
       spawnOptionsSeen.push(options);
-      return actual.spawn(command, [...args], options as never);
+      return actual.default(command, [...args], options as never);
     },
   };
 });
@@ -32,6 +34,7 @@ vi.mock("node:child_process", async (importOriginal) => {
 import { makeSpawnChild } from "../src/spawn";
 
 const NODE = process.execPath;
+const VERSION = /^\d+\.\d+\.\d+$/;
 let diagnosticText = "";
 const spawnChild = makeSpawnChild({
   write: (text) => {
@@ -68,7 +71,7 @@ describe("the shipped spawn adapter", () => {
         output: "diagnostic",
       });
       await expect(child.ended).resolves.toEqual({ exitCode: 0, signal: null });
-      expect(diagnosticText.trim()).toMatch(/^\d+\.\d+\.\d+$/);
+      expect(diagnosticText.trim()).toMatch(VERSION);
     },
   );
 
