@@ -12,6 +12,8 @@ import { serviceProvider, toServiceSummary } from "./target";
 export const serviceVersionShowCommand = defineCommand({
   help: {
     summary: "Show a service version in detail",
+    description:
+      "Version ids are globally unique, so the id alone is the complete target: no --project or --branch scope is needed.",
     examples: ["service version show cpv_123"],
   },
   args: {

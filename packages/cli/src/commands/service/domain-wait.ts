@@ -77,6 +77,8 @@ const DURATION = /^(\d+)(ms|s|m|h)$/;
 export const serviceDomainWaitCommand = defineCommand({
   help: {
     summary: "Wait until a custom domain is active or failed",
+    description:
+      "Blocks while DNS verification and TLS provisioning run, then exits with the outcome; useful in scripts and CI after 'service domain add'.",
     examples: [
       "service domain wait shop.acme.com --service my-service",
       "service domain wait shop.acme.com --service my-service --timeout 30m",

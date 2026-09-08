@@ -776,7 +776,8 @@ function initPresentations(
 
 export const initCommand = defineCommand({
   help: {
-    summary: "Prepare this repository for Prisma development",
+    summary:
+      "Prepare this repository for Prisma: config file, dev dependency, AI-agent skills",
     description:
       "Runs locally and calls no platform API. Adds a postinstall script to package.json that keeps the Prisma agent skills in sync on every install, adds prisma to devDependencies at this CLI's exact version when no dependency field declares it, scaffolds a prisma.config.ts recording which agents to install skills for, then syncs the skills once now. Everything lands in the current directory; a prisma.config.ts or postinstall script that already exists is never edited. Rerunning is safe: each step reports what is already done.",
     examples: [

@@ -43,6 +43,7 @@ export {
   type ServerCommandDefinition,
   type SessionCommandDefinition,
   type SpawnDeclarations,
+  type WorkflowStep,
 } from "../commands";
 export {
   defineConfig,

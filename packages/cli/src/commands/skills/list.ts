@@ -9,6 +9,8 @@ import { packageReports, versionConflictDiagnostics } from "./sync";
 export const skillsListCommand = defineCommand({
   help: {
     summary: "Show which Prisma agent skills are installed in this project",
+    description:
+      "Shows each skill, the package and version it came from, and whether the synced copies are current. Run 'skills sync' to bring stale copies up to date.",
     examples: ["skills list", "skills list --json"],
   },
   needs: { config: skillsConfigSection },

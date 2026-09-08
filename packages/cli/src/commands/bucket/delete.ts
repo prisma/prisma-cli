@@ -35,6 +35,8 @@ export const bucketDeleteCommand = defineCommand({
   args: { positionals: { bucketId: bucketPositional } },
   help: {
     summary: "Delete a bucket and all its access keys",
+    description:
+      "Deletion is permanent: the stored objects are destroyed and every access key stops working. The exact bucket id is the consent token; pass it with --confirm to run non-interactively.",
     examples: ["bucket delete bkt_123 --confirm bkt_123"],
   },
   needs: { credentials: true },

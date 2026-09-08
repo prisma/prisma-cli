@@ -5,6 +5,7 @@ import {
   createCli,
   defineCommandFamily,
   telemetryCommandGroup,
+  type WorkflowStep,
 } from "@prisma/cli-engine";
 import { createComposerFamily } from "@prisma/composer-cli/family";
 import { ormCommandFamily as ormToolchainFamily } from "@prisma/orm-toolchain/cli";
@@ -161,34 +162,192 @@ export { skillsCommandFamily };
 const telemetry = telemetryCommandGroup({ docsUrl: CLI_DOCS_URL });
 
 export const cliGroups: Readonly<
-  Record<string, { brief: string; description?: string }>
+  Record<
+    string,
+    {
+      brief: string;
+      description?: string;
+      workflow?: readonly WorkflowStep[];
+    }
+  >
 > = {
-  auth: { brief: "Manage local authentication for the CLI" },
-  project: { brief: "Manage and inspect your Prisma projects" },
-  "project env": {
-    brief: "Manage environment variables for the active project",
+  auth: {
+    brief:
+      "Manage authentication for the Prisma Platform. Sign in and out, inspect identity, switch workspaces",
+    description:
+      "Signing in opens a browser flow and stores a session for one workspace: the account-level container that holds your Projects, members, and billing. Commands act on the current session's workspace; log in once per workspace and switch with the 'workspace' subcommands. A PRISMA_SERVICE_TOKEN environment credential overrides stored sessions, which is the way to authenticate CI.",
   },
-  postgres: { brief: "Manage Prisma Postgres databases for a project" },
+  project: {
+    brief:
+      "Manage Prisma Platform projects. CRUD, link a directory, transfer ownership, manage environment variables",
+    description:
+      "A Project groups one product or codebase. It is the child of a workspace and the parent of Branches: isolated environments, one per Git branch, each holding its own services, databases, and buckets. 'Linking' connects a local directory to a Project: the link is stored locally, and every project-scoped command run in that directory targets the linked project unless --project names another. 'create' links automatically; 'link' points a directory at an existing Project; 'show' reports the link.",
+    workflow: [
+      {
+        run: "project create my-app",
+        brief: "Create a Project, link this directory",
+      },
+      { run: "git connect", brief: "Connect GitHub so every push deploys" },
+      {
+        run: "project env add KEY=value --role preview",
+        brief: "Set env vars services get at deploy",
+      },
+    ],
+  },
+  "project env": {
+    brief:
+      "Manage a project's environment variables. Add, update, list, and delete values per scope",
+    description:
+      "Variables live in scopes: production, preview (shared by every preview branch), or a single branch's override. Values reach services when they deploy, and are write-only afterwards: list shows metadata, never values.",
+  },
+  postgres: {
+    brief:
+      "Manage Prisma Postgres databases. CRUD, usage metrics, backups, and connection credentials",
+    description:
+      "Databases are branch-bound: each belongs to a Branch, the isolated environment for one Git branch of a project, so commands take --branch to target one. Address a database by its id (db_...) or name. Connection URLs are secrets that print exactly once, at create or rotate; nothing shows them again. 'backup' restores platform-taken backups, and 'connection' manages per-consumer credentials.",
+    workflow: [
+      {
+        run: "postgres create app-db",
+        brief: "Create a database; its URL prints once",
+      },
+      {
+        run: "postgres connection create app-db --name ci",
+        brief: "Mint one credential per consumer",
+      },
+      {
+        run: "postgres connection rotate conn_123",
+        brief: "Replace a leaked credential",
+      },
+    ],
+  },
   "postgres backup": {
-    brief: "Inspect and restore platform-created database backups",
+    brief:
+      "Inspect and restore database backups. The platform takes them automatically",
+    description:
+      "The platform takes backups automatically; there is no backup-create command. Restore replaces a database's current state with a backup's contents after exact id confirmation.",
   },
   "postgres connection": {
-    brief: "Manage one-time-view database connection strings",
+    brief:
+      "Manage database connection credentials. Create, rotate, and revoke per-consumer connection URLs",
+    description:
+      "A connection is one independent credential (a connection URL) for one database. Give each consumer (an app, CI, a teammate) its own, so one can be rotated or revoked without breaking the others. URLs print once, at create or rotate; list shows metadata only.",
   },
-  bucket: { brief: "Manage object-store buckets for a project" },
-  "bucket key": { brief: "Manage access keys for an object-store bucket" },
-  branch: { brief: "View your Platform branches" },
-  git: { brief: "Manage Git repository connections for a project" },
-  service: { brief: "Manage services and their versions for a project" },
-  "service domain": { brief: "Manage custom domains for a service" },
-  "service version": { brief: "Manage the versions of a service" },
-  "auth workspace": { brief: "Manage local workspace sessions" },
-  contract: { brief: "Define and emit your application data contract" },
-  db: { brief: "Verify, sign and update your database against the contract" },
-  migration: { brief: "Plan, inspect and scaffold on-disk migrations" },
-  "migration ref": { brief: "Manage named refs that point at contracts" },
+  bucket: {
+    brief:
+      "Manage S3-compatible object-store buckets for a project. CRUD operations and access keys",
+    description:
+      "A bucket is blob storage for files and uploads, bound to one Branch of a project and reachable through the standard S3 API. Access goes through S3-compatible keys minted per consumer with 'bucket key create', which prints credentials (endpoint, key id, secret) exactly once.",
+    workflow: [
+      {
+        run: "bucket create --name uploads",
+        brief: "Create a bucket in the branch",
+      },
+      {
+        run: "bucket key create bkt_123",
+        brief: "Mint S3 credentials, shown once",
+      },
+    ],
+  },
+  "bucket key": {
+    brief:
+      "Manage a bucket's access keys. Create, list, and revoke per-consumer S3 credentials",
+    description:
+      "A key is one consumer's S3-compatible credentials for one bucket, with role read or read_write. Secrets print once at create; delete revokes access immediately.",
+  },
+  branch: {
+    brief:
+      "View Platform branches: the isolated environment behind each Git branch",
+    description:
+      "A Branch maps to a Git branch of the connected repository. Each is an isolated environment with its own services, databases, buckets, and environment variables: the production branch serves live traffic, every other branch is a preview.",
+  },
+  git: {
+    brief:
+      "Manage the GitHub connection that deploys on push. Connect or disconnect a repository",
+    description:
+      "Connecting a GitHub repository turns on deploy-on-push: pushing a Git branch builds and deploys it to a matching Platform Branch. Disconnecting stops push deploys without touching anything already deployed.",
+  },
+  service: {
+    brief:
+      "Manage deployed services. Logs, versions, promote and rollback releases, custom domains",
+    description:
+      "A service is one HTTP application (a frontend or a backend) deployed on a Branch. Every deploy produces an immutable service version; at most one serves traffic at a time. The 'version' subcommands move which one that is: promote releases a preview build into production, rollback returns production to a previous version without rebuilding. 'logs' reads and streams output, and 'domain' attaches hostnames you own.",
+    workflow: [
+      {
+        run: "service logs my-api --follow",
+        brief: "Stream the live version's logs",
+      },
+      {
+        run: "service version promote cpv_123",
+        brief: "Release a preview build to production",
+      },
+      {
+        run: "service version rollback my-api",
+        brief: "Put production back on the previous version",
+      },
+    ],
+  },
+  "service domain": {
+    brief:
+      "Manage custom domains for a service. Register hostnames, drive DNS and TLS verification, inspect status",
+    description:
+      "Custom domains point hostnames you own at a service's production branch. After add, create the DNS record the platform reports; wait and retry drive DNS verification and TLS provisioning to done.",
+    workflow: [
+      {
+        run: "service domain add shop.acme.com --service my-api",
+        brief: "Register the hostname",
+      },
+      {
+        run: "service domain wait shop.acme.com --service my-api",
+        brief: "Block until active or failed",
+      },
+      {
+        run: "service domain show shop.acme.com --service my-api",
+        brief: "Inspect status and certificate",
+      },
+    ],
+  },
+  "service version": {
+    brief:
+      "Manage a service's deploy versions. List, inspect, promote, roll back, start, stop, delete",
+    description:
+      "Every deploy produces an immutable version; at most one serves traffic at a time on each branch. List and show inspect them. Promote and rollback choose which version serves traffic; start, stop, and delete drive one version's lifecycle.",
+  },
+  "auth workspace": {
+    brief:
+      "Manage stored workspace sessions. List them, switch the current one, end one",
+    description:
+      "One session is stored per workspace you log in to. List them, switch the current one, or end one without touching the others.",
+  },
+  contract: {
+    brief:
+      "Author your data contract: the PSL source of your data model. Emit, infer, format",
+    description:
+      "A contract is the declarative description of your application's data model, authored in PSL (Prisma Schema Language). Migrations are planned from it, and live databases are verified and signed against it. Emit generates its artifacts, infer derives a contract from an existing database, and format normalizes the source.",
+  },
+  db: {
+    brief:
+      "Run contract operations against a live database. Verify, sign, update, migrate",
+    description:
+      "These commands run against a live database, addressed with --db <url>. Verify checks the database against the contract (the PSL description of your data model), sign marks it as matching, and update and migrate advance its schema.",
+  },
+  migration: {
+    brief:
+      "Manage on-disk migrations derived from contract changes. Plan, inspect, check, track history",
+    description:
+      "A migration is an on-disk package describing one schema change, derived from edits to your contract (the PSL description of your data model). Plan writes one; the rest inspect, check integrity, and track what has run where. Apply them with 'db migrate'.",
+  },
+  "migration ref": {
+    brief: "Manage refs: named pointers to contracts. Set, list, delete",
+    description:
+      "A ref is a named pointer to a contract, letting commands target a contract by a stable name. Set, list, and delete refs here.",
+  },
   orm: { brief: "Initialize a Prisma ORM project" },
-  skills: { brief: "Keep this project's Prisma agent skills current" },
+  skills: {
+    brief:
+      "Manage Prisma skills for AI coding agents. Sync and list the instruction files",
+    description:
+      "Agent skills are instruction files that teach AI coding agents (Claude Code, Cursor, and others) how to use the installed Prisma packages. They ship inside the packages; sync copies them into the directories the agent harnesses read.",
+  },
   ...telemetry.groups,
 };
 
@@ -302,7 +461,19 @@ export function buildCli(): Cli {
     help: {
       tagline: "The Prisma Developer Platform, from your terminal",
       description:
-        "Deploy your app with isolated infrastructure for every branch.",
+        "Deploy your app with isolated infrastructure for every branch: a Project groups one product, and each of its Branches maps to a Git branch with its own services, databases, and buckets. The production branch serves live traffic; every other branch is a preview.",
+      workflow: [
+        { run: "auth login", brief: "Sign in to your Prisma workspace" },
+        {
+          run: "project create my-app",
+          brief: "Create a Project, link this directory",
+        },
+        { run: "git connect", brief: "Connect GitHub so every push deploys" },
+        {
+          run: "deploy",
+          brief: "Or build and deploy straight from this machine",
+        },
+      ],
       examples: ["auth login", "project list", "deploy"],
       docsUrl: CLI_DOCS_URL,
     },

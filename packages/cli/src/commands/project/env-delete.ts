@@ -59,7 +59,10 @@ export const projectEnvDeleteCommand = defineCommand({
     },
   },
   help: {
-    summary: "Delete an environment variable from a scope.",
+    summary:
+      "Delete an environment variable from one scope: production, preview, or one branch",
+    description:
+      "Removes the variable from the named scope only; the same key in other scopes is untouched. Services lose the value on their next deploy.",
     examples: [
       "project env delete STRIPE_KEY --role production",
       "project env delete STRIPE_KEY --role preview",

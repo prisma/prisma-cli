@@ -77,14 +77,18 @@ export const projectEnvListCommand = defineCommand({
     flags: {
       role: roleFlag,
       branch: flag.string({
-        brief: "Preview branch resolved scope",
+        brief:
+          "Show what one preview branch resolves: the preview scope plus its overrides",
         placeholder: "git-name",
       }),
       project: projectFlag,
     },
   },
   help: {
-    summary: "List environment variable metadata for a scope (no values).",
+    summary:
+      "List environment variables in a scope: names and ids, never values",
+    description:
+      "Values are write-only through the CLI: listing shows names, ids, and status, never values. Without a scope flag it shows an overview of every scope; --role narrows to the production or preview scope, and --branch shows what one preview branch resolves.",
     examples: [
       "project env list",
       "project env list --role production",

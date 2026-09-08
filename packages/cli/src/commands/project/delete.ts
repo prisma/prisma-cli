@@ -60,6 +60,8 @@ export const projectDeleteCommand = defineCommand({
   },
   help: {
     summary: "Delete a Project permanently after exact id confirmation",
+    description:
+      "Deletion is permanent: it destroys the project's databases and stops its deployed services. Because of that, the command asks for the exact project id as a consent token; pass it with --confirm to run non-interactively.",
     examples: ["project delete proj_123 --confirm proj_123"],
   },
   needs: { credentials: true },

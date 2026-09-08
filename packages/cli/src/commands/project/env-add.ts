@@ -73,7 +73,10 @@ export const projectEnvAddCommand = defineCommand({
     },
   },
   help: {
-    summary: "Create a new environment variable.",
+    summary:
+      "Create an environment variable in one scope: production, preview, or one branch",
+    description:
+      "Variables reach a service's environment when it deploys. Writes always name their scope so production is never targeted by accident: --role production, --role preview (shared by every preview branch), or --branch for one branch's override. The value comes from KEY=VALUE, from the current shell environment when only KEY is given, or from a dotenv file with --file.",
     examples: [
       "project env add STRIPE_KEY=sk_test_xxx --role production",
       "project env add STRIPE_KEY=sk_test_xxx --role preview",

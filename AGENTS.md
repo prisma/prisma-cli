@@ -31,6 +31,10 @@ Unit tests may still mock, and should — error paths and edge cases belong ther
 
 Why this rule exists: `prisma project list` reported "No projects found." and exited 0 for a workspace holding 15 projects, and every project-scoped command was broken with it. The unit suite covered that command thoroughly and passed throughout, because its fixtures supplied both sides of every comparison — the credential's workspace id and the API's were the same hand-written string, while the real API returns a `wksp_` prefix that the credential does not carry. A test that writes both sides of a comparison can only confirm what its author already believed. Mocks are still the right tool for error paths and edge cases; they cannot tell you what the API actually returns.
 
+## Help Text
+
+Hold every new or changed command's help (summary, description, flag briefs, group brief) to `docs/product/cli-help-standard.md`. Write for a reader who has never used Prisma: each summary stands alone, defines any Prisma term in place (usually by stating the consequence), and never uses internal vocabulary such as "binding", "resolved", or "pinned". Card structure and formatting rules are in `docs/product/cli-style-guide.md`.
+
 ## Pre-Commit Verification
 
 - `pnpm typecheck`

@@ -75,7 +75,9 @@ function listPresentations(result: DatabaseListResult): Presentations {
 export const postgresListCommand = defineCommand({
   args: { flags: { project: projectFlag, branch: branchFlag } },
   help: {
-    summary: "List Prisma Postgres databases for the resolved project",
+    summary: "List a project's Prisma Postgres databases",
+    description:
+      "Databases are branch-bound: each belongs to one Branch, the isolated environment for one Git branch. Without --branch, this lists databases across every branch of the project.",
     examples: [
       "postgres list",
       "postgres list --branch feature/foo",

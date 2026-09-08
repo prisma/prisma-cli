@@ -51,7 +51,9 @@ function disconnectPresentations(
 export const gitDisconnectCommand = defineCommand({
   args: { flags: { project: projectFlag } },
   help: {
-    summary: "Disconnect the GitHub repository from the resolved project",
+    summary: "Disconnect the GitHub repository: pushes stop deploying",
+    description:
+      "Stops deploy-on-push by removing the repository connection. Nothing already deployed changes: existing branches, services, and databases stay as they are.",
     examples: ["git disconnect", "git disconnect --project proj_123"],
   },
   needs: { credentials: true },

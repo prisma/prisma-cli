@@ -80,6 +80,8 @@ export const postgresBackupListCommand = defineCommand({
   },
   help: {
     summary: "List backups for a database",
+    description:
+      "Backups are created automatically by the platform. Use the listed backup ids with 'postgres backup restore'.",
     examples: [
       "postgres backup list db_123",
       "postgres backup list acme-production --limit 50",

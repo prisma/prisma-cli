@@ -152,14 +152,16 @@ export const gitConnectCommand = defineCommand({
   args: {
     positionals: {
       gitUrl: positional.optionalString({
-        brief: "GitHub repository URL",
+        brief: "GitHub repository URL (default: this repository's origin)",
         placeholder: "git-url",
       }),
     },
     flags: { project: projectFlag },
   },
   help: {
-    summary: "Connect the resolved project to a GitHub repository",
+    summary: "Connect a project to a GitHub repository so every push deploys",
+    description:
+      "Turns on deploy-on-push: once connected, pushing a Git branch builds and deploys it to a matching Platform Branch, an isolated environment with its own services, databases, and buckets. If the Prisma GitHub App does not cover the repository yet, the command opens the install page and waits. Run without a URL to use this repository's origin remote.",
     examples: [
       "git connect",
       "git connect git@github.com:prisma/prisma-cli.git",

@@ -70,6 +70,8 @@ export const postgresShowCommand = defineCommand({
   },
   help: {
     summary: "Show database metadata without secret values",
+    description:
+      "Shows a database's name, branch, region, and status. Connection URLs are secrets printed once, by 'postgres create' or 'postgres connection rotate'; this command never reveals them.",
     examples: [
       "postgres show db_123",
       "postgres show acme-preview --branch preview --json",

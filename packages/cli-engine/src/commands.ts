@@ -30,6 +30,17 @@ import type { ChildStatusSettlement } from "./spawn";
  * undefined instead of conditional properties.
  */
 
+/**
+ * One step of a group's common path, rendered under a `Workflow`
+ * heading on the group's help card. `run` follows the example
+ * convention: no binary name, `{bin}` substituted at render time.
+ */
+export interface WorkflowStep {
+  readonly run: string;
+  /** Short purpose column shown beside the invocation. */
+  readonly brief: string;
+}
+
 /** The help SPI: words only — the engine formats. */
 export interface HelpSpec {
   /** One line, imperative, shown in listings. */

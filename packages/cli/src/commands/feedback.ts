@@ -201,8 +201,7 @@ export const feedbackCommand = defineCommand({
   help: {
     summary: "Send feedback to the Prisma CLI team",
     description:
-      "Anonymous unless --email is passed. Every submission includes the CLI\n" +
-      "version, node version, and OS platform/arch, and nothing else.",
+      "Anonymous unless --email is passed. Every submission includes the CLI version, node version, and OS platform/arch, and nothing else.",
     examples: [
       'feedback "the deploy flow is great"',
       'feedback "please add X" --email you@example.com',
