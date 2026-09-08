@@ -90,6 +90,14 @@ describe("prisma init", () => {
         "packages/prisma is not built; run `pnpm --filter prisma build` before the e2e suite so the scaffold's prisma/config import can resolve.",
       );
     }
+    // Stage the skills the published tarball would carry (the same
+    // script prepack runs). Without this the sync outcome depends on
+    // whether a local `pnpm pack` happened to leave a staged copy.
+    await execFileAsync(
+      process.execPath,
+      [path.resolve(import.meta.dirname, "../../../scripts/stage-skills.mjs")],
+      { cwd: PRISMA_PACKAGE_DIR },
+    );
     workdir = await mkdtemp(path.join(os.tmpdir(), "prisma-e2e-init-"));
     await writeFile(
       path.join(workdir, "package.json"),
@@ -110,7 +118,7 @@ describe("prisma init", () => {
     await rm(workdir, { recursive: true, force: true });
   });
 
-  it("adds the postinstall hook, scaffolds the config, and finds no skills to sync", async () => {
+  it("adds the postinstall hook, scaffolds the config, and syncs the platform skill", async () => {
     const envelope = await runInit(workdir);
 
     expect(envelope.ok).toBe(true);
@@ -128,10 +136,23 @@ describe("prisma init", () => {
       "agents",
       "devin",
     ]);
-    // No allowlisted Prisma package is installed here, so the sync has
-    // nothing to do and says so instead of failing.
-    expect(envelope.result.skills.outcome).toBe("no-packages");
-    expect(envelope.result.skills.sync?.packages).toEqual([]);
+    // The fixture installs prisma itself, which ships the platform
+    // skill, so init's sync delivers it into the agent directories.
+    expect(envelope.result.skills.outcome).toBe("synced");
+    expect(envelope.result.skills.sync?.packages).toMatchObject([
+      { package: "prisma" },
+    ]);
+    expect(
+      existsSync(
+        path.join(
+          workdir,
+          ".claude",
+          "skills",
+          "prisma-platform-core-concepts",
+          "SKILL.md",
+        ),
+      ),
+    ).toBe(true);
     expect(envelope.diagnostics).toEqual([]);
 
     const manifest = JSON.parse(
@@ -205,7 +226,9 @@ describe("prisma init", () => {
     expect(envelope.result.postinstall.outcome).toBe("exists");
     expect(envelope.result.postinstall.dependency).toBe("declared");
     expect(envelope.result.config.outcome).toBe("created");
-    expect(envelope.result.skills.outcome).toBe("no-packages");
+    // The first run already synced the skill and its stamp still
+    // matches the installed package, so the rerun writes nothing.
+    expect(envelope.result.skills.outcome).toBe("up-to-date");
     expect(envelope.diagnostics.map((d) => d.code)).not.toContain(
       "INIT.CONFIG_KEPT",
     );

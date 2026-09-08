@@ -9,6 +9,7 @@ import {
   participatesInLockstep,
   rewriteWorkspaceDeps,
 } from "./set-version-utils.ts";
+import { stampSkillVersion } from "./skill-frontmatter.ts";
 
 // Operator rulings: `@prisma/compute` versions independently pending
 // extraction to another repo (2026-08-10), and `@prisma/cli-engine`
@@ -114,4 +115,28 @@ for (const manifestPath of trackedManifests) {
   updatedCount++;
 }
 
-console.log(`\nDone! Updated ${updatedCount} packages.`);
+// Skills ship inside the `prisma` tarball and their frontmatter names
+// the version of the CLI they describe (`metadata.library_version`).
+// The `prisma` package versions in lockstep, so every skill is stamped
+// with the same root version; check-skill-packaging.mjs verifies the
+// stamp against the packed tarball.
+const skillsDir = path.join(rootDir, "skills");
+const skillDirEntries = await fs
+  .readdir(skillsDir, { withFileTypes: true })
+  .catch(() => []);
+let stampedSkills = 0;
+for (const entry of skillDirEntries) {
+  if (!entry.isDirectory()) continue;
+  const skillPath = path.join(skillsDir, entry.name, "SKILL.md");
+  // biome-ignore lint/performance/noAwaitInLoops: each skill prints its "Stamped" line as it is rewritten, so a run that fails part way through leaves an accurate record of which files already changed.
+  const source = await fs.readFile(skillPath, "utf-8").catch(() => undefined);
+  if (source === undefined) continue;
+
+  await fs.writeFile(skillPath, stampSkillVersion(source, version));
+  console.log(`Stamped ${path.relative(rootDir, skillPath)} with ${version}`);
+  stampedSkills++;
+}
+
+console.log(
+  `\nDone! Updated ${updatedCount} packages and ${stampedSkills} skills.`,
+);

@@ -15,6 +15,7 @@
   },
   "files": [
     "dist",
+    "skills",
     "README.md",
     "LICENSE"
   ],
@@ -43,7 +44,7 @@
   "license": "Apache-2.0",
   "scripts": {
     "build": "tsdown",
-    "prepack": "pnpm run build",
+    "prepack": "pnpm run build && node ../../scripts/stage-skills.mjs",
     "typecheck": "tsc --noEmit",
     "test": "vitest run"
   },
