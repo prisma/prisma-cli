@@ -616,7 +616,7 @@ export async function runHelp(
             text = value;
           },
         },
-        columns,
+        columns === undefined ? undefined : out.columns,
         progress,
       );
       return { text, rows };

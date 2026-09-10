@@ -68,7 +68,9 @@ Recommended symbols:
   normal color settings. Use Node’s `util.styleText` with cyan, bright red,
   and yellow for the three bands, matching the supported Node 22 runtime.
   The exact shades follow the terminal palette; fall back to
-  monochrome with `NO_COLOR` or `--no-color`. The ASCII Prisma wordmark uses the terminal’s default foreground.
+  monochrome with `NO_COLOR` or `--no-color`. The ASCII Prisma wordmark uses bold with the terminal’s default foreground.
+  Reset inherited terminal styling around each artwork row so help and init
+  render the wordmark consistently.
 - `prisma init` displays the same horizontal lockup above its status output on
   stderr, after argument and configuration validation. Omit it for JSON, quiet
   mode, non-TTY output, or a terminal too narrow to fit it. Bare `prisma`, group
@@ -79,7 +81,9 @@ Recommended symbols:
   help after the reveal, and restore the cursor if interrupted. Use the final
   static logo in CI, dumb terminals, `--no-interactive`, quiet mode,
   `NO_COLOR` / `--no-color`, or when `PRISMA_REDUCED_MOTION=1`. Skip animation
-  when the logo cannot fit in the visible terminal height.
+  when the logo cannot fit in the visible terminal height. If the terminal
+  resizes during animation, stop cursor rewrites and print the current static
+  layout below the partial frame.
 - Outside those flows, focus on status, context, result, and next steps.
 
 Human-oriented command output in TTY mode should usually start with a compact header.

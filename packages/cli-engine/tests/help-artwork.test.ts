@@ -1,8 +1,11 @@
 import { stripVTControlCharacters } from "node:util";
 import { describe, expect, test, vi } from "vitest";
 import { defineCommand } from "../src/commands";
+import { addArtwork, writeArtworkFrames } from "../src/execution/artwork";
 import { ok } from "../src/protocol";
 import { createTestCli } from "../src/testing";
+
+const CURSOR_UP = /\[\d+A/;
 
 const artwork = [
   [
@@ -109,6 +112,7 @@ test("init paints on stderr before the command result", async () => {
   expect(result.stdout).toBe("");
   expect(result.stderr).toContain("\u001b[?25l");
   const plain = stripVTControlCharacters(result.stderr);
+  expect(plain).toContain("CCRRYY Prisma");
   expect(plain.indexOf("CCRRYY Prisma")).toBeLessThan(
     plain.indexOf("Initialized"),
   );
@@ -145,4 +149,59 @@ test("interrupting the init intro prevents the handler from running", async () =
   expect(result.exitCode).toBe(143);
   expect(initRun).not.toHaveBeenCalled();
   expect(result.stderr).toContain("\u001b[?25h");
+});
+
+test("help and init isolate the same wordmark styling from surrounding output", async () => {
+  const cli = createTestCli({ commands, help: initHelp });
+  const options = { ...initTerminal, env: { PRISMA_REDUCED_MOTION: "1" } };
+  const help = await cli.run(["--help"], options);
+  const init = await cli.run(["init"], options);
+  const helpRow = help.stdout
+    .split("\n")
+    .find((line) => line.includes(" Prisma"));
+  const helpLogo = helpRow?.slice(helpRow.indexOf("\u001b[0m"));
+  expect(helpLogo).toBeDefined();
+  expect(helpLogo?.startsWith("\u001b[0m\u001b[1m")).toBe(true);
+  expect(helpLogo?.endsWith(" Prisma\u001b[22m\u001b[0m")).toBe(true);
+  expect(init.stderr).toContain(helpLogo);
+});
+
+test.each([
+  "columns",
+  "rows",
+] as const)("stops cursor rewrites when terminal %s change", async (dimension) => {
+  const size = { columns: 80, rows: 24 };
+  const writes: string[] = [];
+  const out = {
+    get columns() {
+      return size.columns;
+    },
+    get rows() {
+      return size.rows;
+    },
+    write: (text: string) => {
+      writes.push(text);
+    },
+  };
+  const delay = vi.fn(async () => {
+    size[dimension] = 5;
+  });
+  await writeArtworkFrames({
+    out,
+    animate: true,
+    delay,
+    signal: new AbortController().signal,
+    render: (progress) => {
+      const lines = ["Help", "", "Commands"];
+      const rows = addArtwork(lines, artwork, out.columns, true, progress);
+      return { text: `${lines.join("\n")}\n`, rows };
+    },
+  });
+  expect(delay).toHaveBeenCalledTimes(1);
+  expect(writes.slice(1).join("")).not.toMatch(CURSOR_UP);
+  expect(writes.slice(1).join("")).toContain("Help");
+  expect(writes.at(-1)).toBe("\u001b[?25h");
+  expect(writes.slice(1).join("").includes("Prisma")).toBe(
+    dimension === "rows",
+  );
 });

@@ -1,3 +1,4 @@
+import { styleText } from "node:util";
 import { resolveIsCI } from "../ci";
 import {
   type HelpArtworkLine,
@@ -6,7 +7,7 @@ import {
 } from "../help-artwork";
 import type { OutputStream, Runtime } from "../runtime";
 import type { Invocation } from "./engine";
-import { makePaint, textWidth } from "./palette";
+import { textWidth } from "./palette";
 
 export async function runCommandArtwork(
   artwork: readonly HelpArtworkLine[] | undefined,
@@ -50,12 +51,19 @@ export function addArtwork(
   progress: number,
 ): number {
   const artwork = revealArtwork(source, progress)?.map((line) =>
-    renderArtworkLine(line, colorEnabled),
+    colorEnabled
+      ? styleText(
+          "reset",
+          styleText("bold", renderArtworkLine(line, true), {
+            validateStream: false,
+          }),
+          { validateStream: false },
+        )
+      : renderArtworkLine(line, false),
   );
   if (!artwork?.length || columns === undefined || !Number.isFinite(columns)) {
     return 0;
   }
-  const paint = makePaint(colorEnabled);
   const start = 2;
   const width = Math.max(...artwork.map(textWidth));
   const left = columns - width - 2;
@@ -66,15 +74,14 @@ export function addArtwork(
       .some((line) => textWidth(line) + 4 > left)
   ) {
     if (columns >= width + 4) {
-      lines.unshift(...artwork.map((row) => `  ${paint("emphasis", row)}`), "");
+      lines.unshift(...artwork.map((row) => `  ${row}`), "");
       return artwork.length + 1;
     }
     return 0;
   }
   for (const [index, row] of artwork.entries()) {
     const line = lines[start + index];
-    lines[start + index] =
-      `${line}${" ".repeat(left - textWidth(line))}${paint("emphasis", row)}`;
+    lines[start + index] = `${line}${" ".repeat(left - textWidth(line))}${row}`;
   }
   return start + artwork.length;
 }
@@ -92,6 +99,9 @@ export async function writeArtworkFrames({
   delay: (ms: number, signal: AbortSignal) => Promise<void>;
   signal: AbortSignal;
 }): Promise<void> {
+  const columns = out.columns;
+  const rows = out.rows;
+  const resized = () => out.columns !== columns || out.rows !== rows;
   const final = render(1);
   if (!animate || final.rows === 0 || final.rows + 1 >= (out.rows ?? 24)) {
     out.write(final.text);
@@ -99,16 +109,24 @@ export async function writeArtworkFrames({
   }
   const frame = (progress: number): string =>
     `${render(progress).text.split("\n").slice(0, final.rows).join("\n")}\n`;
-  out.write(`\u001b[?25l${frame(0)}`);
   try {
+    out.write(`\u001b[?25l${frame(0)}`);
     for (let step = 1; step <= 30; step++) {
       // biome-ignore lint/performance/noAwaitInLoops: Frames must be paced sequentially.
       await delay(20, signal);
-      if (signal.aborted) break;
+      if (signal.aborted || resized()) break;
       out.write(`\u001b[${final.rows}A\r${frame(step / 30)}`);
     }
   } finally {
-    out.write(`\u001b[${final.rows}A\r${final.text}\u001b[?25h`);
+    try {
+      out.write(
+        resized()
+          ? `\r\n${render(1).text}`
+          : `\u001b[${final.rows}A\r${final.text}`,
+      );
+    } finally {
+      out.write("\u001b[?25h");
+    }
   }
 }
 
