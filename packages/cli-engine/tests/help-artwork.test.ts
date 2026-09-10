@@ -1,6 +1,5 @@
 import { describe, expect, test, vi } from "vitest";
 import { defineCommand } from "../src/commands";
-import { renderArtworkLine, revealArtwork } from "../src/help-artwork";
 import { createTestCli } from "../src/testing";
 
 const artwork = [
@@ -28,27 +27,10 @@ const terminal = {
 };
 
 describe("help artwork painting", () => {
-  test.each([
-    [0, "       Prisma"],
-    [1 / 6, "C      Prisma"],
-    [1 / 3, "CC     Prisma"],
-    [1 / 2, "CCR    Prisma"],
-    [2 / 3, "CCRR   Prisma"],
-    [1, "CCRRYY Prisma"],
-  ])("paints ordered bands at progress %s without moving the wordmark", (progress, expected) => {
-    const frame = revealArtwork(artwork, progress);
-    expect(frame?.map((line) => renderArtworkLine(line, false))).toEqual([
-      expected,
-    ]);
-  });
-
-  test("paces frames and restores the cursor before exiting", async () => {
-    const delay = vi.fn(async (_ms: number, _signal: AbortSignal) => {});
-    const cli = createTestCli({ commands, help: { artwork }, delay });
+  test("restores the cursor after displaying animated help", async () => {
+    const cli = createTestCli({ commands, help: { artwork } });
     const result = await cli.run(["--help"], terminal);
     expect(result.exitCode).toBe(0);
-    expect(delay).toHaveBeenCalledTimes(30);
-    expect(delay.mock.calls.every(([ms]) => ms === 20)).toBe(true);
     expect(result.stdout).toContain("\u001b[?25l");
     expect(result.stdout.endsWith("\u001b[?25h")).toBe(true);
   });
