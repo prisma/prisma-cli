@@ -13,6 +13,8 @@ import {
   positionalRuntime,
 } from "../args";
 import type { AnyCommand, WorkflowStep } from "../commands";
+import type { Runtime } from "../runtime";
+import { addArtwork, canAnimateArtwork, writeArtworkFrames } from "./artwork";
 import type { CommandTreeEntry, CommandTreeNode } from "./command-tree";
 import type { EngineSpec } from "./engine";
 import { makePaint, type Paint, textWidth } from "./palette";
@@ -130,7 +132,9 @@ export function renderHelp(
   argv: readonly string[],
   colorEnabled: boolean,
   out: HelpWriter,
-): void {
+  columns?: number,
+  progress = 1,
+): number {
   const paint = makePaint(colorEnabled);
   const { target, path } = resolveTarget(root, helpPath(argv));
   const lines: string[] = [];
@@ -139,7 +143,22 @@ export function renderHelp(
   } else {
     renderNodeHelp(spec, target.node, path, paint, lines);
   }
+  let prefixRows = 0;
+  if (
+    helpFlagGiven(argv) &&
+    helpPath(argv).length === 0 &&
+    target.kind === "node"
+  ) {
+    prefixRows = addArtwork(
+      lines,
+      spec.help?.artwork,
+      columns,
+      colorEnabled,
+      progress,
+    );
+  }
   out.write(`${lines.join("\n")}\n`);
+  return prefixRows;
 }
 
 /** `prisma-cli project → Manage and inspect your Prisma projects` */
@@ -563,4 +582,44 @@ function renderLeafHelp(
   exampleLines(def.help.examples, spec.name, paint, lines);
   docsLine(entry.docsBaseUrl, paint, lines);
   lines.push("");
+}
+
+/** Animate only the visible logo prefix, so long help never needs a full redraw. */
+export async function runHelp(
+  spec: EngineSpec,
+  root: CommandTreeNode,
+  argv: readonly string[],
+  runtime: Runtime,
+  format: string,
+  delay: (ms: number, signal: AbortSignal) => Promise<void>,
+  signal: AbortSignal,
+): Promise<void> {
+  const channel = format === "human" ? "stdout" : "stderr";
+  const out = runtime[channel];
+  const columns =
+    format === "human" && runtime.isTty.stdout ? out.columns : undefined;
+  const color = preParseColorEnabled(argv, runtime, channel);
+  await writeArtworkFrames({
+    out,
+    animate: columns !== undefined && canAnimateArtwork(runtime, argv, color),
+    delay,
+    signal,
+    render: (progress) => {
+      let text = "";
+      const rows = renderHelp(
+        spec,
+        root,
+        argv,
+        color,
+        {
+          write: (value) => {
+            text = value;
+          },
+        },
+        columns === undefined ? undefined : out.columns,
+        progress,
+      );
+      return { text, rows };
+    },
+  });
 }

@@ -13,6 +13,7 @@ import type { AnyCommand, WorkflowStep } from "../commands";
 import type { CommandContext } from "../context";
 import type { ActiveCredential } from "../credential-manager";
 import type { EngineEvent, Severity, StreamEvent } from "../events";
+import type { HelpArtworkLine } from "../help-artwork";
 import type { ManagementApiClient } from "../management-api";
 import type { Format, PresentedResult } from "../presentation";
 import type { CliStructuredError, Result } from "../protocol";
@@ -27,6 +28,7 @@ import {
   reportCommandStart,
   type TelemetryDeclaration,
 } from "../telemetry/report";
+import { runCommandArtwork } from "./artwork";
 import { type CommandCapabilities, makeContext } from "./command-context";
 import { buildCommandSnapshot } from "./command-snapshot";
 import {
@@ -42,7 +44,7 @@ import {
   bareGroupInvocation,
   helpFlagGiven,
   preParseColorEnabled,
-  renderHelp,
+  runHelp,
 } from "./help";
 import { checkNeeds, type NeedsOutcome } from "./needs";
 import { configFlagGivenNoValue, versionFlagGiven } from "./pre-parse-argv";
@@ -98,6 +100,8 @@ export interface EngineSpec {
   readonly help?: {
     /** One line after the binary name: what this CLI is. */
     readonly tagline?: string;
+    readonly artwork?: readonly HelpArtworkLine[];
+    readonly artworkCommands?: readonly string[];
     /** A sentence or two under the command list. */
     readonly description?: string;
     /** The CLI's common path, rendered as a `Workflow` section. */
@@ -382,23 +386,21 @@ export class EngineImpl implements Engine {
       return 2;
     }
     if (helpFlagGiven(argv) || bareGroupInvocation(this.tree, argv)) {
-      unsubscribe();
-      /** Help prose follows stricli's channel rule: stdout in human
-       *  mode, stderr in json mode so stdout stays a clean frame
-       *  stream. Never fires telemetry, like --version. */
-      const stream = format === "human" ? runtime.stdout : runtime.stderr;
-      renderHelp(
-        this.spec,
-        this.tree,
-        argv,
-        preParseColorEnabled(
+      try {
+        await runHelp(
+          this.spec,
+          this.tree,
           argv,
           runtime,
-          format === "human" ? "stdout" : "stderr",
-        ),
-        stream,
-      );
-      return 0;
+          format,
+          this.delay,
+          controller.signal,
+        );
+      } finally {
+        unsubscribe();
+      }
+      if (state.deliveredSignal === "SIGTERM") return 143;
+      return controller.signal.aborted ? 130 : 0;
     }
     const stricliProcess = {
       /** stricli writes only help text here. In json mode stdout carries
@@ -565,6 +567,9 @@ export class EngineImpl implements Engine {
   ): Promise<void> {
     const state = invocation.state;
     try {
+      if (this.spec.help?.artworkCommands?.includes(entry.id)) {
+        await runCommandArtwork(this.spec.help.artwork, invocation);
+      }
       const result = await runHandler();
       if (await this.settleAbandonedChild(invocation, false)) {
         return;
