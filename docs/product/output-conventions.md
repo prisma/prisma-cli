@@ -593,6 +593,12 @@ context, status, decoration, and errors stay on stderr.
 
 ## Design Rule
 
+Delegated commands must support installed Windows `.cmd` shims as well as
+native executables and POSIX shebang scripts. The host uses cross-spawn for
+platform-specific resolution and argument escaping; callers still pass a
+command and argument array, not a shell command string. Human stdio inheritance,
+structured diagnostic forwarding, and child exit status remain unchanged.
+
 Human output and JSON output should describe the same underlying model.
 
 The CLI should never require users or agents to learn different meanings for the same command.
