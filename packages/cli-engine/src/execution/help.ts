@@ -12,10 +12,10 @@ import {
   type PositionalSpec,
   positionalRuntime,
 } from "../args";
-import { resolveIsCI } from "../ci";
 import type { AnyCommand, WorkflowStep } from "../commands";
 import { renderArtworkLine, revealArtwork } from "../help-artwork";
 import type { Runtime } from "../runtime";
+import { canAnimateArtwork, writeArtworkFrames } from "./artwork";
 import type { CommandTreeEntry, CommandTreeNode } from "./command-tree";
 import type { EngineSpec } from "./engine";
 import { makePaint, type Paint, textWidth } from "./palette";
@@ -145,7 +145,11 @@ export function renderHelp(
     renderNodeHelp(spec, target.node, path, paint, lines);
   }
   let prefixRows = 0;
-  if (path.length === 0 && target.kind === "node") {
+  if (
+    helpFlagGiven(argv) &&
+    helpPath(argv).length === 0 &&
+    target.kind === "node"
+  ) {
     prefixRows = addArtwork(
       lines,
       revealArtwork(spec.help?.artwork, progress)?.map((line) =>
@@ -632,70 +636,27 @@ export async function runHelp(
   const columns =
     format === "human" && runtime.isTty.stdout ? out.columns : undefined;
   const color = preParseColorEnabled(argv, runtime, channel);
-  let final = "";
-  const prefixRows = renderHelp(
-    spec,
-    root,
-    argv,
-    color,
-    {
-      write: (text) => {
-        final = text;
-      },
-    },
-    columns,
-  );
-  if (
-    !canAnimateHelp(runtime, argv, color) ||
-    columns === undefined ||
-    prefixRows === 0 ||
-    prefixRows + 1 >= (out.rows ?? 24)
-  ) {
-    out.write(final);
-    return;
-  }
-  const frame = (progress: number): string => {
-    let text = "";
-    renderHelp(
-      spec,
-      root,
-      argv,
-      color,
-      {
-        write: (value) => {
-          text = value;
+  await writeArtworkFrames({
+    out,
+    animate: columns !== undefined && canAnimateArtwork(runtime, argv, color),
+    delay,
+    signal,
+    render: (progress) => {
+      let text = "";
+      const rows = renderHelp(
+        spec,
+        root,
+        argv,
+        color,
+        {
+          write: (value) => {
+            text = value;
+          },
         },
-      },
-      columns,
-      progress,
-    );
-    return `${text.split("\n").slice(0, prefixRows).join("\n")}\n`;
-  };
-  out.write(`\u001b[?25l${frame(0)}`);
-  try {
-    for (let step = 1; step <= 30; step++) {
-      // biome-ignore lint/performance/noAwaitInLoops: Frames must be paced sequentially.
-      await delay(20, signal);
-      if (signal.aborted) break;
-      out.write(`\u001b[${prefixRows}A\r${frame(step / 30)}`);
-    }
-  } finally {
-    out.write(`\u001b[${prefixRows}A\r${final}\u001b[?25h`);
-  }
-}
-
-function canAnimateHelp(
-  runtime: Runtime,
-  argv: readonly string[],
-  color: boolean,
-): boolean {
-  const flags = flagTokens(argv);
-  return (
-    color &&
-    !resolveIsCI(runtime) &&
-    runtime.env.TERM !== "dumb" &&
-    runtime.env.NO_COLOR === undefined &&
-    runtime.env.PRISMA_REDUCED_MOTION !== "1" &&
-    !flags.some((flag) => ["--no-interactive", "--quiet", "-q"].includes(flag))
-  );
+        columns,
+        progress,
+      );
+      return { text, rows };
+    },
+  });
 }

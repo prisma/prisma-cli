@@ -28,6 +28,7 @@ import {
   reportCommandStart,
   type TelemetryDeclaration,
 } from "../telemetry/report";
+import { runCommandArtwork } from "./artwork";
 import { type CommandCapabilities, makeContext } from "./command-context";
 import { buildCommandSnapshot } from "./command-snapshot";
 import {
@@ -100,6 +101,7 @@ export interface EngineSpec {
     /** One line after the binary name: what this CLI is. */
     readonly tagline?: string;
     readonly artwork?: readonly HelpArtworkLine[];
+    readonly artworkCommands?: readonly string[];
     /** A sentence or two under the command list. */
     readonly description?: string;
     /** The CLI's common path, rendered as a `Workflow` section. */
@@ -565,6 +567,9 @@ export class EngineImpl implements Engine {
   ): Promise<void> {
     const state = invocation.state;
     try {
+      if (this.spec.help?.artworkCommands?.includes(entry.id)) {
+        await runCommandArtwork(this.spec.help.artwork, invocation);
+      }
       const result = await runHandler();
       if (await this.settleAbandonedChild(invocation, false)) {
         return;

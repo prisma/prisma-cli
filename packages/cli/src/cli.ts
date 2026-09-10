@@ -462,6 +462,7 @@ export function buildCli(): Cli {
     help: {
       tagline: "The Prisma Developer Platform, from your terminal",
       artwork: horizontalArtwork,
+      artworkCommands: ["init"],
       description:
         "Deploy your app with isolated infrastructure for every branch: a Project groups one product, and each of its Branches maps to a Git branch with its own services, databases, and buckets. The production branch serves live traffic; every other branch is a preview.",
       workflow: [

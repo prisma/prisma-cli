@@ -176,6 +176,7 @@ export interface HostProcess {
     write(text: string): unknown;
     isTTY?: boolean;
     columns?: number;
+    rows?: number;
   };
   readonly stdin: {
     isTTY?: boolean;

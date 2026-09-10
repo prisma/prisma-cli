@@ -135,7 +135,7 @@ export interface TestCli {
       /** Terminal width, as the stream would report it. Absent means
        *  not a terminal, which is what ui.width reads as unbounded. */
       readonly columns?: { stdout?: number; stderr?: number };
-      readonly rows?: { stdout?: number };
+      readonly rows?: { stdout?: number; stderr?: number };
       readonly env?: Readonly<Record<string, string | undefined>>;
       /** Overrides the CLI-level seed, so one harness can assert both
        *  sides of the CI branch. Absent leaves the engine to detect CI
@@ -223,6 +223,7 @@ export function createTestCli(spec: {
   readonly help?: {
     readonly tagline?: string;
     readonly artwork?: readonly HelpArtworkLine[];
+    readonly artworkCommands?: readonly string[];
     readonly description?: string;
     readonly workflow?: readonly WorkflowStep[];
     readonly examples?: readonly string[];
@@ -376,6 +377,7 @@ export function createTestCli(spec: {
             stderrText += text;
           },
           columns: opts?.columns?.stderr,
+          rows: opts?.rows?.stderr,
         },
         stdin: inputStreamFromString(opts?.stdin ?? ""),
         cwd: opts?.cwd ?? "/",

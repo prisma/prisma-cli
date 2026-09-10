@@ -128,6 +128,9 @@ export async function assembleRuntime(proc: HostProcess): Promise<Runtime> {
       get columns() {
         return proc.stderr.columns;
       },
+      get rows() {
+        return proc.stderr.rows;
+      },
     },
     stdin,
     cwd: proc.cwd(),

@@ -58,6 +58,7 @@ export function createCli(spec: {
   readonly help?: {
     readonly tagline?: string;
     readonly artwork?: readonly HelpArtworkLine[];
+    readonly artworkCommands?: readonly string[];
     readonly description?: string;
     /** The CLI's common path, rendered as a `Workflow` section. */
     readonly workflow?: readonly WorkflowStep[];
