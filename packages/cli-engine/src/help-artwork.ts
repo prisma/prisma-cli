@@ -1,4 +1,3 @@
-/** A line of optional root-help artwork, with explicit brand RGB colors. */
 export type HelpArtworkLine =
   | string
   | readonly {

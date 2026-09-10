@@ -99,7 +99,6 @@ export interface EngineSpec {
   readonly help?: {
     /** One line after the binary name: what this CLI is. */
     readonly tagline?: string;
-    /** Optional brand-colored art beside or above root help in a human terminal. */
     readonly artwork?: readonly HelpArtworkLine[];
     /** A sentence or two under the command list. */
     readonly description?: string;

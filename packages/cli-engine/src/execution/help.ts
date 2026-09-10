@@ -159,7 +159,6 @@ export function renderHelp(
   return prefixRows;
 }
 
-/** Keep the text intact; decoration is optional when space is tight. */
 function addArtwork(
   lines: string[],
   artwork: readonly string[] | undefined,

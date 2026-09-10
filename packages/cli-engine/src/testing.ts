@@ -222,7 +222,6 @@ export function createTestCli(spec: {
   /** Words for the root help card, exactly as `createCli` takes them. */
   readonly help?: {
     readonly tagline?: string;
-    /** Optional brand-colored art beside or above root help in a human terminal. */
     readonly artwork?: readonly HelpArtworkLine[];
     readonly description?: string;
     readonly workflow?: readonly WorkflowStep[];
