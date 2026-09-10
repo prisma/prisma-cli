@@ -50,20 +50,23 @@ describe("help artwork painting", () => {
     expect(result.stdout).not.toContain("\u001b[?25l");
   });
 
-  test("interruption finishes the logo and restores the cursor", async () => {
+  test.each([
+    ["SIGINT", 130],
+    ["SIGTERM", 143],
+  ] as const)("%s finishes the logo and restores the cursor", async (signal, exitCode) => {
     const controller = new AbortController();
     const cli = createTestCli({
       commands,
       help: { artwork },
       delay: async () => {
-        controller.abort();
+        controller.abort(signal);
       },
     });
     const result = await cli.run(["--help"], {
       ...terminal,
       abort: controller.signal,
     });
-    expect(result.exitCode).toBe(130);
+    expect(result.exitCode).toBe(exitCode);
     expect(result.stdout.endsWith("\u001b[?25h")).toBe(true);
   });
 });

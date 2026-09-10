@@ -397,6 +397,7 @@ export class EngineImpl implements Engine {
       } finally {
         unsubscribe();
       }
+      if (state.deliveredSignal === "SIGTERM") return 143;
       return controller.signal.aborted ? 130 : 0;
     }
     const stricliProcess = {
