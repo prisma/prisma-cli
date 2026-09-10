@@ -9,22 +9,24 @@
  */
 import { existsSync, mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { beforeEach, describe, expect, test, vi } from "vitest";
 
 const spawnOptionsSeen = vi.hoisted(() => [] as Array<Record<string, unknown>>);
 
-vi.mock("node:child_process", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("node:child_process")>();
+vi.mock("cross-spawn", async (importOriginal) => {
+  const actual = await importOriginal<{
+    default: typeof import("cross-spawn");
+  }>();
   return {
     ...actual,
-    spawn: (
+    default: (
       command: string,
       args: readonly string[],
       options: Record<string, unknown>,
     ) => {
       spawnOptionsSeen.push(options);
-      return actual.spawn(command, [...args], options as never);
+      return actual.default(command, [...args], options as never);
     },
   };
 });
@@ -32,6 +34,7 @@ vi.mock("node:child_process", async (importOriginal) => {
 import { makeSpawnChild } from "../src/spawn";
 
 const NODE = process.execPath;
+const VERSION = /^\d+\.\d+\.\d+$/;
 let diagnosticText = "";
 const spawnChild = makeSpawnChild({
   write: (text) => {
@@ -55,6 +58,23 @@ async function waitForFile(path: string, timeoutMs = 10_000): Promise<void> {
 }
 
 describe("the shipped spawn adapter", () => {
+  test.skipIf(process.platform !== "win32")(
+    "runs the installed npm.cmd through the shipped spawn adapter",
+    async () => {
+      const command = join(dirname(process.execPath), "npm.cmd");
+      expect(existsSync(command)).toBe(true);
+      const child = spawnChild({
+        command,
+        args: ["--version"],
+        cwd: process.cwd(),
+        env: process.env,
+        output: "diagnostic",
+      });
+      await expect(child.ended).resolves.toEqual({ exitCode: 0, signal: null });
+      expect(diagnosticText.trim()).toMatch(VERSION);
+    },
+  );
+
   test("passes the spawn options the design rests on: inherited stdio, no detached, no new console", async () => {
     const child = spawnChild({
       command: NODE,

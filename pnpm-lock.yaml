@@ -47,6 +47,9 @@ importers:
       better-result:
         specifier: ^2.9.2
         version: 2.9.2
+      cross-spawn:
+        specifier: ^7.0.6
+        version: 7.0.6
       dotenv:
         specifier: ^17.4.2
         version: 17.4.2
@@ -72,6 +75,9 @@ importers:
       '@repo/tsconfig':
         specifier: workspace:8.0.0-rc.13
         version: link:../tsconfig
+      '@types/cross-spawn':
+        specifier: ^6.0.6
+        version: 6.0.6
       '@types/node':
         specifier: ^22.19.19
         version: 22.19.19
@@ -221,6 +227,9 @@ importers:
       better-result:
         specifier: ^2.9.2
         version: 2.9.2
+      cross-spawn:
+        specifier: ^7.0.6
+        version: 7.0.6
       dotenv:
         specifier: ^17.4.2
         version: 17.4.2
@@ -1842,6 +1851,9 @@ packages:
 
   '@types/chai@5.2.3':
     resolution: {integrity: sha512-Mw558oeA9fFbv65/y4mHtXDs9bPnFMZAL/jxdPFUpOHHIXX91mcgEHbS5Lahr+pwZFR8A7GQleRWeI6cGFC2UA==}
+
+  '@types/cross-spawn@6.0.6':
+    resolution: {integrity: sha512-fXRhhUkG4H3TQk5dBhQ7m/JDdSNHKwR2BBia62lhwEIq9xGiQKLxd6LymNhn47SjXhsUEPmxi+PKw2OkW4LLjA==}
 
   '@types/deep-eql@4.0.2':
     resolution: {integrity: sha512-c9h9dVVMigMPc4bwTvC5dxqtqJZwQPePsWjPlpSOnojbor6pGqdk541lfA7AqFQr5pB1BRdq0juY9db81BwyFw==}
@@ -4838,6 +4850,10 @@ snapshots:
     dependencies:
       '@types/deep-eql': 4.0.2
       assertion-error: 2.0.1
+
+  '@types/cross-spawn@6.0.6':
+    dependencies:
+      '@types/node': 22.19.19
 
   '@types/deep-eql@4.0.2': {}
 
