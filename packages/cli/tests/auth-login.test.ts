@@ -9,6 +9,43 @@ afterEach(() => {
 });
 
 describe("auth login callback", () => {
+  it("reports OAuth denial as an expected refusal without persisting credentials or reflecting callback text", async () => {
+    const tokenStorage: TokenStorage = {
+      getTokens: vi.fn().mockResolvedValue(null),
+      setTokens: vi.fn(),
+      clearTokens: vi.fn(),
+    };
+    const { login } = await import("../src/auth/login");
+    await expect(
+      login({
+        hostname: "127.0.0.1",
+        tokenStorage,
+        openUrl: async (authorizationUrl) => {
+          const redirect = new URL(authorizationUrl).searchParams.get(
+            "redirect_uri",
+          );
+          if (redirect === null) throw new Error("Missing OAuth redirect_uri");
+          const callback = new URL(redirect);
+          callback.searchParams.set("error", "access_denied");
+          callback.searchParams.set(
+            "error_description",
+            "private-callback-detail",
+          );
+          const response = await fetch(callback);
+          expect(response.status).toBe(400);
+          expect(await response.text()).not.toContain(
+            "private-callback-detail",
+          );
+        },
+      }),
+    ).rejects.toMatchObject({
+      code: "AUTH.LOGIN_DENIED",
+      message: "Sign-in was not authorized.",
+    });
+    expect(tokenStorage.setTokens).not.toHaveBeenCalled();
+    expect(tokenStorage.clearTokens).not.toHaveBeenCalled();
+  });
+
   it("serves the success page as UTF-8 HTML", async () => {
     const result = await requestSuccessPage({ workspaceName: "Acme Corp" });
 

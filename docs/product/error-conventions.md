@@ -45,6 +45,12 @@ Expected failures should:
 
 ### Operational Error
 
+An OAuth `access_denied` callback during `auth login` is an expected authorization
+refusal, reported as `AUTH.LOGIN_DENIED`, not `CLI.INTERNAL_ERROR`. It does not
+create or clear stored sessions. The CLI suggests signing in again only if the
+user intends to authorize access. Callback descriptions are not reflected into
+diagnostics because they are untrusted input.
+
 An expected external fault, not a product bug.
 
 Examples:
