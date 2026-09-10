@@ -8,6 +8,7 @@ import {
   agentSkillDirs,
   DEFAULT_AGENTS,
   isSkillSourcePackage,
+  KNOWN_AGENTS,
   PACKAGE_SKILLS_DIR,
   SKILL_SOURCE_PACKAGES,
 } from "./allowlist";
@@ -48,8 +49,9 @@ export interface SkillStatus {
   readonly upToDate: boolean;
 }
 
-/** A copy this CLI installed whose source package is no longer
- *  installed, or which the source package no longer ships. */
+/** A copy this CLI installed that nothing wants any more: its source
+ *  package is no longer installed, the package no longer ships it, or
+ *  it sits in the directory of an agent the config no longer names. */
 export interface OrphanedSkill {
   readonly skill: string;
   readonly library: string | null;
@@ -81,7 +83,11 @@ export async function readSkillsStatus(
   options?: SkillsStatusOptions,
 ): Promise<SkillsStatus> {
   const projectRoot = path.resolve(cwd);
-  const dirs = agentSkillDirs(options?.agents ?? DEFAULT_AGENTS);
+  const agents = options?.agents ?? DEFAULT_AGENTS;
+  const dirs = agentSkillDirs(agents);
+  const unconfiguredDirs = agentSkillDirs(
+    KNOWN_AGENTS.filter((agent) => !agents.includes(agent)),
+  );
   const checkDisabled =
     options?.checkDisabled ?? (await readSkillsCheckDisabled(projectRoot));
   const packages = await findInstalledSourcePackages(projectRoot);
@@ -100,7 +106,12 @@ export async function readSkillsStatus(
     orphans:
       options?.orphans === false
         ? []
-        : await findOrphanedSkills(projectRoot, dirs, new Set(sources.keys())),
+        : await findOrphanedSkills(
+            projectRoot,
+            dirs,
+            new Set(sources.keys()),
+            unconfiguredDirs,
+          ),
     upToDate: skills.every((skill) => skill.upToDate),
   };
 }
@@ -241,21 +252,28 @@ async function missingFromDisk(target: string): Promise<boolean> {
 
 /**
  * Copies in the harness directories that this CLI installed — their
- * SKILL.md names an allowlisted package as its `library` — and that no
- * installed package still provides. A skill from anywhere else is
- * someone else's file and is never touched.
+ * SKILL.md names an allowlisted package as its `library` — and that
+ * nothing wants any more: in a configured directory, one no installed
+ * package still provides; in the directory of an agent the config no
+ * longer names, every one. A skill from anywhere else is someone
+ * else's file and is never touched.
  */
 export async function findOrphanedSkills(
   projectRoot: string,
   dirs: readonly string[],
   provided: ReadonlySet<string>,
+  unconfiguredDirs: readonly string[] = [],
 ): Promise<OrphanedSkill[]> {
   const orphans = new Map<string, { library: string | null; dirs: string[] }>();
+  const scan = [
+    ...dirs.map((dir) => ({ dir, wanted: provided })),
+    ...unconfiguredDirs.map((dir) => ({ dir, wanted: new Set<string>() })),
+  ];
 
-  for (const dir of dirs) {
+  for (const { dir, wanted } of scan) {
     const harnessDir = path.join(projectRoot, dir);
     for (const skill of await skillDirectories(harnessDir)) {
-      if (provided.has(skill)) {
+      if (wanted.has(skill)) {
         continue;
       }
       const stamp = await readSkillStamp(
