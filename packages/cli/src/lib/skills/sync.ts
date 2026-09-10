@@ -1,5 +1,12 @@
 // biome-ignore-all lint/performance/noAwaitInLoops: one skill tree is written at a time; an interrupted copy can leave one partial tree, which reads as absent (no SKILL.md yet) and is repaired by the next sync.
-import { mkdir, readdir, readFile, rm, writeFile } from "node:fs/promises";
+import {
+  mkdir,
+  readdir,
+  readFile,
+  rm,
+  rmdir,
+  writeFile,
+} from "node:fs/promises";
 import path from "node:path";
 
 import type { InstalledSourcePackage, SkillsStatus } from "./status";
@@ -41,11 +48,12 @@ export interface SyncOutcome {
 
 /**
  * Brings the harness skill directories in line with the installed
- * source packages: copies each skill tree whose stamp does not match
- * the package it came from, and removes copies whose source package is
- * gone. A target directory that exists but is not this CLI's copy is
- * refused, never replaced. Doing nothing is the normal outcome and is
- * not an error.
+ * source packages and the configured agents: copies each skill tree
+ * whose stamp does not match the package it came from, and removes
+ * copies whose source package is gone or whose agent the config no
+ * longer names. A target directory that exists but is not this CLI's
+ * copy is refused, never replaced. Doing nothing is the normal outcome
+ * and is not an error.
  */
 export async function syncSkills(status: SkillsStatus): Promise<SyncOutcome> {
   const synced: SyncedSkill[] = [];
@@ -95,6 +103,7 @@ export async function syncSkills(status: SkillsStatus): Promise<SyncOutcome> {
         recursive: true,
         force: true,
       });
+      await removeEmptyHarnessDirs(status.projectRoot, dir);
     }
     pruned.push({
       skill: orphan.skill,
@@ -112,6 +121,30 @@ export async function syncSkills(status: SkillsStatus): Promise<SyncOutcome> {
     refused,
     checkDisabled: status.checkDisabled,
   };
+}
+
+/**
+ * A harness directory this CLI emptied by removing its last copy is
+ * removed too, and so is its parent (`.claude/skills`, then `.claude`),
+ * so opting an agent out leaves nothing behind. `rmdir` refuses a
+ * directory holding anything else, which is exactly the user's file
+ * that must stay.
+ */
+async function removeEmptyHarnessDirs(
+  projectRoot: string,
+  dir: string,
+): Promise<void> {
+  for (
+    let current = dir;
+    current !== "." && current !== "";
+    current = path.dirname(current)
+  ) {
+    try {
+      await rmdir(path.join(projectRoot, current));
+    } catch {
+      return;
+    }
+  }
 }
 
 const OLD_CLI_GITIGNORE = /^\*\r?\n?$/;
