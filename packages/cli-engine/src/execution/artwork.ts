@@ -14,21 +14,12 @@ export async function runCommandArtwork(
 ): Promise<void> {
   if (signal.aborted) throw signal.reason;
   const out = runtime.stderr;
-  const columns = out.columns;
   if (
-    !artwork?.length ||
     state.format !== "human" ||
     state.logLevel === "error" ||
-    !runtime.isTty.stderr ||
-    columns === undefined ||
-    !Number.isFinite(columns)
+    !runtime.isTty.stderr
   )
     return;
-  const width = Math.max(
-    ...artwork.map((line) => textWidth(renderArtworkLine(line, false))),
-  );
-  if (columns < width + 4) return;
-  const paint = makePaint(state.colorEnabled);
   await writeArtworkFrames({
     out,
     animate:
@@ -37,17 +28,55 @@ export async function runCommandArtwork(
     delay,
     signal,
     render: (progress) => {
-      const rows = revealArtwork(artwork, progress) ?? [];
-      const text = rows
-        .map(
-          (row) =>
-            `  ${paint("emphasis", renderArtworkLine(row, state.colorEnabled))}`,
-        )
-        .join("\n");
-      return { text: `${text}\n\n`, rows: rows.length + 1 };
+      const lines: string[] = [];
+      const rows = addArtwork(
+        lines,
+        artwork,
+        out.columns,
+        state.colorEnabled,
+        progress,
+      );
+      return { text: rows === 0 ? "" : `${lines.join("\n")}\n`, rows };
     },
   });
   if (signal.aborted) throw signal.reason;
+}
+
+export function addArtwork(
+  lines: string[],
+  source: readonly HelpArtworkLine[] | undefined,
+  columns: number | undefined,
+  colorEnabled: boolean,
+  progress: number,
+): number {
+  const artwork = revealArtwork(source, progress)?.map((line) =>
+    renderArtworkLine(line, colorEnabled),
+  );
+  if (!artwork?.length || columns === undefined || !Number.isFinite(columns)) {
+    return 0;
+  }
+  const paint = makePaint(colorEnabled);
+  const start = 2;
+  const width = Math.max(...artwork.map(textWidth));
+  const left = columns - width - 2;
+  if (
+    artwork.length > lines.length - start ||
+    lines
+      .slice(start, start + artwork.length)
+      .some((line) => textWidth(line) + 4 > left)
+  ) {
+    if (columns >= width + 4) {
+      lines.unshift(...artwork.map((row) => `  ${paint("emphasis", row)}`), "");
+      return artwork.length + 1;
+    }
+    return 0;
+  }
+  for (const [index, row] of artwork.entries()) {
+    const line = lines[start + index];
+    lines[start + index] =
+      `${line}${" ".repeat(left - textWidth(line))}${paint("emphasis", row)}`;
+  }
+  return start + artwork.length;
 }
 
 export async function writeArtworkFrames({

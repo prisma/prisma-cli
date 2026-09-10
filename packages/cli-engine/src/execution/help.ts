@@ -13,9 +13,8 @@ import {
   positionalRuntime,
 } from "../args";
 import type { AnyCommand, WorkflowStep } from "../commands";
-import { renderArtworkLine, revealArtwork } from "../help-artwork";
 import type { Runtime } from "../runtime";
-import { canAnimateArtwork, writeArtworkFrames } from "./artwork";
+import { addArtwork, canAnimateArtwork, writeArtworkFrames } from "./artwork";
 import type { CommandTreeEntry, CommandTreeNode } from "./command-tree";
 import type { EngineSpec } from "./engine";
 import { makePaint, type Paint, textWidth } from "./palette";
@@ -152,50 +151,14 @@ export function renderHelp(
   ) {
     prefixRows = addArtwork(
       lines,
-      revealArtwork(spec.help?.artwork, progress)?.map((line) =>
-        renderArtworkLine(line, colorEnabled),
-      ),
+      spec.help?.artwork,
       columns,
-      paint,
+      colorEnabled,
+      progress,
     );
   }
   out.write(`${lines.join("\n")}\n`);
   return prefixRows;
-}
-
-function addArtwork(
-  lines: string[],
-  artwork: readonly string[] | undefined,
-  columns: number | undefined,
-  paint: Paint,
-): number {
-  if (!artwork?.length || columns === undefined || !Number.isFinite(columns)) {
-    return 0;
-  }
-  const start = 2;
-  const width = Math.max(...artwork.map(textWidth));
-  const left = columns - width - 2;
-  if (
-    artwork.length > lines.length - start ||
-    lines
-      .slice(start, start + artwork.length)
-      .some((line) => textWidth(line) + 4 > left)
-  ) {
-    if (columns >= width + 4) {
-      lines.unshift(
-        ...artwork.map((row) => `  ${paint("emphasis", row.trimEnd())}`),
-        "",
-      );
-      return artwork.length + 1;
-    }
-    return 0;
-  }
-  for (const [index, row] of artwork.entries()) {
-    const line = lines[start + index];
-    lines[start + index] =
-      `${line}${" ".repeat(left - textWidth(line))}${paint("emphasis", row)}`;
-  }
-  return start + artwork.length;
 }
 
 /** `prisma-cli project → Manage and inspect your Prisma projects` */
