@@ -114,6 +114,12 @@ export async function assembleRuntime(proc: HostProcess): Promise<Runtime> {
       write: (text) => {
         proc.stdout.write(text);
       },
+      get columns() {
+        return proc.stdout.columns;
+      },
+      get rows() {
+        return proc.stdout.rows;
+      },
     },
     stderr: {
       write: (text) => {

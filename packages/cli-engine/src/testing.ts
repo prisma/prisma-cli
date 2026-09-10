@@ -4,6 +4,7 @@ import { CONFIG_FILE_NAME } from "./config-loader";
 import type { Credential } from "./credential-manager";
 import type { EngineEvent, StreamEvent } from "./events";
 import { buildEngine } from "./execution/engine";
+import type { HelpArtworkLine } from "./help-artwork";
 import {
   InMemoryCredentialManager,
   type SessionRecord,
@@ -133,7 +134,8 @@ export interface TestCli {
       readonly isTty?: { stdin?: boolean; stdout?: boolean; stderr?: boolean };
       /** Terminal width, as the stream would report it. Absent means
        *  not a terminal, which is what ui.width reads as unbounded. */
-      readonly columns?: { stderr?: number };
+      readonly columns?: { stdout?: number; stderr?: number };
+      readonly rows?: { stdout?: number };
       readonly env?: Readonly<Record<string, string | undefined>>;
       /** Overrides the CLI-level seed, so one harness can assert both
        *  sides of the CI branch. Absent leaves the engine to detect CI
@@ -220,6 +222,8 @@ export function createTestCli(spec: {
   /** Words for the root help card, exactly as `createCli` takes them. */
   readonly help?: {
     readonly tagline?: string;
+    /** Optional brand-colored art beside or above root help in a human terminal. */
+    readonly artwork?: readonly HelpArtworkLine[];
     readonly description?: string;
     readonly workflow?: readonly WorkflowStep[];
     readonly examples?: readonly string[];
@@ -365,6 +369,8 @@ export function createTestCli(spec: {
           write: (text) => {
             stdoutText += text;
           },
+          columns: opts?.columns?.stdout,
+          rows: opts?.rows?.stdout,
         },
         stderr: {
           write: (text) => {

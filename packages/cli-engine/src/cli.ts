@@ -1,6 +1,7 @@
 import type { CommandFamily, MountedTree } from "./command-family";
 import type { WorkflowStep } from "./commands";
 import { buildEngine } from "./execution/engine";
+import type { HelpArtworkLine } from "./help-artwork";
 import type { RunSummary } from "./run-summary";
 import type { Runtime } from "./runtime";
 import type { TelemetryDeclaration } from "./telemetry/report";
@@ -56,6 +57,8 @@ export function createCli(spec: {
   /** Words for the root help card; the engine formats. */
   readonly help?: {
     readonly tagline?: string;
+    /** Optional brand-colored art beside or above root help in a human terminal. */
+    readonly artwork?: readonly HelpArtworkLine[];
     readonly description?: string;
     /** The CLI's common path, rendered as a `Workflow` section. */
     readonly workflow?: readonly WorkflowStep[];

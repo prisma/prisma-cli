@@ -59,6 +59,22 @@ Recommended symbols:
 - Human-facing paths should usually be shown relative to the current working directory.
 - Structured output should use the literal machine-meaningful value.
 - Banners are reserved for first-run experiences such as `auth login`.
+- Root help (`prisma` or `prisma --help`) may place a compact ASCII
+  rendition of the Prisma brand mark and wordmark to the right of the command list. Show it
+  only in human TTY output when the terminal has room for the text, a four-column
+  gap, and the full mark. When there is no room beside the text, place the same horizontal lockup
+  above the help with a blank line below it. Omit it when even the mark does not
+  fit, for unknown widths, pipes, JSON, and group or command help. Respect the
+  normal color settings. Use the symbol SVG’s cyan (#04D5E7), red (#FE4352),
+  and yellow (#FEBE29) fills as truecolor for the three bands; fall back to
+  monochrome with `NO_COLOR` or `--no-color`. The ASCII Prisma wordmark uses the terminal’s default foreground.
+- In an interactive color terminal, reveal the symbol once by painting cyan,
+  then red, then yellow, top to bottom within each band (200ms per band, 600ms
+  total). The wordmark and help text remain stationary. Print the rest of the
+  help after the reveal, and restore the cursor if interrupted. Use the final
+  static logo in CI, dumb terminals, `--no-interactive`, quiet mode,
+  `NO_COLOR` / `--no-color`, or when `PRISMA_REDUCED_MOTION=1`. Skip animation
+  when the logo cannot fit in the visible terminal height.
 - Outside those flows, focus on status, context, result, and next steps.
 
 Human-oriented command output in TTY mode should usually start with a compact header.

@@ -12,7 +12,10 @@ import {
   type PositionalSpec,
   positionalRuntime,
 } from "../args";
+import { resolveIsCI } from "../ci";
 import type { AnyCommand, WorkflowStep } from "../commands";
+import { renderArtworkLine, revealArtwork } from "../help-artwork";
+import type { Runtime } from "../runtime";
 import type { CommandTreeEntry, CommandTreeNode } from "./command-tree";
 import type { EngineSpec } from "./engine";
 import { makePaint, type Paint, textWidth } from "./palette";
@@ -130,7 +133,9 @@ export function renderHelp(
   argv: readonly string[],
   colorEnabled: boolean,
   out: HelpWriter,
-): void {
+  columns?: number,
+  progress = 1,
+): number {
   const paint = makePaint(colorEnabled);
   const { target, path } = resolveTarget(root, helpPath(argv));
   const lines: string[] = [];
@@ -139,7 +144,55 @@ export function renderHelp(
   } else {
     renderNodeHelp(spec, target.node, path, paint, lines);
   }
+  let prefixRows = 0;
+  if (path.length === 0 && target.kind === "node") {
+    prefixRows = addArtwork(
+      lines,
+      revealArtwork(spec.help?.artwork, progress)?.map((line) =>
+        renderArtworkLine(line, colorEnabled),
+      ),
+      columns,
+      paint,
+    );
+  }
   out.write(`${lines.join("\n")}\n`);
+  return prefixRows;
+}
+
+/** Keep the text intact; decoration is optional when space is tight. */
+function addArtwork(
+  lines: string[],
+  artwork: readonly string[] | undefined,
+  columns: number | undefined,
+  paint: Paint,
+): number {
+  if (!artwork?.length || columns === undefined || !Number.isFinite(columns)) {
+    return 0;
+  }
+  const start = 2;
+  const width = Math.max(...artwork.map(textWidth));
+  const left = columns - width - 2;
+  if (
+    artwork.length > lines.length - start ||
+    lines
+      .slice(start, start + artwork.length)
+      .some((line) => textWidth(line) + 4 > left)
+  ) {
+    if (columns >= width + 4) {
+      lines.unshift(
+        ...artwork.map((row) => `  ${paint("emphasis", row.trimEnd())}`),
+        "",
+      );
+      return artwork.length + 1;
+    }
+    return 0;
+  }
+  for (const [index, row] of artwork.entries()) {
+    const line = lines[start + index];
+    lines[start + index] =
+      `${line}${" ".repeat(left - textWidth(line))}${paint("emphasis", row)}`;
+  }
+  return start + artwork.length;
 }
 
 /** `prisma-cli project → Manage and inspect your Prisma projects` */
@@ -563,4 +616,87 @@ function renderLeafHelp(
   exampleLines(def.help.examples, spec.name, paint, lines);
   docsLine(entry.docsBaseUrl, paint, lines);
   lines.push("");
+}
+
+/** Animate only the visible logo prefix, so long help never needs a full redraw. */
+export async function runHelp(
+  spec: EngineSpec,
+  root: CommandTreeNode,
+  argv: readonly string[],
+  runtime: Runtime,
+  format: string,
+  delay: (ms: number, signal: AbortSignal) => Promise<void>,
+  signal: AbortSignal,
+): Promise<void> {
+  const channel = format === "human" ? "stdout" : "stderr";
+  const out = runtime[channel];
+  const columns =
+    format === "human" && runtime.isTty.stdout ? out.columns : undefined;
+  const color = preParseColorEnabled(argv, runtime, channel);
+  let final = "";
+  const prefixRows = renderHelp(
+    spec,
+    root,
+    argv,
+    color,
+    {
+      write: (text) => {
+        final = text;
+      },
+    },
+    columns,
+  );
+  if (
+    !canAnimateHelp(runtime, argv, color) ||
+    columns === undefined ||
+    prefixRows === 0 ||
+    prefixRows + 1 >= (out.rows ?? 24)
+  ) {
+    out.write(final);
+    return;
+  }
+  const frame = (progress: number): string => {
+    let text = "";
+    renderHelp(
+      spec,
+      root,
+      argv,
+      color,
+      {
+        write: (value) => {
+          text = value;
+        },
+      },
+      columns,
+      progress,
+    );
+    return `${text.split("\n").slice(0, prefixRows).join("\n")}\n`;
+  };
+  out.write(`\u001b[?25l${frame(0)}`);
+  try {
+    for (let step = 1; step <= 30; step++) {
+      // biome-ignore lint/performance/noAwaitInLoops: Frames must be paced sequentially.
+      await delay(20, signal);
+      if (signal.aborted) break;
+      out.write(`\u001b[${prefixRows}A\r${frame(step / 30)}`);
+    }
+  } finally {
+    out.write(`\u001b[${prefixRows}A\r${final}\u001b[?25h`);
+  }
+}
+
+function canAnimateHelp(
+  runtime: Runtime,
+  argv: readonly string[],
+  color: boolean,
+): boolean {
+  const flags = flagTokens(argv);
+  return (
+    color &&
+    !resolveIsCI(runtime) &&
+    runtime.env.TERM !== "dumb" &&
+    runtime.env.NO_COLOR === undefined &&
+    runtime.env.PRISMA_REDUCED_MOTION !== "1" &&
+    !flags.some((flag) => ["--no-interactive", "--quiet", "-q"].includes(flag))
+  );
 }

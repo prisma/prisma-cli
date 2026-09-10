@@ -9,6 +9,7 @@ import {
 } from "@prisma/cli-engine";
 import { createComposerFamily } from "@prisma/composer-cli/family";
 import { ormCommandFamily as ormToolchainFamily } from "@prisma/orm-toolchain/cli";
+import { horizontalArtwork } from "./cli-artwork";
 import { CLI_DOCS_URL, CLI_NAME, DOCS_ERRORS_BASE_URL } from "./cli-name";
 import { authLoginCommand } from "./commands/auth/login";
 import { authLogoutCommand } from "./commands/auth/logout";
@@ -460,6 +461,7 @@ export function buildCli(): Cli {
     commands: mountedCommands,
     help: {
       tagline: "The Prisma Developer Platform, from your terminal",
+      artwork: horizontalArtwork,
       description:
         "Deploy your app with isolated infrastructure for every branch: a Project groups one product, and each of its Branches maps to a Git branch with its own services, databases, and buckets. The production branch serves live traffic; every other branch is a preview.",
       workflow: [

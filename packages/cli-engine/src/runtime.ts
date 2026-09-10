@@ -12,6 +12,7 @@ export interface OutputStream {
    *  The engine reads it at render time rather than caching it, so a
    *  terminal resized mid-run is respected by the next thing drawn. */
   readonly columns?: number;
+  readonly rows?: number;
 }
 
 /**
@@ -165,7 +166,12 @@ export interface HostProcess {
   readonly platform: string;
   readonly arch: string;
   cwd(): string;
-  readonly stdout: { write(text: string): unknown; isTTY?: boolean };
+  readonly stdout: {
+    write(text: string): unknown;
+    isTTY?: boolean;
+    columns?: number;
+    rows?: number;
+  };
   readonly stderr: {
     write(text: string): unknown;
     isTTY?: boolean;
