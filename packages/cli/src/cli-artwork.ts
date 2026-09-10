@@ -1,50 +1,50 @@
-// ASCII adaptations of https://www.prisma.io/brand-kit, with the SVG fill colors.
+// ASCII adaptation of https://www.prisma.io/brand-kit.
 const symbol = [
   [
-    { text: "    ////////", rgb: [4, 213, 231] },
-    { text: "  //////", rgb: [254, 67, 82] },
+    { text: "    ////////", color: "cyan" },
+    { text: "  //////", color: "redBright" },
   ],
   [
-    { text: "  ////////", rgb: [4, 213, 231] },
-    { text: "  ////////", rgb: [254, 67, 82] },
+    { text: "  ////////", color: "cyan" },
+    { text: "  ////////", color: "redBright" },
   ],
   [
-    { text: "////////", rgb: [4, 213, 231] },
-    { text: "  //////////", rgb: [254, 67, 82] },
+    { text: "////////", color: "cyan" },
+    { text: "  //////////", color: "redBright" },
   ],
   [
-    { text: "//////", rgb: [4, 213, 231] },
-    { text: "  ////////////", rgb: [254, 67, 82] },
+    { text: "//////", color: "cyan" },
+    { text: "  ////////////", color: "redBright" },
   ],
   [
-    { text: "////", rgb: [4, 213, 231] },
-    { text: "  ////////////", rgb: [254, 67, 82] },
-    { text: "  ", rgb: [254, 190, 41] },
+    { text: "////", color: "cyan" },
+    { text: "  ////////////", color: "redBright" },
+    { text: "  ", color: "yellow" },
   ],
   [
-    { text: "//", rgb: [4, 213, 231] },
-    { text: "  ////////////", rgb: [254, 67, 82] },
-    { text: "  //", rgb: [254, 190, 41] },
+    { text: "//", color: "cyan" },
+    { text: "  ////////////", color: "redBright" },
+    { text: "  //", color: "yellow" },
   ],
   [
-    { text: "  ////////////", rgb: [254, 67, 82] },
-    { text: "  ////", rgb: [254, 190, 41] },
+    { text: "  ////////////", color: "redBright" },
+    { text: "  ////", color: "yellow" },
   ],
   [
-    { text: "////////////", rgb: [254, 67, 82] },
-    { text: "  //////", rgb: [254, 190, 41] },
+    { text: "////////////", color: "redBright" },
+    { text: "  //////", color: "yellow" },
   ],
   [
-    { text: "//////////", rgb: [254, 67, 82] },
-    { text: "  ////////", rgb: [254, 190, 41] },
+    { text: "//////////", color: "redBright" },
+    { text: "  ////////", color: "yellow" },
   ],
   [
-    { text: "////////", rgb: [254, 67, 82] },
-    { text: "  ////////  ", rgb: [254, 190, 41] },
+    { text: "////////", color: "redBright" },
+    { text: "  ////////  ", color: "yellow" },
   ],
   [
-    { text: "//////", rgb: [254, 67, 82] },
-    { text: "  ////////    ", rgb: [254, 190, 41] },
+    { text: "//////", color: "redBright" },
+    { text: "  ////////    ", color: "yellow" },
   ],
 ] as const;
 

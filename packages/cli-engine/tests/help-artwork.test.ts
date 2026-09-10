@@ -4,9 +4,9 @@ import { createTestCli } from "../src/testing";
 
 const artwork = [
   [
-    { text: "CC", rgb: [4, 213, 231] },
-    { text: "RR", rgb: [254, 67, 82] },
-    { text: "YY", rgb: [254, 190, 41] },
+    { text: "CC", color: "cyan" },
+    { text: "RR", color: "redBright" },
+    { text: "YY", color: "yellow" },
     { text: " Prisma" },
   ],
 ] as const;

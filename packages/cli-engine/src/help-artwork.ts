@@ -1,8 +1,10 @@
+import { styleText } from "node:util";
+
 export type HelpArtworkLine =
   | string
   | readonly {
       readonly text: string;
-      readonly rgb?: readonly [number, number, number];
+      readonly color?: "cyan" | "redBright" | "yellow";
     }[];
 
 export function renderArtworkLine(
@@ -11,15 +13,15 @@ export function renderArtworkLine(
 ): string {
   if (typeof line === "string") return line;
   return line
-    .map(({ text, rgb }) =>
-      colorEnabled && rgb !== undefined
-        ? `\u001b[38;2;${rgb.join(";")}m${text}\u001b[39m`
+    .map(({ text, color }) =>
+      colorEnabled && color !== undefined
+        ? styleText(color, text, { validateStream: false })
         : text,
     )
     .join("");
 }
 
-/** Paint each RGB band in first-appearance order, preserving every cell. */
+/** Paint each color band in first-appearance order, preserving every cell. */
 export function revealArtwork(
   lines: readonly HelpArtworkLine[] | undefined,
   progress: number,
@@ -28,9 +30,9 @@ export function revealArtwork(
   const totals = new Map<string, number>();
   for (const line of lines) {
     if (typeof line === "string") continue;
-    for (const { text, rgb } of line) {
-      if (rgb === undefined) continue;
-      const key = rgb.join(";");
+    for (const { text, color } of line) {
+      if (color === undefined) continue;
+      const key = color;
       totals.set(key, (totals.get(key) ?? 0) + text.replace(/ /g, "").length);
     }
   }
@@ -46,8 +48,8 @@ export function revealArtwork(
     typeof line === "string"
       ? line
       : line.map((span) => {
-          if (span.rgb === undefined) return span;
-          const key = span.rgb.join(";");
+          if (span.color === undefined) return span;
+          const key = span.color;
           const text = span.text.replace(/[^ ]/g, (character) => {
             const remaining = budgets.get(key) ?? 0;
             budgets.set(key, remaining - 1);

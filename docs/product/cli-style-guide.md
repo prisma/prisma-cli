@@ -65,8 +65,9 @@ Recommended symbols:
   gap, and the full mark. When there is no room beside the text, place the same horizontal lockup
   above the help with a blank line below it. Omit it when even the mark does not
   fit, for unknown widths, pipes, JSON, and group or command help. Respect the
-  normal color settings. Use the symbol SVG’s cyan (#04D5E7), red (#FE4352),
-  and yellow (#FEBE29) fills as truecolor for the three bands; fall back to
+  normal color settings. Use Node’s `util.styleText` with cyan, bright red,
+  and yellow for the three bands, matching the supported Node 22 runtime.
+  The exact shades follow the terminal palette; fall back to
   monochrome with `NO_COLOR` or `--no-color`. The ASCII Prisma wordmark uses the terminal’s default foreground.
 - In an interactive color terminal, reveal the symbol once by painting cyan,
   then red, then yellow, top to bottom within each band (200ms per band, 600ms
