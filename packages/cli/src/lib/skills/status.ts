@@ -78,6 +78,9 @@ export interface SkillsStatusOptions {
   readonly checkDisabled?: boolean;
 }
 
+/** Reads every skill the installed source packages ship and the state
+ *  of each copy in the configured agents' directories, plus the copies
+ *  the next sync will remove. */
 export async function readSkillsStatus(
   cwd: string,
   options?: SkillsStatusOptions,
