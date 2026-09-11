@@ -146,6 +146,7 @@ export async function assembleRuntime(proc: HostProcess): Promise<Runtime> {
       redirectUri: DEFAULT_REDIRECT_URI,
       apiBaseUrl,
       authBaseUrl,
+      cliVersion: getCliVersion(),
     },
     spawn: makeSpawnChild(proc.stderr),
     /** The engine has already decided and composed; the bin only forks

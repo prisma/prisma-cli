@@ -911,3 +911,82 @@ describe("the environment credential", () => {
     expect(cli.credentialManager.state()).toEqual(before);
   });
 });
+
+describe("deploy-source analytics headers", () => {
+  interface HeaderRecord {
+    readonly clientName: string | null;
+    readonly clientVersion: string | null;
+    readonly deploySource: string | null;
+  }
+
+  function scriptFetchRecordingHeaders(): HeaderRecord[] {
+    const records: HeaderRecord[] = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: Request | string | URL, init?: RequestInit) => {
+        const request =
+          input instanceof Request ? input : new Request(input, init);
+        records.push({
+          clientName: request.headers.get("x-prisma-client-name"),
+          clientVersion: request.headers.get("x-prisma-client-version"),
+          deploySource: request.headers.get("x-prisma-deploy-source"),
+        });
+        return jsonResponse(200, { workspaces: [] });
+      }),
+    );
+    return records;
+  }
+
+  const configWithVersion: ManagementApiClientConfig = {
+    ...CLIENT_CONFIG,
+    cliVersion: "8.0.0-rc.13",
+  };
+
+  const session = sessionSeed("workspace-1");
+
+  test("outside GitHub Actions: source is 'cli', name and version are set", async () => {
+    const records = scriptFetchRecordingHeaders();
+    const cli = createTestCli({
+      commands: { toy: callApi },
+      sessions: [session],
+      selectedWorkspaceId: "workspace-1",
+      managementApiClientConfig: configWithVersion,
+    });
+    const { exitCode } = await cli.run(["toy"], { env: {} });
+    expect(exitCode).toBe(0);
+    expect(records).toHaveLength(1);
+    expect(records[0].clientName).toBe("prisma-cli");
+    expect(records[0].clientVersion).toBe("8.0.0-rc.13");
+    expect(records[0].deploySource).toBe("cli");
+  });
+
+  test("inside GitHub Actions: source is 'github-action'", async () => {
+    const records = scriptFetchRecordingHeaders();
+    const cli = createTestCli({
+      commands: { toy: callApi },
+      sessions: [session],
+      selectedWorkspaceId: "workspace-1",
+      managementApiClientConfig: configWithVersion,
+    });
+    const { exitCode } = await cli.run(["toy"], {
+      env: { GITHUB_ACTIONS: "true" },
+    });
+    expect(exitCode).toBe(0);
+    expect(records[0].deploySource).toBe("github-action");
+  });
+
+  test("when cliVersion is absent from config, x-prisma-client-version is not sent", async () => {
+    const records = scriptFetchRecordingHeaders();
+    const cli = createTestCli({
+      commands: { toy: callApi },
+      sessions: [session],
+      selectedWorkspaceId: "workspace-1",
+      managementApiClientConfig: CLIENT_CONFIG,
+    });
+    const { exitCode } = await cli.run(["toy"], { env: {} });
+    expect(exitCode).toBe(0);
+    expect(records[0].clientName).toBe("prisma-cli");
+    expect(records[0].clientVersion).toBeNull();
+    expect(records[0].deploySource).toBe("cli");
+  });
+});
