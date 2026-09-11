@@ -152,7 +152,30 @@ async function constructClient(
     authBaseUrl: config.authBaseUrl,
     tokenStorage: storage,
   });
+  sdk.client.use(
+    deploySourceMiddleware(invocation.runtime.env, config.cliVersion),
+  );
   return { client: sdk.client, pinned: { active, storage } };
+}
+
+/** Analytics-only headers: the Management API records them on deploy events and behaves the same without them. */
+function deploySourceMiddleware(
+  env: Record<string, string | undefined>,
+  cliVersion: string | undefined,
+) {
+  return {
+    onRequest({ request }: { request: Request }): Request {
+      request.headers.set("x-prisma-client-name", "prisma-cli");
+      if (cliVersion !== undefined) {
+        request.headers.set("x-prisma-client-version", cliVersion);
+      }
+      request.headers.set(
+        "x-prisma-deploy-source",
+        env.GITHUB_ACTIONS === "true" ? "github-action" : "cli",
+      );
+      return request;
+    },
+  };
 }
 
 /**

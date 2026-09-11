@@ -248,6 +248,7 @@ describe("assembleRuntime", () => {
       redirectUri: DEFAULT_REDIRECT_URI,
       apiBaseUrl: "https://api.example.test",
       authBaseUrl: "https://auth.prisma.io",
+      cliVersion: getCliVersion(),
     });
     expect(typeof runtime.openUrl).toBe("function");
     expect(proc.stderrText).toBe("");

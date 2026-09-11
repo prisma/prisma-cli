@@ -38,6 +38,8 @@ export interface ManagementApiClientConfig {
   readonly redirectUri: string;
   readonly apiBaseUrl: string;
   readonly authBaseUrl: string;
+  /** The CLI's own semver string, forwarded to the API as x-prisma-client-version. */
+  readonly cliVersion?: string;
 }
 
 /**
