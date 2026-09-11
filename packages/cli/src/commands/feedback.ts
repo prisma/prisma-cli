@@ -250,7 +250,12 @@ export const feedbackCommand = defineCommand({
       {
         message,
         ...(email ? { email } : {}),
-        meta: { ...context },
+        meta: {
+          cliVersion: context.cliVersion,
+          nodeVersion: context.runtime.version,
+          platform: context.platform,
+          arch: context.arch,
+        },
       },
       ctx.signal,
     );

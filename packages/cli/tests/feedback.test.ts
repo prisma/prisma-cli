@@ -39,8 +39,21 @@ async function startFeedbackService(options: {
       raw += chunk;
     });
     req.on("end", () => {
+      const body = JSON.parse(raw);
+      if (
+        !body.meta ||
+        Object.values(body.meta).some((value) => typeof value !== "string")
+      ) {
+        res.writeHead(400, { "content-type": "application/json" });
+        res.end(
+          JSON.stringify({
+            error: { message: "meta must be an object with string values." },
+          }),
+        );
+        return;
+      }
       requests.push({
-        body: JSON.parse(raw),
+        body,
         userAgent: req.headers["user-agent"],
       });
       res.statusCode = options.status ?? 201;
@@ -121,7 +134,7 @@ describe("prisma feedback", () => {
         cliVersion: (
           result.presented?.data as { context: { cliVersion: string } }
         ).context.cliVersion,
-        runtime: { name: "node", version: "v22.12.0" },
+        nodeVersion: "v22.12.0",
         platform: "linux",
         arch: "x64",
       },
