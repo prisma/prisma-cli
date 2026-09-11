@@ -17,6 +17,8 @@ import { describeCommand } from "./suite";
 
 const scratch = useScratchProject("service");
 
+const SERVICE_ID = /^cps_/;
+
 let serviceName: string | undefined;
 let serviceId: string | undefined;
 
@@ -47,7 +49,7 @@ describeCommand("service create", () => {
     };
 
     expect(created.projectId).toBe(scratch.project().id);
-    expect(created.service.id).toBeTruthy();
+    expect(created.service.id).toMatch(SERVICE_ID);
     expect(created.service.name).toBe(name);
     expect(created.existing).toBe(false);
     // No --region: the API picks the default and reports which one.
