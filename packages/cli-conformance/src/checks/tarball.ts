@@ -44,7 +44,8 @@ export interface TarballIo {
     readonly rootTarball: string;
     /** Version-qualified name → absolute `file:` tarball path. */
     readonly overrides: Readonly<Record<string, string>>;
-  }): Promise<{ ok: true } | { ok: false; output: string }>;
+    readonly timeoutMs: number;
+  }): Promise<{ ok: true } | { ok: false; timedOut: boolean; output: string }>;
   readInstalledManifest(
     sandboxDir: string,
     name: string,
@@ -97,6 +98,13 @@ export interface TarballInput {
   readonly exceptions: readonly PinException[];
   readonly sandboxDir: string;
   readonly binTimeoutMs?: number;
+  /**
+   * npm does not fail on a peer range no published version satisfies;
+   * it backtracks for hours (2026-09-11: `@effect/*@4.0.0-rc.114` shipped
+   * ahead of `effect`, and every install of the shells ran until CI was
+   * cancelled). The cap turns that into a finding with npm's output.
+   */
+  readonly installTimeoutMs?: number;
   /**
    * Which channel these tarballs are for. Check 4 measures the packed
    * manifests against it; a dev publish is allowed its dev builds.
@@ -326,11 +334,28 @@ async function sandboxFindings(
     }
   };
   visit(root.manifest);
+  const timeoutMs = input.installTimeoutMs ?? 300_000;
   const install = await io.installSandbox({
     sandboxDir,
     rootTarball: root.tarball,
     overrides,
+    timeoutMs,
   });
+  if (!install.ok && install.timedOut) {
+    return [
+      finding(
+        "install-timed-out",
+        packageName,
+        `npm install did not finish within ${timeoutMs / 1000}s and was killed`,
+        "npm is backtracking rather than failing: a dependency in the tree " +
+          "resolves to a version whose peer range no published version " +
+          "satisfies, and npm retries the resolution instead of reporting " +
+          "ERESOLVE. Find the package npm names in the ERESOLVE warnings " +
+          "below and pin it exactly in the package that pulls it in.\n\n" +
+          install.output,
+      ),
+    ];
+  }
   if (!install.ok) {
     return [
       finding(
