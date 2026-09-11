@@ -87,7 +87,7 @@ export function realTarballIo(
       return files;
     },
 
-    async installSandbox({ sandboxDir, rootTarball, overrides }) {
+    async installSandbox({ sandboxDir, rootTarball, overrides, timeoutMs }) {
       const dir = resolve(sandboxDir);
       rmSync(dir, { recursive: true, force: true });
       mkdirSync(dir, { recursive: true });
@@ -115,11 +115,18 @@ export function realTarballIo(
             cwd: dir,
             env: { ...process.env, COREPACK_ENABLE_STRICT: "0" },
             maxBuffer: 64 * 1024 * 1024,
+            timeout: timeoutMs,
+            killSignal: "SIGKILL",
           },
         );
         return { ok: true as const };
       } catch (error) {
-        return { ok: false as const, output: installErrorOutput(error) };
+        const timedOut = (error as { killed?: boolean }).killed === true;
+        return {
+          ok: false as const,
+          timedOut,
+          output: installErrorOutput(error),
+        };
       }
     },
 
