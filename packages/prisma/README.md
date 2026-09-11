@@ -116,9 +116,17 @@ npx prisma service version promote VERSION_ID
 
 ## Support
 
-Issues and feedback are welcome while the CLI is in public beta. Please use
-[GitHub issues](https://github.com/prisma/prisma-cli/issues) for bug reports and
-feature requests.
+Send a bug report or feature request directly from your terminal:
+
+```bash
+npx prisma feedback "Describe what happened and what you expected"
+```
+
+Feedback is anonymous by default. Add `--email you@example.com` if you want a
+reply. Submissions include your message, CLI and runtime versions, OS platform,
+and architecture. Review your message for secrets before sending.
+
+For a public discussion, use [GitHub issues](https://github.com/prisma/prisma-cli/issues).
 
 Security reports should follow Prisma's
 [security policy](https://github.com/prisma/prisma-cli/blob/main/SECURITY.md)
