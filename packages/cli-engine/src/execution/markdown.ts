@@ -1,8 +1,16 @@
+import type { ErroredEnvelope } from "../commands";
+import type { EngineEvent } from "../events";
 import type { Block, PresentedResult, Text, TreeNode } from "../presentation";
 import type { Diagnostic, NextAction } from "../protocol";
 import type { Invocation } from "./engine";
 import { plainText } from "./palette";
-import { MASK, PLACEHOLDER, sentenceCase, withDocsUrl } from "./rendering";
+import {
+  commentaryLine,
+  MASK,
+  PLACEHOLDER,
+  sentenceCase,
+  withDocsUrl,
+} from "./rendering";
 
 const FENCE = "```";
 const LONG_FENCE = "````";
@@ -148,6 +156,19 @@ export function joinSections(
   return `${kept.map((section) => section.join("\n")).join("\n\n")}\n`;
 }
 
+function diagnosticsSection(diagnostics: readonly Diagnostic[]): string[] {
+  if (diagnostics.length === 0) {
+    return [];
+  }
+  return [
+    "### Diagnostics",
+    ...diagnostics.flatMap((diagnostic, index) => [
+      ...(index === 0 ? [] : [""]),
+      ...renderDiagnosticMarkdown(diagnostic),
+    ]),
+  ];
+}
+
 /** Everything on stdout: the blocks, then `### Next`, then
  *  `### Diagnostics`. The `stdout` presentation lines are never
  *  printed; the table already carries them. */
@@ -164,14 +185,73 @@ export function renderCompletedMarkdown(
       ...presented.presentation.next.flatMap(renderNextActionMarkdown),
     ]);
   }
-  if (presented.diagnostics.length > 0) {
-    sections.push([
-      "### Diagnostics",
-      ...presented.diagnostics.flatMap((diagnostic, index) => [
-        ...(index === 0 ? [] : [""]),
-        ...renderDiagnosticMarkdown(withDocsUrl(state, diagnostic)),
-      ]),
-    ]);
-  }
+  sections.push(
+    diagnosticsSection(
+      presented.diagnostics.map((diagnostic) => withDocsUrl(state, diagnostic)),
+    ),
+  );
   runtime.stdout.write(joinSections(sections));
+}
+
+/** The error in the diagnostic shape, then the accompanying findings
+ *  under `### Diagnostics`. The envelope's top-level `nextActions`
+ *  duplicate the error's and are not printed again. */
+export function renderErroredMarkdown(
+  invocation: Invocation,
+  envelope: ErroredEnvelope,
+): void {
+  invocation.runtime.stdout.write(
+    joinSections([
+      renderDiagnosticMarkdown(envelope.error),
+      diagnosticsSection(envelope.diagnostics),
+    ]),
+  );
+}
+
+/** Config-section warnings of an OK run, ahead of the blocks. */
+export function renderWarningsMarkdown(
+  invocation: Invocation,
+  diagnostics: readonly Diagnostic[],
+): void {
+  invocation.runtime.stdout.write(
+    joinSections(diagnostics.map(renderDiagnosticMarkdown)),
+  );
+}
+
+export function renderChildNextActionsMarkdown(
+  invocation: Invocation,
+  actions: readonly NextAction[],
+): void {
+  invocation.runtime.stdout.write(
+    joinSections([actions.flatMap(renderNextActionMarkdown)]),
+  );
+}
+
+/** One line per event on stdout as it happens. A step starting, its
+ *  progress, and a remediation are not printed. */
+export function renderEventMarkdown(
+  invocation: Invocation,
+  event: EngineEvent,
+): void {
+  const { stdout } = invocation.runtime;
+  switch (event.kind) {
+    case "message":
+      stdout.write(`${event.text}\n`);
+      return;
+    case "output":
+      stdout.write(`${event.line}\n`);
+      return;
+    case "step-finished":
+      stdout.write(`[${event.outcome}] ${event.step}\n`);
+      return;
+    case "endpoint":
+    case "status":
+    case "artifact":
+      stdout.write(`${commentaryLine(event)}\n`);
+      return;
+    case "step-started":
+    case "progress":
+    case "remediation":
+      return;
+  }
 }
