@@ -46,25 +46,32 @@ function isFormat(value: string | undefined): value is Format {
 }
 
 /** argv with the format-selection tokens removed: `--json`,
- *  `--format=<value>`, and `--format` with the value after it. */
+ *  `--format=<value>`, and `--format` with the value after it, only
+ *  when the value is a recognised format. Nothing after a bare `--` is
+ *  a flag, so the scan stops there and keeps the rest. */
 export function withoutFormatFlags(argv: readonly string[]): string[] {
+  const terminator = argv.indexOf("--");
+  const tokens = terminator === -1 ? argv : argv.slice(0, terminator);
+  const rest = terminator === -1 ? [] : argv.slice(terminator);
   const kept: string[] = [];
-  let skipValue = false;
-  for (const token of argv) {
-    if (skipValue) {
-      skipValue = false;
+  for (let index = 0; index < tokens.length; index += 1) {
+    const token = tokens[index];
+    if (token === "--json") {
       continue;
     }
-    if (token === "--json" || token.startsWith("--format=")) {
+    if (
+      token.startsWith("--format=") &&
+      isFormat(token.slice("--format=".length))
+    ) {
       continue;
     }
-    if (token === "--format") {
-      skipValue = true;
+    if (token === "--format" && isFormat(tokens[index + 1])) {
+      index += 1;
       continue;
     }
     kept.push(token);
   }
-  return kept;
+  return [...kept, ...rest];
 }
 
 /** The format requested by --json / --format / --format=<value>, if
