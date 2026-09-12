@@ -45,6 +45,28 @@ function isFormat(value: string | undefined): value is Format {
   return value !== undefined && FORMATS.includes(value as Format);
 }
 
+/** argv with the format-selection tokens removed: `--json`,
+ *  `--format=<value>`, and `--format` with the value after it. */
+export function withoutFormatFlags(argv: readonly string[]): string[] {
+  const kept: string[] = [];
+  let skipValue = false;
+  for (const token of argv) {
+    if (skipValue) {
+      skipValue = false;
+      continue;
+    }
+    if (token === "--json" || token.startsWith("--format=")) {
+      continue;
+    }
+    if (token === "--format") {
+      skipValue = true;
+      continue;
+    }
+    kept.push(token);
+  }
+  return kept;
+}
+
 /** The format requested by --json / --format / --format=<value>, if
  *  any. */
 export function formatFlagGiven(argv: readonly string[]): Format | undefined {
