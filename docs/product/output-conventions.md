@@ -471,6 +471,10 @@ Rules:
 - human-oriented decoration should be suppressed in JSON mode
 - missing values should be `null`, not placeholder strings
 
+## `--format markdown`
+
+`--format markdown` renders the same blocks a command describes for human output as plain Markdown: a summary line, `label: value` rows, GFM pipe tables, bullet lists, nested bullets for trees, and fenced code for drawings, followed by `### Next` for the suggested next actions and `### Diagnostics` for any findings. It exists for an agent that reads CLI output as text rather than parsing JSON: every value is labelled, nothing is padded, wrapped, aligned, or coloured, and no tokens go to envelope keys. Every part of the run's output — blocks, next actions, diagnostics, structured errors, help, `--version`, and live events — lands on stdout, and the engine writes nothing to stderr. The format is only ever explicit: without `--format markdown` a terminal gets human output and a pipe gets JSON.
+
 ## Non-Streaming JSON Shape
 
 Commands that return one final result should emit one JSON object to stdout.
