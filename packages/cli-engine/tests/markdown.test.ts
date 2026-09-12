@@ -813,7 +813,7 @@ describe("config-section warnings", () => {
     return createTestCli({ commands: { warned }, config: { toy: {} } });
   }
 
-  test("print on stdout in the diagnostic shape, a blank line between them, before the blocks", async () => {
+  test("print on stdout in the diagnostic shape, a blank line between them and one after, before the blocks", async () => {
     const result = await cli().run(["warned", "--format", "markdown"], {
       isTty: { stdout: true, stderr: true },
     });
@@ -825,6 +825,7 @@ describe("config-section warnings", () => {
         "why: Use toy.greeting.\n" +
         "\n" +
         "[info] TOY.FYI: Nothing to do.\n" +
+        "\n" +
         "[ok] hi\n",
     );
   });
@@ -840,7 +841,7 @@ describe("config-section warnings", () => {
 
     expect(result.stderr).toBe("");
     expect(result.stdout).toBe(
-      "[warn] TOY.LEGACY_GREETING: toy.legacy is deprecated.\nwhy: Use toy.greeting.\n[ok] hi\n",
+      "[warn] TOY.LEGACY_GREETING: toy.legacy is deprecated.\nwhy: Use toy.greeting.\n\n[ok] hi\n",
     );
   });
 });
