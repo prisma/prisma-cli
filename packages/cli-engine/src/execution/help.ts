@@ -16,6 +16,7 @@ import type { AnyCommand, WorkflowStep } from "../commands";
 import type { CommandTreeEntry, CommandTreeNode } from "./command-tree";
 import type { EngineSpec } from "./engine";
 import { makePaint, type Paint, textWidth } from "./palette";
+import { formatFlagGiven } from "./pre-parse-argv";
 import { SHARED_ALIASES, SHARED_FLAG_PARAMETERS } from "./shared-flags";
 import { resolveExample } from "./stricli-adapter";
 
@@ -47,6 +48,9 @@ export function preParseColorEnabled(
   },
   stream: "stdout" | "stderr",
 ): boolean {
+  if (formatFlagGiven(argv) === "markdown") {
+    return false;
+  }
   const tokens = flagTokens(argv);
   if (tokens.includes("--no-color")) {
     return false;

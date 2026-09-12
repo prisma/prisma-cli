@@ -386,7 +386,7 @@ export class EngineImpl implements Engine {
       /** Help prose follows stricli's channel rule: stdout in human
        *  mode, stderr in json mode so stdout stays a clean frame
        *  stream. Never fires telemetry, like --version. */
-      const stream = format === "human" ? runtime.stdout : runtime.stderr;
+      const stream = format === "json" ? runtime.stderr : runtime.stdout;
       renderHelp(
         this.spec,
         this.tree,
@@ -394,7 +394,7 @@ export class EngineImpl implements Engine {
         preParseColorEnabled(
           argv,
           runtime,
-          format === "human" ? "stdout" : "stderr",
+          format === "json" ? "stderr" : "stdout",
         ),
         stream,
       );
@@ -405,7 +405,7 @@ export class EngineImpl implements Engine {
        *  exactly the frame stream, so help prose goes to stderr instead. */
       stdout: {
         write: (text: string) =>
-          (state.format === "human" ? runtime.stdout : runtime.stderr).write(
+          (state.format === "json" ? runtime.stderr : runtime.stdout).write(
             text,
           ),
       },

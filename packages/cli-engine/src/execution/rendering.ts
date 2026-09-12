@@ -83,7 +83,7 @@ const STATUS_SYMBOL: Readonly<Record<Status, string>> = {
   info: "ℹ",
 };
 
-const MASK = "********";
+export const MASK = "********";
 const COLUMN_GAP = "  ";
 const RAIL = "│";
 const BRANCH = "├─";
@@ -200,14 +200,14 @@ function writeFields(
  */
 /** One header convention for every table: plain-string headers are
  *  normalized to sentence case, so casing is not a per-command choice. */
-function sentenceCase(text: Text): Text {
+export function sentenceCase(text: Text): Text {
   if (typeof text !== "string" || text === "") {
     return text;
   }
   return `${text[0].toUpperCase()}${text.slice(1)}`;
 }
 
-const PLACEHOLDER = "—";
+export const PLACEHOLDER = "—";
 
 /** An absent value renders as a dim em dash rather than invented prose
  *  ("none", "n/a") in data tone. */

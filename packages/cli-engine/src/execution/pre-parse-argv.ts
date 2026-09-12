@@ -39,20 +39,29 @@ export function configFlagGivenNoValue(argv: readonly string[]): boolean {
   return flagTokens(argv).includes("--config=");
 }
 
+const FORMATS: readonly Format[] = ["human", "json", "markdown"];
+
+function isFormat(value: string | undefined): value is Format {
+  return value !== undefined && FORMATS.includes(value as Format);
+}
+
 /** The format requested by --json / --format / --format=<value>, if
  *  any. */
 export function formatFlagGiven(argv: readonly string[]): Format | undefined {
   const tokens = flagTokens(argv);
   for (const [index, token] of tokens.entries()) {
-    if (token === "--json" || token === "--format=json") {
+    if (token === "--json") {
       return "json";
     }
-    if (token === "--format=human") {
-      return "human";
+    if (token.startsWith("--format=")) {
+      const value = token.slice("--format=".length);
+      if (isFormat(value)) {
+        return value;
+      }
     }
     if (token === "--format") {
       const value = tokens[index + 1];
-      if (value === "json" || value === "human") {
+      if (isFormat(value)) {
         return value;
       }
     }
