@@ -13,10 +13,35 @@ import {
   withDocsUrl,
 } from "./rendering";
 
-const FENCE = "```";
-const LONG_FENCE = "````";
+const BACKSLASH = /\\/g;
 const PIPE = /\|/g;
 const NEWLINE = /\n/g;
+const BACKTICK_RUN = /`+/g;
+
+function longestBacktickRun(text: string): number {
+  let longest = 0;
+  for (const run of text.match(BACKTICK_RUN) ?? []) {
+    longest = Math.max(longest, run.length);
+  }
+  return longest;
+}
+
+/** An inline code span whose delimiter is one backtick longer than any
+ *  run inside it, padded when the content starts or ends with one. */
+export function codeSpan(text: string): string {
+  const delimiter = "`".repeat(longestBacktickRun(text) + 1);
+  const padded =
+    text.startsWith("`") || text.endsWith("`") ? ` ${text} ` : text;
+  return `${delimiter}${padded}${delimiter}`;
+}
+
+/** A fenced block whose fence is one backtick longer than any run in
+ *  its lines, and at least three. */
+export function fenced(lines: readonly string[], language = ""): string[] {
+  const longest = Math.max(0, ...lines.map(longestBacktickRun));
+  const delimiter = "`".repeat(Math.max(3, longest + 1));
+  return [`${delimiter}${language}`, ...lines, delimiter];
+}
 
 function orPlaceholder(text: Text): string {
   const plain = plainText(text);
@@ -42,18 +67,16 @@ export function renderBlockMarkdown(block: Block): string[] {
       return block.items.map((item) => `- ${plainText(item)}`);
     case "tree":
       return block.roots.flatMap((root) => renderTreeNode(root, 0));
-    case "drawing": {
-      const lines = block.lines.map(plainText);
-      const fence = lines.some((line) => line.includes(FENCE))
-        ? LONG_FENCE
-        : FENCE;
-      return [fence, ...lines, fence];
-    }
+    case "drawing":
+      return fenced(block.lines.map(plainText));
   }
 }
 
 function escapeCell(text: string): string {
-  return text.replace(PIPE, "\\|").replace(NEWLINE, " ");
+  return text
+    .replace(BACKSLASH, "\\\\")
+    .replace(PIPE, "\\|")
+    .replace(NEWLINE, " ");
 }
 
 function cell(text: Text): string {
@@ -96,19 +119,19 @@ export function renderNextActionMarkdown(action: NextAction): string[] {
   if (target === undefined && action.commands !== undefined) {
     return [
       `- ${action.label}`,
-      ...action.commands.map((command) => `  - \`${command}\``),
+      ...action.commands.map((command) => `  - ${codeSpan(command)}`),
     ];
   }
   if (target === undefined || target === action.label) {
     return [
       action.command !== undefined
-        ? `- \`${action.label}\``
+        ? `- ${codeSpan(action.label)}`
         : `- ${action.label}`,
     ];
   }
   return [
     action.command !== undefined
-      ? `- ${action.label}: \`${target}\``
+      ? `- ${action.label}: ${codeSpan(target)}`
       : `- ${action.label}: ${target}`,
   ];
 }
@@ -263,8 +286,6 @@ export function renderEventMarkdown(
   }
 }
 
-const BASH_FENCE = "```bash";
-
 function parenthesized(suffix: string): string {
   return suffix.startsWith("(") ? suffix : `(${suffix})`;
 }
@@ -278,7 +299,7 @@ function helpTable(
     pipeRow(["---", "---"]),
     ...rows.map((row) =>
       pipeRow([
-        `\`${escapeCell(row.name.trimStart())}\``,
+        escapeCell(codeSpan(row.name.trimStart())),
         escapeCell(
           row.suffix === undefined || row.suffix === ""
             ? row.brief
@@ -305,7 +326,7 @@ export function renderHelpMarkdown(card: HelpCard): string {
     sections.push([card.tagline]);
   }
   if (card.usage !== undefined) {
-    sections.push(["## Usage"], [BASH_FENCE, card.usage, FENCE]);
+    sections.push(["## Usage"], fenced([card.usage], "bash"));
   }
   if (card.description !== undefined) {
     sections.push([card.description]);
@@ -329,7 +350,7 @@ export function renderHelpMarkdown(card: HelpCard): string {
     sections.push([card.note]);
   }
   if (card.examples.length > 0) {
-    sections.push(["## Examples"], [BASH_FENCE, ...card.examples, FENCE]);
+    sections.push(["## Examples"], fenced(card.examples, "bash"));
   }
   if (card.docsUrl !== undefined) {
     sections.push([`Docs: ${card.docsUrl}`]);
