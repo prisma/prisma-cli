@@ -208,14 +208,16 @@ export function renderErroredMarkdown(
   );
 }
 
-/** Config-section warnings of an OK run, ahead of the blocks. */
+/** Config-section warnings of an OK run, ahead of whatever the run
+ *  prints next, with one blank line between. */
 export function renderWarningsMarkdown(
   invocation: Invocation,
   diagnostics: readonly Diagnostic[],
 ): void {
-  invocation.runtime.stdout.write(
-    joinSections(diagnostics.map(renderDiagnosticMarkdown)),
-  );
+  const section = joinSections(diagnostics.map(renderDiagnosticMarkdown));
+  if (section !== "") {
+    invocation.runtime.stdout.write(`${section}\n`);
+  }
 }
 
 export function renderChildNextActionsMarkdown(
