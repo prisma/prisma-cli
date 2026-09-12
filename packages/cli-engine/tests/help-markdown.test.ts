@@ -120,4 +120,38 @@ describe("markdown help", () => {
       "# prisma-test project link\n\nLink this directory to a project\n\n## Usage\n\n```bash\nprisma-test project link --workspace <workspace-id> [options] [id-or-name] [tag...]\n```\n\nWrites the project id into prisma.config.ts so later commands know which project you mean.\n\nRun it once per checkout. Re-running replaces the link.\n\n## Arguments\n\n| Argument | Description |\n| --- | --- |\n| `id-or-name` | The project id or its display name (optional) |\n| `tag` | Tags to record on the link |\n\n## Options\n\n| Flag | Description |\n| --- | --- |\n| `-r, --region <region>` | Region to prefer (default: us) |\n| `--workspace <workspace-id>` | Workspace the project lives in (required) |\n| `-f, --force` | Overwrite an existing link |\n| `--confirm-link/--no-confirm-link` | Confirm or skip the link prompt |\n| `--mode <value>` | How to link (copy\\|reference; default: copy) |\n| `--label <label>...` | Labels, a\\|b style |\n| `--retries <value>` | How many attempts |\n\nGlobal options also apply: --format, --json, --log-level, --verbose, --quiet, --yes, --confirm, --interactive, --color, --config. Run 'prisma-test --help' for details.\n\n## Examples\n\n```bash\nprisma-test project link\nprisma-test project link \"Acme Dashboard\" --region eu\n```\n\nDocs: https://pris.ly/cli/errors\n",
     );
   });
+
+  test("a --format with no value is still a usage error, not help", async () => {
+    const result = await helpCardsCli().run(["project", "--format"]);
+
+    expect(result.exitCode).toBe(2);
+    expect(result.stdout).not.toContain("# prisma-test");
+  });
+
+  test("a --format with an unknown value is still a usage error, not help", async () => {
+    const result = await helpCardsCli().run(["project", "--format=bogus"]);
+
+    expect(result.exitCode).toBe(2);
+    expect(result.stdout).not.toContain("# prisma-test");
+  });
+
+  test("a --format whose value is a command name is still a usage error", async () => {
+    const result = await helpCardsCli().run(["--format", "project"]);
+
+    expect(result.exitCode).toBe(2);
+    expect(result.stdout).not.toContain("# prisma-test");
+  });
+
+  test("tokens after -- are positionals, so the invocation is not bare", async () => {
+    const result = await helpCardsCli().run([
+      "project",
+      "--format",
+      "markdown",
+      "--",
+      "--json",
+    ]);
+
+    expect(result.exitCode).toBe(2);
+    expect(result.stdout).not.toContain("# prisma-test project");
+  });
 });
