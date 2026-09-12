@@ -75,13 +75,11 @@ export function withoutFormatFlags(argv: readonly string[]): string[] {
 }
 
 /** The format requested by --json / --format / --format=<value>, if
- *  any. */
+ *  any. An explicit `--format` wins over `--json` whichever comes
+ *  first, as applySharedFlags decides it after parsing. */
 export function formatFlagGiven(argv: readonly string[]): Format | undefined {
   const tokens = flagTokens(argv);
   for (const [index, token] of tokens.entries()) {
-    if (token === "--json") {
-      return "json";
-    }
     if (token.startsWith("--format=")) {
       const value = token.slice("--format=".length);
       if (isFormat(value)) {
@@ -95,5 +93,5 @@ export function formatFlagGiven(argv: readonly string[]): Format | undefined {
       }
     }
   }
-  return undefined;
+  return tokens.includes("--json") ? "json" : undefined;
 }

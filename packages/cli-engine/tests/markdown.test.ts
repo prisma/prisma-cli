@@ -133,6 +133,12 @@ describe("block kinds", () => {
     ).toBe("| Expr | Note |\n| --- | --- |\n| a \\| b | line one line two |\n");
   });
 
+  test("a backslash in a cell is escaped before the pipe, so `a \\| b` survives", async () => {
+    expect(
+      await render([{ kind: "table", columns: ["expr"], rows: [["a \\| b"]] }]),
+    ).toBe("| Expr |\n| --- |\n| a \\\\\\| b |\n");
+  });
+
   test("a table with columns but no rows prints the header, the separator, then `(no rows)`", async () => {
     expect(
       await render([{ kind: "table", columns: ["name", "id"], rows: [] }]),
@@ -186,6 +192,12 @@ describe("block kinds", () => {
     expect(
       await render([{ kind: "drawing", lines: ["```", "x", "```"] }]),
     ).toBe("````\n```\nx\n```\n````\n");
+  });
+
+  test("a drawing containing four backticks uses a five-backtick fence", async () => {
+    expect(await render([{ kind: "drawing", lines: ["````", "x"] }])).toBe(
+      "`````\n````\nx\n`````\n",
+    );
   });
 
   test("spans render as their plain text with tones dropped", async () => {
@@ -309,6 +321,15 @@ describe("next action bullets", () => {
         { kind: "user-choice", label: "Pick a region", reason: "latency" },
       ]),
     ).toBe("### Next\n- Pick a region\n");
+  });
+
+  test("a command containing a backtick gets a longer, padded delimiter", async () => {
+    expect(
+      await bullets([
+        { kind: "run-command", label: "Echo it", command: "echo `x`" },
+        { kind: "run-command", label: "a``b", command: "a``b" },
+      ]),
+    ).toBe("### Next\n- Echo it: `` echo `x` ``\n- ```a``b```\n");
   });
 
   test("plural commands: the label, then one nested bullet per command", async () => {
@@ -843,5 +864,42 @@ describe("config-section warnings", () => {
     expect(result.stdout).toBe(
       "[warn] TOY.LEGACY_GREETING: toy.legacy is deprecated.\nwhy: Use toy.greeting.\n\n[ok] hi\n",
     );
+  });
+});
+
+describe("--format beats --json whichever comes first", () => {
+  const blocks: readonly Block[] = [
+    { kind: "summary", status: "ok", text: "Hi" },
+  ];
+
+  test("through a mounted command", async () => {
+    for (const argv of [
+      ["show", "--json", "--format", "markdown"],
+      ["show", "--format", "markdown", "--json"],
+    ]) {
+      // biome-ignore lint/performance/noAwaitInLoops: each order builds its own CLI, and the assertion reads clearest one order at a time.
+      const result = await createTestCli({
+        commands: { show: show({ blocks }) },
+      }).run(argv);
+
+      expect(result.stdout).toBe("[ok] Hi\n");
+      expect(result.stderr).toBe("");
+    }
+  });
+
+  test("through help", async () => {
+    for (const argv of [
+      ["--help", "--json", "--format", "markdown"],
+      ["--help", "--format", "markdown", "--json"],
+    ]) {
+      // biome-ignore lint/performance/noAwaitInLoops: see above.
+      const result = await createTestCli({
+        commands: { show: show({ blocks }) },
+      }).run(argv);
+
+      expect(result.exitCode).toBe(0);
+      expect(result.stderr).toBe("");
+      expect(result.stdout.startsWith("# prisma-test\n")).toBe(true);
+    }
   });
 });
