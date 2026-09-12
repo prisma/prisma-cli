@@ -34,7 +34,7 @@ export const RESERVED_ALIASES: ReadonlySet<string> = new Set([
 export const SHARED_FLAG_PARAMETERS = {
   format: {
     kind: "enum",
-    values: ["human", "json"],
+    values: ["human", "json", "markdown"],
     optional: true,
     brief: "Output format",
   },
@@ -154,7 +154,8 @@ export function applySharedFlags(
   state.confirmValues = [...(shared.confirm ?? [])];
   state.interactive = shared.interactive ?? defaultInteractive(runtime);
   state.logLevel = resolveLogLevel(shared);
-  state.colorEnabled = resolveColorEnabled(shared, runtime);
+  state.colorEnabled =
+    state.format === "markdown" ? false : resolveColorEnabled(shared, runtime);
   state.configPath = shared.config;
 }
 

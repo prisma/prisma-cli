@@ -1,0 +1,177 @@
+import type { Block, PresentedResult, Text, TreeNode } from "../presentation";
+import type { Diagnostic, NextAction } from "../protocol";
+import type { Invocation } from "./engine";
+import { plainText } from "./palette";
+import { MASK, PLACEHOLDER, sentenceCase, withDocsUrl } from "./rendering";
+
+const FENCE = "```";
+const LONG_FENCE = "````";
+const PIPE = /\|/g;
+const NEWLINE = /\n/g;
+
+function orPlaceholder(text: Text): string {
+  const plain = plainText(text);
+  return plain === "" ? PLACEHOLDER : plain;
+}
+
+/**
+ * Plain Markdown, for a reader that is a model rather than a terminal:
+ * every value labelled, nothing padded, wrapped, aligned, or coloured.
+ */
+export function renderBlockMarkdown(block: Block): string[] {
+  switch (block.kind) {
+    case "summary":
+      return [`[${block.status}] ${plainText(block.text)}`];
+    case "fields":
+      return block.rows.map(
+        (row) =>
+          `${plainText(row.label)}: ${row.sensitive === true ? MASK : orPlaceholder(row.value)}`,
+      );
+    case "table":
+      return renderTable(block.columns, block.rows);
+    case "list":
+      return block.items.map((item) => `- ${plainText(item)}`);
+    case "tree":
+      return block.roots.flatMap((root) => renderTreeNode(root, 0));
+    case "drawing": {
+      const lines = block.lines.map(plainText);
+      const fence = lines.some((line) => line.includes(FENCE))
+        ? LONG_FENCE
+        : FENCE;
+      return [fence, ...lines, fence];
+    }
+  }
+}
+
+function cell(text: Text): string {
+  return orPlaceholder(text).replace(PIPE, "\\|").replace(NEWLINE, " ");
+}
+
+function pipeRow(cells: readonly string[]): string {
+  return `| ${cells.join(" | ")} |`;
+}
+
+function renderTable(
+  columns: readonly Text[],
+  rows: ReadonlyArray<readonly Text[]>,
+): string[] {
+  const lines = [
+    pipeRow(columns.map((column) => cell(sentenceCase(column)))),
+    pipeRow(columns.map(() => "---")),
+    ...rows.map((row) => pipeRow(row.map(cell))),
+  ];
+  return rows.length === 0 ? [...lines, "(no rows)"] : lines;
+}
+
+function renderTreeNode(node: TreeNode, depth: number): string[] {
+  const indent = "  ".repeat(depth);
+  const label = plainText(node.label);
+  const line =
+    node.status === undefined
+      ? `${indent}- ${label}`
+      : `${indent}- [${node.status}] ${label}`;
+  return [
+    line,
+    ...(node.children ?? []).flatMap((child) =>
+      renderTreeNode(child, depth + 1),
+    ),
+  ];
+}
+
+export function renderNextActionMarkdown(action: NextAction): string[] {
+  const target = action.command ?? action.url;
+  if (target === undefined && action.commands !== undefined) {
+    return [
+      `- ${action.label}`,
+      ...action.commands.map((command) => `  - \`${command}\``),
+    ];
+  }
+  if (target === undefined || target === action.label) {
+    return [
+      action.command !== undefined
+        ? `- \`${action.label}\``
+        : `- ${action.label}`,
+    ];
+  }
+  return [
+    action.command !== undefined
+      ? `- ${action.label}: \`${target}\``
+      : `- ${action.label}: ${target}`,
+  ];
+}
+
+function whereLine(where: Diagnostic["where"]): string | undefined {
+  if (where === undefined) {
+    return undefined;
+  }
+  if (where.path !== undefined && where.line !== undefined) {
+    return `where: ${where.path}:${where.line}`;
+  }
+  if (where.path !== undefined) {
+    return `where: ${where.path}`;
+  }
+  if (where.line !== undefined) {
+    return `where: line ${where.line}`;
+  }
+  return undefined;
+}
+
+export function renderDiagnosticMarkdown(diagnostic: Diagnostic): string[] {
+  const lines = [
+    `[${diagnostic.severity}] ${diagnostic.code}: ${diagnostic.summary}`,
+  ];
+  if (diagnostic.why !== undefined) {
+    lines.push(`why: ${diagnostic.why}`);
+  }
+  const where = whereLine(diagnostic.where);
+  if (where !== undefined) {
+    lines.push(where);
+  }
+  for (const action of diagnostic.nextActions) {
+    lines.push(...renderNextActionMarkdown(action));
+  }
+  if (diagnostic.docsUrl !== undefined) {
+    lines.push(`docs: ${diagnostic.docsUrl}`);
+  }
+  return lines;
+}
+
+/** Joins sections with one blank line each, dropping empty ones, and
+ *  ends with exactly one newline; nothing when there is nothing. */
+export function joinSections(
+  sections: ReadonlyArray<readonly string[]>,
+): string {
+  const kept = sections.filter((section) => section.length > 0);
+  if (kept.length === 0) {
+    return "";
+  }
+  return `${kept.map((section) => section.join("\n")).join("\n\n")}\n`;
+}
+
+/** Everything on stdout: the blocks, then `### Next`, then
+ *  `### Diagnostics`. The `stdout` presentation lines are never
+ *  printed; the table already carries them. */
+export function renderCompletedMarkdown(
+  invocation: Invocation,
+  presented: PresentedResult<unknown>,
+): void {
+  const { runtime, state } = invocation;
+  const sections: string[][] =
+    presented.presentation.human.map(renderBlockMarkdown);
+  if (presented.presentation.next.length > 0) {
+    sections.push([
+      "### Next",
+      ...presented.presentation.next.flatMap(renderNextActionMarkdown),
+    ]);
+  }
+  if (presented.diagnostics.length > 0) {
+    sections.push([
+      "### Diagnostics",
+      ...presented.diagnostics.flatMap((diagnostic, index) => [
+        ...(index === 0 ? [] : [""]),
+        ...renderDiagnosticMarkdown(withDocsUrl(state, diagnostic)),
+      ]),
+    ]);
+  }
+  runtime.stdout.write(joinSections(sections));
+}

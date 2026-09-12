@@ -13,6 +13,7 @@ import {
 } from "../protocol";
 import { type ChildStatusSettlement, childExitCode } from "../spawn";
 import type { EngineSpec, Invocation } from "./engine";
+import { renderCompletedMarkdown } from "./markdown";
 import { makePaint } from "./palette";
 import {
   diagnosticSection,
@@ -86,6 +87,10 @@ export function settleCompleted(
       commandId: state.commandId,
       timestamp: invocation.now().toISOString(),
     });
+    return;
+  }
+  if (state.format === "markdown") {
+    renderCompletedMarkdown(invocation, presented);
     return;
   }
   renderCompletedHuman(invocation, presented);
@@ -377,7 +382,7 @@ export function settleVersion(
   invocation: Invocation,
 ): number {
   const { runtime, state } = invocation;
-  if (state.format === "human") {
+  if (state.format !== "json") {
     runtime.stdout.write(`${spec.version}\n`);
     return 0;
   }
