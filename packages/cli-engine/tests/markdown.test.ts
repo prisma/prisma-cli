@@ -8,11 +8,15 @@ import {
   type Block,
   defineCommand,
   defineCommandFamily,
+  defineConfigSection,
+  exitWithChildStatus,
   type Ui,
 } from "@prisma/cli-engine";
 import {
+  CliStructuredError,
   type Diagnostic,
   type NextAction,
+  notOk,
   ok,
 } from "@prisma/cli-engine/protocol";
 import { createTestCli } from "@prisma/cli-engine/testing";
@@ -497,5 +501,346 @@ describe("selection and channels", () => {
     });
 
     expect(result.stdout).toBe("[info] Infinity\n");
+  });
+});
+
+describe("an errored run", () => {
+  const failing = defineCommand({
+    help: { summary: "Always fails" },
+    handler: async () =>
+      notOk(
+        new CliStructuredError("TOY.BROKEN", "It broke", {
+          why: "The toy always breaks.",
+          where: { path: "toy.ts", line: 3 },
+          nextActions: [
+            { kind: "run-command", label: "Retry", command: "prisma toy" },
+            { kind: "open-url", label: "Read more", url: "https://x.test/a" },
+          ],
+          diagnostics: [
+            {
+              code: "TOY.FIRST",
+              severity: "warn",
+              summary: "First finding",
+              nextActions: [],
+            },
+            {
+              code: "TOY.SECOND",
+              severity: "info",
+              summary: "Second finding",
+              why: "Because",
+              nextActions: [],
+            },
+          ],
+        }),
+      ),
+  });
+
+  test("the error shape, a blank line, `### Diagnostics`, on stdout, exit 2, stderr empty", async () => {
+    const family = defineCommandFamily({
+      commands: { failing },
+      docsBaseUrl: "https://pris.ly/cli/errors/",
+    });
+    const result = await createTestCli({
+      commandFamilies: [family],
+      commands: { failing },
+    }).run(["failing", "--format", "markdown", "--color"], {
+      isTty: { stdout: true, stderr: true },
+    });
+
+    expect(result.exitCode).toBe(2);
+    expect(result.stderr).toBe("");
+    expect(result.stdout).toBe(
+      "[error] TOY.BROKEN: It broke\n" +
+        "why: The toy always breaks.\n" +
+        "where: toy.ts:3\n" +
+        "- Retry: `prisma toy`\n" +
+        "- Read more: https://x.test/a\n" +
+        "docs: https://pris.ly/cli/errors/TOY.BROKEN\n" +
+        "\n" +
+        "### Diagnostics\n" +
+        "[warn] TOY.FIRST: First finding\n" +
+        "docs: https://pris.ly/cli/errors/TOY.FIRST\n" +
+        "\n" +
+        "[info] TOY.SECOND: Second finding\n" +
+        "why: Because\n" +
+        "docs: https://pris.ly/cli/errors/TOY.SECOND\n",
+    );
+  });
+
+  test("an error with no accompanying diagnostics prints the error shape alone", async () => {
+    const bare = defineCommand({
+      help: { summary: "Fails plainly" },
+      handler: async () => notOk(new CliStructuredError("TOY.PLAIN", "Nope")),
+    });
+    const result = await createTestCli({ commands: { bare } }).run([
+      "bare",
+      "--format",
+      "markdown",
+    ]);
+
+    expect(result.exitCode).toBe(2);
+    expect(result.stdout).toBe("[error] TOY.PLAIN: Nope\n");
+    expect(result.stderr).toBe("");
+  });
+
+  test("an unknown command prints the engine's usage error on stdout", async () => {
+    const result = await createTestCli({ commands: { show: show({}) } }).run([
+      "shw",
+      "--format",
+      "markdown",
+    ]);
+
+    expect(result.exitCode).toBe(2);
+    expect(result.stderr).toBe("");
+    expect(result.stdout).toBe(
+      "[error] CLI.UNKNOWN_COMMAND: No command registered for `shw`, did you mean `show`?\n" +
+        "- Did you mean: `prisma-test show`\n" +
+        "- List every command: `prisma-test --help`\n",
+    );
+  });
+});
+
+describe("--version", () => {
+  test("prints the bare version on stdout", async () => {
+    const result = await createTestCli({ commands: { show: show({}) } }).run(
+      ["--version", "--format", "markdown"],
+      { isTty: { stdout: true } },
+    );
+
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout).toBe("0.0.0\n");
+    expect(result.stderr).toBe("");
+  });
+});
+
+describe("a child-status settlement", () => {
+  const hinting = defineCommand({
+    help: { summary: "A converge that asks for a reproduce hint" },
+    maySpawn: true,
+    handler: async (_args, ctx) => {
+      await ctx.spawn({ command: "alchemy" });
+      return ok(
+        exitWithChildStatus({
+          nextActions: [
+            {
+              kind: "run-command",
+              label: "Reproduce the failed converge",
+              command: "alchemy deploy ./entry.ts",
+            },
+            { kind: "user-choice", label: "Or give up" },
+          ],
+        }),
+      );
+    },
+  });
+
+  test("prints its next actions as bullets on stdout and exits with the child's code", async () => {
+    const result = await createTestCli({
+      commands: { hinting },
+      spawnScript: () => ({ exitCode: 3, signal: null }),
+    }).run(["hinting", "--format", "markdown"], { isTty: { stdout: true } });
+
+    expect(result.exitCode).toBe(3);
+    expect(result.stderr).toBe("");
+    expect(result.stdout).toBe(
+      "- Reproduce the failed converge: `alchemy deploy ./entry.ts`\n- Or give up\n",
+    );
+  });
+
+  test("a signal-killed child prints nothing", async () => {
+    const result = await createTestCli({
+      commands: { hinting },
+      spawnScript: () => ({ exitCode: null, signal: "SIGINT" }),
+    }).run(["hinting", "--format", "markdown"], { isTty: { stdout: true } });
+
+    expect(result.exitCode).toBe(130);
+    expect(result.stdout).toBe("");
+    expect(result.stderr).toBe("");
+  });
+});
+
+describe("live events", () => {
+  const noisy = defineCommand({
+    help: { summary: "Emits the whole vocabulary" },
+    handler: async (_args, ctx) => {
+      ctx.report({ kind: "step-started", step: "compile", id: "s1" });
+      ctx.report({ kind: "progress", step: "compile", completed: 1, total: 2 });
+      ctx.report({
+        kind: "step-finished",
+        step: "compile",
+        id: "s1",
+        outcome: "ok",
+      });
+      ctx.report({ kind: "step-finished", step: "lint", outcome: "warning" });
+      ctx.report({ kind: "step-finished", step: "test", outcome: "failed" });
+      ctx.report({ kind: "step-finished", step: "docs", outcome: "skipped" });
+      ctx.report({ kind: "message", severity: "warn", text: "heads up" });
+      ctx.report({ kind: "message", severity: "info", text: "fyi" });
+      ctx.report({ kind: "message", severity: "verbose", text: "chatter" });
+      ctx.report({
+        kind: "output",
+        source: "generator",
+        channel: "data",
+        line: "generated 3 files",
+      });
+      ctx.report({
+        kind: "output",
+        source: "generator",
+        channel: "diagnostic",
+        line: "generator warmed up",
+      });
+      ctx.report({
+        kind: "remediation",
+        action: { kind: "run-command", label: "Review", command: "demo show" },
+      });
+      ctx.report({
+        kind: "endpoint",
+        name: "studio",
+        url: "http://localhost:5555",
+      });
+      ctx.report({
+        kind: "status",
+        subject: "db",
+        status: "ready",
+        from: "starting",
+      });
+      ctx.report({ kind: "status", subject: "cache", status: "warm" });
+      ctx.report({
+        kind: "artifact",
+        path: "out/contract.json",
+        description: "the contract",
+        data: { bytes: 42 },
+      });
+      ctx.report({ kind: "artifact", path: "out/plain.json" });
+      return ok(
+        ctx.present(
+          { data: null },
+          {
+            human: () => [{ kind: "summary", status: "ok", text: "Done" }],
+            stdout: () => [],
+            json: () => null,
+            next: () => [],
+          },
+        ),
+      );
+    },
+  });
+
+  test("started and progress are dropped, finished carries the outcome word, the rest print as human, all on stdout", async () => {
+    const result = await createTestCli({ commands: { noisy } }).run(
+      ["noisy", "--format", "markdown"],
+      { isTty: { stdout: true, stderr: true } },
+    );
+
+    expect(result.stderr).toBe("");
+    expect(result.stdout).toBe(
+      "[ok] compile\n" +
+        "[warning] lint\n" +
+        "[failed] test\n" +
+        "[skipped] docs\n" +
+        "heads up\n" +
+        "fyi\n" +
+        "generated 3 files\n" +
+        "generator warmed up\n" +
+        "studio: http://localhost:5555\n" +
+        "db: starting → ready\n" +
+        "cache: warm\n" +
+        "out/contract.json — the contract\n" +
+        "out/plain.json\n" +
+        "[ok] Done\n",
+    );
+  });
+
+  test("the log-level filter applies as under human", async () => {
+    const result = await createTestCli({ commands: { noisy } }).run([
+      "noisy",
+      "--format",
+      "markdown",
+      "--quiet",
+    ]);
+
+    expect(result.stderr).toBe("");
+    expect(result.stdout).toBe("generated 3 files\n[ok] Done\n");
+  });
+});
+
+describe("config-section warnings", () => {
+  interface ToyConfig {
+    readonly greeting: string;
+  }
+  const warningSection = defineConfigSection<ToyConfig>({
+    name: "toy",
+    validate: () => ({
+      ok: true,
+      value: { greeting: "hi" },
+      diagnostics: [
+        {
+          code: "TOY.LEGACY_GREETING",
+          severity: "warn",
+          summary: "toy.legacy is deprecated.",
+          why: "Use toy.greeting.",
+          nextActions: [],
+        },
+        {
+          code: "TOY.FYI",
+          severity: "info",
+          summary: "Nothing to do.",
+          nextActions: [],
+        },
+      ],
+    }),
+  });
+  const warned = defineCommand({
+    help: { summary: "Show the validated toy config" },
+    needs: { config: warningSection },
+    handler: async (_args, ctx) =>
+      ok(
+        ctx.present(
+          { data: ctx.config },
+          {
+            human: () => [
+              { kind: "summary", status: "ok", text: ctx.config.greeting },
+            ],
+            stdout: () => [],
+            json: () => ctx.config,
+            next: () => [],
+          },
+        ),
+      ),
+  });
+
+  function cli() {
+    return createTestCli({ commands: { warned }, config: { toy: {} } });
+  }
+
+  test("print on stdout in the diagnostic shape, a blank line between them, before the blocks", async () => {
+    const result = await cli().run(["warned", "--format", "markdown"], {
+      isTty: { stdout: true, stderr: true },
+    });
+
+    expect(result.exitCode).toBe(0);
+    expect(result.stderr).toBe("");
+    expect(result.stdout).toBe(
+      "[warn] TOY.LEGACY_GREETING: toy.legacy is deprecated.\n" +
+        "why: Use toy.greeting.\n" +
+        "\n" +
+        "[info] TOY.FYI: Nothing to do.\n" +
+        "[ok] hi\n",
+    );
+  });
+
+  test("the log level filters them as under human", async () => {
+    const result = await cli().run([
+      "warned",
+      "--format",
+      "markdown",
+      "--log-level",
+      "warn",
+    ]);
+
+    expect(result.stderr).toBe("");
+    expect(result.stdout).toBe(
+      "[warn] TOY.LEGACY_GREETING: toy.legacy is deprecated.\nwhy: Use toy.greeting.\n[ok] hi\n",
+    );
   });
 });

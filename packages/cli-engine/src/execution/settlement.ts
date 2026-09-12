@@ -13,7 +13,11 @@ import {
 } from "../protocol";
 import { type ChildStatusSettlement, childExitCode } from "../spawn";
 import type { EngineSpec, Invocation } from "./engine";
-import { renderCompletedMarkdown } from "./markdown";
+import {
+  renderChildNextActionsMarkdown,
+  renderCompletedMarkdown,
+  renderErroredMarkdown,
+} from "./markdown";
 import { makePaint } from "./palette";
 import {
   diagnosticSection,
@@ -245,13 +249,23 @@ export function settleChildStatus(
     return;
   }
   if (child.signal === null) {
-    for (const action of settlement.nextActions) {
-      invocation.runtime.stderr.write(
-        `${renderNextAction(action, makePaint(invocation.state.colorEnabled))}\n`,
-      );
-    }
+    renderChildNextActions(invocation, settlement.nextActions);
   }
   settleVerbatimExitCode(invocation, exitCode);
+}
+
+function renderChildNextActions(
+  invocation: Invocation,
+  actions: readonly NextAction[],
+): void {
+  if (invocation.state.format === "markdown") {
+    renderChildNextActionsMarkdown(invocation, actions);
+    return;
+  }
+  const paint = makePaint(invocation.state.colorEnabled);
+  for (const action of actions) {
+    invocation.runtime.stderr.write(`${renderNextAction(action, paint)}\n`);
+  }
 }
 
 function settleStructuredChildStatus(
@@ -364,6 +378,10 @@ export function emitErrored(
       commandId: envelope.commandId,
       timestamp: invocation.now().toISOString(),
     });
+    return;
+  }
+  if (state.format === "markdown") {
+    renderErroredMarkdown(invocation, envelope);
     return;
   }
   const paint = makePaint(invocation.state.colorEnabled);
