@@ -67,13 +67,13 @@ importers:
         specifier: ^7.8.0
         version: 7.8.0
       '@repo/cli-conformance':
-        specifier: workspace:8.0.0-rc.13
+        specifier: workspace:8.0.0-rc.14
         version: link:../cli-conformance
       '@repo/cli-telemetry':
-        specifier: workspace:8.0.0-rc.13
+        specifier: workspace:8.0.0-rc.14
         version: link:../cli-telemetry
       '@repo/tsconfig':
-        specifier: workspace:8.0.0-rc.13
+        specifier: workspace:8.0.0-rc.14
         version: link:../tsconfig
       '@types/cross-spawn':
         specifier: ^6.0.6
@@ -97,7 +97,7 @@ importers:
   packages/cli-conformance:
     devDependencies:
       '@repo/tsconfig':
-        specifier: workspace:8.0.0-rc.13
+        specifier: workspace:8.0.0-rc.14
         version: link:../tsconfig
       '@types/node':
         specifier: ^22.19.19
@@ -140,10 +140,10 @@ importers:
         specifier: 1.69.0
         version: 1.69.0
       '@repo/cli-conformance':
-        specifier: workspace:8.0.0-rc.13
+        specifier: workspace:8.0.0-rc.14
         version: link:../cli-conformance
       '@repo/tsconfig':
-        specifier: workspace:8.0.0-rc.13
+        specifier: workspace:8.0.0-rc.14
         version: link:../tsconfig
       '@types/node':
         specifier: ^22.19.19
@@ -168,7 +168,7 @@ importers:
         version: 1.2.4
     devDependencies:
       '@repo/tsconfig':
-        specifier: workspace:8.0.0-rc.13
+        specifier: workspace:8.0.0-rc.14
         version: link:../tsconfig
       '@types/node':
         specifier: ^22.19.19
@@ -186,7 +186,7 @@ importers:
   packages/compute:
     devDependencies:
       '@repo/tsconfig':
-        specifier: workspace:8.0.0-rc.13
+        specifier: workspace:8.0.0-rc.14
         version: link:../tsconfig
       '@types/node':
         specifier: ^22.19.19
@@ -241,16 +241,16 @@ importers:
         version: 11.0.0
     devDependencies:
       '@prisma/cli':
-        specifier: workspace:8.0.0-rc.13
+        specifier: workspace:8.0.0-rc.14
         version: link:../cli
       '@prisma/credentials-store':
         specifier: ^7.8.0
         version: 7.8.0
       '@repo/cli-telemetry':
-        specifier: workspace:8.0.0-rc.13
+        specifier: workspace:8.0.0-rc.14
         version: link:../cli-telemetry
       '@repo/tsconfig':
-        specifier: workspace:8.0.0-rc.13
+        specifier: workspace:8.0.0-rc.14
         version: link:../tsconfig
       '@types/node':
         specifier: ^22.19.19
