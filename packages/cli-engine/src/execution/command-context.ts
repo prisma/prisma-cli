@@ -40,10 +40,20 @@ function availableWidth(stream: OutputStream): number {
  *  are stderr's. `width` is a getter because the contract reads it per
  *  render rather than caching it. */
 export function makeUi(colorEnabled: boolean, stderr: OutputStream): Ui {
+  return uiWith(colorEnabled, () => availableWidth(stderr));
+}
+
+/** Markdown is read as text, never on a terminal: no colour, no
+ *  width. */
+export function unboundedUi(): Ui {
+  return uiWith(false, () => Number.POSITIVE_INFINITY);
+}
+
+function uiWith(colorEnabled: boolean, width: () => number): Ui {
   const paint = makePaint(colorEnabled);
   return {
     get width() {
-      return availableWidth(stderr);
+      return width();
     },
     emphasize: (text) => paint("emphasis", text),
     dim: (text) => paint("muted", text),
@@ -86,6 +96,14 @@ function materializePresentation(
       next: presentations.next?.() ?? [],
     };
   }
+  if (state.format === "markdown") {
+    return {
+      human: presentations.human(ui),
+      stdout: [],
+      json: undefined,
+      next: presentations.next?.() ?? [],
+    };
+  }
   return {
     human: presentations.human(ui),
     stdout: presentations.stdout?.() ?? [],
@@ -108,7 +126,10 @@ export function makeContext(
   capabilities: CommandCapabilities,
 ): CommandContext<unknown, number> {
   const state = invocation.state;
-  const ui = makeUi(state.colorEnabled, invocation.runtime.stderr);
+  const ui =
+    state.format === "markdown"
+      ? unboundedUi()
+      : makeUi(state.colorEnabled, invocation.runtime.stderr);
   const present = <T>(
     outcome: {
       readonly data: T;

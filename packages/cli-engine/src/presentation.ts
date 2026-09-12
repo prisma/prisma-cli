@@ -1,6 +1,6 @@
 import type { Diagnostic, NextAction } from "./protocol";
 
-export type Format = "human" | "json";
+export type Format = "human" | "json" | "markdown";
 
 /**
  * What a command concluded, stated at the return site. `exitCode` is

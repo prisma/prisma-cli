@@ -13,9 +13,12 @@ import {
   positionalRuntime,
 } from "../args";
 import type { AnyCommand, WorkflowStep } from "../commands";
+import type { Format } from "../presentation";
 import type { CommandTreeEntry, CommandTreeNode } from "./command-tree";
 import type { EngineSpec } from "./engine";
+import { renderHelpMarkdown } from "./markdown";
 import { makePaint, type Paint, textWidth } from "./palette";
+import { formatFlagGiven, withoutFormatFlags } from "./pre-parse-argv";
 import { SHARED_ALIASES, SHARED_FLAG_PARAMETERS } from "./shared-flags";
 import { resolveExample } from "./stricli-adapter";
 
@@ -47,6 +50,9 @@ export function preParseColorEnabled(
   },
   stream: "stdout" | "stderr",
 ): boolean {
+  if (formatFlagGiven(argv) === "markdown") {
+    return false;
+  }
   const tokens = flagTokens(argv);
   if (tokens.includes("--no-color")) {
     return false;
@@ -104,11 +110,14 @@ function resolveTarget(
  *  is a help request; anything carrying flags or extra tokens is not —
  *  `cli --unknown` and `cli project --frobnicate` must reach routing
  *  and usage validation, not exit 0 with a help card. A bare leaf is a
- *  command run and is left alone. */
+ *  command run and is left alone. The format-selection flags do not
+ *  count: `cli project --format markdown` asks for the group's help in
+ *  Markdown. */
 export function bareGroupInvocation(
   root: CommandTreeNode,
-  argv: readonly string[],
+  rawArgv: readonly string[],
 ): boolean {
+  const argv = withoutFormatFlags(rawArgv);
   const segments = helpPath(argv);
   if (segments.length !== argv.length) {
     return false;
@@ -124,36 +133,208 @@ interface HelpWriter {
   write(text: string): void;
 }
 
+export interface HelpRow {
+  readonly name: string;
+  readonly brief: string;
+  /** Allowed values, `required`, a default, `(optional)`: appended
+   *  after the brief, exactly as the source spelled it. */
+  readonly suffix?: string;
+}
+
+export interface HelpStep {
+  readonly run: string;
+  readonly brief: string;
+}
+
+/** Everything a help card says, with no rendering decided: the two
+ *  renderers draw the same card. */
+export interface HelpCard {
+  readonly kind: "root" | "group" | "leaf";
+  /** `prisma-test project link` */
+  readonly name: string;
+  /** The root tagline, the group brief, or the leaf summary. */
+  readonly tagline: string | undefined;
+  /** Leaf only. */
+  readonly usage: string | undefined;
+  readonly description: string | undefined;
+  readonly commands: readonly HelpRow[];
+  readonly workflow: readonly HelpStep[];
+  readonly arguments: readonly HelpRow[];
+  readonly options: readonly HelpRow[];
+  /** Root only. */
+  readonly globalOptions: readonly HelpRow[];
+  /** The leaf's "Global options also apply" line, or the group's
+   *  "Run '… --help'" line. */
+  readonly note: string | undefined;
+  readonly examples: readonly string[];
+  readonly docsUrl: string | undefined;
+}
+
 export function renderHelp(
   spec: EngineSpec,
   root: CommandTreeNode,
   argv: readonly string[],
-  colorEnabled: boolean,
+  options: { readonly format: Format; readonly colorEnabled: boolean },
   out: HelpWriter,
 ): void {
-  const paint = makePaint(colorEnabled);
-  const { target, path } = resolveTarget(root, helpPath(argv));
-  const lines: string[] = [];
-  if (target.kind === "leaf") {
-    renderLeafHelp(spec, target.entry, path, paint, lines);
-  } else {
-    renderNodeHelp(spec, target.node, path, paint, lines);
+  const card = helpCard(spec, root, argv);
+  if (options.format === "markdown") {
+    out.write(renderHelpMarkdown(card));
+    return;
   }
-  out.write(`${lines.join("\n")}\n`);
+  out.write(renderHelpTerminal(card, makePaint(options.colorEnabled)));
+}
+
+export function helpCard(
+  spec: EngineSpec,
+  root: CommandTreeNode,
+  argv: readonly string[],
+): HelpCard {
+  const { target, path } = resolveTarget(root, helpPath(argv));
+  return target.kind === "leaf"
+    ? leafCard(spec, target.entry, path)
+    : nodeCard(spec, target.node, path);
+}
+
+function nodeCard(
+  spec: EngineSpec,
+  node: CommandTreeNode,
+  path: readonly string[],
+): HelpCard {
+  const atRoot = path.length === 0;
+  const groupPath = path.join(" ");
+  const group = spec.groups[groupPath];
+  return {
+    kind: atRoot ? "root" : "group",
+    name: [spec.name, ...path].join(" "),
+    tagline: atRoot ? spec.help?.tagline : group?.brief,
+    usage: undefined,
+    description: atRoot ? spec.help?.description : group?.description,
+    commands: nodeRows(spec, node, path),
+    workflow: resolvedSteps(
+      (atRoot ? spec.help?.workflow : group?.workflow) ?? [],
+      spec.name,
+    ),
+    arguments: [],
+    options: [],
+    globalOptions: atRoot ? sharedFlagRows() : [],
+    note: atRoot
+      ? undefined
+      : `Run '${spec.name} ${groupPath} <command> --help' for details on a command.`,
+    examples: resolvedExamples(atRoot ? spec.help?.examples : [], spec.name),
+    docsUrl: atRoot ? spec.help?.docsUrl : undefined,
+  };
+}
+
+function leafCard(
+  spec: EngineSpec,
+  entry: CommandTreeEntry,
+  path: readonly string[],
+): HelpCard {
+  const def = entry.def;
+  const usage = [
+    spec.name,
+    ...path,
+    requiredFlagUsage(def),
+    "[options]",
+    positionalUsage(def),
+  ]
+    .filter((part) => part !== "")
+    .join(" ");
+  const sharedNames = Object.keys(SHARED_FLAG_PARAMETERS)
+    .map((key) => `--${kebabCase(key)}`)
+    .join(", ");
+  return {
+    kind: "leaf",
+    name: [spec.name, ...path].join(" "),
+    tagline: def.help.summary,
+    usage,
+    description: def.help.description,
+    commands: [],
+    workflow: [],
+    arguments: Object.values<PositionalSpec<unknown>>(def.args.positionals)
+      .map((spec) => positionalRuntime(spec))
+      .map((runtime) => ({
+        name: runtime.placeholder,
+        brief: runtime.brief,
+        suffix: runtime.type === "optionalString" ? "(optional)" : undefined,
+      })),
+    options: declaredFlagRows(def),
+    globalOptions: [],
+    note:
+      def.kind === "server-command"
+        ? undefined
+        : `Global options also apply: ${sharedNames}. Run '${spec.name} --help' for details.`,
+    examples: resolvedExamples(def.help.examples, spec.name),
+    docsUrl: entry.docsBaseUrl,
+  };
+}
+
+function resolvedSteps(
+  steps: readonly WorkflowStep[],
+  cliName: string,
+): readonly HelpStep[] {
+  return steps.map((step) => ({
+    run: resolveExample(step.run, cliName),
+    brief: step.brief,
+  }));
+}
+
+function resolvedExamples(
+  examples: readonly string[] | undefined,
+  cliName: string,
+): readonly string[] {
+  return (examples ?? []).map((example) => resolveExample(example, cliName));
+}
+
+function renderHelpTerminal(card: HelpCard, paint: Paint): string {
+  const lines: string[] = [];
+  lines.push(header(card, paint));
+  lines.push("");
+  if (card.kind === "leaf") {
+    lines.push(sectionLabel(paint, "Usage"));
+    lines.push(
+      rail(
+        paint,
+        `${GAP}${paint("muted", "$")} ${paint("emphasis", card.usage ?? "")}`,
+      ),
+    );
+  } else {
+    railRows(card.commands, paint, lines);
+  }
+  if (card.description !== undefined) {
+    lines.push(rail(paint));
+    proseLines(card.description, paint, lines);
+  }
+  workflowLines(card.workflow, paint, lines);
+  rowSection("Arguments", card.arguments, paint, lines);
+  rowSection("Options", card.options, paint, lines);
+  if (card.kind === "root") {
+    lines.push(rail(paint));
+    lines.push(sectionLabel(paint, "Global options"));
+    railRows(card.globalOptions, paint, lines);
+  }
+  if (card.note !== undefined) {
+    lines.push(rail(paint));
+    if (card.kind === "leaf") {
+      proseLines(card.note, paint, lines, "muted");
+    } else {
+      lines.push(rail(paint, paint("muted", card.note)));
+    }
+  }
+  exampleLines(card.examples, paint, lines);
+  docsLine(card.docsUrl, paint, lines);
+  lines.push("");
+  return `${lines.join("\n")}\n`;
 }
 
 /** `prisma-cli project → Manage and inspect your Prisma projects` */
-function header(
-  spec: EngineSpec,
-  path: readonly string[],
-  tagline: string | undefined,
-  paint: Paint,
-): string {
-  const name = paint("emphasis", [spec.name, ...path].join(" "));
-  if (tagline === undefined || tagline === "") {
+function header(card: HelpCard, paint: Paint): string {
+  const name = paint("emphasis", card.name);
+  if (card.tagline === undefined || card.tagline === "") {
     return name;
   }
-  return `${name} ${paint("muted", `→ ${tagline}`)}`;
+  return `${name} ${paint("muted", `→ ${card.tagline}`)}`;
 }
 
 function rail(paint: Paint, rest = ""): string {
@@ -166,9 +347,23 @@ function sectionLabel(paint: Paint, label: string): string {
   return rail(paint, paint("muted", label));
 }
 
+function rowSection(
+  label: string,
+  rows: readonly HelpRow[],
+  paint: Paint,
+  lines: string[],
+): void {
+  if (rows.length === 0) {
+    return;
+  }
+  lines.push(rail(paint));
+  lines.push(sectionLabel(paint, label));
+  railRows(rows, paint, lines);
+}
+
 /** Two-column rows under the rail: name in the accent, brief plain. */
 function railRows(
-  rows: ReadonlyArray<{ name: string; brief: string; suffix?: string }>,
+  rows: readonly HelpRow[],
   paint: Paint,
   lines: string[],
 ): void {
@@ -224,7 +419,6 @@ function proseLines(
 
 function exampleLines(
   examples: readonly string[],
-  cliName: string,
   paint: Paint,
   lines: string[],
 ): void {
@@ -234,32 +428,22 @@ function exampleLines(
   lines.push(rail(paint));
   lines.push(sectionLabel(paint, "Examples"));
   for (const example of examples) {
-    lines.push(
-      rail(
-        paint,
-        `${GAP}${paint("muted", "$")} ${resolveExample(example, cliName)}`,
-      ),
-    );
+    lines.push(rail(paint, `${GAP}${paint("muted", "$")} ${example}`));
   }
 }
 
 /** The group's common path: `$`-prefixed copy-pastable steps in mount
  *  order, purpose column muted, aligned like every other row block. */
 function workflowLines(
-  workflow: readonly WorkflowStep[] | undefined,
-  cliName: string,
+  steps: readonly HelpStep[],
   paint: Paint,
   lines: string[],
 ): void {
-  if (workflow === undefined || workflow.length === 0) {
+  if (steps.length === 0) {
     return;
   }
   lines.push(rail(paint));
   lines.push(sectionLabel(paint, "Workflow"));
-  const steps = workflow.map((step) => ({
-    run: resolveExample(step.run, cliName),
-    brief: step.brief,
-  }));
   const width = Math.max(...steps.map((step) => textWidth(step.run)));
   for (const step of steps) {
     const pad = " ".repeat(width - textWidth(step.run));
@@ -307,11 +491,7 @@ function flagLabel(
   return `${alias} --${kebab}${negated}${placeholder}${repeat}`;
 }
 
-function sharedFlagRows(): ReadonlyArray<{
-  name: string;
-  brief: string;
-  suffix?: string;
-}> {
+function sharedFlagRows(): readonly HelpRow[] {
   const aliasByKey = new Map<string, string>(
     Object.entries(SHARED_ALIASES).map(([alias, key]) => [key, alias]),
   );
@@ -337,9 +517,7 @@ function sharedFlagRows(): ReadonlyArray<{
   ];
 }
 
-function declaredFlagRows(
-  def: AnyCommand,
-): ReadonlyArray<{ name: string; brief: string; suffix?: string }> {
+function declaredFlagRows(def: AnyCommand): readonly HelpRow[] {
   return Object.entries(def.args.flags).map(([key, spec]) => {
     const runtime: FlagRuntimeSpec = flagRuntime(spec);
     return {
@@ -404,11 +582,11 @@ function nodeRows(
   spec: EngineSpec,
   node: CommandTreeNode,
   path: readonly string[],
-): Array<{ name: string; brief: string }> {
+): HelpRow[] {
   const groupPath = path.join(" ");
   const depth = path.length;
   const seen = new Set<string>();
-  const rows: Array<{ name: string; brief: string }> = [];
+  const rows: HelpRow[] = [];
   for (const mounted of Object.keys(spec.commands)) {
     const segments = mounted.split(" ");
     if (
@@ -436,131 +614,9 @@ function nodeRows(
   return rows;
 }
 
-function renderNodeHelp(
-  spec: EngineSpec,
-  node: CommandTreeNode,
-  path: readonly string[],
-  paint: Paint,
-  lines: string[],
-): void {
-  const atRoot = path.length === 0;
-  const groupPath = path.join(" ");
-  const tagline = atRoot ? spec.help?.tagline : spec.groups[groupPath]?.brief;
-  lines.push(header(spec, path, tagline, paint));
-  lines.push("");
-  railRows(nodeRows(spec, node, path), paint, lines);
-
-  const description = atRoot
-    ? spec.help?.description
-    : spec.groups[groupPath]?.description;
-  if (description !== undefined) {
-    lines.push(rail(paint));
-    proseLines(description, paint, lines);
-  }
-
-  const workflow = atRoot
-    ? spec.help?.workflow
-    : spec.groups[groupPath]?.workflow;
-  workflowLines(workflow, spec.name, paint, lines);
-
-  if (atRoot) {
-    lines.push(rail(paint));
-    lines.push(sectionLabel(paint, "Global options"));
-    railRows(sharedFlagRows(), paint, lines);
-    exampleLines(spec.help?.examples ?? [], spec.name, paint, lines);
-    docsLine(spec.help?.docsUrl, paint, lines);
-  } else {
-    lines.push(rail(paint));
-    lines.push(
-      rail(
-        paint,
-        paint(
-          "muted",
-          `Run '${spec.name} ${groupPath} <command> --help' for details on a command.`,
-        ),
-      ),
-    );
-  }
-  lines.push("");
-}
-
 /** `link [id-or-name]` — the row a group lists for a leaf: name plus
  *  positional shape, briefs carry the rest. */
 function usageName(name: string, def: AnyCommand): string {
   const positionals = positionalUsage(def);
   return positionals === "" ? name : `${name} ${positionals}`;
-}
-
-function renderLeafHelp(
-  spec: EngineSpec,
-  entry: CommandTreeEntry,
-  path: readonly string[],
-  paint: Paint,
-  lines: string[],
-): void {
-  const def = entry.def;
-  lines.push(header(spec, path, def.help.summary, paint));
-  lines.push("");
-
-  const usageParts = [
-    spec.name,
-    ...path,
-    requiredFlagUsage(def),
-    "[options]",
-    positionalUsage(def),
-  ].filter((part) => part !== "");
-  lines.push(sectionLabel(paint, "Usage"));
-  lines.push(
-    rail(
-      paint,
-      `${GAP}${paint("muted", "$")} ${paint("emphasis", usageParts.join(" "))}`,
-    ),
-  );
-
-  if (def.help.description !== undefined) {
-    lines.push(rail(paint));
-    proseLines(def.help.description, paint, lines);
-  }
-  const positionalEntries = Object.values<PositionalSpec<unknown>>(
-    def.args.positionals,
-  ).map((spec) => positionalRuntime(spec));
-  if (positionalEntries.length > 0) {
-    lines.push(rail(paint));
-    lines.push(sectionLabel(paint, "Arguments"));
-    railRows(
-      positionalEntries.map((runtime) => ({
-        name: runtime.placeholder,
-        brief: runtime.brief,
-        suffix: runtime.type === "optionalString" ? "(optional)" : undefined,
-      })),
-      paint,
-      lines,
-    );
-  }
-
-  const flagRows = declaredFlagRows(def);
-  if (flagRows.length > 0) {
-    lines.push(rail(paint));
-    lines.push(sectionLabel(paint, "Options"));
-    railRows(flagRows, paint, lines);
-  }
-
-  if (def.kind !== "server-command") {
-    const sharedNames = [
-      ...Object.keys(SHARED_FLAG_PARAMETERS).map(
-        (key) => `--${kebabCase(key)}`,
-      ),
-    ].join(", ");
-    lines.push(rail(paint));
-    proseLines(
-      `Global options also apply: ${sharedNames}. Run '${spec.name} --help' for details.`,
-      paint,
-      lines,
-      "muted",
-    );
-  }
-
-  exampleLines(def.help.examples, spec.name, paint, lines);
-  docsLine(entry.docsBaseUrl, paint, lines);
-  lines.push("");
 }

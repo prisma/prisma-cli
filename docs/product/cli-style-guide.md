@@ -175,7 +175,7 @@ Shared flag rules:
 
 Shared global flags, defined by the engine in `SHARED_FLAG_PARAMETERS` (`packages/cli-engine/src/execution/shared-flags.ts`, the source of truth for this list):
 
-- `--format <human|json>`
+- `--format <human|json|markdown>`
 - `--json` (shorthand for `--format json`)
 - `--log-level <error|warn|info|verbose>`
 - `-v`, `--verbose` (shorthand for `--log-level verbose`)

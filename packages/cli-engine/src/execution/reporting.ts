@@ -1,5 +1,6 @@
 import type { EngineEvent, Severity, StreamEvent } from "../events";
 import type { Invocation } from "./engine";
+import { renderEventMarkdown } from "./markdown";
 import { renderEventHuman } from "./rendering";
 import type { DelegatedTerminal } from "./spawn";
 
@@ -71,6 +72,10 @@ export function reportEvent(invocation: Invocation, event: EngineEvent): void {
       commandId: state.commandId,
       timestamp: invocation.now().toISOString(),
     });
+    return;
+  }
+  if (state.format === "markdown") {
+    renderEventMarkdown(invocation, event);
     return;
   }
   renderEventHuman(invocation, event);
