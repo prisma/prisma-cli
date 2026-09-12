@@ -391,11 +391,14 @@ export class EngineImpl implements Engine {
         this.spec,
         this.tree,
         argv,
-        preParseColorEnabled(
-          argv,
-          runtime,
-          format === "json" ? "stderr" : "stdout",
-        ),
+        {
+          format,
+          colorEnabled: preParseColorEnabled(
+            argv,
+            runtime,
+            format === "json" ? "stderr" : "stdout",
+          ),
+        },
         stream,
       );
       return 0;

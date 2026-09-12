@@ -3,6 +3,7 @@ import type { EngineEvent } from "../events";
 import type { Block, PresentedResult, Text, TreeNode } from "../presentation";
 import type { Diagnostic, NextAction } from "../protocol";
 import type { Invocation } from "./engine";
+import type { HelpCard, HelpRow } from "./help";
 import { plainText } from "./palette";
 import {
   commentaryLine,
@@ -51,8 +52,12 @@ export function renderBlockMarkdown(block: Block): string[] {
   }
 }
 
+function escapeCell(text: string): string {
+  return text.replace(PIPE, "\\|").replace(NEWLINE, " ");
+}
+
 function cell(text: Text): string {
-  return orPlaceholder(text).replace(PIPE, "\\|").replace(NEWLINE, " ");
+  return escapeCell(orPlaceholder(text));
 }
 
 function pipeRow(cells: readonly string[]): string {
@@ -256,4 +261,78 @@ export function renderEventMarkdown(
     case "remediation":
       return;
   }
+}
+
+const BASH_FENCE = "```bash";
+
+function parenthesized(suffix: string): string {
+  return suffix.startsWith("(") ? suffix : `(${suffix})`;
+}
+
+function helpTable(
+  headers: readonly [string, string],
+  rows: readonly HelpRow[],
+): string[] {
+  return [
+    pipeRow(headers),
+    pipeRow(["---", "---"]),
+    ...rows.map((row) =>
+      pipeRow([
+        `\`${escapeCell(row.name.trimStart())}\``,
+        escapeCell(
+          row.suffix === undefined || row.suffix === ""
+            ? row.brief
+            : `${row.brief} ${parenthesized(row.suffix)}`,
+        ),
+      ]),
+    ),
+  ];
+}
+
+function helpSection(
+  heading: string,
+  headers: readonly [string, string],
+  rows: readonly HelpRow[],
+): string[][] {
+  return rows.length === 0 ? [] : [[`## ${heading}`], helpTable(headers, rows)];
+}
+
+/** The help card as Markdown: headings, paragraphs, pipe tables, and
+ *  bash fences, one blank line between everything. */
+export function renderHelpMarkdown(card: HelpCard): string {
+  const sections: string[][] = [[`# ${card.name}`]];
+  if (card.tagline !== undefined && card.tagline !== "") {
+    sections.push([card.tagline]);
+  }
+  if (card.usage !== undefined) {
+    sections.push(["## Usage"], [BASH_FENCE, card.usage, FENCE]);
+  }
+  if (card.description !== undefined) {
+    sections.push([card.description]);
+  }
+  sections.push(
+    ...helpSection("Commands", ["Command", "Description"], card.commands),
+    ...helpSection(
+      "Workflow",
+      ["Run", "Purpose"],
+      card.workflow.map((step) => ({ name: step.run, brief: step.brief })),
+    ),
+    ...helpSection("Arguments", ["Argument", "Description"], card.arguments),
+    ...helpSection("Options", ["Flag", "Description"], card.options),
+    ...helpSection(
+      "Global options",
+      ["Flag", "Description"],
+      card.globalOptions,
+    ),
+  );
+  if (card.note !== undefined) {
+    sections.push([card.note]);
+  }
+  if (card.examples.length > 0) {
+    sections.push(["## Examples"], [BASH_FENCE, ...card.examples, FENCE]);
+  }
+  if (card.docsUrl !== undefined) {
+    sections.push([`Docs: ${card.docsUrl}`]);
+  }
+  return joinSections(sections);
 }
