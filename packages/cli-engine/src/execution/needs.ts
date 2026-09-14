@@ -13,6 +13,7 @@ import {
 import { CliStructuredError, type Diagnostic } from "../protocol";
 import type { LoadedConfig } from "../runtime";
 import type { Invocation } from "./engine";
+import { renderWarningsMarkdown } from "./markdown";
 import { makePaint } from "./palette";
 import { withDocsUrl, writeDiagnostic } from "./rendering";
 import { SEVERITY_RANK } from "./reporting";
@@ -327,13 +328,20 @@ function writeSectionWarnings(
   diagnostics: readonly Diagnostic[],
 ): void {
   const state = invocation.state;
-  for (const diagnostic of diagnostics) {
-    if (SEVERITY_RANK[diagnostic.severity] > SEVERITY_RANK[state.logLevel]) {
-      continue;
-    }
+  const shown = diagnostics
+    .filter(
+      (diagnostic) =>
+        SEVERITY_RANK[diagnostic.severity] <= SEVERITY_RANK[state.logLevel],
+    )
+    .map((diagnostic) => withDocsUrl(state, diagnostic));
+  if (state.format === "markdown") {
+    renderWarningsMarkdown(invocation, shown);
+    return;
+  }
+  for (const diagnostic of shown) {
     writeDiagnostic(
       invocation.runtime.stderr,
-      withDocsUrl(state, diagnostic),
+      diagnostic,
       makePaint(state.colorEnabled),
     );
   }

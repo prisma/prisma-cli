@@ -387,6 +387,7 @@ describe("checkTarball", () => {
       installSandbox: () =>
         Promise.resolve({
           ok: false as const,
+          timedOut: false,
           output: "ETIMEDOUT registry.npmjs.org",
         }),
     });
@@ -394,6 +395,38 @@ describe("checkTarball", () => {
     const installs = findings.filter((f) => f.kind === "install-failed");
     expect(installs).toHaveLength(1);
     expect(installs[0]?.detail).toContain("ETIMEDOUT");
+  });
+
+  test("an install npm never finishes is its own finding, names the cap, and starts no bin", async () => {
+    const started: string[] = [];
+    const io = fakeIo({
+      installSandbox: ({ timeoutMs }) =>
+        Promise.resolve({
+          ok: false as const,
+          timedOut: true,
+          output: `killed after ${timeoutMs}ms\nnpm warn ERESOLVE overriding peer dependency\nnpm warn While resolving: @effect/sql-d1@4.0.0-rc.114`,
+        }),
+      startBin: ({ binName }) => {
+        started.push(binName);
+        return Promise.resolve({
+          exitCode: 0,
+          stdout: "",
+          stderr: "",
+          timedOut: false,
+        });
+      },
+    });
+    const findings = await checkTarball(
+      { ...input(), installTimeoutMs: 120_000 },
+      io,
+    );
+    const timeouts = findings.filter((f) => f.kind === "install-timed-out");
+    expect(timeouts).toHaveLength(1);
+    expect(timeouts[0]?.summary).toContain("120s");
+    expect(timeouts[0]?.detail).toContain("backtracking");
+    expect(timeouts[0]?.detail).toContain("@effect/sql-d1@4.0.0-rc.114");
+    expect(findings.filter((f) => f.kind === "install-failed")).toHaveLength(0);
+    expect(started).toHaveLength(0);
   });
 
   test("3b: every declared bin is started; a non-zero exit names the bin", async () => {
