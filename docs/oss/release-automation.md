@@ -56,8 +56,8 @@ A step in the publish workflow, immediately after its publish step and keyed on 
   run: |
     gh api repos/prisma/prisma-cli/dispatches \
       -f event_type=product-published \
-      -F 'client_payload[package]=@prisma/composer-cli' \
-      -F "client_payload[version]=$VERSION"
+      -f 'client_payload[package]=@prisma/composer-cli' \
+      -f "client_payload[version]=$VERSION"
 ```
 
 The payload is informational — this repository always re-reads the registry rather than trusting the event, so a malformed or replayed event cannot pin a version that does not exist.
