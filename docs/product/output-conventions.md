@@ -201,6 +201,11 @@ enrichment for older records and cache successful results. This is an explicit
 best-effort operation; the credential manager's ordinary `sessions()` read
 remains local-only.
 
+Metadata lookups must not overwrite a session replaced during the lookup.
+Login returns the session still stored when the lookup finishes, even when no
+metadata was found. If another process ended that session, login reports the
+existing session-ended `CLI.CREDENTIALS_REQUIRED` error instead of success.
+
 Human workspace-session output shows the user email next to every workspace
 when one is known. Selection prompts use the same identity so a user can
 distinguish same-named workspaces and sessions belonging to different

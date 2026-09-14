@@ -282,7 +282,7 @@ export class FileCredentialManager implements CredentialManager {
       throw credentialWorkspaceMismatchError(workspaceId);
     }
 
-    const created = await this.#mutate((state) => {
+    await this.#mutate((state) => {
       const existing = state.sessions.find(
         (session) => session.workspaceId === workspaceId,
       );
@@ -316,16 +316,20 @@ export class FileCredentialManager implements CredentialManager {
       this.#lookUpWorkspaceName(credential, workspaceId),
       this.#lookUpSessionIdentity(credential, workspaceId),
     ]);
-    if (name === undefined && identity === undefined) return created;
-
     return this.#mutate((state) => {
       const record = state.sessions.find(
         (session) => session.workspaceId === workspaceId,
       );
       // Lookups happen outside the lock. Do not attach their result to a
       // credential that another process saved for this workspace meanwhile.
-      if (record === undefined || record.token !== credential.token) {
-        return { result: created };
+      if (record === undefined) {
+        throw credentialsRequiredError("session-ended");
+      }
+      if (
+        record.token !== credential.token ||
+        (name === undefined && identity === undefined)
+      ) {
+        return { result: toSession(record) };
       }
       const enriched: StoredSession = {
         ...record,

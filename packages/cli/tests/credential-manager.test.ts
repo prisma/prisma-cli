@@ -919,31 +919,45 @@ describe("createSession", () => {
     expect(session.workspaceName).toBeUndefined();
   });
 
-  it("does not resurrect a record ended while the name was fetched", async () => {
+  it.each([
+    true,
+    false,
+  ])("rejects login ended during lookup (metadata returned: %s)", async (hasMetadata) => {
     let releaseFetch: () => void = () => {};
+    let markFetchStarted: () => void = () => {};
     const fetchStarted = new Promise<void>((resolve) => {
-      const manager = makeManager({
-        fetchWorkspaceName: async () => {
-          resolve();
-          await new Promise<void>((done) => {
-            releaseFetch = done;
-          });
-          return "Workspace A";
-        },
-      });
-      void manager.createSession(credentialFor(WORKSPACE_A), WORKSPACE_A);
+      markFetchStarted = resolve;
+    });
+    const manager = makeManager({
+      fetchWorkspaceName: async () => {
+        markFetchStarted();
+        await new Promise<void>((done) => {
+          releaseFetch = done;
+        });
+        return hasMetadata ? "Workspace A" : undefined;
+      },
+    });
+    const login = manager.createSession(
+      credentialFor(WORKSPACE_A),
+      WORKSPACE_A,
+    );
+    const rejected = expect(login).rejects.toMatchObject({
+      code: "CLI.CREDENTIALS_REQUIRED",
+      message: "The workspace session this command was using has ended.",
     });
 
     await fetchStarted;
     await makeManager().endSession(WORKSPACE_A);
     releaseFetch();
 
-    await vi.waitFor(async () => {
-      expect((await readCredentialState(stateFilePath)).sessions).toEqual([]);
-    });
+    await rejected;
+    expect((await readCredentialState(stateFilePath)).sessions).toEqual([]);
   });
 
-  it("does not attach stale account metadata to a concurrently replaced session", async () => {
+  it.each([
+    true,
+    false,
+  ])("returns the concurrently replaced session (metadata returned: %s)", async (hasMetadata) => {
     let releaseFetch: () => void = () => {};
     let markFetchStarted: () => void = () => {};
     const fetchStarted = new Promise<void>((resolve) => {
@@ -955,11 +969,13 @@ describe("createSession", () => {
         await new Promise<void>((resolve) => {
           releaseFetch = resolve;
         });
-        return {
-          userId: "usr_first",
-          email: "first@example.com",
-          name: undefined,
-        };
+        return hasMetadata
+          ? {
+              userId: "usr_first",
+              email: "first@example.com",
+              name: undefined,
+            }
+          : undefined;
       },
     });
     const firstLogin = first.createSession(
@@ -981,7 +997,7 @@ describe("createSession", () => {
       WORKSPACE_A,
     );
     releaseFetch();
-    await firstLogin;
+    expect((await firstLogin).identity?.userId).toBe("user:second");
 
     const state = await readCredentialState(stateFilePath);
     expect(state.sessions[0]).toMatchObject({ refreshToken: "refresh-second" });
