@@ -109,30 +109,7 @@ async function tarball(): Promise<readonly Finding[]> {
       shellPackage: "@prisma/cli",
       enginePackage: "@prisma/cli-engine",
       familyPackages: ["@prisma/composer-cli", "@prisma/orm-toolchain"],
-      // An engine version transition is in flight: the engine must
-      // publish 0.4.0 before either family can peer it, so both still
-      // declare 0.3.0. The release PR that pins the families' new
-      // versions removes these entries and restores the empty list.
-      exceptions: [
-        {
-          familyPackage: "@prisma/composer-cli",
-          familyPin: "0.3.0",
-          shellPin: "0.4.0",
-          reason:
-            "@prisma/cli-engine 0.4.0 adds the markdown output format. Both families peer the engine exactly, so both must republish against it before this repo can pin them.",
-          removeWhen:
-            "@prisma/composer-cli publishes a version peering @prisma/cli-engine 0.4.0 and this repo pins it.",
-        },
-        {
-          familyPackage: "@prisma/orm-toolchain",
-          familyPin: "0.3.0",
-          shellPin: "0.4.0",
-          reason:
-            "@prisma/cli-engine 0.4.0 adds the markdown output format. Both families peer the engine exactly, so both must republish against it before this repo can pin them.",
-          removeWhen:
-            "@prisma/orm-toolchain publishes a version peering @prisma/cli-engine 0.4.0 and this repo pins it.",
-        },
-      ],
+      exceptions: [],
       channel: CHANNEL,
       sandboxDir: join(WORK_DIR, "sandbox"),
     },
