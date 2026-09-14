@@ -19,7 +19,7 @@ pnpm prisma service deployment list
 pnpm prisma service deployment show DEPLOYMENT_ID
 ```
 
-Deployments start from pushing the connected repository, the Console, or `composer deploy` — there is no standalone deploy command.
+Deployments start from pushing the connected repository, the Console, or `deploy`.
 
 What this validates:
 

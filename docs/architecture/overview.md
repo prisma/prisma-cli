@@ -22,8 +22,7 @@ flowchart TD
 ## Command Flow
 
 1. `packages/cli/src/bin.ts` starts the Node process and calls `main`.
-2. `packages/cli/src/main.ts` builds the CLI, runs the update check, and
-   hands the engine a runtime assembled from `process`.
+2. `packages/cli/src/main.ts` builds the CLI, runs the update check, hands the engine a runtime assembled from `process`, and after the command has run reports out-of-date agent skills.
 3. `packages/cli/src/cli.ts` mounts every command and command family.
 4. The engine parses argv, decides interactivity and credentials, dispatches
    the handler, and renders its result.
@@ -52,6 +51,7 @@ implementation.
 Local state boundaries are also explicit:
 
 - `.prisma/local.json` stores the linked project ID (a gitignored local pin, not a committed config file).
+- `.prisma/skills.json` stores whether the agent-skills staleness check is silenced for this project (written by `skills sync --disable`).
 - Active branch and app selection are local CLI state.
 - Secret values must not be printed in human output or structured output.
 

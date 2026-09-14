@@ -4,11 +4,10 @@ import {
   defineCommand,
   type Presentations,
 } from "@prisma/cli-engine";
-import { notOk, ok } from "@prisma/cli-engine/protocol";
+import { ok } from "@prisma/cli-engine/protocol";
 import { serializeBucketList } from "../../presenters/bucket";
 import type { BucketListResult } from "../../types/bucket";
 import { branchFlag, projectFlag, resolveBucketContext } from "./context";
-import { mapBucketOperationError } from "./errors";
 import { bucketRows, bucketStdoutRows } from "./presentation";
 
 const TITLE = "Listing object-store buckets for the resolved project.";
@@ -53,7 +52,9 @@ function listPresentations(result: BucketListResult): Presentations {
 export const bucketListCommand = defineCommand({
   args: { flags: { project: projectFlag, branch: branchFlag } },
   help: {
-    summary: "List object-store buckets for the resolved project",
+    summary: "List a project's object-store buckets",
+    description:
+      "A bucket is blob storage for files and uploads. Buckets are branch-bound: each belongs to one Branch, the isolated environment for one Git branch.",
     examples: [
       "bucket list",
       "bucket list --branch preview",
@@ -62,31 +63,23 @@ export const bucketListCommand = defineCommand({
   },
   needs: { credentials: true },
   handler: async (args, ctx) => {
-    try {
-      const { provider, projectId, projectName } = await resolveBucketContext(
-        ctx,
-        args.flags,
-        "bucket list",
-      );
-      const buckets = await provider.listBuckets({
-        projectId,
-        branchName: args.flags.branch,
-        signal: ctx.signal,
-      });
+    const { provider, projectId, projectName } = await resolveBucketContext(
+      ctx,
+      args.flags,
+      "bucket list",
+    );
+    const buckets = await provider.listBuckets({
+      projectId,
+      branchName: args.flags.branch,
+      signal: ctx.signal,
+    });
 
-      const result: BucketListResult = {
-        projectId,
-        projectName,
-        branchName: args.flags.branch ?? null,
-        buckets,
-      };
-      return ok(ctx.present({ data: result }, listPresentations(result)));
-    } catch (error) {
-      const mapped = mapBucketOperationError(error);
-      if (mapped) {
-        return notOk(mapped);
-      }
-      throw error;
-    }
+    const result: BucketListResult = {
+      projectId,
+      projectName,
+      branchName: args.flags.branch ?? null,
+      buckets,
+    };
+    return ok(ctx.present({ data: result }, listPresentations(result)));
   },
 });

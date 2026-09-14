@@ -4,7 +4,7 @@ import {
   defineCommand,
   type Presentations,
 } from "@prisma/cli-engine";
-import { notOk, ok } from "@prisma/cli-engine/protocol";
+import { ok } from "@prisma/cli-engine/protocol";
 import { resolveDatabase } from "../../controllers/database";
 import { serializeDatabaseConnectionList } from "../../presenters/database";
 import type { DatabaseConnectionListResult } from "../../types/database";
@@ -14,7 +14,6 @@ import {
   projectFlag,
   resolvePostgresContext,
 } from "./context";
-import { mapPostgresOperationError } from "./errors";
 
 const TITLE = "Listing database connection metadata.";
 
@@ -78,6 +77,8 @@ export const postgresConnectionListCommand = defineCommand({
   },
   help: {
     summary: "List database connection metadata without secret values",
+    description:
+      "Each connection is an independent credential for the same database, so one consumer's access can be rotated or revoked without breaking the others. Listing shows metadata only; connection URLs print once, at create or rotate, and never again.",
     examples: [
       "postgres connection list db_123",
       "postgres connection list acme-preview --branch preview --json",
@@ -85,37 +86,25 @@ export const postgresConnectionListCommand = defineCommand({
   },
   needs: { credentials: true },
   handler: async (args, ctx) => {
-    try {
-      const { provider, target, projectId, projectName } =
-        await resolvePostgresContext(
-          ctx,
-          args.flags,
-          "postgres connection list",
-        );
-      const database = await resolveDatabase(
-        provider,
-        target,
-        args.positionals.database,
-        args.flags.branch,
-        ctx.signal,
-      );
-      const connections = await provider.listConnections(database.id, {
-        signal: ctx.signal,
-      });
+    const { provider, target, projectId, projectName } =
+      await resolvePostgresContext(ctx, args.flags, "postgres connection list");
+    const database = await resolveDatabase(
+      provider,
+      target,
+      args.positionals.database,
+      args.flags.branch,
+      ctx.signal,
+    );
+    const connections = await provider.listConnections(database.id, {
+      signal: ctx.signal,
+    });
 
-      const result: DatabaseConnectionListResult = {
-        projectId,
-        projectName,
-        database,
-        connections,
-      };
-      return ok(ctx.present({ data: result }, listPresentations(result)));
-    } catch (error) {
-      const mapped = mapPostgresOperationError(error);
-      if (mapped) {
-        return notOk(mapped);
-      }
-      throw error;
-    }
+    const result: DatabaseConnectionListResult = {
+      projectId,
+      projectName,
+      database,
+      connections,
+    };
+    return ok(ctx.present({ data: result }, listPresentations(result)));
   },
 });

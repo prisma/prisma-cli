@@ -9,7 +9,7 @@ The docs in `docs/product` are the source of truth. Do not invent product behavi
 ## What This CLI Is
 
 - This is the future unified Prisma CLI.
-- The command model must preserve the long-term CLI for ORM, Postgres, and service workflows; deployments start from a pushed connected repository, the Console, or `composer deploy`.
+- The command model must preserve the long-term CLI for ORM, Postgres, and service workflows; deployments start from a pushed connected repository, the Console, or `deploy`.
 
 ## Read These First
 
@@ -33,7 +33,7 @@ Architecture and contributor workflow references:
 - Group commands by developer workflow, not product ownership.
 - No `orm`, `postgres`, or `compute` namespaces in the command surface.
 - Canonical command shape is `prisma <group> <action>`.
-- The shipped groups are `auth`, `project`, `git`, `branch`, `postgres`, `bucket`, `service`, `build`, `composer`, and the ORM family (`contract`, `db`, `migrate`, `migration`, `format`, `orm init`, `lsp`).
+- The shipped groups are `auth`, `project`, `git`, `branch`, `postgres`, `bucket`, `service`, `skills`, the root `init`, `dev` and `deploy` verbs, and the ORM family (`contract`, `db`, `migration`, `orm init`, `lsp`).
 - Preserve the long-term resource model: `workspace -> project -> branch -> { service, database, bucket }`.
 
 The mounted tree in `packages/cli/src/cli.ts` is the authoritative command surface.
@@ -93,6 +93,7 @@ Important themes:
 - Do not add shortcuts or aliases as canonical forms.
 - Do not let the current app preview introduce abstractions that will block later ORM/Postgres integration.
 - If docs conflict, resolve the docs rather than guessing in implementation.
+- Dependency pins live in TWO manifests: `packages/cli/package.json` and `packages/prisma/package.json` declare the same runtime dependencies, and the `prisma` bin resolves from the wrapper's copy. Change them together, always. `tests/manifest-pins.test.ts` and the tarball conformance check both fail on divergence — this rule exists because `prisma@8.0.0-rc.8` shipped crashing after a pin was bumped in only one of them.
 
 ## Default Agent Workflow
 

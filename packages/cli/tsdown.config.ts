@@ -4,8 +4,9 @@ export default defineConfig([
   // The shipped CLI. Bundled (not unbundle) so the private
   // @repo/cli-telemetry workspace package lands inside this package's
   // own dist instead of being a published dependency; the sender entry
-  // ships the forkable script at dist/sender.js. Published deps
-  // (engine, @vercel/detect-agent, …) stay external.
+  // ships the forkable script at dist/sender.js. credentials-store is
+  // bundled because its xdg-app-paths dependency publishes a broken Deno
+  // conditional export. Other published deps stay external.
   {
     entry: {
       cli: "src/bin.ts",
@@ -15,7 +16,9 @@ export default defineConfig([
     clean: true,
     shims: true,
     fixedExtension: false,
-    noExternal: ["@repo/cli-telemetry"],
+    deps: {
+      alwaysBundle: ["@prisma/credentials-store", "@repo/cli-telemetry"],
+    },
     outDir: "dist",
   },
 ]);

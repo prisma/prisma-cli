@@ -5,7 +5,7 @@ import {
   type Presentations,
   positional,
 } from "@prisma/cli-engine";
-import { notOk, ok } from "@prisma/cli-engine/protocol";
+import { CliStructuredError, ok } from "@prisma/cli-engine/protocol";
 import {
   formatScopeFlag,
   resolveEnvWriteInput,
@@ -18,10 +18,10 @@ import {
   toMetadata,
 } from "../../controllers/app-env-api";
 import { runEnvUpdateFile } from "../../controllers/app-env-file";
-import { CliError } from "../../errors";
 import { formatScopeLabel } from "../../lib/app/env-config";
+import { runCommand, userChoice } from "../../lib/app/env-errors";
 import type { EnvUpdateResult } from "../../types/app-env";
-import { legacyOperationContext } from "./context";
+import { operationContext } from "./context";
 import {
   branchFlag,
   fileFlag,
@@ -32,7 +32,6 @@ import {
   roleFlag,
   variableFieldRows,
 } from "./env-shared";
-import { mapProjectOperationError } from "./errors";
 
 const TITLE = "Replacing the environment variable's value.";
 
@@ -73,7 +72,9 @@ export const projectEnvUpdateCommand = defineCommand({
     },
   },
   help: {
-    summary: "Replace an existing environment variable's value.",
+    summary: "Replace an existing environment variable's value",
+    description:
+      "Overwrites one variable's value in one scope; the variable must already exist there (use 'project env add' to create it). With --file, overwrites every variable the dotenv file lists. New values reach services on their next deploy.",
     examples: [
       "project env update STRIPE_KEY=sk_new_xxx --role production",
       "project env update STRIPE_KEY=sk_new_xxx --role preview",
@@ -83,113 +84,109 @@ export const projectEnvUpdateCommand = defineCommand({
   },
   needs: { credentials: true },
   handler: async (args, ctx) => {
-    try {
-      const source = resolveEnvWriteSource(
-        args.positionals.assignment,
-        args.flags.file,
-        "update",
-      );
-      const scope = requireEnvScope(args.flags, "update");
-      const input = await resolveEnvWriteInput(
-        legacyOperationContext(ctx),
-        source,
-        "update",
-      );
-      const { projectId, verboseContext, resolved } = await resolveEnvTarget(
-        ctx,
-        args.flags,
-        scope,
-        "project env update",
-        false,
-      );
+    const source = resolveEnvWriteSource(
+      args.positionals.assignment,
+      args.flags.file,
+      "update",
+    );
+    const scope = requireEnvScope(args.flags, "update");
+    const input = await resolveEnvWriteInput(
+      operationContext(ctx),
+      source,
+      "update",
+    );
+    const { projectId, verboseContext, resolved } = await resolveEnvTarget(
+      ctx,
+      args.flags,
+      scope,
+      "project env update",
+      false,
+    );
 
-      if (input.kind === "file") {
-        const written = await runEnvUpdateFile(
-          legacyOperationContext(ctx),
-          ctx.api,
-          projectId,
-          resolved,
-          input.filePath,
-          input.assignments,
-          verboseContext,
-        );
-        const result: EnvUpdateResult = {
-          projectId,
-          scope: resolved.descriptor,
-          // biome-ignore lint/style/noNonNullAssertion: the file branch always carries the variables.
-          variables: written.result.variables!,
-          // biome-ignore lint/style/noNonNullAssertion: the file branch always carries the file metadata.
-          file: written.result.file!,
-        };
-        return ok(
-          ctx.present(
-            { data: result },
-            fileWritePresentations(
-              {
-                title: "Replacing environment variable values from file.",
-                emptyMessage: "No environment variables updated.",
-                scope: result.scope,
-                filePath: result.file.path,
-                variables: result.variables,
-              },
-              result,
-            ),
-          ),
-        );
-      }
-
-      const existing = await findVariableByNaturalKey(
+    if (input.kind === "file") {
+      const written = await runEnvUpdateFile(
+        operationContext(ctx),
         ctx.api,
         projectId,
-        input.key,
         resolved,
-        ctx.signal,
+        input.filePath,
+        input.assignments,
+        verboseContext,
       );
-      if (!existing) {
-        throw new CliError({
-          code: "ENV_VARIABLE_NOT_FOUND",
-          domain: "app",
-          summary: `Variable "${input.key}" not found in ${formatScopeLabel(scope)}`,
-          why: "No variable with this key exists in the targeted scope.",
-          fix: "Use `prisma-cli project env add` to create a new variable.",
-          exitCode: 1,
-          nextSteps: [
-            `prisma-cli project env add ${input.key}=<value> ${formatScopeFlag(scope)}`,
-          ],
-        });
-      }
-
-      const { data, error, response } = await ctx.api.PATCH(
-        "/v1/environment-variables/{envVarId}",
-        {
-          params: { path: { envVarId: existing.id } },
-          body: { value: input.value },
-          signal: ctx.signal,
-        },
-      );
-      if (error || !data) {
-        throw apiCallError(
-          `Failed to update value for ${input.key}`,
-          response,
-          error,
-        );
-      }
-
       const result: EnvUpdateResult = {
         projectId,
         scope: resolved.descriptor,
-        variable: toMetadata(
-          data.data as RawEnvironmentVariable,
-          resolved.descriptor,
-        ),
+        // biome-ignore lint/style/noNonNullAssertion: the file branch always carries the variables.
+        variables: written.result.variables!,
+        // biome-ignore lint/style/noNonNullAssertion: the file branch always carries the file metadata.
+        file: written.result.file!,
       };
-      return ok(ctx.present({ data: result }, singlePresentations(result)));
-    } catch (error) {
-      const mapped = mapProjectOperationError(error);
-      if (mapped) {
-        return notOk(mapped);
-      }
-      throw error;
+      return ok(
+        ctx.present(
+          { data: result },
+          fileWritePresentations(
+            {
+              title: "Replacing environment variable values from file.",
+              emptyMessage: "No environment variables updated.",
+              scope: result.scope,
+              filePath: result.file.path,
+              variables: result.variables,
+            },
+            result,
+          ),
+        ),
+      );
     }
+
+    const existing = await findVariableByNaturalKey(
+      ctx.api,
+      projectId,
+      input.key,
+      resolved,
+      ctx.signal,
+    );
+    if (!existing) {
+      throw new CliStructuredError(
+        "PROJECT.ENV_VARIABLE_NOT_FOUND",
+        `Variable "${input.key}" not found in ${formatScopeLabel(scope)}`,
+        {
+          why: "No variable with this key exists in the targeted scope.",
+          nextActions: [
+            userChoice(
+              "Use `prisma project env add` to create a new variable.",
+            ),
+            runCommand(
+              `prisma project env add ${input.key}=<value> ${formatScopeFlag(scope)}`,
+            ),
+          ],
+        },
+      );
+    }
+
+    const { data, error, response } = await ctx.api.PATCH(
+      "/v1/environment-variables/{envVarId}",
+      {
+        params: { path: { envVarId: existing.id } },
+        body: { value: input.value },
+        signal: ctx.signal,
+      },
+    );
+    if (error || !data) {
+      throw apiCallError(
+        `Failed to update value for ${input.key}`,
+        response,
+        error,
+      );
+    }
+
+    const result: EnvUpdateResult = {
+      projectId,
+      scope: resolved.descriptor,
+      variable: toMetadata(
+        data.data as RawEnvironmentVariable,
+        resolved.descriptor,
+      ),
+    };
+    return ok(ctx.present({ data: result }, singlePresentations(result)));
   },
 });

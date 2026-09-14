@@ -5,7 +5,7 @@ import {
   type Presentations,
   positional,
 } from "@prisma/cli-engine";
-import { notOk, ok } from "@prisma/cli-engine/protocol";
+import { ok } from "@prisma/cli-engine/protocol";
 import { createManagementProjectProvider } from "../../lib/project/provider";
 import {
   isValidProjectSetupName,
@@ -14,7 +14,6 @@ import {
 import type { ProjectRenameResult } from "../../types/project";
 import { resolveActiveWorkspace } from "../resources-shared/workspace";
 import { resolvePinnedProject } from "./context";
-import { mapProjectOperationError } from "./errors";
 
 function renamePresentations(result: ProjectRenameResult): Presentations {
   return {
@@ -51,13 +50,16 @@ export const projectRenameCommand = defineCommand({
     },
     flags: {
       project: flag.string({
-        brief: "Project id or name",
+        brief:
+          "Project id or name (default: the project this directory is linked to)",
         placeholder: "id-or-name",
       }),
     },
   },
   help: {
-    summary: "Rename the resolved Project",
+    summary: "Rename a Project",
+    description:
+      "Changes the display name of the linked project, or of the one named by --project. The project id stays the same, so existing links and automation keep working.",
     examples: [
       'project rename "Acme Dashboard v2"',
       "project rename billing-api --project proj_123",
@@ -65,39 +67,31 @@ export const projectRenameCommand = defineCommand({
   },
   needs: { credentials: true },
   handler: async (args, ctx) => {
-    try {
-      const workspace = await resolveActiveWorkspace(ctx);
-      const name = args.positionals.name.trim();
-      if (!isValidProjectSetupName(name)) {
-        throw projectSetupNameRequiredError("project rename");
-      }
-
-      const target = await resolvePinnedProject(
-        ctx,
-        workspace,
-        args.flags.project,
-        "project rename",
-      );
-      const renamed = await createManagementProjectProvider(
-        ctx.api,
-      ).renameProject({
-        projectId: target.project.id,
-        name,
-        signal: ctx.signal,
-      });
-
-      const result: ProjectRenameResult = {
-        workspace,
-        project: renamed,
-        previousName: target.project.name,
-      };
-      return ok(ctx.present({ data: result }, renamePresentations(result)));
-    } catch (error) {
-      const mapped = mapProjectOperationError(error);
-      if (mapped) {
-        return notOk(mapped);
-      }
-      throw error;
+    const workspace = await resolveActiveWorkspace(ctx);
+    const name = args.positionals.name.trim();
+    if (!isValidProjectSetupName(name)) {
+      throw projectSetupNameRequiredError("project rename");
     }
+
+    const target = await resolvePinnedProject(
+      ctx,
+      workspace,
+      args.flags.project,
+      "project rename",
+    );
+    const renamed = await createManagementProjectProvider(
+      ctx.api,
+    ).renameProject({
+      projectId: target.project.id,
+      name,
+      signal: ctx.signal,
+    });
+
+    const result: ProjectRenameResult = {
+      workspace,
+      project: renamed,
+      previousName: target.project.name,
+    };
+    return ok(ctx.present({ data: result }, renamePresentations(result)));
   },
 });

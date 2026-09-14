@@ -28,18 +28,17 @@ Use the other convention docs for adjacent concerns:
 
 The long-term command surface grows through workflow groups such as:
 
-- `init`
-- `agent`
+- `skills`
 - `auth`
 - `project`
 - `branch`
 - `schema`
 - `database`
-- `migrate`
+- `db`
 - `app`
 - `git`
 
-The preview implements only `agent`, `auth`, `project`, `git`, `branch`, `database`, `bucket`, and `app`.
+The preview implements only `auth`, `project`, `git`, `branch`, `database`, `bucket`, `app`, `skills`, and `init`.
 
 ## Stable Nouns
 
@@ -51,8 +50,8 @@ The CLI should keep the meaning of these nouns stable:
 - `schema`
 - `database`
 - `bucket`
-- `app`
-- `deployment`
+- `service`
+- `version` (always qualified in prose: a service version)
 - `domain`
 
 If a noun means one thing in docs and a different thing in commands or output, the model is already drifting.
@@ -94,9 +93,25 @@ No current branch command uses `use`; branch targeting follows explicit flags or
 
 Build and release an app into a target branch.
 
+### `init`
+
+Prepare the current repository for Prisma development, entirely locally: add the `postinstall` script that keeps the Prisma agent skills in sync (`prisma skills sync || exit 0`), add `prisma` to `devDependencies` at the CLI's exact version when no dependency field declares it, scaffold a `prisma.config.ts` recording which agents get skills, then sync the skills once now.
+
+The scaffolded config imports `definePrismaConfig` from `prisma/config` and spells out `skills: { agents: [...] }`. The agents come from the `--skills` flag (`--skills=claude,cursor`, validated against the known agent names), or the default set when the flag is absent. `--skills=none` records the choice rather than merely skipping: the scaffold is written with `skills: { agents: [] }` — the committed record that no agent skills are wanted — and the sync is skipped on that run; with `agents: []` in place, later syncs, `skills list`, and the staleness notice all treat the project as having no skills to manage. There is no harness detection: the config is the only authority on which agents a project uses.
+
+`init` calls no platform API, never prompts, and never edits a file the user already owns: a `postinstall` script the user wrote and an existing `prisma.config.ts` are both left alone and reported as diagnostics — the config diagnostic shows the exact `skills: { agents: [...] }` snippet to add by hand. A `prisma` declaration in any dependency field, at any version or range, is likewise left alone; only a project that declares it nowhere gets the dev dependency added. Everything lands in the current directory: the hook in its `package.json`, the config beside it, the skill copies in the agent directories under it. Rerunning is safe; each step reports what is already done and the command exits 0.
+
 ### `logs`
 
-Resolve a deployment and show or stream its logs.
+Resolve a service version and show or stream its logs.
+
+### `delete` and `remove`
+
+`delete` destroys a resource; `remove` detaches one thing from another without destroying it. A command that permanently destroys what it targets is spelled `delete` (`project delete`, `service delete`, `postgres delete`); `remove` is reserved for detachment.
+
+### Subjects are positional
+
+A command that operates on a subject resource takes that resource's identifier as its first positional argument (`service show my-api`, `postgres delete db_123`, `service version promote cpv_123`) — the established convention across CLIs. Flags never name the subject; they scope or qualify it (`--project`, `--branch`, `--role`). The argument primarily targets the stable platform id, with the display name as a secondary fallback: an id match always wins, and a resource named like another resource's id can never shadow it. Environment variables never target a subject. When the subject's identifier is globally unique — a service version id, a bucket id — the id alone is the complete target, and the command asks for no redundant parent scope.
 
 ### `wait`
 
@@ -114,7 +129,7 @@ In the MVP, that means preview source plus production rebuild.
 
 ### `rollback`
 
-Return traffic to a previous healthy deployment without rebuilding.
+Return traffic to a previous healthy service version without rebuilding.
 
 In the MVP, that means production rollback only.
 

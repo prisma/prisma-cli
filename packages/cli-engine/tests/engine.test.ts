@@ -34,6 +34,7 @@ describe("main export", () => {
       "definePrismaConfig",
       "defineServerCommand",
       "defineSessionCommand",
+      "detectCI",
       "emptyServiceTokenError",
       "exitWithChildStatus",
       "flag",

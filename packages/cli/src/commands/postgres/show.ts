@@ -4,7 +4,7 @@ import {
   defineCommand,
   type Presentations,
 } from "@prisma/cli-engine";
-import { notOk, ok } from "@prisma/cli-engine/protocol";
+import { ok } from "@prisma/cli-engine/protocol";
 import { resolveDatabase } from "../../controllers/database";
 import type { DatabaseShowResult } from "../../types/database";
 import {
@@ -13,7 +13,6 @@ import {
   projectFlag,
   resolvePostgresContext,
 } from "./context";
-import { mapPostgresOperationError } from "./errors";
 import {
   branchLabel,
   type FieldRow,
@@ -71,6 +70,8 @@ export const postgresShowCommand = defineCommand({
   },
   help: {
     summary: "Show database metadata without secret values",
+    description:
+      "Shows a database's name, branch, region, and status. Connection URLs are secrets printed once, by 'postgres create' or 'postgres connection rotate'; this command never reveals them.",
     examples: [
       "postgres show db_123",
       "postgres show acme-preview --branch preview --json",
@@ -78,33 +79,25 @@ export const postgresShowCommand = defineCommand({
   },
   needs: { credentials: true },
   handler: async (args, ctx) => {
-    try {
-      const { provider, target, projectId, projectName } =
-        await resolvePostgresContext(ctx, args.flags, "postgres show");
-      const database = await resolveDatabase(
-        provider,
-        target,
-        args.positionals.database,
-        args.flags.branch,
-        ctx.signal,
-      );
-      const connections = await provider.listConnections(database.id, {
-        signal: ctx.signal,
-      });
+    const { provider, target, projectId, projectName } =
+      await resolvePostgresContext(ctx, args.flags, "postgres show");
+    const database = await resolveDatabase(
+      provider,
+      target,
+      args.positionals.database,
+      args.flags.branch,
+      ctx.signal,
+    );
+    const connections = await provider.listConnections(database.id, {
+      signal: ctx.signal,
+    });
 
-      const result: DatabaseShowResult = {
-        projectId,
-        projectName,
-        database,
-        connections,
-      };
-      return ok(ctx.present({ data: result }, showPresentations(result)));
-    } catch (error) {
-      const mapped = mapPostgresOperationError(error);
-      if (mapped) {
-        return notOk(mapped);
-      }
-      throw error;
-    }
+    const result: DatabaseShowResult = {
+      projectId,
+      projectName,
+      database,
+      connections,
+    };
+    return ok(ctx.present({ data: result }, showPresentations(result)));
   },
 });

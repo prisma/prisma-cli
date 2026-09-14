@@ -1,7 +1,7 @@
 /**
  * The Postgres lifecycle against the real API: create a database in a
  * scratch project, read it back every way the CLI offers, manage its
- * connection strings, then remove it.
+ * connection strings, then delete it.
  *
  * `connection create` and `connection rotate` answer with a live
  * connection string, so nothing here stringifies a whole envelope — a
@@ -302,21 +302,21 @@ describeCommand("postgres connection rotate", () => {
   });
 });
 
-describeCommand("postgres connection remove", () => {
-  it("removes the connection, and the list agrees", async () => {
+describeCommand("postgres connection delete", () => {
+  it("deletes the connection, and the list agrees", async () => {
     const run = await scratch.run([
       "postgres",
       "connection",
-      "remove",
+      "delete",
       requireConnection(),
       "--confirm",
       requireConnection(),
     ]);
-    const removed = run.envelope.result as {
+    const deleted = run.envelope.result as {
       readonly connection: { readonly id: string };
     };
 
-    expect(removed.connection.id).toBe(requireConnection());
+    expect(deleted.connection.id).toBe(requireConnection());
 
     const after = await scratch.run([
       "postgres",
@@ -333,20 +333,20 @@ describeCommand("postgres connection remove", () => {
   });
 });
 
-describeCommand("postgres remove", () => {
-  it("removes the database, and the list agrees", async () => {
+describeCommand("postgres delete", () => {
+  it("deletes the database, and the list agrees", async () => {
     const run = await scratch.run([
       "postgres",
-      "remove",
+      "delete",
       requireDatabase(),
       "--confirm",
       requireDatabase(),
     ]);
-    const removed = run.envelope.result as {
+    const deleted = run.envelope.result as {
       readonly database: { readonly id: string };
     };
 
-    expect(removed.database.id).toBe(requireDatabase());
+    expect(deleted.database.id).toBe(requireDatabase());
 
     const after = await scratch.run(["postgres", "list"]);
     const listed = after.envelope.result as {

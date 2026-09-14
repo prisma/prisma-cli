@@ -1,0 +1,39 @@
+# Tells prisma/web to regenerate the hosted error reference
+# (https://docs.prisma.io/docs/cli/error-reference) as soon as the
+# registry changes, instead of waiting for that repo's daily cron.
+# prisma/web's sync-error-reference-docs.yml listens for the
+# `error-reference-updated` repository_dispatch and re-runs the
+# generator against this repo's main.
+#
+# WEB_DISPATCH_TOKEN is a token allowed to send repository_dispatch
+# events to prisma/web (fine-grained PAT on that repo with
+# "Contents: read and write", or classic `repo` scope).
+name: Notify Docs of Error Reference Changes
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - docs/reference/error-reference.md
+
+permissions: {}
+
+jobs:
+  dispatch:
+    name: Dispatch error-reference-updated to prisma/web
+    runs-on: ubuntu-latest
+    steps:
+      - name: Send repository_dispatch
+        env:
+          GH_TOKEN: ${{ secrets.WEB_DISPATCH_TOKEN }}
+        run: |
+          gh api repos/prisma/web/dispatches \
+            --input - <<'EOF'
+          {
+            "event_type": "error-reference-updated",
+            "client_payload": {
+              "repository": "${{ github.repository }}",
+              "sha": "${{ github.sha }}"
+            }
+          }
+          EOF

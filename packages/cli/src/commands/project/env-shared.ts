@@ -4,8 +4,8 @@ import { type Block, flag, type Presentations } from "@prisma/cli-engine";
 import type { Diagnostic } from "@prisma/cli-engine/protocol";
 import { resolveScopeToApi } from "../../controllers/app-env";
 import type { ResolvedEnvFileScope } from "../../controllers/app-env-file";
-import { usageError } from "../../errors";
 import { type EnvScope, resolveEnvScope } from "../../lib/app/env-config";
+import { envUsageError } from "../../lib/app/env-errors";
 import { scopeLabel } from "../../presenters/app-env";
 import type {
   EnvResolvedContext,
@@ -16,22 +16,26 @@ import { resolveActiveWorkspace } from "../resources-shared/workspace";
 import { type ProjectCommandContext, resolvePinnedProject } from "./context";
 
 export const roleFlag = flag.enum({
-  brief: "Project template scope (production or preview)",
+  brief:
+    "Project-wide scope: production, or preview (shared by every preview branch)",
   values: ["production", "preview"],
 });
 
 export const projectFlag = flag.string({
-  brief: "Project id or name",
+  brief:
+    "Project id or name (default: the project this directory is linked to)",
   placeholder: "id-or-name",
 });
 
 export const branchFlag = flag.string({
-  brief: "Preview branch override scope",
+  brief:
+    "Scope to one preview branch's override; use for values only that branch needs",
   placeholder: "git-name",
 });
 
 export const fileFlag = flag.string({
-  brief: "Read KEY=VALUE assignments from a dotenv file",
+  brief:
+    "Read KEY=VALUE assignments from a dotenv file; use to import many variables at once",
   placeholder: "path",
 });
 
@@ -43,19 +47,18 @@ export interface EnvScopeFlags {
 
 export function requireEnvScope(
   flags: EnvScopeFlags,
-  command: "add" | "update" | "remove",
+  command: "add" | "update" | "delete",
 ): EnvScope {
   const scope = resolveEnvScope(
     { roleName: flags.role, branchName: flags.branch },
     { requireExplicit: true, command },
   );
   if (!scope) {
-    throw usageError(
-      `prisma-cli project env ${command} requires --role or --branch`,
+    throw envUsageError(
+      `prisma project env ${command} requires --role or --branch`,
       "Writing without an explicit scope is rejected.",
       "Pass --role production, --role preview, or --branch <git-name>.",
-      [`prisma-cli project env ${command} KEY=value --role production`],
-      "app",
+      [`prisma project env ${command} KEY=value --role production`],
     );
   }
   return scope;

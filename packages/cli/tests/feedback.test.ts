@@ -6,7 +6,9 @@ import { afterEach, describe, expect, it } from "vitest";
 import { feedbackCommand } from "../src/commands/feedback";
 import { mountsFor } from "./service-testkit";
 
-const USER_AGENT_PREFIX = /^prisma-cli\//;
+/** The client identifies itself by the binary's name, which the rename
+ *  to `prisma` carried along with every other user-facing spelling. */
+const USER_AGENT_PREFIX = /^prisma\//;
 
 /** The command posts with the global fetch and the engine hands session
  *  commands no HTTP seam, so the service is faked where the legacy
@@ -37,8 +39,21 @@ async function startFeedbackService(options: {
       raw += chunk;
     });
     req.on("end", () => {
+      const body = JSON.parse(raw);
+      if (
+        !body.meta ||
+        Object.values(body.meta).some((value) => typeof value !== "string")
+      ) {
+        res.writeHead(400, { "content-type": "application/json" });
+        res.end(
+          JSON.stringify({
+            error: { message: "meta must be an object with string values." },
+          }),
+        );
+        return;
+      }
       requests.push({
-        body: JSON.parse(raw),
+        body,
         userAgent: req.headers["user-agent"],
       });
       res.statusCode = options.status ?? 201;
@@ -94,7 +109,7 @@ function completedFrame(json: readonly unknown[]) {
   };
 }
 
-describe("prisma-cli feedback", () => {
+describe("prisma feedback", () => {
   it("declares no credential needs and sends without a session", async () => {
     expect(feedbackCommand.needs.credentials).toBe(false);
     const { url, requests } = await startFeedbackService({});
@@ -119,7 +134,7 @@ describe("prisma-cli feedback", () => {
         cliVersion: (
           result.presented?.data as { context: { cliVersion: string } }
         ).context.cliVersion,
-        runtime: { name: "node", version: "v22.12.0" },
+        nodeVersion: "v22.12.0",
         platform: "linux",
         arch: "x64",
       },

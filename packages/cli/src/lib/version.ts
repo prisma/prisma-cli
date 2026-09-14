@@ -42,9 +42,8 @@ export function getCliVersion(): string {
   return pkg.version;
 }
 
-// Published bin name is the agreed user-facing identifier for the preview.
-// The bin name and the npm package name differ: the npm package is
-// "@prisma/cli", but the binary on PATH is CLI_NAME.
+// The bin name and the npm package name differ: the package is
+// "@prisma/cli" (or "prisma"), and the binary users type is CLI_NAME.
 export function getCliName(): string {
   return CLI_NAME;
 }

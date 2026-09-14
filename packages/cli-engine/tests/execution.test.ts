@@ -1264,6 +1264,66 @@ describe("help examples", () => {
   });
 });
 
+describe("help workflow sections", () => {
+  test("a group's workflow renders as $-prefixed steps with briefs, {bin} substituted", async () => {
+    const cli = createTestCli({
+      commands: { "auth login": greet },
+      groups: {
+        auth: {
+          brief: "Authentication",
+          workflow: [
+            { run: "auth login", brief: "Sign in once" },
+            { run: "{bin} auth whoami | cat", brief: "Check the session" },
+          ],
+        },
+      },
+      now: EPOCH,
+    });
+    const result = await cli.run(["auth", "--help"], {
+      isTty: { stdout: true },
+    });
+
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout).toContain("Workflow");
+    expect(result.stdout).toContain("prisma-test auth login");
+    expect(result.stdout).toContain("Sign in once");
+    expect(result.stdout).toContain("prisma-test auth whoami | cat");
+    expect(result.stdout).not.toContain("{bin}");
+  });
+
+  test("the root workflow renders before the root examples", async () => {
+    const cli = createTestCli({
+      commands: { greet },
+      help: {
+        workflow: [{ run: "greet", brief: "Say hello" }],
+        examples: ["greet --loud"],
+      },
+      now: EPOCH,
+    });
+    const result = await cli.run([], { isTty: { stdout: true } });
+
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout).toContain("Workflow");
+    expect(result.stdout.indexOf("Workflow")).toBeLessThan(
+      result.stdout.indexOf("Examples"),
+    );
+  });
+
+  test("a group without a workflow renders no Workflow section", async () => {
+    const cli = createTestCli({
+      commands: { "auth login": greet },
+      groups: { auth: { brief: "Authentication" } },
+      now: EPOCH,
+    });
+    const result = await cli.run(["auth", "--help"], {
+      isTty: { stdout: true },
+    });
+
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout).not.toContain("Workflow");
+  });
+});
+
 describe("--version", () => {
   test("prints the version and exits 0 in human mode", async () => {
     const cli = createTestCli({ commands: { greet: greet }, now: EPOCH });

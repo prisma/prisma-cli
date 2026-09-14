@@ -16,6 +16,8 @@ export {
   type PositionalSpec,
   positional,
 } from "../args";
+/** ci-info's CI detection over the given env only — never process.env. */
+export { detectCI } from "../ci";
 export { type Cli, type CliRunHooks, createCli } from "../cli";
 export {
   type CommandFamily,
@@ -41,6 +43,7 @@ export {
   type ServerCommandDefinition,
   type SessionCommandDefinition,
   type SpawnDeclarations,
+  type WorkflowStep,
 } from "../commands";
 export {
   defineConfig,

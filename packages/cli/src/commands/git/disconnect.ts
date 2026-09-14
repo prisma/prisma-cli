@@ -4,7 +4,7 @@ import {
   defineCommand,
   type Presentations,
 } from "@prisma/cli-engine";
-import { notOk, ok } from "@prisma/cli-engine/protocol";
+import { ok } from "@prisma/cli-engine/protocol";
 import {
   readFirstSourceRepository,
   repoConnectionApiError,
@@ -13,7 +13,6 @@ import {
 } from "../../controllers/project";
 import type { ProjectRepositoryConnectionResult } from "../../types/project";
 import { projectFlag, resolveGitContext } from "./context";
-import { mapGitOperationError } from "./errors";
 
 function disconnectPresentations(
   result: ProjectRepositoryConnectionResult,
@@ -52,49 +51,43 @@ function disconnectPresentations(
 export const gitDisconnectCommand = defineCommand({
   args: { flags: { project: projectFlag } },
   help: {
-    summary: "Disconnect the GitHub repository from the resolved project",
+    summary: "Disconnect the GitHub repository: pushes stop deploying",
+    description:
+      "Stops deploy-on-push by removing the repository connection. Nothing already deployed changes: existing branches, services, and databases stay as they are.",
     examples: ["git disconnect", "git disconnect --project proj_123"],
   },
   needs: { credentials: true },
   handler: async (args, ctx) => {
-    try {
-      const { api, target } = await resolveGitContext(
-        ctx,
-        args.flags.project,
-        "git disconnect",
-      );
-      const existing = await readFirstSourceRepository(
-        api,
-        target.project.id,
-        ctx.signal,
-      );
-      if (!existing) {
-        throw repoNotConnectedError();
-      }
-
-      const { error, response } = await api.DELETE(
-        "/v1/source-repositories/{id}",
-        { params: { path: { id: existing.id } }, signal: ctx.signal },
-      );
-      if (error) {
-        throw repoConnectionApiError(
-          "Failed to disconnect GitHub repository",
-          response,
-          error,
-        );
-      }
-
-      const result: ProjectRepositoryConnectionResult = {
-        ...target,
-        repositoryConnection: toRepositoryConnection(existing),
-      };
-      return ok(ctx.present({ data: result }, disconnectPresentations(result)));
-    } catch (error) {
-      const mapped = mapGitOperationError(error);
-      if (mapped) {
-        return notOk(mapped);
-      }
-      throw error;
+    const { api, target } = await resolveGitContext(
+      ctx,
+      args.flags.project,
+      "git disconnect",
+    );
+    const existing = await readFirstSourceRepository(
+      api,
+      target.project.id,
+      ctx.signal,
+    );
+    if (!existing) {
+      throw repoNotConnectedError();
     }
+
+    const { error, response } = await api.DELETE(
+      "/v1/source-repositories/{id}",
+      { params: { path: { id: existing.id } }, signal: ctx.signal },
+    );
+    if (error) {
+      throw repoConnectionApiError(
+        "Failed to disconnect GitHub repository",
+        response,
+        error,
+      );
+    }
+
+    const result: ProjectRepositoryConnectionResult = {
+      ...target,
+      repositoryConnection: toRepositoryConnection(existing),
+    };
+    return ok(ctx.present({ data: result }, disconnectPresentations(result)));
   },
 });

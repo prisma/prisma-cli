@@ -42,7 +42,7 @@ export async function removeScratchProject(
     );
   try {
     const removal = await cli.run(
-      ["project", "remove", project.id, "--confirm", project.id],
+      ["project", "delete", project.id, "--confirm", project.id],
       {
         ...(project.cwd === undefined ? {} : { cwd: project.cwd }),
         expectOk: false,

@@ -27,9 +27,15 @@ export type FindingKind =
   | "validator-malformed"
   | "pack-failed"
   | "install-failed"
+  /** npm never returned: the resolver is backtracking, not failing. */
+  | "install-timed-out"
   | "bin-failed"
   /** The shell and a family it mounts disagree about the engine version. */
   | "engine-pin-mismatch"
+  /** Two packed sibling manifests declare the same dependency at
+   *  different versions, so which one an install resolves depends on
+   *  hoisting. */
+  | "sibling-pin-mismatch"
   /** A release depends on a dev build. */
   | "dev-build-in-release";
 

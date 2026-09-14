@@ -66,13 +66,13 @@ Examples:
 - unexpected `undefined`
 - internal serialization or state invariant broken
 
-Bugs should fail fast and preserve stack traces. Catch them only at the outermost boundary for crash formatting. At that boundary, `--json` runs still emit the standard error envelope with code `UNEXPECTED_ERROR`, and both output modes point at `prisma-cli feedback` pre-filled with the failing command and error line (`--quiet` suppresses the human hint; expected failures never carry the feedback suggestion).
+Bugs should fail fast and preserve stack traces. Catch them only at the outermost boundary for crash formatting. At that boundary, `--json` runs still emit the standard error envelope with code `UNEXPECTED_ERROR`, and both output modes point at `prisma feedback` pre-filled with the failing command and error line (`--quiet` suppresses the human hint; expected failures never carry the feedback suggestion).
 
 ## Boundary Handling
 
-- internals may throw structured failures to abort quickly and preserve context
-- command boundaries convert expected failures into the documented error envelope
-- operational errors may be translated at boundaries when helpful
+- the site that detects a failure raises it as a structured error, already carrying its code and its next actions
+- a structured error travels to the engine untouched; a command boundary does not catch one only to re-emit it under a different code
+- an operational fault from a dependency (an API response, a child process) is raised as a structured error where it is recognized, with the underlying error kept as `cause`
 - unknown errors should not be broadly wrapped into fake "expected" failures
 
 ## Human Error Shape
@@ -84,7 +84,7 @@ Human-readable errors should follow this shape:
 3. why
 4. fix
 5. where when relevant
-6. hint for `-v` or `--trace` when helpful
+6. hint for `--log-level verbose` when helpful
 
 Example:
 
@@ -107,7 +107,7 @@ This is usually a missing env var, a failed DB connection,
 or a crash on startup.
 
 See what happened
-prisma-cli app logs --deployment <id>
+prisma app logs --deployment <id>
 
 URL
 https://cv-...
@@ -115,210 +115,48 @@ https://cv-...
 
 ## JSON Error Shape
 
-Commands run with `--json` should emit this envelope on failure:
+Commands run with `--json` emit this envelope on failure:
 
 ```json
 {
   "ok": false,
-  "command": "app.deploy",
   "error": {
-    "code": "BUILD_FAILED",
-    "domain": "app",
+    "code": "SERVICE.DEPLOY_FAILED",
     "severity": "error",
-    "summary": "Deployment failed during build",
-    "why": "Next.js build returned a non-zero exit code",
-    "fix": "Inspect logs and redeploy after fixing the build",
-    "where": null,
-    "meta": {},
-    "docsUrl": null
-  },
-  "warnings": [],
-  "nextSteps": [],
-  "nextActions": []
+    "summary": "Failed to list services",
+    "why": "The Management API returned status 500.",
+    "meta": { "status": 500 },
+    "nextActions": [
+      { "kind": "user-choice", "label": "Re-run with --log-level verbose for the underlying API response details." },
+      { "kind": "run-command", "label": "prisma project show", "command": "prisma project show" }
+    ]
+  }
 }
 ```
 
 Rules:
 
 - `ok` is always `false`
-- `command` is always present
-- `error.code` is stable and machine-readable
-- `error.domain` is a stable logical area such as `cli`, `agent`, `auth`, `project`, `branch`, `app`, `database`, or `bucket`
-- `error.severity` is stable and machine-readable
-- `error.summary` is the short human-readable headline
+- `error.code` is a stable dotted `NAMESPACE.SUBCODE` string, listed in the error reference
+- `error.severity` and `error.summary` are always present; `summary` is the short human-readable headline
 - `error.why` explains the immediate cause when known
-- `error.fix` explains the next useful recovery step when known
+- `error.nextActions` is always present (empty when there are none). What used to be a free-text `fix` is the first action, a `user-choice`; recovery commands are `run-command` actions, and an address to visit is an `open-url` action, never a `command`
 - `error.where` points to the relevant location when applicable
-- `error.meta` is structured, not free-form prose
-- `error.docsUrl` may be `null` when no per-code doc exists yet
-- `warnings`, `nextSteps`, and `nextActions` are always present
-- agents and CI should branch on structured error fields, not prose strings
+- `error.meta` is structured, not free-form prose — it is where a server's own error code and HTTP status belong
+- `error.docsUrl` may be absent when no per-code doc exists yet
+- absent optional fields are omitted rather than sent as `null`
+- agents and CI should branch on `error.code`, never on prose strings
 
-## MVP Error Codes
+## Error Codes
 
-These codes are the minimum stable set for the MVP:
+Every user-facing error carries a dotted `NAMESPACE.SUBCODE` code, assigned where the error is raised. The canonical registry of every code, with the condition that raises it, is [docs/reference/error-reference.md](../reference/error-reference.md); `pnpm check:error-reference` fails CI if a code in production source is missing from it.
 
-- `USAGE_ERROR`
-- `UNEXPECTED_ERROR`
-- `FEEDBACK_SEND_FAILED`
-- `AUTH_REQUIRED`
-- `AUTH_CONFIG_INVALID`
-- `AGENT_SKILLS_INSTALL_FAILED`
-- `WORKSPACE_SWITCH_UNAVAILABLE`
-- `WORKSPACE_NOT_AUTHENTICATED`
-- `WORKSPACE_AMBIGUOUS`
-- `PROJECT_SETUP_REQUIRED`
-- `PROJECT_LINK_TARGET_REQUIRED`
-- `PROJECT_CREATE_FAILED`
-- `PROJECT_RENAME_FAILED`
-- `PROJECT_REMOVE_BLOCKED`
-- `PROJECT_TRANSFER_REJECTED`
-- `PROJECT_API_ERROR`
-- `TRANSFER_RECIPIENT_REQUIRED`
-- `TRANSFER_RECIPIENT_UNAVAILABLE`
-- `PROJECT_NOT_FOUND`
-- `PROJECT_AMBIGUOUS`
-- `APP_AMBIGUOUS`
-- `LOCAL_PROJECT_WORKSPACE_MISMATCH`
-- `LOCAL_STATE_WRITE_FAILED`
-- `LOCAL_STATE_STALE`
-- `BRANCH_NOT_DEPLOYABLE`
-- `COMPUTE_CONFIG_INVALID`
-- `COMPUTE_CONFIG_TARGET_REQUIRED`
-- `COMPUTE_CONFIG_TARGET_UNKNOWN`
-- `BUILD_SETTINGS_MIGRATION_REQUIRED`
-- `BUILD_SETTINGS_UNSUPPORTED`
-- `FRAMEWORK_NOT_DETECTED`
-- `INIT_CONFIG_EXISTS`
-- `INIT_CONVERT_UNSUPPORTED`
-- `INIT_CONVERT_INCOMPLETE`
-- `INIT_DETECTION_FAILED`
-- `DEPLOYMENT_NOT_FOUND`
-- `NO_DEPLOYMENTS`
-- `NO_PREVIOUS_DEPLOYMENT`
-- `PROD_DEPLOY_REQUIRES_FLAG`
-- `PROMOTE_SOURCE_INVALID`
-- `ROLLBACK_UNAVAILABLE`
-- `CONFIRMATION_REQUIRED`
-- `DOMAIN_HOSTNAME_INVALID`
-- `DOMAIN_DNS_NOT_CONFIGURED`
-- `DOMAIN_ALREADY_REGISTERED`
-- `DOMAIN_QUOTA_EXCEEDED`
-- `DOMAIN_NOT_FOUND`
-- `DOMAIN_RETRY_NOT_ELIGIBLE`
-- `DOMAIN_VERIFICATION_FAILED`
-- `DOMAIN_VERIFICATION_TIMEOUT`
-- `REMOVE_FAILED`
-- `FEATURE_UNAVAILABLE`
-- `REPO_PROVIDER_UNSUPPORTED`
-- `REPO_INSTALLATION_REQUIRED`
-- `REPO_NOT_ACCESSIBLE`
-- `REPO_NOT_CONNECTED`
-- `REPO_ALREADY_CONNECTED`
-- `REPO_CONNECTION_FAILED`
-- `BUILD_FAILED`
-- `BRANCH_DATABASE_SETUP_FAILED`
-- `SCHEMA_SETUP_FAILED`
-- `DATABASE_NOT_FOUND`
-- `DATABASE_AMBIGUOUS`
-- `DATABASE_CONNECTION_NOT_FOUND`
-- `DATABASE_CONNECTION_MISSING`
-- `DATABASE_CONNECTION_STRING_MISSING`
-- `DATABASE_API_ERROR`
-- `PLAN_LIMIT_REACHED`
-- `DATABASE_BACKUPS_UNSUPPORTED`
-- `DATABASE_BACKUP_NOT_FOUND`
-- `DATABASE_RESTORE_CONFLICT`
-- `BUCKET_NOT_FOUND`
-- `BUCKET_KEY_NOT_FOUND`
-- `BUCKET_KEY_SECRET_MISSING`
-- `BRANCH_NOT_FOUND`
-- `RUN_FAILED`
-- `DEPLOY_FAILED`
-- `VERSION_UNAVAILABLE`
-- `COMMAND_CANCELED`
+Two rules govern codes:
 
-Recommended meanings:
+- **Assign at origin.** The site that detects the failure names the code. No boundary rewrites a code on the way out, and no code is built by concatenation — a code assembled from a prefix and a variable is a code the registry cannot list and a caller cannot rely on.
+- **A server's code is data, not your code.** When a Management API request fails, raise the domain's registered `*.API_ERROR` and put the API's own code and status in `meta.apiCode` and `meta.status`.
 
-- `USAGE_ERROR`: invalid arguments or invalid command combination
-- `UNEXPECTED_ERROR`: the CLI crashed on an unexpected fault; the envelope carries a `recover` next action suggesting `prisma-cli feedback`
-- `FEEDBACK_SEND_FAILED`: the feedback service was unreachable, timed out, or returned a non-2xx response
-- `AUTH_REQUIRED`: command needs an authenticated session
-- `AUTH_CONFIG_INVALID`: environment auth configuration is present but unusable, such as an empty `PRISMA_SERVICE_TOKEN`
-- `AGENT_SKILLS_INSTALL_FAILED`: installing Prisma skills through the external skills CLI failed; callers should inspect the command, exit code, and stderr in `error.meta`
-- `WORKSPACE_SWITCH_UNAVAILABLE`: `PRISMA_SERVICE_TOKEN` is the active auth source, so local OAuth workspace switching cannot apply
-- `WORKSPACE_NOT_AUTHENTICATED`: requested workspace is not present in the local OAuth credentials store for a switch/logout operation; callers should run `auth login` for that workspace
-- `WORKSPACE_AMBIGUOUS`: requested workspace name matches more than one local OAuth workspace; callers should switch by workspace id
-- `PROJECT_SETUP_REQUIRED`: command needs explicit or durable Project context before it can continue
-- `PROJECT_LINK_TARGET_REQUIRED`: `project link` needs the user to choose an existing Project or create a new one
-- `PROJECT_CREATE_FAILED`: Project creation failed before deployment or linking could continue
-- `PROJECT_RENAME_FAILED`: the platform rejected the new project name
-- `PROJECT_REMOVE_BLOCKED`: project removal is blocked while it still has active deployments
-- `PROJECT_TRANSFER_REJECTED`: the platform rejected the transfer, for example an invalid or expired recipient token
-- `PROJECT_API_ERROR`: project Management API request failed without a more specific CLI error code
-- `TRANSFER_RECIPIENT_REQUIRED`: project transfer needs --to-workspace or --recipient-token
-- `TRANSFER_RECIPIENT_UNAVAILABLE`: --to-workspace cannot resolve local OAuth sessions while PRISMA_SERVICE_TOKEN is set
-- `PROJECT_NOT_FOUND`: requested project does not exist or is not accessible
-- `PROJECT_AMBIGUOUS`: multiple safe project candidates matched
-- `APP_AMBIGUOUS`: multiple apps matched the inferred or explicit app target
-- `LOCAL_PROJECT_WORKSPACE_MISMATCH`: local Project pin points at a different workspace than the active authenticated workspace; callers should switch to the linked workspace or relink the directory
-- `LOCAL_STATE_WRITE_FAILED`: the CLI could not save local Project binding state such as `.prisma/local.json` or the matching `.gitignore` entry; callers should fix directory permissions or filesystem state before retrying
-- `LOCAL_STATE_STALE`: local Project pin no longer matches platform data and continuing would be ambiguous
-- `BRANCH_NOT_DEPLOYABLE`: command tried to deploy to a non-deployable branch context
-- `COMPUTE_CONFIG_INVALID`: `prisma.compute.ts` failed to load or validate
-- `COMPUTE_CONFIG_TARGET_REQUIRED`: a multi-app compute config needs an `[app]` target and none was given or inferred
-- `COMPUTE_CONFIG_TARGET_UNKNOWN`: the `[app]` target matches no configured app
-- `BUILD_SETTINGS_MIGRATION_REQUIRED`: a legacy `prisma.app.json` contains custom build settings that must move into the `build` block of `prisma.compute.ts`
-- `BUILD_SETTINGS_UNSUPPORTED`: a compute config `build` block targets a framework whose SDK strategy does not consume committed build settings
-- `FRAMEWORK_NOT_DETECTED`: app deploy could not detect a supported Beta framework and no explicit framework/build type was provided
-- `INIT_CONFIG_EXISTS`: a compute config already exists in this directory or an ancestor; init never overwrites or merges
-- `INIT_CONVERT_UNSUPPORTED`: `init --format json` found an existing TypeScript config; TypeScript configs may contain logic, so converting them to JSON automatically would be lossy and the rewrite is manual
-- `INIT_CONVERT_INCOMPLETE`: a conversion wrote prisma.compute.ts but could not delete prisma.compute.json, and rolling back the write also failed; both files exist and one must be deleted by hand
-- `INIT_DETECTION_FAILED`: no supported framework detected and no --framework passed; `meta.frameworks` lists the valid values
-- `DEPLOYMENT_NOT_FOUND`: requested deployment id does not exist
-- `NO_DEPLOYMENTS`: command resolved a branch or app but found no deployments
-- `NO_PREVIOUS_DEPLOYMENT`: rollback could not find an earlier deployment for the selected app
-- `PROD_DEPLOY_REQUIRES_FLAG`: app deploy resolved a production Branch with a prior production deployment, but `--prod` was not passed
-- `PROMOTE_SOURCE_INVALID`: source for promote is missing, invalid, or not promotable
-- `ROLLBACK_UNAVAILABLE`: no previous healthy production deployment exists
-- `CONFIRMATION_REQUIRED`: command cannot continue without confirmation in the current mode
-- `DOMAIN_HOSTNAME_INVALID`: custom-domain hostname is malformed or rejected by the platform
-- `DOMAIN_DNS_NOT_CONFIGURED`: custom-domain hostname does not yet point to the required Prisma DNS target
-- `DOMAIN_ALREADY_REGISTERED`: custom-domain hostname is already attached outside the selected app
-- `DOMAIN_QUOTA_EXCEEDED`: selected app has reached its custom-domain quota
-- `DOMAIN_NOT_FOUND`: requested custom domain is not attached to the selected app
-- `DOMAIN_RETRY_NOT_ELIGIBLE`: requested custom domain is not in a state where verification can be retried
-- `DOMAIN_VERIFICATION_FAILED`: custom-domain verification reached a terminal failed state
-- `DOMAIN_VERIFICATION_TIMEOUT`: custom-domain verification did not reach a terminal state before the requested timeout
-- `REMOVE_FAILED`: app removal could not complete remotely
-- `FEATURE_UNAVAILABLE`: the command exists in the CLI model, but the current preview cannot support it yet
-- `REPO_PROVIDER_UNSUPPORTED`: repository connection received a non-GitHub repository URL
-- `REPO_INSTALLATION_REQUIRED`: repository connection needs a GitHub App installation before the project can be linked
-- `REPO_NOT_ACCESSIBLE`: the connected GitHub App installations do not expose the requested repository
-- `REPO_NOT_CONNECTED`: a command expected a project repository connection, but none exists
-- `REPO_ALREADY_CONNECTED`: a project already has a different GitHub repository connected
-- `REPO_CONNECTION_FAILED`: the Management API repository connection operation failed
-- `BUILD_FAILED`: build failed before a healthy deployment existed
-- `BRANCH_DATABASE_SETUP_FAILED`: database creation or env-var wiring failed before deployment started
-- `SCHEMA_SETUP_FAILED`: local Prisma schema source setup against a newly created database failed before deployment started
-- `DATABASE_NOT_FOUND`: requested database id or name does not exist in the resolved project scope
-- `DATABASE_AMBIGUOUS`: requested database name matches multiple databases and needs an id or branch filter
-- `DATABASE_CONNECTION_NOT_FOUND`: requested database connection id does not exist or is not accessible
-- `DATABASE_CONNECTION_MISSING`: database creation succeeded but the API response did not include the first one-time connection payload
-- `DATABASE_CONNECTION_STRING_MISSING`: connection creation succeeded but the API response did not include the one-time connection string
-- `DATABASE_API_ERROR`: database Management API request failed without a more specific CLI error code
-- `PLAN_LIMIT_REACHED`: a database operation returned the structured `planLimitReached` discriminator; `error.meta` includes `workspaceId`, `blockedFeature`, `planName`, `usageBlocked`, and `upgradeUrl`, using `null` when optional recovery data is unavailable. This is a workspace plan restriction, not a Prisma outage. Agents and CI must branch on the code and metadata rather than the human prose
-- `DATABASE_BACKUPS_UNSUPPORTED`: the platform does not manage backups for the database, for example remote/BYO databases
-- `DATABASE_BACKUP_NOT_FOUND`: requested backup id does not exist for the resolved source database
-- `DATABASE_RESTORE_CONFLICT`: restore target database is provisioning or already recovering
-- `BUCKET_NOT_FOUND`: requested bucket id does not exist or is not accessible
-- `BUCKET_KEY_NOT_FOUND`: requested key id does not exist for the resolved bucket
-- `BUCKET_KEY_SECRET_MISSING`: bucket key creation succeeded but the API response did not include the one-time credential payload
-- `BRANCH_NOT_FOUND`: the branch name passed to a bucket command does not exist in the resolved project
-- `RUN_FAILED`: local framework run command could not be started or exited unsuccessfully
-- `DEPLOY_FAILED`: deployment or post-build health failed
-- `VERSION_UNAVAILABLE`: CLI could not read its own bundled package metadata to report a version (defensive; not expected in normal installs)
-- `COMMAND_CANCELED`: command execution was canceled by a runtime cancellation signal such as `SIGINT` or `SIGTERM`
+Adding a code means adding its entry to the registry in the same change.
 
 ## Exit Codes
 
@@ -331,7 +169,7 @@ The MVP should use these process exit codes:
 
 Stable structured error codes, not exit code granularity, are the main branching surface for agents and CI.
 
-Cancellation intentionally uses `130` instead of the generic runtime failure code because it has established shell semantics for interrupted commands and is useful to operators and process supervisors. Agents and CI should still branch on `COMMAND_CANCELED` rather than the numeric exit code.
+Cancellation intentionally uses `130` instead of the generic runtime failure code because it has established shell semantics for interrupted commands and is useful to operators and process supervisors. Agents and CI should still branch on the structured code (`CLI.PROMPT_CANCELLED`, `CLI.ABORTED`) rather than the numeric exit code.
 
 ## Production Safety
 

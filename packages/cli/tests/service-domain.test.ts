@@ -27,7 +27,7 @@ function domainRoutes(overrides: Routes = {}): Routes {
 
 const TARGET_ARGS = ["--project", "acme-app", "--service", "hello-world"];
 
-describe("prisma-cli service domain add", () => {
+describe("prisma service domain add", () => {
   it("registers the domain and presents the target with dns records", async () => {
     const harness = await makeServiceCli({
       routes: domainRoutes({
@@ -115,7 +115,7 @@ describe("prisma-cli service domain add", () => {
     expect(presentedSummary(result.presented)).toEqual({
       kind: "summary",
       status: "info",
-      text: "Showing the existing custom domain for the selected service.",
+      text: "Showing the existing custom domain on hello-world.",
     });
   });
 
@@ -150,7 +150,7 @@ describe("prisma-cli service domain add", () => {
     });
   });
 
-  it("maps a 422 without a live production deployment to SERVICE.NO_DEPLOYMENTS", async () => {
+  it("maps a 422 without a live production deployment to SERVICE.NO_VERSIONS", async () => {
     const harness = await makeServiceCli({
       routes: domainRoutes({
         "POST /v1/apps/{appId}/domains": () => ({
@@ -170,7 +170,7 @@ describe("prisma-cli service domain add", () => {
     if (frame?.kind !== "result" || frame.envelope.ok) {
       throw new Error("expected an errored envelope");
     }
-    expect(frame.envelope.error.code).toBe("SERVICE.NO_DEPLOYMENTS");
+    expect(frame.envelope.error.code).toBe("SERVICE.NO_VERSIONS");
     // No action suggests `service deploy --branch production`: the binary
     // does not answer to it. The advice carries what the user has to do
     // first, so the retry action is not the only thing offered.
@@ -178,12 +178,12 @@ describe("prisma-cli service domain add", () => {
       {
         kind: "user-choice",
         label:
-          "Promote a deployment on the service's production branch, then add the domain again.",
+          "Promote a version on the service's production branch, then add the domain again.",
       },
       {
         kind: "run-command",
         label: "Add the domain",
-        command: "prisma-cli service domain add shop.acme.com",
+        command: "prisma service domain add shop.acme.com --service <name>",
       },
     ]);
   });
@@ -229,7 +229,7 @@ describe("prisma-cli service domain add", () => {
     expect(frame.envelope.error.code).toBe("SERVICE.BRANCH_NOT_DEPLOYABLE");
   });
 
-  it("honors the PRISMA_SERVICE_ID environment override", async () => {
+  it("accepts a service id in --service", async () => {
     const harness = await makeServiceCli({
       routes: domainRoutes({
         "POST /v1/apps/{appId}/domains": (init) => {
@@ -240,17 +240,23 @@ describe("prisma-cli service domain add", () => {
     });
 
     const result = await harness.cli.run(
-      ["service", "domain", "add", "shop.acme.com", "--project", "acme-app"],
-      {
-        cwd: harness.cwd,
-        env: { ...harness.env, PRISMA_SERVICE_ID: "svc_1" },
-      },
+      [
+        "service",
+        "domain",
+        "add",
+        "shop.acme.com",
+        "--service",
+        "svc_1",
+        "--project",
+        "acme-app",
+      ],
+      { cwd: harness.cwd, env: harness.env },
     );
 
     expect(result.exitCode).toBe(0);
   });
 
-  it("rejects a PRISMA_SERVICE_ID the project does not have as SERVICE.SELECTION_INVALID", async () => {
+  it("rejects a service id the project does not have as SERVICE.SELECTION_INVALID", async () => {
     const harness = await makeServiceCli({ routes: domainRoutes() });
 
     const result = await harness.cli.run(
@@ -259,14 +265,13 @@ describe("prisma-cli service domain add", () => {
         "domain",
         "add",
         "shop.acme.com",
+        "--service",
+        "svc_missing",
         "--project",
         "acme-app",
         "--json",
       ],
-      {
-        cwd: harness.cwd,
-        env: { ...harness.env, PRISMA_SERVICE_ID: "svc_missing" },
-      },
+      { cwd: harness.cwd, env: harness.env },
     );
 
     expect(result.exitCode).toBe(2);
@@ -278,13 +283,17 @@ describe("prisma-cli service domain add", () => {
     expect(frame.envelope.nextActions).toEqual([
       {
         kind: "user-choice",
-        label:
-          "Unset PRISMA_SERVICE_ID, pass --service <name>, or deploy the service on the production branch.",
+        label: "Pass the id or name of an existing service.",
+      },
+      {
+        kind: "run-command",
+        label: "List services",
+        command: "prisma service list",
       },
     ]);
   });
 
-  it("requires an existing service on the production branch", async () => {
+  it("requires a service", async () => {
     const harness = await makeServiceCli({
       routes: domainRoutes({ "GET /v1/apps": () => ({ data: page([]) }) }),
     });
@@ -307,14 +316,13 @@ describe("prisma-cli service domain add", () => {
     if (frame?.kind !== "result" || frame.envelope.ok) {
       throw new Error("expected an errored envelope");
     }
-    expect(frame.envelope.error.code).toBe("SERVICE.DOMAIN_TARGET_REQUIRED");
-    expect(frame.envelope.nextActions).toEqual([
-      {
-        kind: "run-command",
-        label: "Inspect the service",
-        command: "prisma-cli service show",
-      },
-    ]);
+    expect(frame.envelope.error.code).toBe("SERVICE.TARGET_REQUIRED");
+    expect(frame.envelope.error.summary).toContain("requires a service");
+    expect(frame.envelope.nextActions).toContainEqual({
+      kind: "run-command",
+      label: "List services",
+      command: "prisma service list",
+    });
   });
 
   it("fails early with the engine sign-in error when unauthenticated", async () => {
@@ -333,7 +341,7 @@ describe("prisma-cli service domain add", () => {
   });
 });
 
-describe("prisma-cli service domain show", () => {
+describe("prisma service domain show", () => {
   it("presents the domain detail", async () => {
     const harness = await makeServiceCli({
       routes: domainRoutes({
@@ -424,7 +432,7 @@ describe("prisma-cli service domain show", () => {
   });
 });
 
-describe("prisma-cli service domain retry", () => {
+describe("prisma service domain retry", () => {
   it("retries verification and presents the refreshed domain", async () => {
     const harness = await makeServiceCli({
       routes: domainRoutes({
@@ -521,12 +529,12 @@ describe("prisma-cli service domain retry", () => {
   });
 });
 
-describe("prisma-cli service domain remove", () => {
-  /** `removed` collects the id of every domain the run deleted. */
-  function removeRoutes(removed: string[] = []): Routes {
+describe("prisma service domain delete", () => {
+  /** `deletedIds` collects the id of every domain the run deleted. */
+  function deleteRoutes(deletedIds: string[] = []): Routes {
     return domainRoutes({
       "DELETE /v1/domains/{domainId}": (init) => {
-        removed.push(String(init.params?.path?.domainId));
+        deletedIds.push(String(init.params?.path?.domainId));
         return { data: { data: null } };
       },
     });
@@ -536,15 +544,15 @@ describe("prisma-cli service domain remove", () => {
     isTty: { stdin: true, stdout: true, stderr: true },
   };
 
-  it("removes the domain when --confirm carries the hostname non-interactively", async () => {
-    const removed: string[] = [];
-    const harness = await makeServiceCli({ routes: removeRoutes(removed) });
+  it("deletes the domain when --confirm carries the hostname non-interactively", async () => {
+    const deletedIds: string[] = [];
+    const harness = await makeServiceCli({ routes: deleteRoutes(deletedIds) });
 
     const result = await harness.cli.run(
       [
         "service",
         "domain",
-        "remove",
+        "delete",
         "shop.acme.com",
         ...TARGET_ARGS,
         "--confirm",
@@ -557,27 +565,27 @@ describe("prisma-cli service domain remove", () => {
     expect(result.presented?.data).toMatchObject({
       ...EXPECTED_TARGET,
       hostname: "shop.acme.com",
-      removed: true,
+      deleted: true,
     });
     expect(presentedSummary(result.presented)).toEqual({
       kind: "summary",
       status: "ok",
-      text: "Removed shop.acme.com from hello-world.",
+      text: "Deleted shop.acme.com from hello-world.",
     });
-    expect(removed).toEqual(["dom_1"]);
+    expect(deletedIds).toEqual(["dom_1"]);
   });
 
   it("grants under --yes when --confirm carries the hostname", async () => {
     // --yes alone can never grant; --yes plus the matching token takes the
     // engine's non-interactive branch and grants without asking, so the run
     // completes with no scripted answer available.
-    const harness = await makeServiceCli({ routes: removeRoutes() });
+    const harness = await makeServiceCli({ routes: deleteRoutes() });
 
     const result = await harness.cli.run(
       [
         "service",
         "domain",
-        "remove",
+        "delete",
         "shop.acme.com",
         ...TARGET_ARGS,
         "--yes",
@@ -588,17 +596,17 @@ describe("prisma-cli service domain remove", () => {
     );
 
     expect(result.exitCode).toBe(0);
-    expect(result.presented?.data).toMatchObject({ removed: true });
+    expect(result.presented?.data).toMatchObject({ deleted: true });
   });
 
-  it("emits the completed json envelope for a non-interactive --confirm removal", async () => {
-    const harness = await makeServiceCli({ routes: removeRoutes() });
+  it("emits the completed json envelope for a non-interactive --confirm deletion", async () => {
+    const harness = await makeServiceCli({ routes: deleteRoutes() });
 
     const result = await harness.cli.run(
       [
         "service",
         "domain",
-        "remove",
+        "delete",
         "shop.acme.com",
         ...TARGET_ARGS,
         "--confirm",
@@ -613,23 +621,23 @@ describe("prisma-cli service domain remove", () => {
     if (frame?.kind !== "result" || !frame.envelope.ok) {
       throw new Error("expected a completed envelope");
     }
-    expect(frame.envelope.commandId).toBe("service.domain.remove");
+    expect(frame.envelope.commandId).toBe("service.domain.delete");
     expect(frame.envelope.result).toMatchObject({
       hostname: "shop.acme.com",
-      removed: true,
+      deleted: true,
     });
   });
 
   it("still asks interactively when --confirm is present, and takes the typed token", async () => {
     // The grant is a non-interactive affordance: an interactive session
     // type-to-confirms regardless of --confirm.
-    const harness = await makeServiceCli({ routes: removeRoutes() });
+    const harness = await makeServiceCli({ routes: deleteRoutes() });
 
     const result = await harness.cli.run(
       [
         "service",
         "domain",
-        "remove",
+        "delete",
         "shop.acme.com",
         ...TARGET_ARGS,
         "--confirm",
@@ -649,15 +657,15 @@ describe("prisma-cli service domain remove", () => {
     if (frame?.kind !== "result" || !frame.envelope.ok) {
       throw new Error("expected a completed envelope");
     }
-    expect(frame.envelope.commandId).toBe("service.domain.remove");
-    expect(frame.envelope.result).toMatchObject({ removed: true });
+    expect(frame.envelope.commandId).toBe("service.domain.delete");
+    expect(frame.envelope.result).toMatchObject({ deleted: true });
   });
 
-  it("removes the domain after interactive consent", async () => {
-    const harness = await makeServiceCli({ routes: removeRoutes() });
+  it("deletes the domain after interactive consent", async () => {
+    const harness = await makeServiceCli({ routes: deleteRoutes() });
 
     const result = await harness.cli.run(
-      ["service", "domain", "remove", "shop.acme.com", ...TARGET_ARGS],
+      ["service", "domain", "delete", "shop.acme.com", ...TARGET_ARGS],
       {
         cwd: harness.cwd,
         env: harness.env,
@@ -670,20 +678,20 @@ describe("prisma-cli service domain remove", () => {
     expect(result.presented?.data).toMatchObject({
       ...EXPECTED_TARGET,
       hostname: "shop.acme.com",
-      removed: true,
+      deleted: true,
     });
   });
 
-  it("emits the completed json envelope with commandId service.domain.remove", async () => {
+  it("emits the completed json envelope with commandId service.domain.delete", async () => {
     // An interactive json run still prompts (the prompt UI writes to
     // stderr); consent is granted through the scripted answer.
-    const harness = await makeServiceCli({ routes: removeRoutes() });
+    const harness = await makeServiceCli({ routes: deleteRoutes() });
 
     const result = await harness.cli.run(
       [
         "service",
         "domain",
-        "remove",
+        "delete",
         "shop.acme.com",
         ...TARGET_ARGS,
         "--json",
@@ -701,22 +709,22 @@ describe("prisma-cli service domain remove", () => {
     if (frame?.kind !== "result" || !frame.envelope.ok) {
       throw new Error("expected a completed envelope");
     }
-    expect(frame.envelope.commandId).toBe("service.domain.remove");
+    expect(frame.envelope.commandId).toBe("service.domain.delete");
     expect(frame.envelope.result).toMatchObject({
       ...EXPECTED_TARGET,
       hostname: "shop.acme.com",
-      removed: true,
+      deleted: true,
     });
   });
 
   it("fails early with the engine sign-in error when unauthenticated", async () => {
     const harness = await makeServiceCli({
-      routes: removeRoutes(),
+      routes: deleteRoutes(),
       authenticated: false,
     });
 
     const result = await harness.cli.run(
-      ["service", "domain", "remove", "shop.acme.com", ...TARGET_ARGS],
+      ["service", "domain", "delete", "shop.acme.com", ...TARGET_ARGS],
       { cwd: harness.cwd, env: harness.env, isTty: { stdout: true } },
     );
 
@@ -725,10 +733,10 @@ describe("prisma-cli service domain remove", () => {
   });
 
   it("settles a mistyped consent token as the engine mismatch error", async () => {
-    const harness = await makeServiceCli({ routes: removeRoutes() });
+    const harness = await makeServiceCli({ routes: deleteRoutes() });
 
     const result = await harness.cli.run(
-      ["service", "domain", "remove", "shop.acme.com", ...TARGET_ARGS],
+      ["service", "domain", "delete", "shop.acme.com", ...TARGET_ARGS],
       {
         cwd: harness.cwd,
         env: harness.env,
@@ -741,13 +749,13 @@ describe("prisma-cli service domain remove", () => {
   });
 
   it("settles a non-interactive run as the engine consent-required error with exit 2", async () => {
-    const harness = await makeServiceCli({ routes: removeRoutes() });
+    const harness = await makeServiceCli({ routes: deleteRoutes() });
 
     const result = await harness.cli.run(
       [
         "service",
         "domain",
-        "remove",
+        "delete",
         "shop.acme.com",
         ...TARGET_ARGS,
         "--json",
@@ -764,13 +772,13 @@ describe("prisma-cli service domain remove", () => {
   });
 
   it("refuses a --confirm value that is not the hostname, naming the expected value", async () => {
-    const harness = await makeServiceCli({ routes: removeRoutes() });
+    const harness = await makeServiceCli({ routes: deleteRoutes() });
 
     const result = await harness.cli.run(
       [
         "service",
         "domain",
-        "remove",
+        "delete",
         "shop.acme.com",
         ...TARGET_ARGS,
         "--confirm",
@@ -796,13 +804,13 @@ describe("prisma-cli service domain remove", () => {
     // Divergence from legacy: `--yes` used to skip the confirmation. The
     // engine rules consent structurally ungrantable by --yes; recorded in
     // parity-divergences-s2c.md and raised to the operator.
-    const harness = await makeServiceCli({ routes: removeRoutes() });
+    const harness = await makeServiceCli({ routes: deleteRoutes() });
 
     const result = await harness.cli.run(
       [
         "service",
         "domain",
-        "remove",
+        "delete",
         "shop.acme.com",
         ...TARGET_ARGS,
         "--yes",

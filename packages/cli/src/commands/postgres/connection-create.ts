@@ -1,6 +1,6 @@
 /** The `postgres connection create` command. */
 import { defineCommand, flag } from "@prisma/cli-engine";
-import { notOk, ok } from "@prisma/cli-engine/protocol";
+import { ok } from "@prisma/cli-engine/protocol";
 import {
   defaultConnectionName,
   resolveDatabase,
@@ -12,21 +12,26 @@ import {
   projectFlag,
   resolvePostgresContext,
 } from "./context";
-import { mapPostgresOperationError } from "./errors";
 import { postgresTargetLabel, secretBlocks } from "./presentation";
 
 export const postgresConnectionCreateCommand = defineCommand({
   args: {
     positionals: { database: databasePositional },
     flags: {
-      name: flag.string({ brief: "Connection name", placeholder: "name" }),
+      name: flag.string({
+        brief:
+          "Connection name; use it to record which consumer holds the credential",
+        placeholder: "name",
+      }),
       project: projectFlag,
       branch: branchFlag,
     },
   },
   help: {
     summary:
-      "Create a database connection and print its one-time connection URL",
+      "Create an additional connection URL for a database; printed exactly once",
+    description:
+      "Mints an additional credential for an existing database, shown exactly once. Give each consumer (an app, CI, a teammate) its own named connection, so its access can later be rotated or revoked without touching the others.",
     examples: [
       "postgres connection create db_123",
       "postgres connection create db_123 --name readonly",
@@ -34,54 +39,46 @@ export const postgresConnectionCreateCommand = defineCommand({
   },
   needs: { credentials: true },
   handler: async (args, ctx) => {
-    try {
-      const { provider, target, projectId, projectName } =
-        await resolvePostgresContext(
-          ctx,
-          args.flags,
-          "postgres connection create",
-        );
-      const database = await resolveDatabase(
-        provider,
-        target,
-        args.positionals.database,
-        args.flags.branch,
-        ctx.signal,
+    const { provider, target, projectId, projectName } =
+      await resolvePostgresContext(
+        ctx,
+        args.flags,
+        "postgres connection create",
       );
-      const created = await provider.createConnection({
-        databaseId: database.id,
-        name: args.flags.name?.trim() || defaultConnectionName(),
-        signal: ctx.signal,
-      });
+    const database = await resolveDatabase(
+      provider,
+      target,
+      args.positionals.database,
+      args.flags.branch,
+      ctx.signal,
+    );
+    const created = await provider.createConnection({
+      databaseId: database.id,
+      name: args.flags.name?.trim() || defaultConnectionName(),
+      signal: ctx.signal,
+    });
 
-      const result: DatabaseConnectionCreateResult = {
-        projectId,
-        projectName,
-        database,
-        connection: created.connection,
-        connectionString: created.connectionString,
-      };
-      return ok(
-        ctx.present(
-          { data: result },
-          {
-            human: () =>
-              secretBlocks(
-                `Added a connection to "${database.name}" in ${postgresTargetLabel(projectName, database.branchName)}.`,
-                result.connectionString,
-              ),
-            stdout: () => [result.connectionString],
-            json: () => result,
-            next: () => [],
-          },
-        ),
-      );
-    } catch (error) {
-      const mapped = mapPostgresOperationError(error);
-      if (mapped) {
-        return notOk(mapped);
-      }
-      throw error;
-    }
+    const result: DatabaseConnectionCreateResult = {
+      projectId,
+      projectName,
+      database,
+      connection: created.connection,
+      connectionString: created.connectionString,
+    };
+    return ok(
+      ctx.present(
+        { data: result },
+        {
+          human: () =>
+            secretBlocks(
+              `Added a connection to "${database.name}" in ${postgresTargetLabel(projectName, database.branchName)}.`,
+              result.connectionString,
+            ),
+          stdout: () => [result.connectionString],
+          json: () => result,
+          next: () => [],
+        },
+      ),
+    );
   },
 });

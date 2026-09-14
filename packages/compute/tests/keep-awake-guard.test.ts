@@ -116,6 +116,46 @@ describe("keep-awake guard", () => {
     await expect(promise).resolves.toBe("done");
   });
 
+  it("writes to the first candidate path when it exists", async () => {
+    const dir = await fs.mkdtemp(path.join(os.tmpdir(), "prisma-compute-"));
+    const preferred = path.join(dir, "keep-awake");
+    const fallback = path.join(dir, "scale_to_zero_disable");
+    await fs.writeFile(preferred, "");
+    await fs.writeFile(fallback, "");
+    configureScaleToZeroControlFileForTests([preferred, fallback]);
+
+    using guard = new KeepAwakeGuard();
+    guard.release();
+
+    expect(await readSignals(preferred)).toBe("+-");
+    expect(await readSignals(fallback)).toBe("");
+  });
+
+  it("falls back to the next candidate path when the first is missing", async () => {
+    const dir = await fs.mkdtemp(path.join(os.tmpdir(), "prisma-compute-"));
+    const preferred = path.join(dir, "keep-awake");
+    const fallback = path.join(dir, "scale_to_zero_disable");
+    await fs.writeFile(fallback, "");
+    configureScaleToZeroControlFileForTests([preferred, fallback]);
+
+    using guard = new KeepAwakeGuard();
+    guard.release();
+
+    expect(await readSignals(fallback)).toBe("+-");
+  });
+
+  it("is a no-op when no candidate path exists", async () => {
+    const dir = await fs.mkdtemp(path.join(os.tmpdir(), "prisma-compute-"));
+    configureScaleToZeroControlFileForTests([
+      path.join(dir, "keep-awake"),
+      path.join(dir, "scale_to_zero_disable"),
+    ]);
+    const promise = Promise.resolve("done");
+
+    expect(waitUntil(promise)).toBeUndefined();
+    await expect(promise).resolves.toBe("done");
+  });
+
   it("removes the abort listener after manual release", async () => {
     const { file } = await createControlFile();
     const controller = new AbortController();

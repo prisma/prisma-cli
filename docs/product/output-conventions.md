@@ -83,7 +83,7 @@ original command on network discovery.
 Recommended shape:
 
 ```text
-Update available: prisma-cli <current> -> <latest>
+Update available: prisma <current> -> <latest>
 Run <package-manager command> to update.
 ```
 
@@ -91,9 +91,38 @@ When the CLI cannot confidently infer the install context, link to installation
 docs instead of guessing a package-manager command:
 
 ```text
-Update available: prisma-cli <current> -> <latest>
+Update available: prisma <current> -> <latest>
 See https://www.prisma.io/docs/orm/tools/prisma-cli for update instructions.
 ```
+
+## Out-Of-Date Agent Skills
+
+The CLI prints one advisory line after normal command output when the agent skills copied into the project's harness skill directories do not match the Prisma packages the project has installed:
+
+```text
+Prisma agent skills are out of date (installed @prisma/orm-postgres 8.1.0, synced 8.0.0). Run: prisma skills sync
+```
+
+A project that has never been synced is reported the same way, with `synced none`. Like the update notification, this is human-oriented stderr output, must never reach stdout, and must never change the command's exit code. Unlike the update notification it is **not** conditioned on a TTY: its main reader is a coding agent, which runs the CLI without one.
+
+It is silent when:
+
+- the copies match the installed packages
+- `--quiet` or `--json` / `--format json` is active
+- `--version` is being invoked, matching the update notification
+- `PRISMA_SKILLS_CHECK=0` is set
+- CI is detected
+- `prisma.config.ts` sets `skills: { check: false }`
+- the project has run `skills sync --disable`, which records the opt-out in `.prisma/skills.json` at the project root
+- the command being run is itself a `skills` command
+
+This notice covers every project whose install does not resync the skills. `skills sync` itself never edits the user's `package.json` or root `.gitignore`. The synced copies are ordinary files that git tracks like any other file in the repository. Sync removes the `*` ignore file an older CLI wrote into its copies, but leaves a `.gitignore` the user authored in place.
+
+Which agents get skill copies is configuration, never detection: `skills: { agents: [...] }` in `prisma.config.ts` names them, each agent name mapping to its directory — `claude` (`.claude/skills`), `cursor` (`.cursor/skills`), `agents` (`.agents/skills`), `devin` (`.devin/skills`). An unknown name is a config error naming the known agents. When the field or the whole config is absent, the default is every known agent, so a harness adopted later finds the skills already in place. An empty list (`agents: []`, what `prisma init --skills=none` scaffolds) is a recorded choice, not an omission: sync writes nothing and answers `No agents are configured to sync skills for.`, `skills list` reports the same, and the staleness notice never fires. Narrowing the list also removes what an earlier sync wrote: a copy this CLI installed (its `SKILL.md` names an allowlisted package) in the directory of an agent the config no longer names is reported by `skills list` as orphaned and removed by the next sync, along with the `<agent>/skills` and `<agent>` directories when that leaves them empty; `agents: []` after a full sync therefore removes all four directories and answers `Removed 1 skill.`. A skill in those directories that this CLI did not write is never touched. `prisma init` writes the section into a fresh `prisma.config.ts`; a config that already exists is never edited — init reports the exact snippet to add instead. init also adds `prisma` to `devDependencies` at the CLI's exact version when no dependency field declares it, so the scaffolded config's `prisma/config` import resolves after the next install. Everything anchors at the directory the command runs in: sync, list, the staleness notice, and the `.prisma/skills.json` opt-out all read from cwd (the postinstall hook runs with cwd at the package root, so the mainline never guesses). The notice reads the config only when a `prisma.config.ts` exists in cwd and the full agent set already looks out of date, and evaluates it at most once; without a config it uses the default set and the postinstall hook remains the primary resync trigger.
+
+`Agent skills are up to date.` appears only when installed skills exist and are current — a project with nothing to sync never borrows that line. The three empty states each name themselves: `agents: []` answers `No agents are configured to sync skills for.`; a project with no allowlisted package installed answers `No Prisma packages with agent skills are installed.`; installed packages whose versions ship no skills at all (older releases without a `skills/` directory) answer `No Prisma dependencies in your project ship agent skills to sync.` from sync and `No Prisma dependencies in your project ship agent skills.` from list. The sync JSON result carries a `skills` array naming every skill the installed packages ship, so machine consumers can make the same distinction. `prisma init` reports it in its JSON `skills.outcome`, whose values are `synced`, `up-to-date`, `no-agents`, `no-packages`, `no-skills`, `failed`, and `skipped`. A project where at least one installed package ships skills keeps the ordinary summaries even when another installed package ships none.
+
+A target directory that already holds a `SKILL.md` this CLI did not write is `unmanaged`: sync refuses to replace it, reports each refusal as a `SKILLS.UNMANAGED_DIRECTORY` diagnostic and in the `refused` array of the JSON result, and `skills list` shows `unmanaged` in its State column. An unmanaged directory does not count as out of date — the staleness notice stays silent about it — but the human summary of `skills sync` and `skills list` names it instead of over-claiming: `Agent skills are up to date; 1 directory is not managed by this CLI.` A directory that merely exists without a `SKILL.md` is treated as absent and is written by the next sync.
 
 ## Human Output
 
@@ -142,10 +171,10 @@ Current MVP commands map to patterns like this:
 | `database list` | `list` |
 | `database show` | `show` |
 | `database create` | compact mutate stderr + raw secret stdout + JSON envelope |
-| `database remove` | `mutate` |
+| `database delete` | `mutate` |
 | `database connection list` | `list` |
 | `database connection create` | compact mutate stderr + raw secret stdout + JSON envelope |
-| `database connection remove` | `mutate` |
+| `database connection delete` | `mutate` |
 | `bucket list` | `list` |
 | `bucket create` | `mutate` |
 | `bucket delete` | `mutate` |
@@ -212,16 +241,13 @@ when the list is empty and another workspace when sessions already exist.
 
 ### One-Time Secret Output
 
-Commands that create one-time-view secrets may write the raw secret value to
-stdout in human mode. This is still machine-readable output, not decorative
-human output.
+Commands that create one-time-view secrets print the secret bare in the human card and write the raw value to stdout. The card is the only place an interactive user ever sees the secret — when stdout and stderr render to one screen the stdout mirror is skipped, so masking the card would hide the secret from everyone including its owner (operator ruling, 2026-08-26). The stdout line is machine-readable output for pipes and redirection.
 
 Rules:
 
-- write exactly one raw secret value per successful create command
-- write human creation summaries to stderr before writing the raw secret to stdout
-- do not repeat the secret on stderr
-- do not wrap the secret in labels such as `DATABASE_URL=`
+- show the bare secret in the human card on stderr
+- write exactly one raw secret value per successful create command to stdout
+- do not wrap the stdout secret in labels such as `DATABASE_URL=`
 - use `--verbose` for human metadata such as resource ids; keep generated names and opaque ids out of default human output unless they are the user-selected target
 - `--quiet` suppresses successful human stderr output and still writes the raw secret to stdout
 - list and show commands must never print or return secret values
@@ -296,7 +322,7 @@ Rules:
 
 - use a flat aligned key-value card with no bullets
 - keys use the accent color and values use the default foreground unless status coloring applies
-- sensitive values are masked rather than omitted
+- values print bare; a secret the command exists to hand over is never masked (operator ruling, 2026-08-26)
 - human output prefers display labels, URLs, and statuses over opaque ids
 
 #### `mutate`
@@ -365,7 +391,7 @@ Human output should:
 - use symbols rather than emojis
 - prefer relative paths when a path is explanatory text
 - keep ceremony low
-- reserve banners for `init` and similar first-run flows
+- reserve banners for first-run flows such as `auth login`
 - keep header metadata compact and aligned
 - avoid placeholder rows for unknown values
 
@@ -389,8 +415,8 @@ project show → This directory is not linked to a Prisma Project.
 │  project:    Not linked
 
 Next steps:
-- Link an existing Project you choose: prisma-cli project link <id-or-name>
-- Create a new Project: prisma-cli project create billing-api
+- Link an existing Project you choose: prisma project link <id-or-name>
+- Create a new Project: prisma project create billing-api
 ```
 
 Rules:
@@ -434,7 +460,6 @@ Examples:
 - `app deploy` should state the resolved target that matters in the current slice
 - first local `app deploy` binding should make the Project choice explicit before work begins
 - subsequent `app deploy` calls should use a compact target header such as `Deploying ./j1 to j1 / main / j1`
-- config-backed `app deploy` builds should show the resolved build settings before build starts: `Build Command` and `Output Directory` with their sources (`prisma.compute.ts` or inference), `Output Directory` as a literal path such as `.next/standalone` rather than an opaque framework default label
 - `app logs` should state the deployment it resolved
 - `app list-deploys` should state which app or branch is being listed
 
@@ -469,7 +494,7 @@ health is known. Do not print `Status: running` or `Deployment is running at ...
 Use short stage copy such as `Building locally...`, `Built <size>`,
 `Uploading...`, `Uploaded`, `Deploying...`, and `Deployed`.
 On success, print `Live in <duration>`, the URL on its own line, and
-`Logs   prisma-cli app logs`.
+`Logs   prisma app logs`.
 Human deploy output is stderr; `--json` is the machine-readable stdout path.
 
 Deploy result rows use one compact style: labels start two spaces from the left
@@ -500,6 +525,10 @@ Rules:
 - no human prose may be mixed into stdout in JSON mode
 - human-oriented decoration should be suppressed in JSON mode
 - missing values should be `null`, not placeholder strings
+
+## `--format markdown`
+
+`--format markdown` renders the same blocks a command describes for human output as plain Markdown: a summary line, `label: value` rows, GFM pipe tables, bullet lists, nested bullets for trees, and fenced code for drawings, followed by `### Next` for the suggested next actions and `### Diagnostics` for any findings. It exists for an agent that reads CLI output as text rather than parsing JSON: every value is labelled, nothing is padded, wrapped, aligned, or coloured, and no tokens go to envelope keys. Every part of the run's output — blocks, next actions, diagnostics, structured errors, help, `--version`, and live events — lands on stdout, and the engine writes nothing to stderr. The format is only ever explicit: without `--format markdown` a terminal gets human output and a pipe gets JSON.
 
 ## Non-Streaming JSON Shape
 
@@ -607,21 +636,27 @@ context, status, decoration, and errors stay on stderr.
   },
   "warnings": [],
   "nextSteps": [
-    "prisma-cli app list-deploys --app hello-world",
-    "prisma-cli app show-deploy dep_045"
+    "prisma app list-deploys --app hello-world",
+    "prisma app show-deploy dep_045"
   ],
   "nextActions": [
     {
       "kind": "run-command",
       "journey": "inspect",
       "label": "View deployment logs",
-      "command": "prisma-cli app logs"
+      "command": "prisma app logs"
     }
   ]
 }
 ```
 
 ## Design Rule
+
+Delegated commands must support installed Windows `.cmd` shims as well as
+native executables and POSIX shebang scripts. The host uses cross-spawn for
+platform-specific resolution and argument escaping; callers still pass a
+command and argument array, not a shell command string. Human stdio inheritance,
+structured diagnostic forwarding, and child exit status remain unchanged.
 
 Human output and JSON output should describe the same underlying model.
 

@@ -91,7 +91,7 @@ function signedInCli() {
   });
 }
 
-describe("prisma-cli auth whoami", () => {
+describe("prisma auth whoami", () => {
   it("renders the signed-out human card on stderr and the payload lines on stdout, exit 0", async () => {
     const result = await makeCli().run(["auth", "whoami"], {
       isTty: { stdout: true },
@@ -104,7 +104,7 @@ describe("prisma-cli auth whoami", () => {
         "\n" +
         "status:  signed out\n" +
         "\n" +
-        "→ Sign in: prisma-cli auth login\n",
+        "→ Sign in: prisma auth login\n",
     );
   });
 
@@ -136,7 +136,7 @@ describe("prisma-cli auth whoami", () => {
         `"result":{"authenticated":false,"workspace":null,"user":null,` +
         `"source":null,"expiresAt":null},"exitCode":0,"diagnostics":[],` +
         `"nextActions":[{"kind":"run-command","label":"Sign in",` +
-        `"command":"prisma-cli auth login"}]},"commandId":"auth.whoami",` +
+        `"command":"prisma auth login"}]},"commandId":"auth.whoami",` +
         `"timestamp":"${T0}"}\n`,
     );
     expect(result.json).toHaveLength(1);

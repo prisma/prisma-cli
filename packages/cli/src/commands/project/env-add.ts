@@ -5,7 +5,7 @@ import {
   type Presentations,
   positional,
 } from "@prisma/cli-engine";
-import { notOk, ok } from "@prisma/cli-engine/protocol";
+import { CliStructuredError, ok } from "@prisma/cli-engine/protocol";
 import {
   formatScopeFlag,
   resolveEnvWriteInput,
@@ -18,10 +18,10 @@ import {
   toMetadata,
 } from "../../controllers/app-env-api";
 import { runEnvAddFile } from "../../controllers/app-env-file";
-import { CliError } from "../../errors";
 import { formatScopeLabel } from "../../lib/app/env-config";
+import { runCommand, userChoice } from "../../lib/app/env-errors";
 import type { EnvAddResult } from "../../types/app-env";
-import { legacyOperationContext } from "./context";
+import { operationContext } from "./context";
 import {
   branchFlag,
   fileFlag,
@@ -33,7 +33,6 @@ import {
   roleFlag,
   variableFieldRows,
 } from "./env-shared";
-import { mapProjectOperationError } from "./errors";
 
 const TITLE = "Setting a new environment variable.";
 
@@ -74,156 +73,155 @@ export const projectEnvAddCommand = defineCommand({
     },
   },
   help: {
-    summary: "Create a new environment variable.",
+    summary:
+      "Create an environment variable in one scope: production, preview, or one branch",
+    description:
+      "Variables reach a service's environment when it deploys. Writes always name their scope so production is never targeted by accident: --role production, --role preview (shared by every preview branch), or --branch for one branch's override. The value comes from KEY=VALUE, from the current shell environment when only KEY is given, or from a dotenv file with --file.",
     examples: [
       "project env add STRIPE_KEY=sk_test_xxx --role production",
       "project env add STRIPE_KEY=sk_test_xxx --role preview",
       "project env add --file .env --role preview",
       "project env add DATABASE_URL=postgresql://branch --branch feature/foo",
       "project env add --file .env.local --branch feature/foo",
-      "API_URL=https://api.example prisma-cli project env add API_URL --project proj_123 --role preview",
+      "API_URL=https://api.example prisma project env add API_URL --project proj_123 --role preview",
     ],
   },
   needs: { credentials: true },
   handler: async (args, ctx) => {
-    try {
-      const source = resolveEnvWriteSource(
-        args.positionals.assignment,
-        args.flags.file,
-        "add",
-      );
-      const scope = requireEnvScope(args.flags, "add");
-      const input = await resolveEnvWriteInput(
-        legacyOperationContext(ctx),
-        source,
-        "add",
-      );
-      const { projectId, verboseContext, resolved } = await resolveEnvTarget(
-        ctx,
-        args.flags,
-        scope,
-        "project env add",
-        true,
-      );
+    const source = resolveEnvWriteSource(
+      args.positionals.assignment,
+      args.flags.file,
+      "add",
+    );
+    const scope = requireEnvScope(args.flags, "add");
+    const input = await resolveEnvWriteInput(
+      operationContext(ctx),
+      source,
+      "add",
+    );
+    const { projectId, verboseContext, resolved } = await resolveEnvTarget(
+      ctx,
+      args.flags,
+      scope,
+      "project env add",
+      true,
+    );
 
-      if (input.kind === "file") {
-        const written = await runEnvAddFile(
-          legacyOperationContext(ctx),
-          ctx.api,
-          projectId,
-          resolved,
-          input.filePath,
-          input.assignments,
-          verboseContext,
-        );
-        const result: EnvAddResult = {
-          projectId,
-          scope: resolved.descriptor,
-          // biome-ignore lint/style/noNonNullAssertion: the file branch always carries the variables.
-          variables: written.result.variables!,
-          // biome-ignore lint/style/noNonNullAssertion: the file branch always carries the file metadata.
-          file: written.result.file!,
-        };
-        return ok(
-          ctx.present(
-            {
-              data: result,
-              diagnostics: previewDefaultDiagnostics(written.warnings),
-            },
-            fileWritePresentations(
-              {
-                title: "Setting new environment variables from file.",
-                emptyMessage: "No environment variables imported.",
-                scope: result.scope,
-                filePath: result.file.path,
-                variables: result.variables,
-              },
-              result,
-            ),
-          ),
-        );
-      }
-
-      const existing = await findVariableByNaturalKey(
+    if (input.kind === "file") {
+      const written = await runEnvAddFile(
+        operationContext(ctx),
         ctx.api,
         projectId,
-        input.key,
         resolved,
-        ctx.signal,
+        input.filePath,
+        input.assignments,
+        verboseContext,
       );
-      if (existing) {
-        throw new CliError({
-          code: "ENV_VARIABLE_ALREADY_EXISTS",
-          domain: "app",
-          summary: `Variable "${input.key}" already exists in ${formatScopeLabel(scope)}`,
-          why: "A variable with this key already exists in the targeted scope.",
-          fix: "Use `prisma-cli project env update` to change an existing variable's value.",
-          exitCode: 1,
-          nextSteps: [
-            `prisma-cli project env update ${input.key}=<new-value> ${formatScopeFlag(scope)}`,
-          ],
-        });
-      }
-
-      const warnings =
-        scope.kind === "branch" &&
-        !(await findVariableByNaturalKey(
-          ctx.api,
-          projectId,
-          input.key,
-          {
-            descriptor: { kind: "role", role: "preview" },
-            apiTarget: { class: "preview", branchId: null },
-          },
-          ctx.signal,
-        ))
-          ? [
-              `Variable "${input.key}" does not exist in preview. It will only exist on ${formatScopeLabel(scope)}.`,
-            ]
-          : [];
-
-      const { data, error, response } = await ctx.api.POST(
-        "/v1/environment-variables",
-        {
-          body: {
-            projectId,
-            class: resolved.apiTarget.class,
-            ...(resolved.apiTarget.branchId !== null
-              ? { branchId: resolved.apiTarget.branchId }
-              : {}),
-            key: input.key,
-            value: input.value,
-          },
-          signal: ctx.signal,
-        },
-      );
-      if (error || !data) {
-        throw apiCallError(`Failed to add ${input.key}`, response, error);
-      }
-
       const result: EnvAddResult = {
         projectId,
         scope: resolved.descriptor,
-        variable: toMetadata(
-          data.data as RawEnvironmentVariable,
-          resolved.descriptor,
-        ),
+        // biome-ignore lint/style/noNonNullAssertion: the file branch always carries the variables.
+        variables: written.result.variables!,
+        // biome-ignore lint/style/noNonNullAssertion: the file branch always carries the file metadata.
+        file: written.result.file!,
       };
       return ok(
         ctx.present(
           {
             data: result,
-            diagnostics: previewDefaultDiagnostics(warnings),
+            diagnostics: previewDefaultDiagnostics(written.warnings),
           },
-          singlePresentations(result),
+          fileWritePresentations(
+            {
+              title: "Setting new environment variables from file.",
+              emptyMessage: "No environment variables imported.",
+              scope: result.scope,
+              filePath: result.file.path,
+              variables: result.variables,
+            },
+            result,
+          ),
         ),
       );
-    } catch (error) {
-      const mapped = mapProjectOperationError(error);
-      if (mapped) {
-        return notOk(mapped);
-      }
-      throw error;
     }
+
+    const existing = await findVariableByNaturalKey(
+      ctx.api,
+      projectId,
+      input.key,
+      resolved,
+      ctx.signal,
+    );
+    if (existing) {
+      throw new CliStructuredError(
+        "PROJECT.ENV_VARIABLE_ALREADY_EXISTS",
+        `Variable "${input.key}" already exists in ${formatScopeLabel(scope)}`,
+        {
+          why: "A variable with this key already exists in the targeted scope.",
+          nextActions: [
+            userChoice(
+              "Use `prisma project env update` to change an existing variable's value.",
+            ),
+            runCommand(
+              `prisma project env update ${input.key}=<new-value> ${formatScopeFlag(scope)}`,
+            ),
+          ],
+        },
+      );
+    }
+
+    const warnings =
+      scope.kind === "branch" &&
+      !(await findVariableByNaturalKey(
+        ctx.api,
+        projectId,
+        input.key,
+        {
+          descriptor: { kind: "role", role: "preview" },
+          apiTarget: { class: "preview", branchId: null },
+        },
+        ctx.signal,
+      ))
+        ? [
+            `Variable "${input.key}" does not exist in preview. It will only exist on ${formatScopeLabel(scope)}.`,
+          ]
+        : [];
+
+    const { data, error, response } = await ctx.api.POST(
+      "/v1/environment-variables",
+      {
+        body: {
+          projectId,
+          class: resolved.apiTarget.class,
+          ...(resolved.apiTarget.branchId !== null
+            ? { branchId: resolved.apiTarget.branchId }
+            : {}),
+          key: input.key,
+          value: input.value,
+        },
+        signal: ctx.signal,
+      },
+    );
+    if (error || !data) {
+      throw apiCallError(`Failed to add ${input.key}`, response, error);
+    }
+
+    const result: EnvAddResult = {
+      projectId,
+      scope: resolved.descriptor,
+      variable: toMetadata(
+        data.data as RawEnvironmentVariable,
+        resolved.descriptor,
+      ),
+    };
+    return ok(
+      ctx.present(
+        {
+          data: result,
+          diagnostics: previewDefaultDiagnostics(warnings),
+        },
+        singlePresentations(result),
+      ),
+    );
   },
 });

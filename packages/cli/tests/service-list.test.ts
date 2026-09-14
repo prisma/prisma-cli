@@ -32,7 +32,7 @@ function listRoutes(services: RawService[] = [SERVICE, UNDEPLOYED]) {
   });
 }
 
-describe("prisma-cli service list", () => {
+describe("prisma service list", () => {
   it("lists the project's services with the live url of each", async () => {
     const harness = await makeServiceCli({ routes: listRoutes() });
 
@@ -53,14 +53,14 @@ describe("prisma-cli service list", () => {
           id: "svc_1",
           name: "hello-world",
           region: "eu-central-1",
-          liveDeploymentId: "dep_2",
+          liveVersionId: "dep_2",
           liveUrl: "https://hello.prisma.app",
         },
         {
           id: "svc_2",
           name: "worker",
           region: "us-east-1",
-          liveDeploymentId: null,
+          liveVersionId: null,
           liveUrl: null,
         },
       ],
@@ -174,7 +174,7 @@ describe("prisma-cli service list", () => {
     });
   });
 
-  it("settles an unknown project as SERVICE.PROJECT_NOT_FOUND with exit 2", async () => {
+  it("settles an unknown project as PROJECT.NOT_FOUND with exit 2", async () => {
     const harness = await makeServiceCli({
       routes: readFlowRoutes({
         "GET /v1/apps": () => ({
@@ -194,7 +194,7 @@ describe("prisma-cli service list", () => {
     if (frame?.kind !== "result" || frame.envelope.ok) {
       throw new Error("expected an errored envelope");
     }
-    expect(frame.envelope.error.code).toBe("SERVICE.PROJECT_NOT_FOUND");
+    expect(frame.envelope.error.code).toBe("PROJECT.NOT_FOUND");
   });
 
   it("fails early with the engine sign-in error when unauthenticated", async () => {

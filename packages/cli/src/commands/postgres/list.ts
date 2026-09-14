@@ -4,12 +4,11 @@ import {
   defineCommand,
   type Presentations,
 } from "@prisma/cli-engine";
-import { notOk, ok } from "@prisma/cli-engine/protocol";
+import { ok } from "@prisma/cli-engine/protocol";
 import { sortDatabases } from "../../controllers/database";
 import { serializeDatabaseList } from "../../presenters/database";
 import type { DatabaseListResult } from "../../types/database";
 import { branchFlag, projectFlag, resolvePostgresContext } from "./context";
-import { mapPostgresOperationError } from "./errors";
 import { branchLabel, formatStatus, statusValue } from "./presentation";
 
 const TITLE = "Listing databases for the resolved project.";
@@ -76,7 +75,9 @@ function listPresentations(result: DatabaseListResult): Presentations {
 export const postgresListCommand = defineCommand({
   args: { flags: { project: projectFlag, branch: branchFlag } },
   help: {
-    summary: "List Prisma Postgres databases for the resolved project",
+    summary: "List a project's Prisma Postgres databases",
+    description:
+      "Databases are branch-bound: each belongs to one Branch, the isolated environment for one Git branch. Without --branch, this lists databases across every branch of the project.",
     examples: [
       "postgres list",
       "postgres list --branch feature/foo",
@@ -85,33 +86,25 @@ export const postgresListCommand = defineCommand({
   },
   needs: { credentials: true },
   handler: async (args, ctx) => {
-    try {
-      const { provider, projectId, projectName } = await resolvePostgresContext(
-        ctx,
-        args.flags,
-        "postgres list",
-      );
-      const databases = sortDatabases(
-        await provider.listDatabases({
-          projectId,
-          branchName: args.flags.branch,
-          signal: ctx.signal,
-        }),
-      );
-
-      const result: DatabaseListResult = {
+    const { provider, projectId, projectName } = await resolvePostgresContext(
+      ctx,
+      args.flags,
+      "postgres list",
+    );
+    const databases = sortDatabases(
+      await provider.listDatabases({
         projectId,
-        projectName,
-        branchName: args.flags.branch ?? null,
-        databases,
-      };
-      return ok(ctx.present({ data: result }, listPresentations(result)));
-    } catch (error) {
-      const mapped = mapPostgresOperationError(error);
-      if (mapped) {
-        return notOk(mapped);
-      }
-      throw error;
-    }
+        branchName: args.flags.branch,
+        signal: ctx.signal,
+      }),
+    );
+
+    const result: DatabaseListResult = {
+      projectId,
+      projectName,
+      branchName: args.flags.branch ?? null,
+      databases,
+    };
+    return ok(ctx.present({ data: result }, listPresentations(result)));
   },
 });

@@ -125,7 +125,7 @@ const SECTIONS = [
     [
       [
         "root-help",
-        "prisma-cli --help",
+        "prisma --help",
         "Engine-rendered: banner, mount-ordered briefs, one Global options section, examples, docs. Group and leaf help follow the same card.",
       ],
     ],
@@ -133,44 +133,35 @@ const SECTIONS = [
   [
     "Platform flows",
     [
-      ["auth-whoami", "prisma-cli auth whoami", ""],
-      ["project-list", "prisma-cli project list", ""],
-      ["project-show", "prisma-cli project show --project prisma-next-dev", ""],
-      ["postgres-list", "prisma-cli postgres list (linked dir)", ""],
-      [
-        "postgres-show",
-        "prisma-cli postgres show Development (linked dir)",
-        "",
-      ],
+      ["auth-whoami", "prisma auth whoami", ""],
+      ["project-list", "prisma project list", ""],
+      ["project-show", "prisma project show --project prisma-next-dev", ""],
+      ["postgres-list", "prisma postgres list (linked dir)", ""],
+      ["postgres-show", "prisma postgres show Development (linked dir)", ""],
       [
         "bucket-list",
-        "prisma-cli bucket list (linked dir)",
+        "prisma bucket list (linked dir)",
         "Standard empty state.",
       ],
-      ["service-list", "prisma-cli service list (linked dir)", ""],
-      ["branch-list", "prisma-cli branch list --project prisma-next-dev", ""],
-      ["agent-status", "prisma-cli agent status", ""],
-      ["telemetry-status", "prisma-cli telemetry status", ""],
-      [
-        "init",
-        "prisma-cli init --framework hono (fresh app)",
-        "Step runner + fields card.",
-      ],
+      ["service-list", "prisma service list (linked dir)", ""],
+      ["branch-list", "prisma branch list --project prisma-next-dev", ""],
+      ["agent-status", "prisma agent status", ""],
+      ["telemetry-status", "prisma telemetry status", ""],
     ],
   ],
   [
     "ORM flows (same engine, scaffolded Postgres 17 project)",
     [
-      ["contract-emit", "prisma-cli contract emit", ""],
+      ["contract-emit", "prisma contract emit", ""],
       [
         "db-init",
-        "prisma-cli db init --yes",
+        "prisma db init --yes",
         "Step runner, masked connection string, operation tree.",
       ],
-      ["db-verify", "prisma-cli db verify", ""],
-      ["migration-status", "prisma-cli migration status", ""],
-      ["migration-graph", "prisma-cli migration graph", "The lane drawing."],
-      ["migration-log", "prisma-cli migration log", ""],
+      ["db-verify", "prisma db verify", ""],
+      ["migration-status", "prisma migration status", ""],
+      ["migration-graph", "prisma migration graph", "The lane drawing."],
+      ["migration-log", "prisma migration log", ""],
     ],
   ],
   [
@@ -178,11 +169,11 @@ const SECTIONS = [
     [
       [
         "err-unknown",
-        "prisma-cli porject lst",
+        "prisma porject lst",
         "Did-you-mean plus the --help pointer.",
       ],
-      ["err-missing-arg", "prisma-cli feedback --no-interactive", ""],
-      ["err-setup-required", "prisma-cli postgres list (unlinked dir)", ""],
+      ["err-missing-arg", "prisma feedback --no-interactive", ""],
+      ["err-setup-required", "prisma postgres list (unlinked dir)", ""],
     ],
   ],
 ];

@@ -99,7 +99,7 @@ describe("main update-check wiring", () => {
 
     expect(exitCode).toBe(0);
     expect(proc.stderrText).toContain(
-      `Update available: prisma-cli ${getCliVersion()} -> ${nextMajorVersion()}`,
+      `Update available: prisma ${getCliVersion()} -> ${nextMajorVersion()}`,
     );
     expect(proc.stdoutText).toBe("");
   });

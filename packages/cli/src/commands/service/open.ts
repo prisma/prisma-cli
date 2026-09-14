@@ -3,40 +3,41 @@ import { ok } from "@prisma/cli-engine/protocol";
 import {
   deployFailedError,
   liveUrlUnavailableError,
-  noDeploymentsError,
+  noVersionsError,
   runCommandAction,
 } from "./errors";
 import { openPresentations } from "./presentation";
 import type { ServiceOpenResult } from "./results";
 import {
-  applyLiveDeploymentHint,
-  rememberSelectedService,
-  resolveCurrentLiveDeploymentId,
+  applyLiveVersionHint,
+  resolveCurrentLiveVersionId,
   resolveServiceReadState,
-  sortDeploymentsNewestFirst,
+  sortVersionsNewestFirst,
   toServiceSummary,
 } from "./target";
 
 export const serviceOpenCommand = defineCommand({
   help: {
     summary: "Open the service's live URL",
-    examples: ["service open", "service open --service my-service"],
+    examples: [
+      "service open my-service",
+      "service open my-service --branch feature-x",
+    ],
   },
   args: {
     flags: {
-      service: flag.string({
-        brief: "Service name",
-        placeholder: "name",
-      }),
       project: flag.string({
         brief: "Project id or name",
         placeholder: "id-or-name",
       }),
+      branch: flag.string({
+        brief: "Branch the service lives on (default: the default branch)",
+        placeholder: "name",
+      }),
     },
     positionals: {
       service: positional.optionalString({
-        brief:
-          "Service target from prisma.compute.ts when the config defines multiple services",
+        brief: "Service id or name",
         placeholder: "service",
       }),
     },
@@ -44,32 +45,28 @@ export const serviceOpenCommand = defineCommand({
   needs: { credentials: true },
   handler: async (args, ctx) => {
     const state = await resolveServiceReadState(ctx, {
-      serviceName: args.flags.service,
+      serviceName: args.positionals.service,
       projectRef: args.flags.project,
-      configTarget: args.positionals.service,
+      branchName: args.flags.branch,
       commandName: "service open",
     });
 
-    if (!state.selected) {
-      throw noDeploymentsError(
-        "No deployments available to open",
-        "The resolved project does not have any deployed service yet.",
-      );
-    }
-
     const deploymentsResult = await state.provider
-      .listDeployments(state.selected.id, { signal: ctx.signal })
+      .listDeployments(state.service.id, { signal: ctx.signal })
       .catch((error) => {
         throw deployFailedError("Failed to resolve service URL", error, [
-          runCommandAction("Inspect the service", "service show"),
+          runCommandAction(
+            "Inspect the service",
+            `service show ${state.service.name}`,
+          ),
         ]);
       });
-    const currentLiveDeploymentId = resolveCurrentLiveDeploymentId(
+    const currentLiveDeploymentId = resolveCurrentLiveVersionId(
       deploymentsResult.app,
       deploymentsResult.deployments,
     );
-    const deployments = sortDeploymentsNewestFirst(
-      applyLiveDeploymentHint(
+    const deployments = sortVersionsNewestFirst(
+      applyLiveVersionHint(
         deploymentsResult.deployments,
         currentLiveDeploymentId,
       ),
@@ -80,20 +77,15 @@ export const serviceOpenCommand = defineCommand({
         ) ?? null)
       : null;
 
-    await rememberSelectedService(
-      state.stateStore,
-      state.projectId,
-      deploymentsResult.app,
-    );
-
     if (!liveDeployment) {
-      throw noDeploymentsError(
-        "No deployments available to open",
-        `The selected service "${deploymentsResult.app.name}" does not have any deployments yet.`,
+      throw noVersionsError(
+        "No versions available to open",
+        `The service "${deploymentsResult.app.name}" does not have any versions yet.`,
+        deploymentsResult.app.name,
       );
     }
     if (!deploymentsResult.app.liveUrl) {
-      throw liveUrlUnavailableError();
+      throw liveUrlUnavailableError(deploymentsResult.app.name);
     }
 
     const url = deploymentsResult.app.liveUrl;

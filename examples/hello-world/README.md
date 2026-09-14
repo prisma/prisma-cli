@@ -2,7 +2,7 @@
 
 Manual Bun smoke app for exercising the local source Prisma CLI from inside this repo.
 
-This example mirrors the recommended external Bun workflow: `bun init --yes`, replace `index.ts` with a small `Bun.serve(...)` server, then wire it to a Prisma project with the CLI. Deployments start from pushing a connected repository (`git connect`), the Console, or `composer deploy` — there is no standalone deploy command.
+This example mirrors the recommended external Bun workflow: `bun init --yes`, replace `index.ts` with a small `Bun.serve(...)` server, then wire it to a Prisma project with the CLI. Deployments start from pushing a connected repository (`git connect`), the Console, or `deploy`.
 
 This example is intentionally not part of the root pnpm workspace. Install it only when you want to run manual end-to-end checks.
 

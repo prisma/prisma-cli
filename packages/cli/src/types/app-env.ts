@@ -13,7 +13,7 @@ export type EnvScopeDescriptor =
   | { kind: "overview" };
 
 export interface EnvListTarget {
-  source: "explicit" | "local-git" | "overview";
+  source: "explicit" | "overview";
   envMap: "production" | "preview" | "overview";
   branchName?: string;
   branchId?: string;

@@ -144,6 +144,30 @@ function parsePackageManager(value: unknown): AgentPackageManager | null {
   return null;
 }
 
+/** The command that installs what package.json already declares —
+ *  init writes the version into the manifest, so a plain install is
+ *  right for every manager. */
+export function resolveInstallCommandSync(cwd: string): string {
+  return installCommandForPackageManager(
+    detectPackageManagerSync(cwd) ?? "npm",
+  );
+}
+
+function installCommandForPackageManager(
+  packageManager: AgentPackageManager,
+): string {
+  switch (packageManager) {
+    case "bun":
+      return "bun install";
+    case "pnpm":
+      return "pnpm install";
+    case "yarn":
+      return "yarn install";
+    case "npm":
+      return "npm install";
+  }
+}
+
 function packageRunnerForPackageManager(
   packageManager: AgentPackageManager,
 ): string[] {

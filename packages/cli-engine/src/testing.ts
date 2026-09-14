@@ -1,4 +1,5 @@
 import type { CommandFamily, MountedTree } from "./command-family";
+import type { WorkflowStep } from "./commands";
 import { CONFIG_FILE_NAME } from "./config-loader";
 import type { Credential } from "./credential-manager";
 import type { EngineEvent, StreamEvent } from "./events";
@@ -206,7 +207,24 @@ function inputStreamFromString(text: string) {
 export function createTestCli(spec: {
   readonly commandFamilies?: readonly CommandFamily[];
   readonly commands: MountedTree;
-  readonly groups?: Readonly<Record<string, { readonly brief: string }>>;
+  readonly groups?: Readonly<
+    Record<
+      string,
+      {
+        readonly brief: string;
+        readonly description?: string;
+        readonly workflow?: readonly WorkflowStep[];
+      }
+    >
+  >;
+  /** Words for the root help card, exactly as `createCli` takes them. */
+  readonly help?: {
+    readonly tagline?: string;
+    readonly description?: string;
+    readonly workflow?: readonly WorkflowStep[];
+    readonly examples?: readonly string[];
+    readonly docsUrl?: string;
+  };
   /** Seeds the sections the config file would have held. The engine
    *  asks for them only when the command declares a config section, and
    *  checks them as it would a real file's: a section name no mounted
@@ -313,6 +331,7 @@ export function createTestCli(spec: {
       commandFamilies: spec.commandFamilies ?? [],
       groups: spec.groups ?? {},
       commands: spec.commands,
+      help: spec.help,
       telemetry: spec.telemetry,
     },
     /** Waiting is instant under test: browserWait's polling is driven

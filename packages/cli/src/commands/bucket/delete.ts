@@ -4,12 +4,13 @@ import {
   defineCommand,
   type Presentations,
 } from "@prisma/cli-engine";
-import { notOk, ok } from "@prisma/cli-engine/protocol";
-import { CLI_NAME } from "../../cli-name";
-import { usageError } from "../../errors";
+import { CliStructuredError, ok } from "@prisma/cli-engine/protocol";
 import type { BucketDeleteResult } from "../../types/bucket";
-import { bucketPositional, resolveBucketProviderOnly } from "./context";
-import { mapBucketOperationError } from "./errors";
+import {
+  bucketPositional,
+  LIST_BUCKETS_COMMAND,
+  resolveBucketProviderOnly,
+} from "./context";
 
 const CONSENT_QUESTION =
   "Deleting this bucket permanently removes all objects and access keys.";
@@ -34,36 +35,34 @@ export const bucketDeleteCommand = defineCommand({
   args: { positionals: { bucketId: bucketPositional } },
   help: {
     summary: "Delete a bucket and all its access keys",
+    description:
+      "Deletion is permanent: the stored objects are destroyed and every access key stops working. The exact bucket id is the consent token; pass it with --confirm to run non-interactively.",
     examples: ["bucket delete bkt_123 --confirm bkt_123"],
   },
   needs: { credentials: true },
   handler: async (args, ctx) => {
-    try {
-      const bucketId = args.positionals.bucketId.trim();
-      if (!bucketId) {
-        throw usageError(
-          "Bucket id required",
-          "Bucket deletion needs a bucket id.",
-          "Pass the bucket id to delete.",
-          [`${CLI_NAME} bucket list`],
-          "bucket",
-        );
-      }
-
-      await ctx.prompt.consent(CONSENT_QUESTION, { token: bucketId });
-
-      await resolveBucketProviderOnly(ctx).deleteBucket(bucketId, {
-        signal: ctx.signal,
+    const bucketId = args.positionals.bucketId.trim();
+    if (!bucketId) {
+      throw new CliStructuredError("BUCKET.USAGE_ERROR", "Bucket id required", {
+        why: "Bucket deletion needs a bucket id.",
+        nextActions: [
+          { kind: "user-choice", label: "Pass the bucket id to delete." },
+          {
+            kind: "run-command",
+            label: LIST_BUCKETS_COMMAND,
+            command: LIST_BUCKETS_COMMAND,
+          },
+        ],
       });
-
-      const result: BucketDeleteResult = { bucket: { id: bucketId } };
-      return ok(ctx.present({ data: result }, deletePresentations(result)));
-    } catch (error) {
-      const mapped = mapBucketOperationError(error);
-      if (mapped) {
-        return notOk(mapped);
-      }
-      throw error;
     }
+
+    await ctx.prompt.consent(CONSENT_QUESTION, { token: bucketId });
+
+    await resolveBucketProviderOnly(ctx).deleteBucket(bucketId, {
+      signal: ctx.signal,
+    });
+
+    const result: BucketDeleteResult = { bucket: { id: bucketId } };
+    return ok(ctx.present({ data: result }, deletePresentations(result)));
   },
 });

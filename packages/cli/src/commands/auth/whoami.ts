@@ -128,7 +128,9 @@ function presentationsFor(
 
 export const authWhoamiCommand = defineCommand({
   help: {
-    summary: "Show the authenticated user and accessible workspace",
+    summary: "Show who is signed in and which workspace commands target",
+    description:
+      "Shows which identity the CLI is acting as and which workspace its commands will target. Run it to check you are in the right workspace before creating or deleting resources, or to see whether a PRISMA_SERVICE_TOKEN credential is overriding your stored sessions.",
     examples: ["auth whoami", "auth whoami --json"],
   },
   handler: async (_args, ctx) => {

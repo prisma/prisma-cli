@@ -20,7 +20,7 @@ interface Vendor {
 /**
  * ci-info's provider table. Its `isCI` export is unusable — it reads
  * the real `process.env` at import; the engine reads only host-injected
- * env. The table is inlined into the build (tsdown `noExternal`): the
+ * env. The table is inlined into the build (tsdown `deps.alwaysBundle`): the
  * file is CJS-owned by ci-info, and loading it as ESM at runtime breaks
  * hosts that also require ci-info (Bun's dual registry; composer#234).
  * Pinned by tests/no-esm-json-import-in-dist.test.ts.

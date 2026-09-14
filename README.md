@@ -4,7 +4,7 @@ Beta of the unified Prisma CLI.
 
 This repository contains the unified Prisma command-line experience: one
 binary for the ORM, Composer, and the Prisma Developer Platform — projects,
-branches, services, deployments, environment variables, and the Prisma ORM
+branches, services, service versions, environment variables, and the Prisma ORM
 schema and migration workflow.
 
 The 8.0.0 release candidates publish as `prisma` (binary `prisma`) and
@@ -27,8 +27,7 @@ pnpm prisma-cli project env add --file .env --role preview
 pnpm prisma-cli project env list --role preview
 ```
 
-Deployments start from pushing the connected repository, the Console, or
-`prisma-cli composer deploy` — there is no standalone deploy command.
+Deployments start from pushing the connected repository, the Console, or `prisma-cli deploy`.
 
 ## Local Development
 
@@ -85,11 +84,7 @@ The canonical command shape is:
 prisma <group> <action>
 ```
 
-The package includes project, environment-variable, service and deployment
-inspection, promotion, rollback, and removal commands, plus the Prisma ORM
-(`contract`, `db`, `migrate`, `migration`, `orm init`) and Composer
-workflows, and the `postgres` and `bucket` resource groups. The product
-model intentionally avoids product-specific namespaces.
+The package includes project, environment-variable, service and service-version inspection, promotion, rollback, and deletion commands, plus the Prisma ORM (`contract`, `db`, `migration`, `orm init`) and Composer workflows (root `dev` and `deploy`), and the `postgres` and `bucket` resource groups. The product model intentionally avoids product-specific namespaces.
 
 ## Documentation
 

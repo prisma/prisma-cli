@@ -151,13 +151,7 @@ construction: each engine instance builds its tree once at startup from
 statically defined structure — command definitions are direct function
 references, and nothing about the tree is discovered at run time.
 
-**Why:** a statically known tree is simpler to reason about, renders complete
-help without executing product code, and fails at build time when it is wrong.
-The expensive parts — driver stacks, Composer's dependency tree (which imports
-the user's own modules and has crashed at import in the past) — stay out of
-the startup path, so `prisma migrate` can never be taken down by a product it
-isn't using. The split follows the existing design for isolating heavy
-dependency subtrees behind execution-time imports.
+**Why:** a statically known tree is simpler to reason about, renders complete help without executing product code, and fails at build time when it is wrong. The expensive parts — driver stacks, Composer's dependency tree (which imports the user's own modules and has crashed at import in the past) — stay out of the startup path, so `prisma db migrate` can never be taken down by a product it isn't using. The split follows the existing design for isolating heavy dependency subtrees behind execution-time imports.
 
 ### R10 — One config file, validated by its products, never a crash
 
@@ -211,28 +205,7 @@ dependencies; a command that requires one checks for it at execution time
 and, when it is absent, returns a structured error naming the dependency
 and how to install it with the user's own package manager.
 
-Running the user's own package manager is a different act, and a command
-may do it: adding dependencies to the project the user is working in, or
-running a package's binary once, because the user asked for it. The case
-this exists for is `prisma init`, which scaffolds a project and then
-installs the dependencies it just wrote into `package.json`. A command
-declares that it installs packages, and the work goes through the engine's
-package operations, whose terms are what keep the two apart. The manager
-is the one the user's project already uses, detected rather than imposed.
-The command line is announced before it runs, and the manager's own output
-is shown while it runs, so nothing happens the user cannot see — with any
-credentials in either stripped out, because being visible to the user must
-not mean being visible in a log or a `--json` stream. A failure comes back
-as a structured error whose remedy carries that same redacted command, not
-a runnable one: whoever put a credential into a package specifier still
-holds it and can supply it again, so printing it back to save them that
-step buys a moment's convenience and risks writing the credential
-permanently into a CI log, where it cannot be taken back. One
-unconditional rule is worth more than a rule plus an exception, and an
-exception carved into the component whose job is not leaking secrets is
-where the leak would live. And the engine composes the command but never
-spawns it: execution belongs to the shell, so the engine holds no
-process-spawning machinery of its own.
+Running the user's own package manager is a different act, and a command may do it: adding dependencies to the project the user is working in, or running a package's binary once, because the user asked for it. The case this exists for is a scaffolding command like `prisma orm init`, which sets up a project and then installs the dependencies it just wrote into `package.json`. A command declares that it installs packages, and the work goes through the engine's package operations, whose terms are what keep the two apart. The manager is the one the user's project already uses, detected rather than imposed. The command line is announced before it runs, and the manager's own output is shown while it runs, so nothing happens the user cannot see — with any credentials in either stripped out, because being visible to the user must not mean being visible in a log or a `--json` stream. A failure comes back as a structured error whose remedy carries that same redacted command, not a runnable one: whoever put a credential into a package specifier still holds it and can supply it again, so printing it back to save them that step buys a moment's convenience and risks writing the credential permanently into a CI log, where it cannot be taken back. One unconditional rule is worth more than a rule plus an exception, and an exception carved into the component whose job is not leaking secrets is where the leak would live. And the engine composes the command but never spawns it: execution belongs to the shell, so the engine holds no process-spawning machinery of its own.
 
 **Why:** a previous incarnation of the Prisma CLI installed command
 submodules on demand into a hidden `node_modules` in the working directory.

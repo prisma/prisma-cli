@@ -14,7 +14,9 @@ import {
 export const serviceDomainRetryCommand = defineCommand({
   help: {
     summary: "Retry custom domain DNS verification and TLS provisioning",
-    examples: ["service domain retry shop.acme.com"],
+    description:
+      "Run it after fixing what made the domain fail, typically a missing or wrong DNS record reported by 'service domain show'.",
+    examples: ["service domain retry shop.acme.com --service my-service"],
   },
   args: domainTargetArgs(),
   needs: { credentials: true },
@@ -24,7 +26,6 @@ export const serviceDomainRetryCommand = defineCommand({
       serviceName: args.flags.service,
       projectRef: args.flags.project,
       branchName: args.flags.branch,
-      configTarget: args.positionals.service,
       commandName: `service domain retry ${hostname}`,
     });
     const domain = await resolveDomainByHostname(

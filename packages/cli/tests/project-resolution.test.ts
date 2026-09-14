@@ -4,7 +4,7 @@ import type { Result } from "better-result";
 import { describe, expect, it, vi } from "vitest";
 import type { ProjectCandidate } from "../src/lib/project/resolution";
 import {
-  projectResolutionErrorToCliError,
+  projectResolutionErrorToStructured,
   resolveProjectTarget,
 } from "../src/lib/project/resolution";
 import { createTempCwd, createTestCommandContext } from "./helpers";
@@ -64,9 +64,8 @@ describe("project resolution", () => {
     });
 
     const error = expectErr(result, "LocalProjectWorkspaceMismatchError");
-    expect(projectResolutionErrorToCliError(error)).toMatchObject({
-      code: "LOCAL_PROJECT_WORKSPACE_MISMATCH",
-      domain: "project",
+    expect(projectResolutionErrorToStructured(error)).toMatchObject({
+      code: "PROJECT.LOCAL_WORKSPACE_MISMATCH",
       meta: {
         pinPath: ".prisma/local.json",
         pinnedWorkspaceId: "ws_other",
@@ -115,43 +114,6 @@ describe("project resolution", () => {
     expect(listProjects).toHaveBeenCalledTimes(1);
   });
 
-  it("lets PRISMA_PROJECT_ID bypass a mismatched local pin", async () => {
-    const cwd = await createTempCwd();
-    await writeLocalPin(cwd, {
-      workspaceId: "ws_other",
-      projectId: "proj_123",
-    });
-    const { context } = await createTestCommandContext({ cwd });
-    const listProjects = vi.fn(
-      async (): Promise<ProjectCandidate[]> => [
-        {
-          id: "proj_env",
-          name: "Env Project",
-          workspace: {
-            id: "ws_123",
-            name: "Acme Inc",
-          },
-        },
-      ],
-    );
-
-    const result = await resolveProjectTarget({
-      context,
-      workspace: {
-        id: "ws_123",
-        name: "Acme Inc",
-      },
-      envProjectId: "proj_env",
-      listProjects,
-      commandName: "app deploy",
-    });
-
-    const resolved = expectOk(result);
-    expect(resolved.resolution.projectSource).toBe("env");
-    expect(resolved.project.id).toBe("proj_env");
-    expect(listProjects).toHaveBeenCalledTimes(1);
-  });
-
   it("returns LOCAL_STATE_STALE for invalid local pin JSON before listing projects", async () => {
     const cwd = await createTempCwd();
     await writeLocalPinContent(cwd, "{ nope");
@@ -169,9 +131,8 @@ describe("project resolution", () => {
     });
 
     const error = expectErr(result, "LocalStateStaleError");
-    expect(projectResolutionErrorToCliError(error)).toMatchObject({
-      code: "LOCAL_STATE_STALE",
-      domain: "project",
+    expect(projectResolutionErrorToStructured(error)).toMatchObject({
+      code: "PROJECT.LOCAL_STATE_STALE",
       meta: {
         pinPath: ".prisma/local.json",
       },

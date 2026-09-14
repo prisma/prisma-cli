@@ -71,6 +71,10 @@ async function importPurity(): Promise<readonly Finding[]> {
     label: "@prisma/cli-engine",
     output: await sweepBuiltOutput(join(ENGINE_DIR, "dist")),
     manifest: await manifest(ENGINE_DIR),
+    // c12 is reached via import.meta.resolve plus a realpath'd dynamic
+    // import (see config-loader.ts), which the lexer rightly does not
+    // count as an import of the bare specifier.
+    allowedUnimported: ["c12"],
     requiredSpecifiers: ["@stricli/core"],
   });
   return [...shell, ...unscoped, ...engine];
@@ -95,17 +99,16 @@ async function tarball(): Promise<readonly Finding[]> {
       packages: [
         { name: "@prisma/cli", dir: CLI_DIR },
         { name: "prisma", dir: PRISMA_DIR },
-        { name: "@prisma/cli-engine", dir: ENGINE_DIR },
+        {
+          name: "@prisma/cli-engine",
+          dir: ENGINE_DIR,
+          // Same excuse as check 1: c12 arrives via import.meta.resolve.
+          allowedUnimported: ["c12"],
+        },
       ],
       shellPackage: "@prisma/cli",
       enginePackage: "@prisma/cli-engine",
       familyPackages: ["@prisma/composer-cli", "@prisma/orm-toolchain"],
-      // No exceptions. Both families declare @prisma/cli-engine as an
-      // exact peer at the version this repo ships, so one engine
-      // resolves in an install — what ADR 0004 asks for. An entry here
-      // exists only while an engine version transition is in flight
-      // (the engine must publish before a family can peer it), and the
-      // release PR that pins the families' new versions removes it.
       exceptions: [],
       channel: CHANNEL,
       sandboxDir: join(WORK_DIR, "sandbox"),

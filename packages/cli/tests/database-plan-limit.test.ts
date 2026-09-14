@@ -1,6 +1,6 @@
+import { CliStructuredError } from "@prisma/cli-engine/protocol";
 import type { ManagementApiClient } from "@prisma/management-api-sdk";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { CliError } from "../src/errors";
 import {
   createManagementDatabaseProvider,
   SUBSCRIPTION_LOOKUP_TIMEOUT_MS,
@@ -58,8 +58,10 @@ describe("database plan-limit classification", () => {
       .showDatabase("db_synthetic")
       .catch((caught: unknown) => caught);
 
-    expect(error).toBeInstanceOf(CliError);
-    expect((error as CliError).code).toBe("PLAN_LIMIT_REACHED");
+    expect(error).toBeInstanceOf(CliStructuredError);
+    expect((error as CliStructuredError).code).toBe(
+      "POSTGRES.PLAN_LIMIT_REACHED",
+    );
     expect(client.GET).toHaveBeenCalledTimes(2);
   });
 
@@ -95,21 +97,25 @@ describe("database plan-limit classification", () => {
         })
     ).catch((caught: unknown) => caught);
 
-    expect(error).toBeInstanceOf(CliError);
-    expect((error as CliError).code).toBe("PLAN_LIMIT_REACHED");
+    expect(error).toBeInstanceOf(CliStructuredError);
+    expect((error as CliStructuredError).code).toBe(
+      "POSTGRES.PLAN_LIMIT_REACHED",
+    );
     expect(client.GET).toHaveBeenCalledWith(
       "/v1/workspaces/{id}/subscription",
       expect.anything(),
     );
   });
 
+  // Every non-plan-limit API failure now carries the one registered code.
+  // What stays specific to the response is `meta.apiCode`.
   it.each([
-    ["503", undefined, 503, "DATABASE_API_ERROR"],
-    ["429", "rateLimitReached", 429, "rateLimitReached"],
-    ["auth", "AUTH_REQUIRED", 401, "AUTH_REQUIRED"],
-    ["spend limit", "spendLimitReached", 400, "spendLimitReached"],
-    ["generic API error", "DATABASE_API_ERROR", 400, "DATABASE_API_ERROR"],
-  ])("does not classify a %s response as a plan limit", async (_name, code, status, expectedStableCode) => {
+    ["503", undefined, 503],
+    ["429", "rateLimitReached", 429],
+    ["auth", "AUTH_REQUIRED", 401],
+    ["spend limit", "spendLimitReached", 400],
+    ["generic API error", "DATABASE_API_ERROR", 400],
+  ])("does not classify a %s response as a plan limit", async (_name, code, status) => {
     const client = {
       GET: vi.fn().mockResolvedValue({
         error: {
@@ -131,10 +137,47 @@ describe("database plan-limit classification", () => {
       .showDatabase("db_synthetic")
       .catch((caught: unknown) => caught);
 
-    expect(error).toBeInstanceOf(CliError);
-    expect((error as CliError).code).toBe(expectedStableCode);
-    expect((error as CliError).code).not.toBe("PLAN_LIMIT_REACHED");
+    expect(error).toBeInstanceOf(CliStructuredError);
+    expect(error).toMatchObject({
+      code: "POSTGRES.API_ERROR",
+      meta: { status, ...(code ? { apiCode: code } : {}) },
+    });
     expect(client.GET).toHaveBeenCalledTimes(1);
+  });
+
+  it("offers a sign-in for a rejected request instead of minting an auth code", async () => {
+    const client = {
+      GET: vi.fn().mockResolvedValue({
+        error: { error: { code: "AUTH_REQUIRED" } },
+        response: new Response(null, { status: 403 }),
+      }),
+    };
+    const provider = createManagementDatabaseProvider(
+      client as unknown as ManagementApiClient,
+      { workspaceId },
+    );
+
+    const error = await provider
+      .showDatabase("db_synthetic")
+      .catch((caught: unknown) => caught);
+
+    expect(error).toMatchObject({
+      code: "POSTGRES.API_ERROR",
+      why: "The Management API rejected the request as forbidden.",
+      meta: { status: 403, apiCode: "AUTH_REQUIRED" },
+      nextActions: [
+        {
+          kind: "user-choice",
+          label:
+            "Sign in again with prisma auth login, then retry the command.",
+        },
+        {
+          kind: "run-command",
+          label: "prisma auth login",
+          command: "prisma auth login",
+        },
+      ],
+    });
   });
 
   it("leaves a network timeout outside plan-limit classification", async () => {
@@ -178,9 +221,9 @@ describe("database plan-limit classification", () => {
     await vi.advanceTimersByTimeAsync(SUBSCRIPTION_LOOKUP_TIMEOUT_MS);
     const error = await errorPromise;
 
-    expect(error).toBeInstanceOf(CliError);
+    expect(error).toBeInstanceOf(CliStructuredError);
     expect(error).toMatchObject({
-      code: "PLAN_LIMIT_REACHED",
+      code: "POSTGRES.PLAN_LIMIT_REACHED",
       meta: {
         workspaceId,
         planName: null,

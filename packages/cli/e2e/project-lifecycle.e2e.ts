@@ -1,6 +1,6 @@
 /**
  * The project lifecycle against the real API: create, link, rename,
- * environment variables, branches, then remove.
+ * environment variables, branches, then delete.
  *
  * These share one scratch project, so the `it` blocks run in order and
  * depend on each other. Vitest runs them sequentially within a file.
@@ -183,24 +183,24 @@ describeCommand("project env update", () => {
   });
 });
 
-describeCommand("project env remove", () => {
-  it("removes the variable, and the list agrees", async () => {
+describeCommand("project env delete", () => {
+  it("deletes the variable, and the list agrees", async () => {
     const run = await scratch.run([
       "project",
       "env",
-      "remove",
+      "delete",
       KEY,
       ...ROLE,
       "--confirm",
       KEY,
     ]);
-    const removed = run.envelope.result as {
+    const deleted = run.envelope.result as {
       readonly projectId: string;
       readonly key: string;
     };
 
-    expect(removed.projectId).toBe(scratch.project().id);
-    expect(removed.key).toBe(KEY);
+    expect(deleted.projectId).toBe(scratch.project().id);
+    expect(deleted.key).toBe(KEY);
 
     const after = await scratch.run(["project", "env", "list", ...ROLE]);
     const listed = after.envelope.result as EnvListResult;
@@ -208,8 +208,8 @@ describeCommand("project env remove", () => {
   });
 });
 
-describeCommand("project remove", () => {
-  it("removes a project it created for the purpose", async () => {
+describeCommand("project delete", () => {
+  it("deletes a project it created for the purpose", async () => {
     const cli = await session();
     const cwd = await cli.workdir();
     const name = scratchName("removable");
@@ -220,10 +220,10 @@ describeCommand("project remove", () => {
 
     // This project is created outside useScratchProject, so nothing else
     // will clean it up. Without the finally, an assertion failing between
-    // here and the removal leaves it in the real workspace for good.
-    let removed = false;
+    // here and the deletion leaves it in the real workspace for good.
+    let deleted = false;
     try {
-      const run = await cli.run(["project", "remove", id, "--confirm", id], {
+      const run = await cli.run(["project", "delete", id, "--confirm", id], {
         cwd,
       });
       const result = run.envelope.result as {
@@ -231,10 +231,10 @@ describeCommand("project remove", () => {
         readonly localPin: { readonly cleared: boolean };
       };
       expect(result.project.id).toBe(id);
-      // Removing the project must also drop this directory's binding,
+      // Deleting the project must also drop this directory's binding,
       // or the next command here resolves a project that is gone.
       expect(result.localPin.cleared).toBe(true);
-      removed = true;
+      deleted = true;
 
       const remaining = (await cli.run(["project", "list"], { cwd })).envelope
         .result as {
@@ -242,7 +242,7 @@ describeCommand("project remove", () => {
       };
       expect(remaining.items.map((item) => item.id)).not.toContain(id);
     } finally {
-      if (!removed) {
+      if (!deleted) {
         await removeScratchProject(cli, { id, name, cwd });
       }
     }

@@ -81,7 +81,7 @@ describe("composer's family costs an unrelated command nothing", () => {
     expect(report.signalListeners).toEqual({ SIGINT: 0, SIGTERM: 0 });
   }, 120_000);
 
-  test("canary: the executor import a composer command makes loads the constellation, and one signal listener per signal comes with it", async () => {
+  test("canary: the executor import a composer command makes loads the constellation, and no signal listener comes with it", async () => {
     const report = await runProbe("canary");
 
     expect(report.constellation.length).toBeGreaterThan(0);
@@ -91,10 +91,11 @@ describe("composer's family costs an unrelated command nothing", () => {
     expect(report.constellation.some((id) => id.startsWith("effect/"))).toBe(
       true,
     );
-    // The unpatched @alchemy.run/node-utils registers these at import time
-    // and never removes them; their handlers exit 130/143 themselves. The
-    // count is what the deferred entry on that patch reports, so it is
-    // asserted rather than only recorded.
-    expect(report.signalListeners).toEqual({ SIGINT: 1, SIGTERM: 1 });
+    // Zero since composer 0.13.0: alchemy 2.0.0-beta.74 carries the
+    // node-utils fix (alchemy-run/node-utils#6) that used to register a
+    // SIGINT and SIGTERM listener at import time, whose handlers exited
+    // 130/143 out from under the engine's own teardown. Asserted so a
+    // regression in that chain reintroducing the listeners says so.
+    expect(report.signalListeners).toEqual({ SIGINT: 0, SIGTERM: 0 });
   }, 120_000);
 });

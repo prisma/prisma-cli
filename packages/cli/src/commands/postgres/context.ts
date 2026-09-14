@@ -1,7 +1,5 @@
 /** Workspace, project and provider for the `postgres *` commands. */
 import { type CommandContext, flag, positional } from "@prisma/cli-engine";
-import { CLI_NAME } from "../../cli-name";
-import type { PrismaCliPackageCommandFormatter } from "../../lib/agent/cli-command";
 import {
   createManagementDatabaseProvider,
   type DatabaseProvider,
@@ -13,12 +11,13 @@ import { resolveActiveWorkspace } from "../resources-shared/workspace";
 export type PostgresCommandContext = CommandContext<undefined, never>;
 
 export const projectFlag = flag.string({
-  brief: "Project id or name",
+  brief:
+    "Project id or name (default: the project this directory is linked to)",
   placeholder: "id-or-name",
 });
 
 export const branchFlag = flag.string({
-  brief: "Branch git name",
+  brief: "Branch git name; use to target one branch's environment",
   placeholder: "git-name",
 });
 
@@ -26,13 +25,6 @@ export const databasePositional = positional.string({
   brief: "Database id or name",
   placeholder: "database",
 });
-
-/** The legacy helpers build their nextSteps through a command
- *  formatter. This CLI phrases every command string as `${CLI_NAME} …`; the
- *  error mapper rewrites the `database` group name to `postgres`. */
-export const legacyCommandFormatter: PrismaCliPackageCommandFormatter = (
-  args,
-) => [CLI_NAME, ...args].join(" ");
 
 export interface PostgresContext {
   readonly provider: DatabaseProvider;
@@ -64,7 +56,7 @@ export async function resolvePostgresContext(
   };
 }
 
-/** `connection rotate` and `connection remove` address a connection
+/** `connection rotate` and `connection delete` address a connection
  *  directly: no workspace requirement and no project resolution, so
  *  the workspace is only a plan-limit lookup hint. */
 export async function resolvePostgresProviderOnly(

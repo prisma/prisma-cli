@@ -1,6 +1,7 @@
+import { CliStructuredError } from "@prisma/cli-engine/protocol";
 import type { ManagementApiClient } from "@prisma/management-api-sdk";
-import { authRequiredError, CliError } from "../errors";
 import type { EnvVarRole } from "../lib/app/env-config";
+import { runCommand, userChoice } from "../lib/app/env-errors";
 import type { EnvScopeDescriptor, EnvVariableMetadata } from "../types/app-env";
 
 export interface ResolvedEnvApiScope {
@@ -92,27 +93,38 @@ export function apiCallError(
   summary: string,
   response: Response | undefined,
   error: ApiErrorBody | undefined,
-): CliError {
+): CliStructuredError {
   const status = response?.status ?? 0;
   const apiCode = error?.error?.code;
   const apiMessage = error?.error?.message;
   const apiHint = error?.error?.hint;
 
   if (status === 401 || status === 403) {
-    return authRequiredError(["prisma auth login"]);
+    return new CliStructuredError("PROJECT.ENV_API_ERROR", summary, {
+      why: "The Management API rejected the request as unauthorized or forbidden.",
+      meta: { status },
+      nextActions: [runCommand("prisma auth login")],
+    });
   }
 
-  return new CliError({
-    code: apiCode ?? "ENV_API_ERROR",
-    domain: "app",
-    summary,
+  return new CliStructuredError("PROJECT.ENV_API_ERROR", summary, {
     why:
       apiMessage ??
       `The Management API returned status ${status || "unknown"}.`,
-    fix:
-      apiHint ?? "Re-run with --trace for the underlying API response details.",
-    exitCode: 1,
-    nextSteps: [],
+    ...(status || apiCode !== undefined
+      ? {
+          meta: {
+            ...(status ? { status } : {}),
+            ...(apiCode !== undefined ? { apiCode } : {}),
+          },
+        }
+      : {}),
+    nextActions: [
+      userChoice(
+        apiHint ??
+          "Re-run with --log-level verbose for the underlying API response details.",
+      ),
+    ],
   });
 }
 

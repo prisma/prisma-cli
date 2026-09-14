@@ -1,7 +1,7 @@
 /**
  * The sanctioned golden-rendering suite (S2 ruling: byte-exact pins
  * live here, one representative per rendering surface — card, table,
- * error, masked secret). Every other test asserts semantically
+ * error, one-time secret). Every other test asserts semantically
  * (envelope / presented / events / exit code); when the engine's
  * rendering style changes deliberately, THIS file is the one place the
  * new bytes get re-pinned. The S1 whoami byte pins in
@@ -106,7 +106,7 @@ describe("golden rendering", () => {
         "ended:  1\n" +
         "\n" +
         "✔ Ended 1 workspace session.\n" +
-        "→ Sign in: prisma-cli auth login\n",
+        "→ Sign in: prisma auth login\n",
     );
     expect(result.stdout).toBe("ended: 1\n");
   });
@@ -125,7 +125,7 @@ describe("golden rendering", () => {
         "Acme Inc   ws_1@example.com  ws_1  current\n" +
         "Globex     ws_2@example.com  ws_2  \u2014\n" +
         "\n" +
-        "→ Authorize another workspace: prisma-cli auth login\n",
+        "→ Authorize another workspace: prisma auth login\n",
     );
     expect(result.stdout).toBe(
       "Acme Inc  ws_1@example.com  ws_1  current\n" +
@@ -134,12 +134,12 @@ describe("golden rendering", () => {
   });
 
   /**
-   * What the mask is and is not: the card writes `********` to stderr
-   * while stdout prints the same secret in the clear a line later,
-   * because printing it is how the caller receives it. It is a
-   * scroll-back and screen-share courtesy, not containment.
+   * The card carries the bare secret: when stdout and stderr share a
+   * screen the stdout mirror is skipped, so the card is the only place
+   * an interactive user ever sees a one-time credential (operator
+   * ruling, 2026-08-26).
    */
-  it("masked secret (representative: bucket key create)", async () => {
+  it("one-time secret card (representative: bucket key create)", async () => {
     const result = await makeCli(
       [record("ws_1", "Acme Inc")],
       "ws_1",
@@ -154,8 +154,8 @@ describe("golden rendering", () => {
         "- Set these environment variables to use this bucket:\n" +
         "\n" +
         "S3_ENDPOINT:           https://s3.prisma.io\n" +
-        "S3_ACCESS_KEY_ID:      ********\n" +
-        "S3_SECRET_ACCESS_KEY:  ********\n" +
+        "S3_ACCESS_KEY_ID:      AKIAEXAMPLE\n" +
+        "S3_SECRET_ACCESS_KEY:  s3cr3t\n" +
         "S3_BUCKET:             assets\n",
     );
     expect(result.stdout).toBe(
@@ -178,7 +178,7 @@ describe("golden rendering", () => {
     expect(result.stderr).toBe(
       "✘ [AUTH.WORKSPACE_AMBIGUOUS] More than one workspace session is named 'Acme Inc'.\n" +
         "  why: Matching sessions: ws_1 (ws_1@example.com), ws_9 (ws_9@example.com).\n" +
-        "→ List your workspace sessions and pass a workspace id: prisma-cli auth workspace list\n",
+        "→ List your workspace sessions and pass a workspace id: prisma auth workspace list\n",
     );
     expect(result.stdout).toBe("");
   });
@@ -188,7 +188,7 @@ describe("golden rendering", () => {
    * The cases above run with a non-terminal stderr and stay plain; these
    * two are the same surfaces with a terminal stderr.
    */
-  it("coloured card and mask (representative: bucket key create)", async () => {
+  it("coloured card (representative: bucket key create)", async () => {
     const result = await makeCli(
       [record("ws_1", "Acme Inc")],
       "ws_1",
@@ -204,8 +204,8 @@ describe("golden rendering", () => {
         "- Set these environment variables to use this bucket:\n" +
         "\n" +
         "\u001b[36mS3_ENDPOINT:         \u001b[39m  https://s3.prisma.io\n" +
-        "\u001b[36mS3_ACCESS_KEY_ID:    \u001b[39m  ********\n" +
-        "\u001b[36mS3_SECRET_ACCESS_KEY:\u001b[39m  ********\n" +
+        "\u001b[36mS3_ACCESS_KEY_ID:    \u001b[39m  AKIAEXAMPLE\n" +
+        "\u001b[36mS3_SECRET_ACCESS_KEY:\u001b[39m  s3cr3t\n" +
         "\u001b[36mS3_BUCKET:           \u001b[39m  assets\n",
     );
   });
@@ -225,7 +225,7 @@ describe("golden rendering", () => {
         "Acme Inc   ws_1@example.com  ws_1  current\n" +
         "Globex     ws_2@example.com  ws_2  [2m\u2014[22m\n" +
         "\n" +
-        "\u001b[36m→\u001b[39m Authorize another workspace: \u001b[36mprisma-cli auth login\u001b[39m\n",
+        "\u001b[36m→\u001b[39m Authorize another workspace: \u001b[36mprisma auth login\u001b[39m\n",
     );
   });
 });

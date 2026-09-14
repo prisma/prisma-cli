@@ -8,9 +8,6 @@ import {
 import { createPresentations } from "./presentation";
 import type { ServiceCreateResult } from "./results";
 import {
-  openServiceStateStore,
-  rememberSelectedService,
-  resolveComputeManagementContext,
   resolveServiceProjectContext,
   serviceProvider,
   toServiceListEntry,
@@ -19,6 +16,8 @@ import {
 export const serviceCreateCommand = defineCommand({
   help: {
     summary: "Create a service in a project",
+    description:
+      "Registers a service on a Branch ahead of its first deploy. Deploying through a connected repository or 'deploy' creates services automatically, so reach for this only when a service must exist before anything has been deployed to it.",
     examples: [
       "service create my-service",
       "service create my-service --region us-east-1 --branch main",
@@ -33,15 +32,17 @@ export const serviceCreateCommand = defineCommand({
     },
     flags: {
       project: flag.string({
-        brief: "Project id or name",
+        brief:
+          "Project id or name (default: the project this directory is linked to)",
         placeholder: "id-or-name",
       }),
       region: flag.string({
-        brief: "Prisma Compute region id",
+        brief:
+          "Prisma Compute region id; set it when the service must run near a location",
         placeholder: "region",
       }),
       branch: flag.string({
-        brief: "Branch name",
+        brief: "Branch to create the service on (default: the default branch)",
         placeholder: "branch",
       }),
     },
@@ -53,14 +54,8 @@ export const serviceCreateCommand = defineCommand({
       throw serviceNameRequiredError();
     }
 
-    const compute = await resolveComputeManagementContext(
-      ctx,
-      undefined,
-      "create",
-    );
     const target = await resolveServiceProjectContext(ctx, args.flags.project, {
       commandName: "service create",
-      projectDir: compute.projectDir,
       ...(args.flags.branch !== undefined
         ? { branchName: args.flags.branch }
         : {}),
@@ -81,14 +76,6 @@ export const serviceCreateCommand = defineCommand({
           runCommandAction("List services", "service list"),
         ]);
       });
-
-    // A just-created service is the one later commands should act on.
-    const stateStore = await openServiceStateStore(ctx);
-    await rememberSelectedService(
-      stateStore,
-      target.project.id,
-      created.service,
-    );
 
     const result: ServiceCreateResult = {
       projectId: target.project.id,

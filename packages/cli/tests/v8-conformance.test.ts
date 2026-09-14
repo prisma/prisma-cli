@@ -23,13 +23,19 @@ import {
   mountedCommands,
   ormCommandFamily,
   platformCommandFamily,
+  skillsCommandFamily,
 } from "../src/cli";
 
 const HERE = fileURLToPath(new URL(".", import.meta.url));
 
 describe("conformance: validator no-throw", () => {
   const sections = sectionsFrom({
-    families: [platformCommandFamily, composerCommandFamily, ormCommandFamily],
+    families: [
+      platformCommandFamily,
+      composerCommandFamily,
+      ormCommandFamily,
+      skillsCommandFamily,
+    ],
     commands: mountedCommands,
   });
 
@@ -38,10 +44,11 @@ describe("conformance: validator no-throw", () => {
    * fails, which is the point: a new validator gets checked rather than
    * silently skipped.
    */
-  test("the shell mounts composer's and orm's sections, and the platform family declares none", () => {
+  test("the shell mounts composer's, orm's and skills' sections, and the platform family declares none", () => {
     expect(sections.map((section) => section.name)).toEqual([
       "composer",
       "orm",
+      "skills",
     ]);
   });
 

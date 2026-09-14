@@ -547,7 +547,7 @@ describe("auth workspace list", () => {
       {
         kind: "run-command",
         label: "Authorize a workspace",
-        command: "prisma-cli auth login",
+        command: "prisma auth login",
       },
     ]);
   });
@@ -588,7 +588,7 @@ describe("auth workspace list", () => {
       {
         kind: "run-command",
         label: "Authorize another workspace",
-        command: "prisma-cli auth login",
+        command: "prisma auth login",
       },
     ]);
   });

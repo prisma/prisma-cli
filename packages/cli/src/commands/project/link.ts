@@ -1,8 +1,7 @@
 /** The `project link` command. */
 import { defineCommand, positional } from "@prisma/cli-engine";
-import { notOk, ok } from "@prisma/cli-engine/protocol";
+import { CliStructuredError, ok } from "@prisma/cli-engine/protocol";
 import { formatCommandArgument } from "../../command-arguments";
-import { usageError } from "../../errors";
 import { createAppProvider } from "../../lib/app/app-provider";
 import {
   inferTargetName,
@@ -24,22 +23,35 @@ import {
   listWorkspaceProjects,
   type ProjectCommandContext,
 } from "./context";
-import { mapProjectOperationError } from "./errors";
 import { setupPresentations } from "./presentation";
 
 const CREATE_CHOICE = "__create__";
 const CANCEL_CHOICE = "__cancel__";
 
-function setupCanceledError() {
-  return usageError(
+function setupCanceledError(): CliStructuredError {
+  return new CliStructuredError(
+    "PROJECT.USAGE_ERROR",
     "Project setup canceled",
-    "Project link needs a Project before it can continue.",
-    "Choose an existing Project or create a new one, then rerun project link.",
-    [
-      "prisma-cli project link <id-or-name>",
-      "prisma-cli project create <name>",
-    ],
-    "project",
+    {
+      why: "Project link needs a Project before it can continue.",
+      nextActions: [
+        {
+          kind: "user-choice",
+          label:
+            "Choose an existing Project or create a new one, then rerun project link.",
+        },
+        {
+          kind: "run-command",
+          label: "prisma project link <id-or-name>",
+          command: "prisma project link <id-or-name>",
+        },
+        {
+          kind: "run-command",
+          label: "prisma project create <name>",
+          command: "prisma project create <name>",
+        },
+      ],
+    },
   );
 }
 
@@ -83,14 +95,14 @@ async function createProjectForLink(
       }
       throw projectCreateFailedError(error, projectName, workspace, {
         nextSteps: [
-          "prisma-cli project list",
-          "prisma-cli project link <id-or-name>",
-          `prisma-cli project create ${formatCommandArgument(projectName)}`,
+          "prisma project list",
+          "prisma project link <id-or-name>",
+          `prisma project create ${formatCommandArgument(projectName)}`,
         ],
         permissionFix:
           "Grant the token permission to create Projects in this workspace, or link an existing Project.",
         fallbackFix:
-          "Retry the command, or choose an existing Project with prisma-cli project link <id-or-name>.",
+          "Retry the command, or choose an existing Project with prisma project link <id-or-name>.",
       });
     });
 
@@ -139,9 +151,8 @@ async function pickProject(
 }
 
 /** The link itself, without the command around it: resolve the named
- *  Project or pick one, then bind `ctx.cwd` to it. `init`'s link step
- *  runs this, so there is one picker and one pin writer. */
-export async function linkDirectoryToProject(
+ *  Project or pick one, then bind `ctx.cwd` to it. */
+async function linkDirectoryToProject(
   ctx: ProjectCommandContext,
   projectRef: string | undefined,
 ): Promise<ProjectSetupResult> {
@@ -169,7 +180,10 @@ export const projectLinkCommand = defineCommand({
     },
   },
   help: {
-    summary: "Link this directory to a Project",
+    summary:
+      "Link this directory to a Project: commands run here target it by default",
+    description:
+      "Records locally that this directory belongs to an existing Project, so later commands resolve it without --project. Linking itself changes local state only. Run without an argument to pick from your workspace's projects; that picker also offers creating a new Project, which does create one on the platform.",
     examples: [
       "project link",
       "project link proj_123",
@@ -178,19 +192,8 @@ export const projectLinkCommand = defineCommand({
   },
   needs: { credentials: true },
   handler: async (args, ctx) => {
-    try {
-      const result = await linkDirectoryToProject(
-        ctx,
-        args.positionals.project,
-      );
+    const result = await linkDirectoryToProject(ctx, args.positionals.project);
 
-      return ok(ctx.present({ data: result }, setupPresentations(result)));
-    } catch (error) {
-      const mapped = mapProjectOperationError(error);
-      if (mapped) {
-        return notOk(mapped);
-      }
-      throw error;
-    }
+    return ok(ctx.present({ data: result }, setupPresentations(result)));
   },
 });

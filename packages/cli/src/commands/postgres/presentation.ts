@@ -9,7 +9,6 @@ import type {
 export interface FieldRow {
   readonly label: string;
   readonly value: string;
-  readonly sensitive?: boolean;
 }
 
 /** Legacy `formatDatabaseTarget`. */
@@ -105,8 +104,8 @@ export function backupStdoutRows(
   ]);
 }
 
-/** The one-time-secret card: the URL is masked in the human blocks
- *  and printed bare on stdout. */
+/** The one-time-secret card. The URL prints bare: this card is the only
+ *  place an interactive user ever sees it. */
 export function secretBlocks(
   headline: string,
   connectionString: string,
@@ -119,9 +118,7 @@ export function secretBlocks(
     },
     {
       kind: "fields",
-      rows: [
-        { label: "connection URL", value: connectionString, sensitive: true },
-      ],
+      rows: [{ label: "connection URL", value: connectionString }],
     },
   ];
 }

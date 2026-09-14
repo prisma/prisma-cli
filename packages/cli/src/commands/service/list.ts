@@ -4,7 +4,6 @@ import { listPresentations } from "./presentation";
 import type { ServiceListResult } from "./results";
 import {
   listServices,
-  resolveComputeManagementContext,
   resolveServiceProjectContext,
   serviceProvider,
   toServiceListEntry,
@@ -13,32 +12,27 @@ import {
 export const serviceListCommand = defineCommand({
   help: {
     summary: "List the services in a project",
+    description:
+      "A service is one HTTP application (a frontend or a backend) deployed on a Branch of the project. Each deploy produces a service version; at most one version serves traffic at a time.",
     examples: ["service list", "service list --project my-app --json"],
   },
   args: {
     flags: {
       project: flag.string({
-        brief: "Project id or name",
+        brief:
+          "Project id or name (default: the project this directory is linked to)",
         placeholder: "id-or-name",
       }),
       branch: flag.string({
-        brief: "Branch name",
+        brief: "Branch the services live on (default: the default branch)",
         placeholder: "branch",
       }),
     },
   },
   needs: { credentials: true },
   handler: async (args, ctx) => {
-    // Listing every service selects none, so no config target is passed:
-    // the only thing this call contributes is the project directory.
-    const compute = await resolveComputeManagementContext(
-      ctx,
-      undefined,
-      "list",
-    );
     const target = await resolveServiceProjectContext(ctx, args.flags.project, {
       commandName: "service list",
-      projectDir: compute.projectDir,
       ...(args.flags.branch !== undefined
         ? { branchName: args.flags.branch }
         : {}),

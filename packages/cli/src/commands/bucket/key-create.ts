@@ -5,11 +5,13 @@ import {
   flag,
   type Presentations,
 } from "@prisma/cli-engine";
-import { notOk, ok } from "@prisma/cli-engine/protocol";
-import { usageError } from "../../errors";
+import { CliStructuredError, ok } from "@prisma/cli-engine/protocol";
 import type { BucketKeyCreateResult } from "../../types/bucket";
-import { bucketPositional, resolveBucketProviderOnly } from "./context";
-import { mapBucketOperationError } from "./errors";
+import {
+  bucketPositional,
+  LIST_BUCKETS_COMMAND,
+  resolveBucketProviderOnly,
+} from "./context";
 
 /** Legacy `resolveKeyRole`: anything that is not exactly `read` — the
  *  omitted flag included — is `read_write`. */
@@ -38,16 +40,8 @@ function createPresentations(result: BucketKeyCreateResult): Presentations {
         kind: "fields",
         rows: [
           { label: "S3_ENDPOINT", value: result.endpoint },
-          {
-            label: "S3_ACCESS_KEY_ID",
-            value: result.accessKeyId,
-            sensitive: true,
-          },
-          {
-            label: "S3_SECRET_ACCESS_KEY",
-            value: result.secretAccessKey,
-            sensitive: true,
-          },
+          { label: "S3_ACCESS_KEY_ID", value: result.accessKeyId },
+          { label: "S3_SECRET_ACCESS_KEY", value: result.secretAccessKey },
           { label: "S3_BUCKET", value: result.bucketName },
         ],
       },
@@ -66,17 +60,21 @@ export const bucketKeyCreateCommand = defineCommand({
     positionals: { bucketId: bucketPositional },
     flags: {
       role: flag.enum({
-        brief: "Access role (default: read_write)",
+        brief:
+          "Access role; read_write unless set, use read for consumers that only download",
         values: ["read", "read_write"],
       }),
       name: flag.string({
-        brief: "Key display name (auto-generated if omitted)",
+        brief:
+          "Key display name; use it to record which consumer holds the key (auto-generated if omitted)",
         placeholder: "name",
       }),
     },
   },
   help: {
     summary: "Create a bucket access key and print its one-time credentials",
+    description:
+      "Mints S3-compatible credentials for one bucket, shown exactly once; store them now, nothing prints them again. Give each consumer its own key so one can be revoked without breaking the others, and grant read-only consumers --role read.",
     examples: [
       "bucket key create bkt_123",
       "bucket key create bkt_123 --role read",
@@ -85,33 +83,29 @@ export const bucketKeyCreateCommand = defineCommand({
   },
   needs: { credentials: true },
   handler: async (args, ctx) => {
-    try {
-      const bucketId = args.positionals.bucketId.trim();
-      if (!bucketId) {
-        throw usageError(
-          "Bucket id required",
-          "Bucket key creation needs a bucket id.",
-          "Pass the bucket id.",
-          ["prisma-cli bucket list"],
-          "bucket",
-        );
-      }
-
-      const created = await resolveBucketProviderOnly(ctx).createKey({
-        bucketId,
-        name: args.flags.name?.trim() || undefined,
-        role: resolveKeyRole(args.flags.role),
-        signal: ctx.signal,
+    const bucketId = args.positionals.bucketId.trim();
+    if (!bucketId) {
+      throw new CliStructuredError("BUCKET.USAGE_ERROR", "Bucket id required", {
+        why: "Bucket key creation needs a bucket id.",
+        nextActions: [
+          { kind: "user-choice", label: "Pass the bucket id." },
+          {
+            kind: "run-command",
+            label: LIST_BUCKETS_COMMAND,
+            command: LIST_BUCKETS_COMMAND,
+          },
+        ],
       });
-
-      const result: BucketKeyCreateResult = { bucketId, ...created };
-      return ok(ctx.present({ data: result }, createPresentations(result)));
-    } catch (error) {
-      const mapped = mapBucketOperationError(error);
-      if (mapped) {
-        return notOk(mapped);
-      }
-      throw error;
     }
+
+    const created = await resolveBucketProviderOnly(ctx).createKey({
+      bucketId,
+      name: args.flags.name?.trim() || undefined,
+      role: resolveKeyRole(args.flags.role),
+      signal: ctx.signal,
+    });
+
+    const result: BucketKeyCreateResult = { bucketId, ...created };
+    return ok(ctx.present({ data: result }, createPresentations(result)));
   },
 });

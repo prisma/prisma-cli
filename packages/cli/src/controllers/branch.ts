@@ -1,6 +1,7 @@
 // biome-ignore-all lint/performance/noAwaitInLoops: Branch pagination requests must run sequentially.
+
+import { CliStructuredError } from "@prisma/cli-engine/protocol";
 import type { ManagementApiClient } from "@prisma/management-api-sdk";
-import { CliError } from "../errors";
 import type { BranchRole, BranchSummary } from "../types/branch";
 
 export interface RawBranchRecord {
@@ -84,19 +85,28 @@ function branchApiError(
   summary: string,
   response: Response | undefined,
   error: ApiErrorBody | undefined,
-): CliError {
+): CliStructuredError {
   const status = response?.status ?? 0;
-  return new CliError({
-    code: error?.error?.code ?? "BRANCH_API_ERROR",
-    domain: "branch",
-    summary,
+  const apiCode = error?.error?.code;
+  return new CliStructuredError("BRANCH.API_ERROR", summary, {
     why:
       error?.error?.message ??
       `The Management API returned status ${status || "unknown"}.`,
-    fix:
-      error?.error?.hint ??
-      "Re-run with --trace for the underlying API response details.",
-    exitCode: 1,
-    nextSteps: [],
+    ...(status || apiCode !== undefined
+      ? {
+          meta: {
+            ...(status ? { status } : {}),
+            ...(apiCode !== undefined ? { apiCode } : {}),
+          },
+        }
+      : {}),
+    nextActions: [
+      {
+        kind: "user-choice",
+        label:
+          error?.error?.hint ??
+          "Re-run with --log-level verbose for the underlying API response details.",
+      },
+    ],
   });
 }

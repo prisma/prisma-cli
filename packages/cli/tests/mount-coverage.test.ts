@@ -5,14 +5,15 @@
  * released.
  *
  * The exception set below (the engine's three telemetry commands,
- * `agent install|update|status`, and `feedback`) was ratified by the
- * operator on 2026-08-12. Adding to it requires an operator ruling
+ * `feedback`, and `init`) was ratified by the operator on 2026-08-12;
+ * the `agent install|update|status` entries left it and `init` (the
+ * local repository-setup command) entered it when the operator killed
+ * that group on 2026-08-21. Adding to it requires an operator ruling
  * recorded here; giving those commands a real owning family, so the
- * exception set can shrink, is deferred work. `init` (the platform's
- * compute-config wizard) joined with S2d: ruled top-level on
- * 2026-08-12, when the ORM's initializer moved to `orm init`; it takes
- * a family when a compute family exists.
-
+ * exception set can shrink, is deferred work.
+ *
+ * `orm init` keeps its path: only the top-level `init` (the compute
+ * config wizard) was removed, by the 2026-08-21 PM review.
  */
 import type { AnyCommand, CommandFamily } from "@prisma/cli-engine";
 import { defineCommand, telemetryCommandGroup } from "@prisma/cli-engine";
@@ -24,13 +25,11 @@ import {
   mountedCommands,
   ormCommandFamily,
   platformCommandFamily,
+  skillsCommandFamily,
 } from "../src/cli";
 import { CLI_DOCS_URL } from "../src/cli-name";
-import { agentInstallCommand } from "../src/commands/agent/install";
-import { agentStatusCommand } from "../src/commands/agent/status";
-import { agentUpdateCommand } from "../src/commands/agent/update";
 import { feedbackCommand } from "../src/commands/feedback";
-import { initCommand } from "../src/commands/init/init";
+import { initCommand } from "../src/commands/init";
 
 /**
  * Commands that deliberately belong to no family: the engine's consent
@@ -39,9 +38,6 @@ import { initCommand } from "../src/commands/init/init";
  */
 const FAMILYLESS: ReadonlySet<unknown> = new Set([
   ...Object.values(telemetryCommandGroup({ docsUrl: CLI_DOCS_URL }).commands),
-  agentInstallCommand,
-  agentUpdateCommand,
-  agentStatusCommand,
   feedbackCommand,
   initCommand,
 ]);
@@ -79,9 +75,6 @@ function unownedMountPaths(
  * adding its path here.
  */
 const EXPECTED_MOUNT_PATHS: readonly string[] = [
-  "agent install",
-  "agent status",
-  "agent update",
   "auth login",
   "auth logout",
   "auth whoami",
@@ -95,77 +88,76 @@ const EXPECTED_MOUNT_PATHS: readonly string[] = [
   "bucket key delete",
   "bucket key list",
   "bucket list",
-  "build logs",
-  "composer deploy",
-  "composer destroy",
-  "composer dev",
-  "composer log",
   "contract emit",
+  "contract format",
   "contract infer",
   "db init",
+  "db migrate",
   "db schema",
   "db sign",
   "db update",
   "db verify",
+  "deploy",
+  "dev",
   "feedback",
-  "format",
   "git connect",
   "git disconnect",
   "init",
   "lsp",
-  "migrate",
   "migration check",
   "migration graph",
   "migration list",
   "migration log",
   "migration new",
   "migration plan",
+  "migration ref delete",
+  "migration ref list",
+  "migration ref set",
   "migration show",
   "migration status",
   "orm init",
   "postgres backup list",
+  "postgres backup restore",
   "postgres connection create",
+  "postgres connection delete",
   "postgres connection list",
-  "postgres connection remove",
   "postgres connection rotate",
   "postgres create",
+  "postgres delete",
   "postgres list",
-  "postgres remove",
-  "postgres restore",
   "postgres show",
   "postgres usage",
   "project create",
+  "project delete",
   "project env add",
+  "project env delete",
   "project env list",
-  "project env remove",
   "project env update",
   "project link",
   "project list",
-  "project remove",
   "project rename",
   "project show",
   "project transfer",
-  "ref delete",
-  "ref list",
-  "ref set",
   "service create",
-  "service deployment delete",
-  "service deployment list",
-  "service deployment promote",
-  "service deployment rollback",
-  "service deployment show",
-  "service deployment start",
-  "service deployment stop",
+  "service delete",
   "service domain add",
-  "service domain remove",
+  "service domain delete",
   "service domain retry",
   "service domain show",
   "service domain wait",
   "service list",
   "service logs",
   "service open",
-  "service remove",
   "service show",
+  "service version delete",
+  "service version list",
+  "service version promote",
+  "service version rollback",
+  "service version show",
+  "service version start",
+  "service version stop",
+  "skills list",
+  "skills sync",
   "telemetry disable",
   "telemetry enable",
   "telemetry status",
@@ -175,9 +167,10 @@ const MOUNTED_FAMILIES = {
   platform: platformCommandFamily,
   composer: composerCommandFamily,
   orm: ormCommandFamily,
+  skills: skillsCommandFamily,
 };
 
-describe("prisma-cli mount coverage", () => {
+describe("prisma mount coverage", () => {
   it("mounts exactly the expected command paths", () => {
     expect(Object.keys(mountedCommands).sort()).toEqual(EXPECTED_MOUNT_PATHS);
   });
