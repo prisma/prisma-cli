@@ -232,6 +232,7 @@ async function tryCompletePastedCallback(
     await options.complete(url);
     return true;
   } catch (error) {
+    if (error instanceof CliStructuredError) throw error;
     const message = error instanceof Error ? error.message : String(error);
     options.output.write(
       `Sign-in didn't complete (${message}). Paste the callback URL to try again.\n`,

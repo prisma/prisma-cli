@@ -290,6 +290,22 @@ async function requestSuccessPage(options: {
 }
 
 describe("auth login remote paste flow", () => {
+  it("ends login when a pasted callback denies authorization instead of retrying", async () => {
+    await expect(
+      runLogin({
+        ttyInput: true,
+        openUrl: () => {},
+        pasteLines: [
+          "http://localhost:9999/auth/callback?error=access_denied&error_description=private-callback-detail",
+          PASTE_CALLBACK_URL,
+        ],
+      }),
+    ).rejects.toMatchObject({
+      code: "AUTH.LOGIN_DENIED",
+      message: "Sign-in was not authorized.",
+    });
+  });
+
   it("completes the token exchange via a pasted callback URL on a TTY", async () => {
     const result = await runLogin({
       ttyInput: true,
