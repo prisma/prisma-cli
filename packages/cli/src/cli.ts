@@ -187,7 +187,10 @@ export const cliGroups: Readonly<
         run: "project create my-app",
         brief: "Create a Project, link this directory",
       },
-      { run: "git connect", brief: "Connect GitHub so every push deploys" },
+      {
+        run: "git connect",
+        brief: "Connect GitHub; its deploy workflow then deploys pushes",
+      },
       {
         run: "project env add KEY=value --role preview",
         brief: "Set env vars services get at deploy",
@@ -262,9 +265,9 @@ export const cliGroups: Readonly<
   },
   git: {
     brief:
-      "Manage the GitHub connection that deploys on push. Connect or disconnect a repository",
+      "Manage the GitHub connection behind deploy-on-push. Connect or disconnect a repository",
     description:
-      "Connecting a GitHub repository turns on deploy-on-push: pushing a Git branch builds and deploys it to a matching Platform Branch. Disconnecting stops push deploys without touching anything already deployed.",
+      "Connecting a GitHub repository turns on deploy-on-push: the repository's prisma/cloud-deploy-action workflow authenticates through the connection and deploys every pushed branch to a matching Platform Branch. The platform does not build on push; the workflow does. Disconnecting stops push deploys without touching anything already deployed.",
   },
   service: {
     brief:
@@ -468,7 +471,10 @@ export function buildCli(): Cli {
           run: "project create my-app",
           brief: "Create a Project, link this directory",
         },
-        { run: "git connect", brief: "Connect GitHub so every push deploys" },
+        {
+          run: "git connect",
+          brief: "Connect GitHub; its deploy workflow then deploys pushes",
+        },
         {
           run: "deploy",
           brief: "Or build and deploy straight from this machine",
