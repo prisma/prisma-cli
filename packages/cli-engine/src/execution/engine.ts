@@ -407,7 +407,7 @@ export class EngineImpl implements Engine {
        *  exactly the frame stream, so help prose goes to stderr instead. */
       stdout: {
         write: (text: string) =>
-          (state.format === "human" ? runtime.stdout : runtime.stderr).write(
+          (state.format === "json" ? runtime.stderr : runtime.stdout).write(
             text,
           ),
       },

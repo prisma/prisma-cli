@@ -527,6 +527,121 @@ describe("skills sync", () => {
     }
   });
 
+  it("removes the copies in directories the config no longer names", async () => {
+    const root = await makeProjectRoot();
+    await installPackage(root, {
+      name: "@prisma/orm-postgres",
+      version: "8.1.0",
+      skills: ["prisma-8"],
+    });
+    await runSync(root);
+    const cli = createTestCli({
+      commandFamilies: [skillsCommandFamily],
+      commands: SKILLS_COMMANDS,
+      groups: { skills: { brief: "Keep Prisma agent skills current" } },
+      config: { skills: { agents: ["claude"] } },
+      now: () => new Date(0),
+    });
+
+    const run = await cli.run(["skills", "sync"], { cwd: root });
+    const result = run.presented?.data as SkillsSyncResult;
+
+    expect(run.exitCode).toBe(0);
+    expect(result.synced).toEqual([]);
+    expect(result.pruned).toEqual([
+      {
+        skill: "prisma-8",
+        library: "@prisma/orm-postgres",
+        dirs: [".cursor/skills", ".agents/skills", ".devin/skills"],
+      },
+    ]);
+    expect(await stampOf(root, ".claude/skills", "prisma-8")).toBe("8.1.0");
+    for (const dir of [".cursor", ".agents", ".devin"]) {
+      expect(await exists(path.join(root, dir))).toBe(false);
+    }
+  });
+
+  it("removes every copy under agents: [] and reports the removal", async () => {
+    const root = await makeProjectRoot();
+    await installPackage(root, {
+      name: "@prisma/orm-postgres",
+      version: "8.1.0",
+      skills: ["prisma-8"],
+    });
+    await runSync(root);
+    const cli = createTestCli({
+      commandFamilies: [skillsCommandFamily],
+      commands: SKILLS_COMMANDS,
+      groups: { skills: { brief: "Keep Prisma agent skills current" } },
+      config: { skills: { agents: [] } },
+      now: () => new Date(0),
+    });
+
+    const run = await cli.run(["skills", "sync"], {
+      cwd: root,
+      isTty: { stdout: true, stderr: true },
+    });
+    const result = run.presented?.data as SkillsSyncResult;
+
+    expect(run.exitCode).toBe(0);
+    expect(result.agents).toEqual([]);
+    expect(result.pruned).toEqual([
+      {
+        skill: "prisma-8",
+        library: "@prisma/orm-postgres",
+        dirs: [...HARNESS_SKILL_DIRS],
+      },
+    ]);
+    expect(run.stderr).toContain("Removed 1 skill.");
+    for (const dir of HARNESS_SKILL_DIRS) {
+      expect(await exists(path.join(root, path.dirname(dir)))).toBe(false);
+    }
+
+    const again = await cli.run(["skills", "sync"], {
+      cwd: root,
+      isTty: { stdout: true, stderr: true },
+    });
+    expect((again.presented?.data as SkillsSyncResult).pruned).toEqual([]);
+    expect(again.stderr).toContain(
+      "No agents are configured to sync skills for.",
+    );
+  });
+
+  it("leaves other files in a directory the config no longer names", async () => {
+    const root = await makeProjectRoot();
+    await installPackage(root, {
+      name: "@prisma/orm-postgres",
+      version: "8.1.0",
+      skills: ["prisma-8"],
+    });
+    await runSync(root);
+    await writeSkillTree(path.join(root, ".cursor/skills", "team-skill"), {
+      skill: "team-skill",
+      library: "@acme/toolkit",
+      version: "1.0.0",
+    });
+    await writeFile(path.join(root, ".agents", "notes.md"), "# mine\n", "utf8");
+    const cli = createTestCli({
+      commandFamilies: [skillsCommandFamily],
+      commands: SKILLS_COMMANDS,
+      groups: { skills: { brief: "Keep Prisma agent skills current" } },
+      config: { skills: { agents: [] } },
+      now: () => new Date(0),
+    });
+
+    const { exitCode } = await cli.run(["skills", "sync"], { cwd: root });
+
+    expect(exitCode).toBe(0);
+    expect(await exists(path.join(root, ".cursor/skills", "prisma-8"))).toBe(
+      false,
+    );
+    expect(
+      await exists(path.join(root, ".cursor/skills", "team-skill", "SKILL.md")),
+    ).toBe(true);
+    expect(await exists(path.join(root, ".agents/skills"))).toBe(false);
+    expect(await exists(path.join(root, ".agents", "notes.md"))).toBe(true);
+  });
+
   it("refuses a config naming an agent this CLI does not know", async () => {
     const root = await makeProjectRoot();
     const cli = createTestCli({
@@ -740,6 +855,35 @@ describe("skills list", () => {
         dirs: [".agents/skills"],
       },
     ]);
+  });
+
+  it("names copies in directories the config no longer names as orphaned", async () => {
+    const root = await makeProjectRoot();
+    await installPackage(root, {
+      name: "@prisma/orm-postgres",
+      version: "8.1.0",
+      skills: ["prisma-8"],
+    });
+    await runSync(root);
+    const cli = createTestCli({
+      commandFamilies: [skillsCommandFamily],
+      commands: SKILLS_COMMANDS,
+      groups: { skills: { brief: "Keep Prisma agent skills current" } },
+      config: { skills: { agents: ["claude", "cursor"] } },
+      now: () => new Date(0),
+    });
+
+    const run = await cli.run(["skills", "list"], { cwd: root });
+    const result = run.presented?.data as SkillsListResult;
+
+    expect(result.orphaned).toEqual([
+      {
+        skill: "prisma-8",
+        library: "@prisma/orm-postgres",
+        dirs: [".agents/skills", ".devin/skills"],
+      },
+    ]);
+    expect(result.upToDate).toBe(true);
   });
 
   it("reports the check as disabled when prisma.config.ts turns it off", async () => {

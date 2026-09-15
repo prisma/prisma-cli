@@ -265,7 +265,10 @@ describe("prisma git connect", () => {
       },
       {
         kind: "list",
-        items: ["GitHub branch automation is active for this project."],
+        items: [
+          "GitHub branch automation is active for this project.",
+          "Deploys run from the repository's GitHub Actions workflow (prisma/cloud-deploy-action), which must exist on each pushed branch; the platform does not build on push.",
+        ],
       },
     ]);
   });
@@ -683,7 +686,18 @@ describe("prisma git connect", () => {
           automation: { branches: true, pullRequests: false, comments: false },
         },
       },
-      nextActions: [],
+      nextActions: [
+        {
+          kind: "edit-file",
+          label:
+            "If the repository has no .github/workflows/prisma-deploy.yml yet, add one running prisma/cloud-deploy-action@v1 with `id-token: write`; a push of any branch that lacks the file deploys nothing.",
+        },
+        {
+          kind: "open-url",
+          label: "Workflow reference (prisma/cloud-deploy-action)",
+          url: "https://github.com/prisma/cloud-deploy-action#readme",
+        },
+      ],
     });
   });
 

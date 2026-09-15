@@ -123,6 +123,9 @@ test.each([
   ["example", "--help"],
   ["init", "--help"],
   ["init", "--json"],
+  ["init", "--format", "markdown"],
+  ["--help", "--json"],
+  ["--help", "--format", "markdown"],
   ["init", "--quiet"],
   ["init", "--unknown"],
 ])("omits artwork for %j", async (...argv) => {
@@ -132,6 +135,22 @@ test.each([
     "CCRRYY Prisma",
   );
   expect(result.stdout + result.stderr).not.toContain("\u001b[?25l");
+});
+
+test("Markdown help stays on stdout without artwork in a color terminal", async () => {
+  const delay = vi.fn(async (_ms: number, _signal: AbortSignal) => {});
+  const cli = createTestCli({ commands, help: initHelp, delay });
+  const result = await cli.run(
+    ["--help", "--format", "markdown", "--color"],
+    initTerminal,
+  );
+  expect(result.exitCode).toBe(0);
+  expect(result.stdout).toContain("# ");
+  expect(result.stdout).toContain("init");
+  expect(result.stdout).not.toContain("CCRRYY Prisma");
+  expect(result.stdout).toBe(stripVTControlCharacters(result.stdout));
+  expect(result.stderr).toBe("");
+  expect(delay).not.toHaveBeenCalled();
 });
 
 test("interrupting the init intro prevents the handler from running", async () => {

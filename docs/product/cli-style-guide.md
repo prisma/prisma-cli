@@ -64,7 +64,7 @@ Recommended symbols:
   only in human TTY output when the terminal has room for the text, a four-column
   gap, and the full mark. When there is no room beside the text, place the same horizontal lockup
   above the help with a blank line below it. Omit it when even the mark does not
-  fit, for unknown widths, pipes, JSON, and group or command help. Respect the
+  fit, for unknown widths, pipes, JSON, Markdown, and group or command help. Respect the
   normal color settings. Use Node’s `util.styleText` with cyan, bright red,
   and yellow for the three bands, matching the supported Node 22 runtime.
   The exact shades follow the terminal palette; fall back to
@@ -72,7 +72,7 @@ Recommended symbols:
   Reset inherited terminal styling around each artwork row so help and init
   render the wordmark consistently.
 - `prisma init` displays the same horizontal lockup above its status output on
-  stderr, after argument and configuration validation. Omit it for JSON, quiet
+  stderr, after argument and configuration validation. Omit it for JSON, Markdown, quiet
   mode, non-TTY output, or a terminal too narrow to fit it. Bare `prisma`, group
   help, and other commands do not display the logo.
 - In an interactive color terminal, reveal the symbol once by painting cyan,
@@ -200,7 +200,7 @@ Shared flag rules:
 
 Shared global flags, defined by the engine in `SHARED_FLAG_PARAMETERS` (`packages/cli-engine/src/execution/shared-flags.ts`, the source of truth for this list):
 
-- `--format <human|json>`
+- `--format <human|json|markdown>`
 - `--json` (shorthand for `--format json`)
 - `--log-level <error|warn|info|verbose>`
 - `-v`, `--verbose` (shorthand for `--log-level verbose`)

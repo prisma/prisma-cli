@@ -83,7 +83,7 @@ export const skillsSyncCommand = defineCommand({
     summary:
       "Copy the AI-agent instruction files (skills) from installed Prisma packages into this project",
     description:
-      "Agent skills are instruction files that teach AI coding agents (Claude Code, Cursor, and others) how to use the installed Prisma packages. They ship inside the packages themselves, so they always describe the version in use. Sync copies them into the skill directories the agent harnesses read, and removes copies whose package is gone. It does nothing, and exits 0, when everything is already current.",
+      "Agent skills are instruction files that teach AI coding agents (Claude Code, Cursor, and others) how to use the installed Prisma packages. They ship inside the packages themselves, so they always describe the version in use. Sync copies them into the skill directories of the agents that skills.agents in prisma.config.ts names (every known agent when unset), and removes copies whose package is gone or whose agent is no longer named there — agents: [] removes them all. It does nothing, and exits 0, when everything is already current.",
     examples: ["skills sync", "skills sync --disable"],
   },
   needs: { config: skillsConfigSection },

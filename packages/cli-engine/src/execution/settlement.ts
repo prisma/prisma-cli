@@ -13,6 +13,11 @@ import {
 } from "../protocol";
 import { type ChildStatusSettlement, childExitCode } from "../spawn";
 import type { EngineSpec, Invocation } from "./engine";
+import {
+  renderChildNextActionsMarkdown,
+  renderCompletedMarkdown,
+  renderErroredMarkdown,
+} from "./markdown";
 import { makePaint } from "./palette";
 import {
   diagnosticSection,
@@ -86,6 +91,10 @@ export function settleCompleted(
       commandId: state.commandId,
       timestamp: invocation.now().toISOString(),
     });
+    return;
+  }
+  if (state.format === "markdown") {
+    renderCompletedMarkdown(invocation, presented);
     return;
   }
   renderCompletedHuman(invocation, presented);
@@ -240,13 +249,23 @@ export function settleChildStatus(
     return;
   }
   if (child.signal === null) {
-    for (const action of settlement.nextActions) {
-      invocation.runtime.stderr.write(
-        `${renderNextAction(action, makePaint(invocation.state.colorEnabled))}\n`,
-      );
-    }
+    renderChildNextActions(invocation, settlement.nextActions);
   }
   settleVerbatimExitCode(invocation, exitCode);
+}
+
+function renderChildNextActions(
+  invocation: Invocation,
+  actions: readonly NextAction[],
+): void {
+  if (invocation.state.format === "markdown") {
+    renderChildNextActionsMarkdown(invocation, actions);
+    return;
+  }
+  const paint = makePaint(invocation.state.colorEnabled);
+  for (const action of actions) {
+    invocation.runtime.stderr.write(`${renderNextAction(action, paint)}\n`);
+  }
 }
 
 function settleStructuredChildStatus(
@@ -361,6 +380,10 @@ export function emitErrored(
     });
     return;
   }
+  if (state.format === "markdown") {
+    renderErroredMarkdown(invocation, envelope);
+    return;
+  }
   const paint = makePaint(invocation.state.colorEnabled);
   writeSections(
     [envelope.error, ...envelope.diagnostics].map((diagnostic) =>
@@ -377,7 +400,7 @@ export function settleVersion(
   invocation: Invocation,
 ): number {
   const { runtime, state } = invocation;
-  if (state.format === "human") {
+  if (state.format !== "json") {
     runtime.stdout.write(`${spec.version}\n`);
     return 0;
   }
