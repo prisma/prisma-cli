@@ -132,6 +132,8 @@ async function resolveInstalledRepository(
   return match;
 }
 
+/** The connect result in every mode: the connection card, plus the
+ *  workflow step the platform will not do for you. */
 function connectPresentations(
   result: ProjectRepositoryConnectionResult,
 ): Presentations {
