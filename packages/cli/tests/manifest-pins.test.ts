@@ -27,13 +27,10 @@ async function dependencies(dir: string): Promise<Record<string, string>> {
  * manifest, which a real install of `prisma` alone does not do.
  */
 describe("the prisma wrapper's manifest", () => {
-  it("includes the local Postgres runtime as a production dependency", async () => {
-    expect(await dependencies(CLI_DIR)).toHaveProperty("@prisma/dev");
-  });
-
   it("declares exactly @prisma/cli's runtime dependencies", async () => {
     const cli = await dependencies(CLI_DIR);
     const wrapper = await dependencies(join(CLI_DIR, "..", "prisma"));
+    expect(cli).toHaveProperty("@prisma/dev");
     expect(wrapper).toEqual(cli);
   });
 });
