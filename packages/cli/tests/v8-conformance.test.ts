@@ -68,6 +68,7 @@ describe("conformance: import purity", () => {
         label: "@prisma/cli",
         output,
         manifest,
+        allowedUnimported: ["@prisma/dev"],
         // Anti-vacuity, and more: these two are the engine boundary this
         // package exists to compose, so a build that stopped importing
         // either one is a broken shell rather than a tidy one.

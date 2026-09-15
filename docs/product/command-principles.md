@@ -93,6 +93,14 @@ No current branch command uses `use`; branch targeting follows explicit flags or
 
 Build and release an app into a target branch.
 
+### `dev`
+
+Run a built Composer app locally, including its local databases, without cloud
+credentials. Both published CLI packages (`prisma` and `@prisma/cli`) include
+`@prisma/dev` as a runtime dependency for local Postgres. Composer resolves
+the runtime from the project's installation; starting local dev must not
+require an extra emulator dependency in the app or a global installation.
+
 ### `init`
 
 Prepare the current repository for Prisma development, entirely locally: add the `postinstall` script that keeps the Prisma agent skills in sync (`prisma skills sync || exit 0`), add `prisma` to `devDependencies` at the CLI's exact version when no dependency field declares it, scaffold a `prisma.config.ts` recording which agents get skills, then sync the skills once now.

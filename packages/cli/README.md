@@ -62,6 +62,10 @@ npx prisma-cli project env list --role preview
 The beta package exposes `prisma-cli` so it can coexist with the existing
 `prisma` executable.
 
+Both CLI packages include `@prisma/dev`, the runtime used by Composer's local
+Postgres emulator. It is a CLI dependency, not an extra dependency to add to
+your application or install globally.
+
 ---
 
 ## Commands

@@ -40,6 +40,10 @@ npx prisma git connect git@github.com:owner/repo.git
 
 Deployments start from pushing the connected repository, the Console, or `prisma deploy`.
 
+The CLI includes `@prisma/dev`, the runtime used by Composer's local Postgres
+emulator. It is a CLI dependency, not an extra dependency to add to your
+application or install globally.
+
 With `pnpm`:
 
 ```bash
