@@ -14,6 +14,8 @@ import {
 } from "../args";
 import type { AnyCommand, WorkflowStep } from "../commands";
 import type { Format } from "../presentation";
+import type { Runtime } from "../runtime";
+import { addArtwork, canAnimateArtwork, writeArtworkFrames } from "./artwork";
 import type { CommandTreeEntry, CommandTreeNode } from "./command-tree";
 import type { EngineSpec } from "./engine";
 import { renderHelpMarkdown } from "./markdown";
@@ -176,13 +178,68 @@ export function renderHelp(
   argv: readonly string[],
   options: { readonly format: Format; readonly colorEnabled: boolean },
   out: HelpWriter,
-): void {
+  columns?: number,
+  progress = 1,
+): number {
   const card = helpCard(spec, root, argv);
   if (options.format === "markdown") {
     out.write(renderHelpMarkdown(card));
-    return;
+    return 0;
   }
-  out.write(renderHelpTerminal(card, makePaint(options.colorEnabled)));
+  const lines = renderHelpTerminal(card, makePaint(options.colorEnabled)).split(
+    "\n",
+  );
+  const rows =
+    options.format === "human" && card.kind === "root" && helpFlagGiven(argv)
+      ? addArtwork(
+          lines,
+          spec.help?.artwork,
+          columns,
+          options.colorEnabled,
+          progress,
+        )
+      : 0;
+  out.write(lines.join("\n"));
+  return rows;
+}
+
+/** Animate only the logo prefix; Markdown and JSON help never use artwork. */
+export async function runHelp(
+  spec: EngineSpec,
+  root: CommandTreeNode,
+  argv: readonly string[],
+  runtime: Runtime,
+  format: Format,
+  delay: (ms: number, signal: AbortSignal) => Promise<void>,
+  signal: AbortSignal,
+): Promise<void> {
+  const channel = format === "json" ? "stderr" : "stdout";
+  const out = runtime[channel];
+  const showArtwork = format === "human" && runtime.isTty.stdout;
+  const colorEnabled = preParseColorEnabled(argv, runtime, channel);
+  await writeArtworkFrames({
+    out,
+    animate: showArtwork && canAnimateArtwork(runtime, argv, colorEnabled),
+    delay,
+    signal,
+    render: (progress) => {
+      let text = "";
+      const rows = renderHelp(
+        spec,
+        root,
+        argv,
+        { format, colorEnabled },
+        {
+          write: (value) => {
+            text = value;
+          },
+        },
+        showArtwork ? out.columns : undefined,
+        progress,
+      );
+      return { text, rows };
+    },
+  });
 }
 
 export function helpCard(
