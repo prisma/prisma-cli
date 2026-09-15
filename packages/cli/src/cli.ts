@@ -189,7 +189,8 @@ export const cliGroups: Readonly<
       },
       {
         run: "git connect",
-        brief: "Connect GitHub; its deploy workflow then deploys pushes",
+        brief:
+          "Connect GitHub; branches carrying the deploy workflow deploy on push",
       },
       {
         run: "project env add KEY=value --role preview",
@@ -473,7 +474,8 @@ export function buildCli(): Cli {
         },
         {
           run: "git connect",
-          brief: "Connect GitHub; its deploy workflow then deploys pushes",
+          brief:
+            "Connect GitHub; branches carrying the deploy workflow deploy on push",
         },
         {
           run: "deploy",

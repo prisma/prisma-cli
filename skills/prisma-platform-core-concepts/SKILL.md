@@ -176,9 +176,12 @@ jobs:
           build-command: npm run build
 ```
 
-From then on, every push runs the workflow. A push to the default branch
-deploys production; a push to any other branch creates or updates that
-branch's preview environment, so previews come free with every branch.
+From then on, every push of a branch that carries the workflow file runs
+it; GitHub reads workflows from the pushed commit, so a branch created
+before the file was added deploys nothing until it contains the file. A
+push to the default branch deploys production; a push to any other branch
+creates or updates that branch's preview environment, so previews come free
+with every branch.
 Opening a pull request does not itself deploy anything; previews track
 branch pushes. A connected repository without the workflow gets branch
 bookkeeping and preview teardown from the platform, and no builds.

@@ -46,9 +46,9 @@ const WORKFLOW_DOCS_URL =
  *  does, so a connection without one deploys nothing. Console import writes
  *  the file through a setup pull request; this command does not. */
 const WORKFLOW_DETAIL =
-  "Deploys run from the repository's GitHub Actions workflow (prisma/cloud-deploy-action); the platform does not build on push.";
+  "Deploys run from the repository's GitHub Actions workflow (prisma/cloud-deploy-action), which must exist on each pushed branch; the platform does not build on push.";
 const WORKFLOW_NEXT_STEP =
-  "If the repository has no .github/workflows/prisma-deploy.yml yet, add one running prisma/cloud-deploy-action@v1 with `id-token: write`; without it, pushes deploy nothing.";
+  "If the repository has no .github/workflows/prisma-deploy.yml yet, add one running prisma/cloud-deploy-action@v1 with `id-token: write`; a push of any branch that lacks the file deploys nothing.";
 
 /** The legacy wait line, printed once before the poll loop. */
 const WAIT_MESSAGE =
