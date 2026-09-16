@@ -4,20 +4,20 @@ import type {
   FetchWorkspaceName,
 } from "./credential-manager";
 
-const IDENTITY_LOOKUP_TIMEOUT_MS = 3_000;
-
-function clientFor(apiBaseUrl: string, token: string) {
-  return createManagementApiClient({ baseUrl: apiBaseUrl, token });
-}
+const METADATA_LOOKUP_TIMEOUT_MS = 3_000;
 
 /** Resolve the human workspace name with the workspace-bound credential that
  *  was just minted. The credential manager treats this as best-effort. */
 export function fetchWorkspaceName(apiBaseUrl: string): FetchWorkspaceName {
   return async (credential, workspaceId) => {
-    const { data } = await clientFor(apiBaseUrl, credential.token).GET(
-      "/v1/workspaces/{id}",
-      { params: { path: { id: workspaceId } } },
-    );
+    const client = createManagementApiClient({
+      baseUrl: apiBaseUrl,
+      token: credential.token,
+    });
+    const { data } = await client.GET("/v1/workspaces/{id}", {
+      params: { path: { id: workspaceId } },
+      signal: AbortSignal.timeout(METADATA_LOOKUP_TIMEOUT_MS),
+    });
     const name = data?.data?.name;
     return typeof name === "string" && name.trim().length > 0
       ? name.trim()
@@ -25,15 +25,16 @@ export function fetchWorkspaceName(apiBaseUrl: string): FetchWorkspaceName {
   };
 }
 
-/** Resolve safe account metadata once at login. OAuth access tokens do not
- *  necessarily carry an email, so claims alone cannot distinguish sessions
- *  authorized by different Prisma accounts. */
+/** OAuth tokens do not necessarily carry an email; /v1/me identifies the user. */
 export function fetchSessionIdentity(apiBaseUrl: string): FetchSessionIdentity {
   return async (credential) => {
-    const { data } = await clientFor(apiBaseUrl, credential.token).GET(
-      "/v1/me",
-      { signal: AbortSignal.timeout(IDENTITY_LOOKUP_TIMEOUT_MS) },
-    );
+    const client = createManagementApiClient({
+      baseUrl: apiBaseUrl,
+      token: credential.token,
+    });
+    const { data } = await client.GET("/v1/me", {
+      signal: AbortSignal.timeout(METADATA_LOOKUP_TIMEOUT_MS),
+    });
     const user = data?.data?.user;
     if (!user) return undefined;
     return {

@@ -14,15 +14,14 @@ import fsPromises, {
 } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import type {
-  CredentialIdentity,
-  CredentialRefresher,
-  TokenStorage,
-} from "@prisma/cli-engine";
+import type { CredentialRefresher, TokenStorage } from "@prisma/cli-engine";
 import { mintTestJwt } from "@prisma/cli-engine/testing";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { FileCredentialManager } from "../src/auth/credential-manager";
+import {
+  type FetchSessionIdentity,
+  FileCredentialManager,
+} from "../src/auth/credential-manager";
 import { readCredentialState } from "../src/auth/state-file";
 import { getAuthContextFilePath } from "../src/auth/token-storage";
 
@@ -94,10 +93,7 @@ function makeManager(
       credential: { token: string },
       workspaceId: string,
     ) => Promise<string | undefined>;
-    fetchSessionIdentity?: (
-      credential: { token: string },
-      workspaceId: string,
-    ) => Promise<CredentialIdentity | undefined>;
+    fetchSessionIdentity?: FetchSessionIdentity;
     refreshCredential?: CredentialRefresher;
     debugWrite?: (text: string) => void;
   } = {},

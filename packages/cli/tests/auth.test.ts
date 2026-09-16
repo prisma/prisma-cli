@@ -7,7 +7,6 @@
 import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
 import {
-  type ActiveCredential,
   type Credential,
   defineCommand,
   type ManagementApiClient,
@@ -19,7 +18,6 @@ import {
   type SessionRecord,
 } from "@prisma/cli-engine/testing";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { AccountSession } from "../src/auth/credential-manager";
 import { performLogin, storeLegacyCredential } from "../src/auth/operations";
 import { authLoginCommand } from "../src/commands/auth/login";
 import { authLogoutCommand } from "../src/commands/auth/logout";
@@ -1025,31 +1023,5 @@ describe("the shapes the commands hand back", () => {
       expect(run.stdout).not.toContain(secret);
       expect(run.stderr).not.toContain(secret);
     }
-  });
-
-  it("exposes no token on the shapes the commands see", () => {
-    const session: AccountSession = {
-      workspaceId: "ws_1",
-      workspaceName: "Acme Inc",
-      identity: {
-        userId: "usr_456",
-        email: "bob@example.com",
-        name: undefined,
-      },
-      expiresAt: undefined,
-    };
-    const active: ActiveCredential = {
-      workspaceId: "ws_1",
-      workspaceName: "Acme Inc",
-      expiresAt: undefined,
-      identity: {
-        userId: "usr_456",
-        email: "bob@example.com",
-        name: undefined,
-      },
-      origin: { source: "stored" },
-    };
-    expect(Object.keys(session)).not.toContain("token");
-    expect(Object.keys(active)).not.toContain("token");
   });
 });

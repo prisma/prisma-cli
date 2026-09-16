@@ -29,7 +29,7 @@ describe("login session metadata", () => {
 
     const [workspaceName, identity] = await Promise.all([
       fetchWorkspaceName(api.baseUrl)(CREDENTIAL, FAKE_WORKSPACE_ID),
-      fetchSessionIdentity(api.baseUrl)(CREDENTIAL, FAKE_WORKSPACE_ID),
+      fetchSessionIdentity(api.baseUrl)(CREDENTIAL),
     ]);
 
     expect(workspaceName).toBe("Acme Inc");

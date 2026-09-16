@@ -8,6 +8,7 @@ import type {
   CredentialManager,
   CredentialRefresher,
   Session,
+  StoredSessions,
   TokenStorage,
 } from "@prisma/cli-engine";
 import {
@@ -54,8 +55,7 @@ export type FetchWorkspaceName = (
 /** Looks up safe account metadata for the credential that was just minted.
  *  Best-effort: a failed lookup never prevents the session from being saved. */
 export type FetchSessionIdentity = (
-  credential: Credential,
-  workspaceId: string,
+  credential: Pick<Credential, "token">,
 ) => Promise<CredentialIdentity | undefined>;
 
 export type AccountSession = Session & {
@@ -76,15 +76,11 @@ interface AccountAwareCredentialManager extends CredentialManager {
  *  standard local session shape without inventing an account identity. */
 export async function sessionsForDisplay(
   manager: CredentialManager,
-): Promise<AccountStoredSessions> {
+): Promise<StoredSessions> {
   if (isAccountAwareCredentialManager(manager)) {
     return manager.enrichSessions();
   }
-  const stored = await manager.sessions();
-  return {
-    sessions: stored.sessions.map(asAccountSession),
-    selectedWorkspaceId: stored.selectedWorkspaceId,
-  };
+  return manager.sessions();
 }
 
 export function sessionIdentity(
@@ -99,10 +95,6 @@ function isAccountAwareCredentialManager(
   manager: CredentialManager,
 ): manager is AccountAwareCredentialManager {
   return typeof Reflect.get(manager, "enrichSessions") === "function";
-}
-
-function asAccountSession(session: Session): AccountSession {
-  return { ...session, identity: sessionIdentity(session) };
 }
 
 export interface FileCredentialManagerOptions {
@@ -234,10 +226,7 @@ export class FileCredentialManager implements CredentialManager {
       candidates.map(async (session) => ({
         workspaceId: session.workspaceId,
         token: session.token,
-        identity: await this.#lookUpSessionIdentity(
-          storedSessionCredential(session),
-          session.workspaceId,
-        ),
+        identity: await this.#lookUpSessionIdentity(session),
       })),
     );
     const byWorkspaceId = new Map(
@@ -305,7 +294,7 @@ export class FileCredentialManager implements CredentialManager {
         ],
         currentWorkspaceId: workspaceId,
       };
-      return { state: next, result: toSession(record) };
+      return { state: next, result: undefined };
     });
 
     if (!environmentInForce) {
@@ -314,7 +303,7 @@ export class FileCredentialManager implements CredentialManager {
 
     const [name, identity] = await Promise.all([
       this.#lookUpWorkspaceName(credential, workspaceId),
-      this.#lookUpSessionIdentity(credential, workspaceId),
+      this.#lookUpSessionIdentity(credential),
     ]);
     return this.#mutate((state) => {
       const record = state.sessions.find(
@@ -482,7 +471,7 @@ export class FileCredentialManager implements CredentialManager {
           const rotated: StoredSession = {
             workspaceId: record.workspaceId,
             ...(record.name === undefined ? {} : { name: record.name }),
-            ...storedUserSlice(record.user),
+            user: record.user,
             token: tokens.accessToken,
             ...(tokens.refreshToken === undefined
               ? {}
@@ -644,14 +633,11 @@ export class FileCredentialManager implements CredentialManager {
   }
 
   async #lookUpSessionIdentity(
-    credential: Credential,
-    workspaceId: string,
+    credential: Pick<Credential, "token">,
   ): Promise<CredentialIdentity | undefined> {
     if (this.#fetchSessionIdentity === undefined) return undefined;
     try {
-      return normalizedIdentity(
-        await this.#fetchSessionIdentity(credential, workspaceId),
-      );
+      return normalizedIdentity(await this.#fetchSessionIdentity(credential));
     } catch {
       return undefined;
     }
@@ -713,15 +699,6 @@ function expiresAtSlice(
   return expiresAt === undefined ? {} : { expiresAt: expiresAt.toISOString() };
 }
 
-function storedSessionCredential(record: StoredSession): Credential {
-  return {
-    token: record.token,
-    refreshToken: record.refreshToken,
-    expiresAt:
-      record.expiresAt === undefined ? undefined : new Date(record.expiresAt),
-  };
-}
-
 /** The selection the manager will admit to: one that names a stored
  *  session, or none. A dangling selection never escapes. */
 function resolvedMarker(state: CredentialState): string | null {
@@ -776,12 +753,6 @@ function storedUser(identity: CredentialIdentity): StoredSessionUser {
     ...(identity.email === undefined ? {} : { email: identity.email }),
     ...(identity.name === undefined ? {} : { name: identity.name }),
   };
-}
-
-function storedUserSlice(user: StoredSessionUser | undefined): {
-  user?: StoredSessionUser;
-} {
-  return user === undefined ? {} : { user };
 }
 
 function normalizedIdentity(

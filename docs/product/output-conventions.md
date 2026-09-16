@@ -194,7 +194,8 @@ complete list of workspaces visible in Console for the currently selected user.
 
 At login, the CLI resolves the authorizing user through `/v1/me` and persists
 only its safe id, email, and name alongside the session. This lookup is
-best-effort and never prevents login. Existing state remains compatible; when
+best-effort; both account and workspace-name requests time out after three
+seconds without failing login. Existing state remains compatible; when
 stored metadata is unavailable, the CLI falls back to identity claims in the
 access token. Session-list and session-selection commands also attempt this
 enrichment for older records and cache successful results. This is an explicit
