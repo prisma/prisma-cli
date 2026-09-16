@@ -4,6 +4,7 @@ import http from "node:http";
 import type { AddressInfo } from "node:net";
 import readline from "node:readline/promises";
 import type { Readable, Writable } from "node:stream";
+import { CliStructuredError } from "@prisma/cli-engine/protocol";
 
 import {
   createManagementApiSdk,
@@ -12,6 +13,7 @@ import {
   type TokenStorage,
 } from "@prisma/management-api-sdk";
 import open from "open";
+import { CLI_NAME } from "../cli-name";
 import { CLIENT_ID, getApiBaseUrl } from "./client";
 import { FileTokenStorage } from "./token-storage";
 
@@ -230,6 +232,7 @@ async function tryCompletePastedCallback(
     await options.complete(url);
     return true;
   } catch (error) {
+    if (error instanceof CliStructuredError) throw error;
     const message = error instanceof Error ? error.message : String(error);
     options.output.write(
       `Sign-in didn't complete (${message}). Paste the callback URL to try again.\n`,
@@ -333,6 +336,21 @@ class LoginState {
 
     const params = url.searchParams;
     const error = params.get("error");
+    if (error === "access_denied") {
+      throw new CliStructuredError(
+        "AUTH.LOGIN_DENIED",
+        "Sign-in was not authorized.",
+        {
+          nextActions: [
+            {
+              kind: "run-command",
+              label: "Sign in again if you want to grant access",
+              command: `${CLI_NAME} auth login`,
+            },
+          ],
+        },
+      );
+    }
     if (error) {
       const desc = params.get("error_description");
       throw new AuthError(desc ? `${error}: ${desc}` : error);
