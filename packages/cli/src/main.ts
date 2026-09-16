@@ -42,6 +42,7 @@ export async function main(
     env: proc.env,
     argv: proc.argv.slice(2),
     cwd: proc.cwd(),
+    stdout: proc.stdout,
     stderr: proc.stderr,
   });
   return exitCode;

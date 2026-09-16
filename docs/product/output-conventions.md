@@ -103,7 +103,18 @@ The CLI prints one advisory line after normal command output when the agent skil
 Prisma agent skills are out of date (installed @prisma/orm-postgres 8.1.0, synced 8.0.0). Run: prisma skills sync
 ```
 
-A project that has never been synced is reported the same way, with `synced none`. Like the update notification, this is human-oriented stderr output, must never reach stdout, and must never change the command's exit code. Unlike the update notification it is **not** conditioned on a TTY: its main reader is a coding agent, which runs the CLI without one.
+A project that has never been synced is reported the same way, with `synced none`. Like the update notification, this is human-oriented stderr output and must never change the command's exit code. Unlike the update notification it is **not** conditioned on a TTY: its main reader is a coding agent, which runs the CLI without one.
+
+Under `--format markdown` the notice goes to stdout instead, because that format promises the whole run on one stream. It is the last section of the document, separated from the command's output by a blank line:
+
+```markdown
+
+### Notice
+Prisma agent skills are out of date (installed @prisma/orm-postgres 8.1.0, synced 8.0.0).
+- Sync agent skills: `prisma skills sync`
+```
+
+Under every other format the notice is stderr output and must never reach stdout.
 
 It is silent when:
 
@@ -473,7 +484,7 @@ Rules:
 
 ## `--format markdown`
 
-`--format markdown` renders the same blocks a command describes for human output as plain Markdown: a summary line, `label: value` rows, GFM pipe tables, bullet lists, nested bullets for trees, and fenced code for drawings, followed by `### Next` for the suggested next actions and `### Diagnostics` for any findings. It exists for an agent that reads CLI output as text rather than parsing JSON: every value is labelled, nothing is padded, wrapped, aligned, or coloured, and no tokens go to envelope keys. Every part of the run's output — blocks, next actions, diagnostics, structured errors, help, `--version`, and live events — lands on stdout, and the engine writes nothing to stderr. The format is only ever explicit: without `--format markdown` a terminal gets human output and a pipe gets JSON.
+`--format markdown` renders the same blocks a command describes for human output as plain Markdown: a summary line, `label: value` rows, GFM pipe tables, bullet lists, nested bullets for trees, and fenced code for drawings, followed by `### Next` for the suggested next actions and `### Diagnostics` for any findings. It exists for an agent that reads CLI output as text rather than parsing JSON: every value is labelled, nothing is padded, wrapped, aligned, or coloured, and no tokens go to envelope keys. Every part of the run's output — blocks, next actions, diagnostics, structured errors, help, `--version`, and live events — lands on stdout, and the engine writes nothing to stderr. The out-of-date agent skills notice follows the same rule: under this format it is a trailing `### Notice` section on stdout rather than a stderr line. The format is only ever explicit: without `--format markdown` a terminal gets human output and a pipe gets JSON.
 
 ## Non-Streaming JSON Shape
 
