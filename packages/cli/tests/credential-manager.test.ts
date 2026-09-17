@@ -799,8 +799,8 @@ describe("createSession", () => {
     const manager = makeManager({
       fetchSessionMetadata: async () => ({
         workspaceName: " Workspace A ",
-        identity: {
-          userId: "usr_work",
+        user: {
+          id: "usr_work",
           email: "developer@prisma.io",
           name: "Prisma Developer",
         },
@@ -955,10 +955,9 @@ describe("createSession", () => {
         return hasMetadata
           ? {
               workspaceName: "Stale Workspace",
-              identity: {
-                userId: "usr_first",
+              user: {
+                id: "usr_first",
                 email: "first@example.com",
-                name: undefined,
               },
             }
           : undefined;
@@ -1030,8 +1029,8 @@ describe("enrichSessions", () => {
     );
     const fetchSessionMetadata = vi.fn(async () => ({
       workspaceName: "Different name",
-      identity: {
-        userId: "usr_work",
+      user: {
+        id: "usr_work",
         email: "developer@prisma.io",
         name: "Prisma Developer",
       },
@@ -1062,14 +1061,14 @@ describe("enrichSessions", () => {
     true,
     false,
   ])("persists name-only metadata (account already stored: %s)", async (hasAccount) => {
-    const identity = {
-      userId: "usr_work",
+    const user = {
+      id: "usr_work",
       email: "developer@prisma.io",
       name: "Prisma Developer",
     };
     await makeManager({
       fetchSessionMetadata: async () => ({
-        identity: hasAccount ? identity : undefined,
+        user: hasAccount ? user : undefined,
       }),
     }).createSession(credentialFor(WORKSPACE_A), WORKSPACE_A);
     const manager = makeManager({
@@ -1108,10 +1107,9 @@ describe("enrichSessions", () => {
         await released;
         return {
           workspaceName: "Stale name",
-          identity: {
-            userId: "usr_stale",
+          user: {
+            id: "usr_stale",
             email: "stale@example.com",
-            name: undefined,
           },
         };
       },
@@ -1203,8 +1201,8 @@ describe("the file-backed TokenStorage", () => {
     const manager = makeManager({
       fetchSessionMetadata: async () => ({
         workspaceName: "Workspace A",
-        identity: {
-          userId: "usr_work",
+        user: {
+          id: "usr_work",
           email: "developer@prisma.io",
           name: "Prisma Developer",
         },

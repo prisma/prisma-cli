@@ -202,7 +202,7 @@ function normalizeSession(session: StoredSession): StoredSession {
   };
 }
 
-function normalizeStoredSessionUser(
+export function normalizeStoredSessionUser(
   value: unknown,
 ): StoredSessionUser | undefined {
   if (typeof value !== "object" || value === null || Array.isArray(value)) {

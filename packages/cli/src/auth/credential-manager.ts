@@ -26,6 +26,7 @@ import {
   type DebugLog,
   EMPTY_STATE,
   makeDebugLog,
+  normalizeStoredSessionUser,
   readCredentialState,
   resolveStateFilePath,
   type StoredSession,
@@ -47,7 +48,7 @@ const NO_WORKSPACE_CLAIMED = "(no workspace)";
 
 type SessionMetadata = {
   readonly workspaceName?: string | undefined;
-  readonly identity?: CredentialIdentity | undefined;
+  readonly user?: StoredSessionUser | undefined;
 };
 
 /** Looks up workspace and safe account metadata in one request.
@@ -84,9 +85,7 @@ export async function sessionsForDisplay(
 export function sessionIdentity(
   session: Session,
 ): CredentialIdentity | undefined {
-  return isAccountSession(session)
-    ? normalizedIdentity(session.identity)
-    : undefined;
+  return isAccountSession(session) ? session.identity : undefined;
 }
 
 function isAccountSession(session: Session): session is AccountSession {
@@ -249,10 +248,7 @@ export class FileCredentialManager implements CredentialManager {
           return session;
         }
         const name = session.name ?? fetchedSession.metadata?.workspaceName;
-        const identity = fetchedSession.metadata?.identity;
-        const user =
-          session.user ??
-          (identity === undefined ? undefined : storedUser(identity));
+        const user = session.user ?? fetchedSession.metadata?.user;
         if (name === session.name && user === session.user) return session;
         changed = true;
         return { ...session, name, user };
@@ -303,7 +299,7 @@ export class FileCredentialManager implements CredentialManager {
       this.#actAs({ kind: "session", workspaceId });
     }
 
-    const { workspaceName: name, identity } =
+    const { workspaceName: name, user } =
       (await this.#lookUpSessionMetadata(credential)) ?? {};
     return this.#mutate((state) => {
       const record = state.sessions.find(
@@ -316,14 +312,14 @@ export class FileCredentialManager implements CredentialManager {
       }
       if (
         record.token !== credential.token ||
-        (name === undefined && identity === undefined)
+        (name === undefined && user === undefined)
       ) {
         return { result: toSession(record) };
       }
       const enriched: StoredSession = {
         ...record,
         ...(name === undefined ? {} : { name }),
-        ...(identity === undefined ? {} : { user: storedUser(identity) }),
+        ...(user === undefined ? {} : { user }),
       };
       const next: CredentialState = {
         ...state,
@@ -622,12 +618,10 @@ export class FileCredentialManager implements CredentialManager {
     if (this.#fetchSessionMetadata === undefined) return undefined;
     try {
       const metadata = await this.#fetchSessionMetadata(credential);
-      const workspaceName = normalizedString(metadata?.workspaceName);
-      const identity = normalizedIdentity(metadata?.identity);
-      if (workspaceName === undefined && identity === undefined) {
-        return undefined;
-      }
-      return { workspaceName, identity };
+      const workspaceName = metadata?.workspaceName?.trim() || undefined;
+      const user = normalizeStoredSessionUser(metadata?.user);
+      if (workspaceName === undefined && user === undefined) return undefined;
+      return { workspaceName, user };
     } catch {
       return undefined;
     }
@@ -748,32 +742,6 @@ function storedIdentity(record: StoredSession): CredentialIdentity | undefined {
   return user === undefined
     ? claimedIdentity(record.token)
     : { userId: user.id, email: user.email, name: user.name };
-}
-
-function storedUser(identity: CredentialIdentity): StoredSessionUser {
-  return {
-    ...(identity.userId === undefined ? {} : { id: identity.userId }),
-    ...(identity.email === undefined ? {} : { email: identity.email }),
-    ...(identity.name === undefined ? {} : { name: identity.name }),
-  };
-}
-
-function normalizedIdentity(
-  identity: CredentialIdentity | undefined,
-): CredentialIdentity | undefined {
-  if (identity === undefined) return undefined;
-  const userId = normalizedString(identity.userId);
-  const email = normalizedString(identity.email);
-  const name = normalizedString(identity.name);
-  if (userId === undefined && email === undefined && name === undefined) {
-    return undefined;
-  }
-  return { userId, email, name };
-}
-
-function normalizedString(value: string | undefined): string | undefined {
-  const trimmed = value?.trim();
-  return trimmed ? trimmed : undefined;
 }
 
 /** An environment token whose claims name no workspace reports no

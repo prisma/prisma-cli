@@ -16,11 +16,11 @@ export function fetchSessionMetadata(apiBaseUrl: string): FetchSessionMetadata {
     const { user, workspace } = data.data;
     return {
       workspaceName: workspace?.name ?? undefined,
-      identity: user
+      user: user
         ? {
-            userId: user.id ?? undefined,
-            email: user.email ?? undefined,
-            name: user.name ?? undefined,
+            id: user.id,
+            email: user.email,
+            ...(user.name ? { name: user.name } : {}),
           }
         : undefined,
     };

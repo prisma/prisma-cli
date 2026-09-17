@@ -28,8 +28,8 @@ describe("login session metadata", () => {
 
     expect(metadata).toEqual({
       workspaceName: "Acme Inc",
-      identity: {
-        userId: "usr_456",
+      user: {
+        id: "usr_456",
         email: "dev@example.com",
         name: "Dev",
       },
@@ -52,7 +52,7 @@ describe("login session metadata", () => {
 
     expect(await fetchSessionMetadata(api.baseUrl)(CREDENTIAL)).toEqual({
       workspaceName: "Acme Inc",
-      identity: undefined,
+      user: undefined,
     });
     expect(api.requests).toEqual(["GET /v1/me"]);
   });

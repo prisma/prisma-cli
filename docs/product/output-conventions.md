@@ -197,60 +197,31 @@ No current MVP command uses `verify` or `inspect`, but new commands must still c
 
 ### Workspace session identity
 
-An OAuth login authorizes one workspace and stores one local workspace session.
-Running `auth login` again may add another session, including a session owned by
-a different Prisma user. Therefore, `auth workspace list` describes the
-workspace sessions authorized on this machine; it must not present them as the
-complete list of workspaces visible in Console for the currently selected user.
+Each `auth login` authorizes one workspace and stores one local session. Two
+sessions can belong to different Prisma users. `auth workspace list` shows the
+sessions authorized on this machine. It is not the full list of workspaces the
+user can see in Console.
 
-At login, the CLI resolves the workspace name and authorizing user in one
-`/v1/me` request and persists the name and safe user id, email, and name
-alongside the session. This lookup is best-effort and times out after three
-seconds without failing login. Existing state remains compatible; when
-stored metadata is unavailable, the CLI falls back to identity claims in the
-access token. Session-list and session-selection commands fill missing workspace
-names and account metadata for older records without replacing known values.
-Successful results are cached. Logout uses only locally stored metadata and
-never waits for a metadata request. Ordinary `sessions()` reads remain local-only.
-
-The CLI sends no metadata request that cannot succeed. It skips a session whose
-access token has expired, because the API rejects that token. It skips the user
-lookup for a token that belongs to a workspace and not to a user.
-
-Metadata lookups must not overwrite a session replaced during the lookup.
-Login returns the session still stored when the lookup finishes, even when no
-metadata was found. If another process ended that session, login reports the
-existing session-ended `CLI.CREDENTIALS_REQUIRED` error instead of success.
-
-Human workspace-session output shows the user email next to every workspace
-when one is known. Selection prompts use the same identity so a user can
-distinguish same-named workspaces and sessions belonging to different
-accounts. When no email is known, output falls back to the user's name and then
-id. Tables render the standard unknown-value marker when no user identity is
-available, while selection prompts omit an identity they do not know.
+Human output shows the user next to every workspace session: the email when it
+is known, then the name, then the id. Selection prompts show the same identity.
+A table renders the standard unknown-value marker when no identity is known,
+and a prompt leaves it out.
 
 The plain stdout rows of `auth workspace list` keep their columns: workspace,
 id, status. Scripts read those columns by position, and the user is optional,
 so the user appears only in the table and in the structured output.
 
-Structured workspace-session output includes a nullable `user` object on every
-item. Its `context.scope` is `"local-sessions"`, making it explicit that the
-collection is not a complete remote membership list:
+Structured output carries a nullable `user` object on every item, and
+`context.scope` is `"local-sessions"`:
 
 ```json
 {
-  "context": {
-    "scope": "local-sessions"
-  },
+  "context": { "scope": "local-sessions" },
   "items": [
     {
       "workspaceId": "workspace_123",
       "workspaceName": "Acme Inc",
-      "user": {
-        "id": "usr_123",
-        "email": "developer@example.com",
-        "name": null
-      },
+      "user": { "id": "usr_123", "email": "developer@example.com", "name": null },
       "current": true,
       "expiresAt": "2026-08-19T09:10:49.000Z"
     }
@@ -258,11 +229,14 @@ collection is not a complete remote membership list:
 }
 ```
 
-The `user` object is `null` when neither stored metadata nor token claims carry
-a user identity. Individual user fields use `null` when unavailable. Token
-material never reaches either output mode. `auth workspace list` always offers
-`auth login` as the structured next action: it authorizes the first workspace
-when the list is empty and another workspace when sessions already exist.
+`user` is `null` when neither stored metadata nor token claims name a user. A
+user field is `null` when it is unknown. Tokens never appear in any output.
+`auth workspace list` always offers `auth login` as the next action.
+
+The CLI reads the workspace name and the user from one best-effort `/v1/me`
+request at login and stores them with the session. Sessions saved before this
+existed get the same lookup once, from `auth workspace list` and
+`auth workspace use`. Logout never waits for a lookup.
 
 ### One-Time Secret Output
 
