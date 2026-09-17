@@ -401,6 +401,8 @@ export interface ServerCommandDefinition<
       readonly cwd: string;
       readonly env: Readonly<Record<string, string | undefined>>;
       readonly config: TConfig;
+      /** The config file the run read, absolute; see CommandContext. */
+      readonly configFile: string | null;
     },
   ) => Promise<number>;
 }

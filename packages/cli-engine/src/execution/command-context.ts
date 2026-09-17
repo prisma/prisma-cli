@@ -123,6 +123,7 @@ export function makeContext(
   invocation: Invocation,
   def: AnyCommand,
   config: unknown,
+  configFile: string | null,
   capabilities: CommandCapabilities,
 ): CommandContext<unknown, number> {
   const state = invocation.state;
@@ -164,6 +165,7 @@ export function makeContext(
   let api: ManagementApiClient | undefined;
   const context: CommandContext<unknown, number> = {
     config,
+    configFile,
     present: present as CommandContext<unknown, number>["present"],
     activeCredential: (): Promise<ActiveCredential | null> =>
       invocation.runtime.credentialManager?.activeCredential() ??

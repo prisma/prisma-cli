@@ -1298,3 +1298,105 @@ describe("warnings on a successful section validation", {
     expect(run.stderr).toBe("✔ hi\n");
   });
 });
+
+/**
+ * A relative path inside a config file means "relative to this file",
+ * and a handler can only honour that if it knows which file was read.
+ * The path is absolute whatever the host's loader reported, because a
+ * handler anchoring on its directory must not depend on the loader.
+ */
+describe("ctx.configFile", { timeout: 60_000 }, () => {
+  function probeCommand(section: ConfigSection<ToyConfig>) {
+    return defineCommand({
+      help: { summary: "Reports the config file the run read" },
+      needs: { config: section },
+      handler: async (_args, ctx) =>
+        ok(
+          ctx.present(
+            { data: { configFile: ctx.configFile } },
+            {
+              human: () => [],
+              stdout: () => [],
+              json: () => ({ configFile: ctx.configFile }),
+              next: () => [],
+            },
+          ),
+        ),
+    });
+  }
+
+  function probingCli(loader: Runtime["loadConfig"]) {
+    return createTestCli({
+      commands: { probe: probeCommand(toySection()) },
+      loadConfig: loader,
+    });
+  }
+
+  test("a --config path given relative to cwd arrives absolute", async () => {
+    const cli = probingCli((request) => loadConfig(FIXTURES, request));
+    const run = await cli.run(
+      ["probe", "--config", join("named", "elsewhere.config.ts")],
+      { cwd: FIXTURES },
+    );
+    expect(run.exitCode).toBe(0);
+    expect(run.presented?.data).toEqual({
+      configFile: join(FIXTURES, "named", "elsewhere.config.ts"),
+    });
+  });
+
+  test("without the flag it is the discovered prisma.config.ts in cwd", async () => {
+    const cwd = join(FIXTURES, "discovered");
+    const cli = probingCli((request) => loadConfig(cwd, request));
+    const run = await cli.run(["probe"], { cwd });
+    expect(run.exitCode).toBe(0);
+    expect(run.presented?.data).toEqual({
+      configFile: join(cwd, "prisma.config.ts"),
+    });
+  });
+
+  test("a host loader that reports a relative path is resolved against cwd", async () => {
+    const cli = probingCli(async (configPath) => ({
+      path: configPath ?? "prisma.config.ts",
+      sections: { toy: { greeting: "hi" } },
+      diagnostics: [],
+    }));
+    const run = await cli.run(["probe", "--config", "other.config.ts"], {
+      cwd: "/somewhere/project",
+    });
+    expect(run.exitCode).toBe(0);
+    expect(run.presented?.data).toEqual({
+      configFile: "/somewhere/project/other.config.ts",
+    });
+  });
+
+  test("a command with no config need gets null", async () => {
+    const asked: (string | undefined)[] = [];
+    const cli = createTestCli({
+      commands: {
+        probe: defineCommand({
+          help: { summary: "Reports the config file the run read" },
+          handler: async (_args, ctx) =>
+            ok(
+              ctx.present(
+                { data: { configFile: ctx.configFile }, exitCode: 0 },
+                {
+                  human: () => [],
+                  stdout: () => [],
+                  json: () => ({ configFile: ctx.configFile }),
+                  next: () => [],
+                },
+              ),
+            ),
+        }),
+      },
+      loadConfig: async (configPath) => {
+        asked.push(configPath);
+        return { path: "prisma.config.ts", sections: {}, diagnostics: [] };
+      },
+    });
+    const run = await cli.run(["probe", "--config", "other.config.ts"]);
+    expect(run.exitCode).toBe(0);
+    expect(run.presented?.data).toEqual({ configFile: null });
+    expect(asked).toEqual([]);
+  });
+});

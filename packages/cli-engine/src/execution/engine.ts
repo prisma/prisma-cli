@@ -275,6 +275,7 @@ type ErasedServerHandler = (
     readonly cwd: string;
     readonly env: Readonly<Record<string, string | undefined>>;
     readonly config: unknown;
+    readonly configFile: string | null;
   },
 ) => Promise<number>;
 
@@ -660,6 +661,7 @@ export class EngineImpl implements Engine {
       invocation,
       entry.def,
       needsOutcome.config,
+      needsOutcome.configFile,
       declaredCapabilities(entry.def),
     );
     if (entry.def.kind === "session-command") {
@@ -744,6 +746,7 @@ export class EngineImpl implements Engine {
         cwd: runtime.cwd,
         env: runtime.env,
         config: needsOutcome.config,
+        configFile: needsOutcome.configFile,
       });
       if (!Number.isInteger(exitCode) || exitCode < 0 || exitCode > 255) {
         settleBug(
