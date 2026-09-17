@@ -25,6 +25,7 @@ import { authWhoamiCommand } from "../src/commands/auth/whoami";
 import { authWorkspaceListCommand } from "../src/commands/auth/workspace-list";
 import { authWorkspaceLogoutCommand } from "../src/commands/auth/workspace-logout";
 import { authWorkspaceUseCommand } from "../src/commands/auth/workspace-use";
+import { attachAccountMetadata } from "./helpers/account-aware-credential-manager";
 
 vi.mock("../src/auth/operations", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../src/auth/operations")>()),
@@ -110,10 +111,11 @@ function makeCli(spec?: {
   readonly client?: ManagementApiClient;
   readonly openUrl?: (url: string) => void;
 }) {
-  return createTestCli({
+  const sessions = spec?.sessions ?? [];
+  const cli = createTestCli({
     commands: COMMANDS,
     groups: GROUPS,
-    sessions: spec?.sessions ?? [],
+    sessions,
     selectedWorkspaceId: spec?.selectedWorkspaceId,
     environmentCredential:
       spec?.environmentToken === undefined
@@ -123,6 +125,10 @@ function makeCli(spec?: {
     openUrl: spec?.openUrl,
     now: () => new Date(0),
   });
+  if (cli.credentialManager !== undefined) {
+    attachAccountMetadata(cli.credentialManager, sessions);
+  }
+  return cli;
 }
 
 type ResultFrame = {

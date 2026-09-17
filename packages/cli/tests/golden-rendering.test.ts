@@ -24,6 +24,7 @@ import { authLogoutCommand } from "../src/commands/auth/logout";
 import { authWorkspaceListCommand } from "../src/commands/auth/workspace-list";
 import { authWorkspaceLogoutCommand } from "../src/commands/auth/workspace-logout";
 import { bucketKeyCreateCommand } from "../src/commands/bucket/key-create";
+import { attachAccountMetadata } from "./helpers/account-aware-credential-manager";
 
 function record(workspaceId: string, workspaceName: string): SessionRecord {
   return {
@@ -46,7 +47,7 @@ function makeCli(
   current?: string,
   client?: ManagementApiClient,
 ) {
-  return createTestCli({
+  const cli = createTestCli({
     commands: {
       "auth logout": authLogoutCommand,
       "auth workspace list": authWorkspaceListCommand,
@@ -64,6 +65,10 @@ function makeCli(
     ...(client === undefined ? {} : { managementApi: { client } }),
     now: () => new Date(0),
   });
+  if (cli.credentialManager !== undefined) {
+    attachAccountMetadata(cli.credentialManager, sessions);
+  }
+  return cli;
 }
 
 const CREATED_KEY = {

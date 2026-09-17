@@ -51,7 +51,6 @@ function fakeCredentialManager(
   return {
     activeCredential: unusedManagerMethod("activeCredential"),
     sessions: unusedManagerMethod("sessions"),
-    enrichSessions: unusedManagerMethod("enrichSessions"),
     createSession: unusedManagerMethod("createSession"),
     selectSession: unusedManagerMethod("selectSession"),
     endSession: unusedManagerMethod("endSession"),
@@ -74,7 +73,6 @@ const storedSessions = (...workspaceIds: readonly string[]) => ({
   sessions: workspaceIds.map((workspaceId) => ({
     workspaceId,
     workspaceName: undefined,
-    identity: undefined,
     expiresAt: undefined,
   })),
   selectedWorkspaceId: workspaceIds[0],

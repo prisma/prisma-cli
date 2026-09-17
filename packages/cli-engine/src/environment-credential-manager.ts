@@ -76,10 +76,6 @@ export class EnvironmentCredentialManager implements CredentialManager {
     return { sessions: [], selectedWorkspaceId: undefined };
   }
 
-  async enrichSessions(): Promise<StoredSessions> {
-    return this.sessions();
-  }
-
   async createSession(
     _credential: Credential,
     _workspaceId: string,

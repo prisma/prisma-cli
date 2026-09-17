@@ -56,6 +56,51 @@ export type FetchSessionMetadata = (
   credential: Pick<Credential, "token">,
 ) => Promise<SessionMetadata | undefined>;
 
+export type AccountSession = Session & {
+  readonly identity: CredentialIdentity | undefined;
+};
+
+export interface AccountStoredSessions {
+  readonly sessions: readonly AccountSession[];
+  readonly selectedWorkspaceId: string | undefined;
+}
+
+interface AccountAwareCredentialManager extends CredentialManager {
+  enrichSessions(): Promise<AccountStoredSessions>;
+}
+
+/** Session display metadata is a CLI concern, not part of the shared engine
+ *  contract. FileCredentialManager provides it; other managers degrade to the
+ *  standard local session shape without inventing an account identity. */
+export async function sessionsForDisplay(
+  manager: CredentialManager,
+): Promise<StoredSessions> {
+  if (isAccountAwareCredentialManager(manager)) {
+    return manager.enrichSessions();
+  }
+  return manager.sessions();
+}
+
+export function sessionIdentity(
+  session: Session,
+): CredentialIdentity | undefined {
+  return isAccountSession(session)
+    ? normalizedIdentity(session.identity)
+    : undefined;
+}
+
+function isAccountSession(session: Session): session is AccountSession {
+  return "identity" in session;
+}
+
+function isAccountAwareCredentialManager(
+  manager: CredentialManager,
+): manager is AccountAwareCredentialManager {
+  return (
+    "enrichSessions" in manager && typeof manager.enrichSessions === "function"
+  );
+}
+
 export interface FileCredentialManagerOptions {
   readonly env: Readonly<Record<string, string | undefined>>;
   readonly fetchSessionMetadata?: FetchSessionMetadata;
@@ -165,12 +210,12 @@ export class FileCredentialManager implements CredentialManager {
     return storedCredential(record);
   }
 
-  async sessions(): Promise<StoredSessions> {
+  async sessions(): Promise<AccountStoredSessions> {
     const state = await readCredentialState(this.#filePath);
     return storedSessions(state);
   }
 
-  async enrichSessions(): Promise<StoredSessions> {
+  async enrichSessions(): Promise<AccountStoredSessions> {
     if (this.#fetchSessionMetadata === undefined) return this.sessions();
     const state = await readCredentialState(this.#filePath);
     const now = Date.now();
@@ -221,7 +266,7 @@ export class FileCredentialManager implements CredentialManager {
   async createSession(
     credential: Credential,
     workspaceId: string,
-  ): Promise<Session> {
+  ): Promise<AccountSession> {
     const environmentInForce = this.#environmentToken() !== undefined;
     const claimed = credentialWorkspaceId(credential.token);
     if (claimed !== undefined && claimed !== workspaceId) {
@@ -290,7 +335,7 @@ export class FileCredentialManager implements CredentialManager {
     });
   }
 
-  async selectSession(workspaceId: string): Promise<Session> {
+  async selectSession(workspaceId: string): Promise<AccountSession> {
     const environmentInForce = this.#environmentToken() !== undefined;
 
     const selected = await this.#mutate((state) => {
@@ -670,14 +715,14 @@ function lacksFetchableMetadata(session: StoredSession, now: number): boolean {
   );
 }
 
-function storedSessions(state: CredentialState): StoredSessions {
+function storedSessions(state: CredentialState): AccountStoredSessions {
   return {
     sessions: state.sessions.map((record) => toSession(record)),
     selectedWorkspaceId: resolvedMarker(state) ?? undefined,
   };
 }
 
-function toSession(record: StoredSession): Session {
+function toSession(record: StoredSession): AccountSession {
   return {
     workspaceId: record.workspaceId,
     workspaceName: record.name,
