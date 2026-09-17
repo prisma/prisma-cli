@@ -45,18 +45,16 @@ type RefreshLock = <T>(fn: () => Promise<T>) => Promise<T>;
  *  never leaves the manager, and it is never the empty string. */
 const NO_WORKSPACE_CLAIMED = "(no workspace)";
 
-/** Looks the workspace's name up with the credential that was just
- *  minted. Best-effort: the manager treats any failure as "no name". */
-export type FetchWorkspaceName = (
-  credential: Credential,
-  workspaceId: string,
-) => Promise<string | undefined>;
+type SessionMetadata = {
+  readonly workspaceName?: string | undefined;
+  readonly identity?: CredentialIdentity | undefined;
+};
 
-/** Looks up safe account metadata for the credential that was just minted.
+/** Looks up workspace and safe account metadata in one request.
  *  Best-effort: a failed lookup never prevents the session from being saved. */
-export type FetchSessionIdentity = (
+export type FetchSessionMetadata = (
   credential: Pick<Credential, "token">,
-) => Promise<CredentialIdentity | undefined>;
+) => Promise<SessionMetadata | undefined>;
 
 export type AccountSession = Session & {
   readonly identity: CredentialIdentity | undefined;
@@ -99,8 +97,7 @@ function isAccountAwareCredentialManager(
 
 export interface FileCredentialManagerOptions {
   readonly env: Readonly<Record<string, string | undefined>>;
-  readonly fetchWorkspaceName?: FetchWorkspaceName;
-  readonly fetchSessionIdentity?: FetchSessionIdentity;
+  readonly fetchSessionMetadata?: FetchSessionMetadata;
   readonly refreshCredential?: CredentialRefresher;
   readonly debugWrite?: (text: string) => void;
 }
@@ -162,8 +159,7 @@ export class FileCredentialManager implements CredentialManager {
   readonly #env: Readonly<Record<string, string | undefined>>;
   readonly #filePath: string;
   readonly #debug: DebugLog;
-  readonly #fetchWorkspaceName: FetchWorkspaceName | undefined;
-  readonly #fetchSessionIdentity: FetchSessionIdentity | undefined;
+  readonly #fetchSessionMetadata: FetchSessionMetadata | undefined;
   readonly #refreshCredential: CredentialRefresher | undefined;
   #actingAs: ActingAs = { kind: "unresolved" };
   /** Built for the credential the process acts as. Every mutation that
@@ -177,8 +173,7 @@ export class FileCredentialManager implements CredentialManager {
     this.#env = options.env;
     this.#filePath = resolveStateFilePath(options.env).filePath;
     this.#debug = makeDebugLog(options.env, options.debugWrite);
-    this.#fetchWorkspaceName = options.fetchWorkspaceName;
-    this.#fetchSessionIdentity = options.fetchSessionIdentity;
+    this.#fetchSessionMetadata = options.fetchSessionMetadata;
     this.#refreshCredential = options.refreshCredential;
     this.#debug(`state file ${this.#filePath}`);
   }
@@ -215,7 +210,7 @@ export class FileCredentialManager implements CredentialManager {
   }
 
   async enrichSessions(): Promise<AccountStoredSessions> {
-    if (this.#fetchSessionIdentity === undefined) return this.sessions();
+    if (this.#fetchSessionMetadata === undefined) return this.sessions();
     const state = await readCredentialState(this.#filePath);
     const candidates = state.sessions.filter(
       (session) => session.user === undefined,
@@ -226,7 +221,7 @@ export class FileCredentialManager implements CredentialManager {
       candidates.map(async (session) => ({
         workspaceId: session.workspaceId,
         token: session.token,
-        identity: await this.#lookUpSessionIdentity(session),
+        identity: (await this.#lookUpSessionMetadata(session))?.identity,
       })),
     );
     const byWorkspaceId = new Map(
@@ -301,10 +296,8 @@ export class FileCredentialManager implements CredentialManager {
       this.#actAs({ kind: "session", workspaceId });
     }
 
-    const [name, identity] = await Promise.all([
-      this.#lookUpWorkspaceName(credential, workspaceId),
-      this.#lookUpSessionIdentity(credential),
-    ]);
+    const { workspaceName: name, identity } =
+      (await this.#lookUpSessionMetadata(credential)) ?? {};
     return this.#mutate((state) => {
       const record = state.sessions.find(
         (session) => session.workspaceId === workspaceId,
@@ -619,25 +612,16 @@ export class FileCredentialManager implements CredentialManager {
     );
   }
 
-  async #lookUpWorkspaceName(
-    credential: Credential,
-    workspaceId: string,
-  ): Promise<string | undefined> {
-    if (this.#fetchWorkspaceName === undefined) return undefined;
-    try {
-      const name = await this.#fetchWorkspaceName(credential, workspaceId);
-      return name?.trim() ? name.trim() : undefined;
-    } catch {
-      return undefined;
-    }
-  }
-
-  async #lookUpSessionIdentity(
+  async #lookUpSessionMetadata(
     credential: Pick<Credential, "token">,
-  ): Promise<CredentialIdentity | undefined> {
-    if (this.#fetchSessionIdentity === undefined) return undefined;
+  ): Promise<SessionMetadata | undefined> {
+    if (this.#fetchSessionMetadata === undefined) return undefined;
     try {
-      return normalizedIdentity(await this.#fetchSessionIdentity(credential));
+      const metadata = await this.#fetchSessionMetadata(credential);
+      return {
+        workspaceName: normalizedString(metadata?.workspaceName),
+        identity: normalizedIdentity(metadata?.identity),
+      };
     } catch {
       return undefined;
     }

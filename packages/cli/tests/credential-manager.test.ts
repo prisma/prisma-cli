@@ -19,7 +19,7 @@ import { mintTestJwt } from "@prisma/cli-engine/testing";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
-  type FetchSessionIdentity,
+  type FetchSessionMetadata,
   FileCredentialManager,
 } from "../src/auth/credential-manager";
 import { readCredentialState } from "../src/auth/state-file";
@@ -89,19 +89,14 @@ function credentialFor(workspaceId: string, refreshToken = "refresh-1") {
 function makeManager(
   options: {
     env?: Record<string, string | undefined>;
-    fetchWorkspaceName?: (
-      credential: { token: string },
-      workspaceId: string,
-    ) => Promise<string | undefined>;
-    fetchSessionIdentity?: FetchSessionIdentity;
+    fetchSessionMetadata?: FetchSessionMetadata;
     refreshCredential?: CredentialRefresher;
     debugWrite?: (text: string) => void;
   } = {},
 ) {
   return new FileCredentialManager({
     env: { PRISMA_AUTH_FILE: stateFilePath, ...options.env },
-    fetchWorkspaceName: options.fetchWorkspaceName,
-    fetchSessionIdentity: options.fetchSessionIdentity,
+    fetchSessionMetadata: options.fetchSessionMetadata,
     refreshCredential: options.refreshCredential,
     debugWrite: options.debugWrite,
   });
@@ -802,10 +797,13 @@ describe("the environment credential", () => {
 describe("createSession", () => {
   it("persists and exposes the authorizing account without exposing token material", async () => {
     const manager = makeManager({
-      fetchSessionIdentity: async () => ({
-        userId: "usr_work",
-        email: "developer@prisma.io",
-        name: "Prisma Developer",
+      fetchSessionMetadata: async () => ({
+        workspaceName: " Workspace A ",
+        identity: {
+          userId: "usr_work",
+          email: "developer@prisma.io",
+          name: "Prisma Developer",
+        },
       }),
     });
     const credential = {
@@ -819,6 +817,7 @@ describe("createSession", () => {
     const created = await manager.createSession(credential, WORKSPACE_A);
     const listed = (await manager.sessions()).sessions[0];
 
+    expect(created.workspaceName).toBe("Workspace A");
     expect(created.identity).toEqual({
       userId: "usr_work",
       email: "developer@prisma.io",
@@ -838,7 +837,7 @@ describe("createSession", () => {
 
   it("falls back to credential claims when account enrichment fails", async () => {
     const manager = makeManager({
-      fetchSessionIdentity: async () => {
+      fetchSessionMetadata: async () => {
         throw new Error("offline");
       },
     });
@@ -851,6 +850,7 @@ describe("createSession", () => {
       WORKSPACE_A,
     );
 
+    expect(session.workspaceName).toBeUndefined();
     expect(session.identity).toEqual({
       userId: "user:claimed",
       email: undefined,
@@ -869,16 +869,16 @@ describe("createSession", () => {
     expect(await readRawState()).toBeNull();
   });
 
-  it("holds no lock while the workspace name is fetched", async () => {
+  it("holds no lock while session metadata is fetched", async () => {
     let releaseFetch: () => void = () => {};
     const fetchStarted = new Promise<void>((resolve) => {
       const manager = makeManager({
-        fetchWorkspaceName: async () => {
+        fetchSessionMetadata: async () => {
           resolve();
           await new Promise<void>((done) => {
             releaseFetch = done;
           });
-          return "Workspace A";
+          return { workspaceName: "Workspace A" };
         },
       });
       void manager.createSession(credentialFor(WORKSPACE_A), WORKSPACE_A);
@@ -902,19 +902,6 @@ describe("createSession", () => {
     ]);
   });
 
-  it("keeps login working when the name lookup fails", async () => {
-    const manager = makeManager({
-      fetchWorkspaceName: async () => {
-        throw new Error("offline");
-      },
-    });
-    const session = await manager.createSession(
-      credentialFor(WORKSPACE_A),
-      WORKSPACE_A,
-    );
-    expect(session.workspaceName).toBeUndefined();
-  });
-
   it.each([
     true,
     false,
@@ -925,12 +912,12 @@ describe("createSession", () => {
       markFetchStarted = resolve;
     });
     const manager = makeManager({
-      fetchWorkspaceName: async () => {
+      fetchSessionMetadata: async () => {
         markFetchStarted();
         await new Promise<void>((done) => {
           releaseFetch = done;
         });
-        return hasMetadata ? "Workspace A" : undefined;
+        return hasMetadata ? { workspaceName: "Workspace A" } : undefined;
       },
     });
     const login = manager.createSession(
@@ -960,16 +947,19 @@ describe("createSession", () => {
       markFetchStarted = resolve;
     });
     const first = makeManager({
-      fetchSessionIdentity: async () => {
+      fetchSessionMetadata: async () => {
         markFetchStarted();
         await new Promise<void>((resolve) => {
           releaseFetch = resolve;
         });
         return hasMetadata
           ? {
-              userId: "usr_first",
-              email: "first@example.com",
-              name: undefined,
+              workspaceName: "Stale Workspace",
+              identity: {
+                userId: "usr_first",
+                email: "first@example.com",
+                name: undefined,
+              },
             }
           : undefined;
       },
@@ -998,6 +988,7 @@ describe("createSession", () => {
     const state = await readCredentialState(stateFilePath);
     expect(state.sessions[0]).toMatchObject({ refreshToken: "refresh-second" });
     expect(state.sessions[0]?.user).toBeUndefined();
+    expect(state.sessions[0]?.name).toBeUndefined();
     expect((await makeManager().sessions()).sessions[0]?.identity?.userId).toBe(
       "user:second",
     );
@@ -1005,7 +996,7 @@ describe("createSession", () => {
 
   it("upserts by workspace id, keeping the stored name and moving the marker", async () => {
     const manager = makeManager({
-      fetchWorkspaceName: async () => "Workspace A",
+      fetchSessionMetadata: async () => ({ workspaceName: "Workspace A" }),
     });
     await manager.createSession(credentialFor(WORKSPACE_A), WORKSPACE_A);
     await manager.createSession(credentialFor(WORKSPACE_B), WORKSPACE_B);
@@ -1035,12 +1026,14 @@ describe("enrichSessions", () => {
       },
       WORKSPACE_A,
     );
-    const fetchSessionIdentity = vi.fn(async () => ({
-      userId: "usr_work",
-      email: "developer@prisma.io",
-      name: "Prisma Developer",
+    const fetchSessionMetadata = vi.fn(async () => ({
+      identity: {
+        userId: "usr_work",
+        email: "developer@prisma.io",
+        name: "Prisma Developer",
+      },
     }));
-    const manager = makeManager({ fetchSessionIdentity });
+    const manager = makeManager({ fetchSessionMetadata });
 
     const first = await manager.enrichSessions();
     const second = await manager.enrichSessions();
@@ -1051,7 +1044,7 @@ describe("enrichSessions", () => {
       name: "Prisma Developer",
     });
     expect(second).toEqual(first);
-    expect(fetchSessionIdentity).toHaveBeenCalledTimes(1);
+    expect(fetchSessionMetadata).toHaveBeenCalledTimes(1);
     expect(
       (await readCredentialState(stateFilePath)).sessions[0]?.user,
     ).toEqual({
@@ -1071,7 +1064,7 @@ describe("enrichSessions", () => {
       WORKSPACE_A,
     );
     const manager = makeManager({
-      fetchSessionIdentity: async () => {
+      fetchSessionMetadata: async () => {
         throw new Error("offline");
       },
     });
@@ -1088,11 +1081,13 @@ describe("enrichSessions", () => {
 describe("the file-backed TokenStorage", () => {
   it("writes only the token fields on rotation and re-derives the expiry", async () => {
     const manager = makeManager({
-      fetchWorkspaceName: async () => "Workspace A",
-      fetchSessionIdentity: async () => ({
-        userId: "usr_work",
-        email: "developer@prisma.io",
-        name: "Prisma Developer",
+      fetchSessionMetadata: async () => ({
+        workspaceName: "Workspace A",
+        identity: {
+          userId: "usr_work",
+          email: "developer@prisma.io",
+          name: "Prisma Developer",
+        },
       }),
     });
     await manager.createSession(credentialFor(WORKSPACE_A), WORKSPACE_A);

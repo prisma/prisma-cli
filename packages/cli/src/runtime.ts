@@ -16,10 +16,7 @@ import {
 } from "./auth/client";
 import { FileCredentialManager } from "./auth/credential-manager";
 import { makeCredentialRefresher } from "./auth/refresh";
-import {
-  fetchSessionIdentity,
-  fetchWorkspaceName,
-} from "./auth/session-metadata";
+import { fetchSessionMetadata } from "./auth/session-metadata";
 import {
   DEPRECATED_STATE_FILE_ENV_VAR,
   resolveStateFilePath,
@@ -141,8 +138,7 @@ export async function assembleRuntime(proc: HostProcess): Promise<Runtime> {
       loadConfig(proc.cwd(), configPath, getCliVersion()),
     credentialManager: new FileCredentialManager({
       env: proc.env,
-      fetchWorkspaceName: fetchWorkspaceName(apiBaseUrl),
-      fetchSessionIdentity: fetchSessionIdentity(apiBaseUrl),
+      fetchSessionMetadata: fetchSessionMetadata(apiBaseUrl),
       refreshCredential: makeCredentialRefresher(authBaseUrl),
     }),
     managementApiClientConfig: {

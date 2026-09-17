@@ -1,11 +1,8 @@
 import { afterEach, describe, expect, it } from "vitest";
 
+import { fetchSessionMetadata } from "../src/auth/session-metadata";
 import {
-  fetchSessionIdentity,
-  fetchWorkspaceName,
-} from "../src/auth/session-metadata";
-import {
-  FAKE_WORKSPACE_ID,
+  FAKE_WORKSPACE_API_ID,
   type FakeManagementApi,
   startFakeManagementApi,
 } from "./helpers/fake-management-api";
@@ -24,22 +21,39 @@ afterEach(async () => {
 });
 
 describe("login session metadata", () => {
-  it("resolves the workspace name and authorizing account through the API", async () => {
+  it("resolves the workspace name and authorizing account in one request", async () => {
     api = await startFakeManagementApi();
 
-    const [workspaceName, identity] = await Promise.all([
-      fetchWorkspaceName(api.baseUrl)(CREDENTIAL, FAKE_WORKSPACE_ID),
-      fetchSessionIdentity(api.baseUrl)(CREDENTIAL),
-    ]);
+    const metadata = await fetchSessionMetadata(api.baseUrl)(CREDENTIAL);
 
-    expect(workspaceName).toBe("Acme Inc");
-    expect(identity).toEqual({
-      userId: "usr_456",
-      email: "dev@example.com",
-      name: "Dev",
+    expect(metadata).toEqual({
+      workspaceName: "Acme Inc",
+      identity: {
+        userId: "usr_456",
+        email: "dev@example.com",
+        name: "Dev",
+      },
     });
-    expect([...api.requests].sort()).toEqual(
-      [`GET /v1/me`, `GET /v1/workspaces/${FAKE_WORKSPACE_ID}`].sort(),
-    );
+    expect(api.requests).toEqual(["GET /v1/me"]);
+  });
+
+  it("keeps the workspace name when a service credential has no user", async () => {
+    api = await startFakeManagementApi({
+      routes: {
+        "GET /v1/me": () => ({
+          data: {
+            user: null,
+            workspace: { id: FAKE_WORKSPACE_API_ID, name: "Acme Inc" },
+            credential: { type: "service", id: "skey_123", name: "CI" },
+          },
+        }),
+      },
+    });
+
+    expect(await fetchSessionMetadata(api.baseUrl)(CREDENTIAL)).toEqual({
+      workspaceName: "Acme Inc",
+      identity: undefined,
+    });
+    expect(api.requests).toEqual(["GET /v1/me"]);
   });
 });

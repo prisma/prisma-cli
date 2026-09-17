@@ -192,9 +192,9 @@ a different Prisma user. Therefore, `auth workspace list` describes the
 workspace sessions authorized on this machine; it must not present them as the
 complete list of workspaces visible in Console for the currently selected user.
 
-At login, the CLI resolves the authorizing user through `/v1/me` and persists
-only its safe id, email, and name alongside the session. This lookup is
-best-effort; both account and workspace-name requests time out after three
+At login, the CLI resolves the workspace name and authorizing user in one
+`/v1/me` request and persists the name and safe user id, email, and name
+alongside the session. This lookup is best-effort and times out after three
 seconds without failing login. Existing state remains compatible; when
 stored metadata is unavailable, the CLI falls back to identity claims in the
 access token. Session-list and session-selection commands also attempt this
