@@ -197,10 +197,10 @@ At login, the CLI resolves the workspace name and authorizing user in one
 alongside the session. This lookup is best-effort and times out after three
 seconds without failing login. Existing state remains compatible; when
 stored metadata is unavailable, the CLI falls back to identity claims in the
-access token. Session-list and session-selection commands also attempt this
-enrichment for older records and cache successful results. This is an explicit
-best-effort operation; the credential manager's ordinary `sessions()` read
-remains local-only.
+access token. Session-list and session-selection commands fill missing workspace
+names and account metadata for older records without replacing known values.
+Successful results are cached. Logout uses only locally stored metadata and
+never waits for a metadata request. Ordinary `sessions()` reads remain local-only.
 
 Metadata lookups must not overwrite a session replaced during the lookup.
 Login returns the session still stored when the lookup finishes, even when no

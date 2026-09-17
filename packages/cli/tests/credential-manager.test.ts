@@ -1017,8 +1017,10 @@ describe("createSession", () => {
 });
 
 describe("enrichSessions", () => {
-  it("backfills safe account metadata for an existing session", async () => {
-    await makeManager().createSession(
+  it("caches account metadata without replacing an existing workspace name", async () => {
+    await makeManager({
+      fetchSessionMetadata: async () => ({ workspaceName: "Saved name" }),
+    }).createSession(
       {
         token: mintToken(WORKSPACE_A, { sub: "user:legacy" }),
         refreshToken: "refresh-legacy",
@@ -1027,6 +1029,7 @@ describe("enrichSessions", () => {
       WORKSPACE_A,
     );
     const fetchSessionMetadata = vi.fn(async () => ({
+      workspaceName: "Different name",
       identity: {
         userId: "usr_work",
         email: "developer@prisma.io",
@@ -1038,6 +1041,7 @@ describe("enrichSessions", () => {
     const first = await manager.enrichSessions();
     const second = await manager.enrichSessions();
 
+    expect(first.sessions[0]?.workspaceName).toBe("Saved name");
     expect(first.sessions[0]?.identity).toEqual({
       userId: "usr_work",
       email: "developer@prisma.io",
@@ -1052,6 +1056,83 @@ describe("enrichSessions", () => {
       email: "developer@prisma.io",
       name: "Prisma Developer",
     });
+  });
+
+  it.each([
+    true,
+    false,
+  ])("persists name-only metadata (account already stored: %s)", async (hasAccount) => {
+    const identity = {
+      userId: "usr_work",
+      email: "developer@prisma.io",
+      name: "Prisma Developer",
+    };
+    await makeManager({
+      fetchSessionMetadata: async () => ({
+        identity: hasAccount ? identity : undefined,
+      }),
+    }).createSession(credentialFor(WORKSPACE_A), WORKSPACE_A);
+    const manager = makeManager({
+      fetchSessionMetadata: async () => ({ workspaceName: "Workspace A" }),
+    });
+
+    const enriched = await manager.enrichSessions();
+    const stored = await readCredentialState(stateFilePath);
+
+    expect(enriched.sessions[0]?.workspaceName).toBe("Workspace A");
+    expect(stored.sessions[0]?.name).toBe("Workspace A");
+    expect(stored.sessions[0]?.user).toEqual(
+      hasAccount
+        ? {
+            id: "usr_work",
+            email: "developer@prisma.io",
+            name: "Prisma Developer",
+          }
+        : undefined,
+    );
+  });
+
+  it("discards enrichment when another process replaces or removes a session", async () => {
+    await seedTwoSessions();
+    let markStarted: () => void = () => {};
+    let release: () => void = () => {};
+    const started = new Promise<void>((resolve) => {
+      markStarted = resolve;
+    });
+    const released = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const manager = makeManager({
+      fetchSessionMetadata: async () => {
+        markStarted();
+        await released;
+        return {
+          workspaceName: "Stale name",
+          identity: {
+            userId: "usr_stale",
+            email: "stale@example.com",
+            name: undefined,
+          },
+        };
+      },
+    });
+    const pending = manager.enrichSessions();
+    await started;
+    const other = makeManager();
+    await other.createSession(
+      {
+        ...credentialFor(WORKSPACE_A),
+        token: mintToken(WORKSPACE_A, { sub: "user:replacement" }),
+      },
+      WORKSPACE_A,
+    );
+    await other.endSession(WORKSPACE_B);
+    const current = await other.sessions();
+    const raw = await readRawState();
+    release();
+
+    expect(await pending).toEqual(current);
+    expect(await readRawState()).toBe(raw);
   });
 
   it("returns local sessions when metadata enrichment fails", async () => {

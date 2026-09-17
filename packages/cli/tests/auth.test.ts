@@ -717,11 +717,15 @@ describe("auth workspace use", () => {
 });
 
 describe("auth workspace logout", () => {
-  it("ends the named session and prints the workspace it ended", async () => {
+  it("ends the named session using local metadata without a network lookup", async () => {
     const cli = makeCli({
       sessions: [record("ws_1", "Acme Inc"), record("ws_2", "Globex")],
       selectedWorkspaceId: "ws_2",
     });
+    const enrichSessions = vi.fn(async () => {
+      throw new Error("Metadata lookup must not block logout");
+    });
+    Object.assign(cli.credentialManager, { enrichSessions });
 
     const result = await cli.run([
       "auth",
@@ -744,6 +748,7 @@ describe("auth workspace logout", () => {
     expect(
       cli.credentialManager?.state().sessions.map((s) => s.workspaceId),
     ).toEqual(["ws_2"]);
+    expect(enrichSessions).not.toHaveBeenCalled();
   });
 
   it("clears the current marker when the ended session was current", async () => {

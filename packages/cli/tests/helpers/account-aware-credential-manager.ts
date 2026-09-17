@@ -1,8 +1,4 @@
-import {
-  type CredentialManager,
-  claimedIdentity,
-  type Session,
-} from "@prisma/cli-engine";
+import { type CredentialManager, claimedIdentity } from "@prisma/cli-engine";
 import type { SessionRecord } from "@prisma/cli-engine/testing";
 
 import type { AccountStoredSessions } from "../../src/auth/credential-manager";
@@ -25,12 +21,13 @@ export function attachAccountMetadata(
   const selectSession = manager.selectSession.bind(manager);
 
   Object.assign(manager, {
-    enrichSessions: async (): Promise<AccountStoredSessions> => {
+    sessions: async (): Promise<AccountStoredSessions> => {
       const stored = await sessions();
       return {
-        sessions: stored.sessions.map((session) =>
-          withIdentity(session, identities.get(session.workspaceId)),
-        ),
+        sessions: stored.sessions.map((session) => ({
+          ...session,
+          identity: identities.get(session.workspaceId),
+        })),
         selectedWorkspaceId: stored.selectedWorkspaceId,
       };
     },
@@ -40,20 +37,13 @@ export function attachAccountMetadata(
       const session = await createSession(...args);
       const identity = claimedIdentity(args[0].token);
       identities.set(args[1], identity);
-      return withIdentity(session, identity);
+      return { ...session, identity };
     },
     selectSession: async (
       ...args: Parameters<CredentialManager["selectSession"]>
     ) => {
       const session = await selectSession(...args);
-      return withIdentity(session, identities.get(session.workspaceId));
+      return { ...session, identity: identities.get(session.workspaceId) };
     },
   });
-}
-
-function withIdentity(
-  session: Session,
-  identity: ReturnType<typeof claimedIdentity>,
-) {
-  return { ...session, identity };
 }

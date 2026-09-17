@@ -213,7 +213,7 @@ export class FileCredentialManager implements CredentialManager {
     if (this.#fetchSessionMetadata === undefined) return this.sessions();
     const state = await readCredentialState(this.#filePath);
     const candidates = state.sessions.filter(
-      (session) => session.user === undefined,
+      (session) => session.name === undefined || session.user === undefined,
     );
     if (candidates.length === 0) return storedSessions(state);
 
@@ -221,34 +221,34 @@ export class FileCredentialManager implements CredentialManager {
       candidates.map(async (session) => ({
         workspaceId: session.workspaceId,
         token: session.token,
-        identity: (await this.#lookUpSessionMetadata(session))?.identity,
+        metadata: await this.#lookUpSessionMetadata(session),
       })),
     );
+    if (fetched.every((result) => result.metadata === undefined)) {
+      return this.sessions();
+    }
     const byWorkspaceId = new Map(
-      fetched
-        .filter(
-          (
-            result,
-          ): result is typeof result & { identity: CredentialIdentity } =>
-            result.identity !== undefined,
-        )
-        .map((result) => [result.workspaceId, result] as const),
+      fetched.map((result) => [result.workspaceId, result]),
     );
-    if (byWorkspaceId.size === 0) return this.sessions();
 
     return this.#mutate((current) => {
       let changed = false;
       const sessions = current.sessions.map((session) => {
         const fetchedSession = byWorkspaceId.get(session.workspaceId);
         if (
-          session.user !== undefined ||
           fetchedSession === undefined ||
           fetchedSession.token !== session.token
         ) {
           return session;
         }
+        const name = session.name ?? fetchedSession.metadata?.workspaceName;
+        const identity = fetchedSession.metadata?.identity;
+        const user =
+          session.user ??
+          (identity === undefined ? undefined : storedUser(identity));
+        if (name === session.name && user === session.user) return session;
         changed = true;
-        return { ...session, user: storedUser(fetchedSession.identity) };
+        return { ...session, name, user };
       });
       if (!changed) return { result: storedSessions(current) };
       const next = { ...current, sessions };
@@ -579,9 +579,6 @@ export class FileCredentialManager implements CredentialManager {
     return token;
   }
 
-  /** A blank env token is an error state everywhere the environment
-   *  credential would be consulted, including the mutations that no
-   *  longer care whether a valid one is set. */
   /** A blank PRISMA_SERVICE_TOKEN is an error state everywhere the
    *  environment credential would be consulted, including the two
    *  mutations that do not otherwise read it. Reading is what raises;
@@ -618,10 +615,12 @@ export class FileCredentialManager implements CredentialManager {
     if (this.#fetchSessionMetadata === undefined) return undefined;
     try {
       const metadata = await this.#fetchSessionMetadata(credential);
-      return {
-        workspaceName: normalizedString(metadata?.workspaceName),
-        identity: normalizedIdentity(metadata?.identity),
-      };
+      const workspaceName = normalizedString(metadata?.workspaceName);
+      const identity = normalizedIdentity(metadata?.identity);
+      if (workspaceName === undefined && identity === undefined) {
+        return undefined;
+      }
+      return { workspaceName, identity };
     } catch {
       return undefined;
     }
