@@ -30,6 +30,9 @@ export type NeedsOutcome =
   | {
       readonly kind: "ok";
       readonly config: unknown;
+      /** The file the config came from, absolute; null when the command
+       *  has no config need and the file was never read. */
+      readonly configFile: string | null;
       /** The credential resolved for a `credentials: "child"` command,
        *  carried forward so the spawn path never re-resolves it. */
       readonly spawnCredential: ActiveCredential | undefined;
@@ -90,6 +93,7 @@ export async function checkNeeds(
   return {
     kind: "ok",
     config: undefined,
+    configFile: null,
     spawnCredential: credentials.spawnCredential,
   };
 }
@@ -270,18 +274,23 @@ async function checkConfiguration(
     loaded,
     invocation,
     configPath ?? CONFIG_FILE_NAME,
+    resolve(invocation.runtime.cwd, loaded.path),
   );
 }
 
 /** Validates the command's needed config section. The validator
  *  owns absence (it receives undefined when the section is missing) and
  *  never throws — a throw is an engine-boundary bug, settled as one.
- *  `configFile` is named in the error so a run under --config points at
- *  the file it actually read. */
+ *  `namedFile` is named in the error so a run under --config points at
+ *  the file it actually read; `configFile` is the same file made
+ *  absolute against cwd, which is what the handler anchors on — the
+ *  loader's own report is resolved because a host loader may hand back
+ *  the path exactly as `--config` gave it. */
 function validateConfigSection(
   section: ConfigSection<unknown>,
   loaded: LoadedConfig,
   invocation: Invocation,
+  namedFile: string,
   configFile: string,
 ): NeedsOutcome {
   const raw = loaded.sections[section.name];
@@ -301,7 +310,7 @@ function validateConfigSection(
     return needsErrored(
       new CliStructuredError(
         "CLI.CONFIG_SECTION_INVALID",
-        `The '${section.name}' section of ${configFile} is invalid.`,
+        `The '${section.name}' section of ${namedFile} is invalid.`,
         {
           nextActions: [
             {
@@ -316,7 +325,12 @@ function validateConfigSection(
     );
   }
   writeSectionWarnings(invocation, validation.diagnostics);
-  return { kind: "ok", config: validation.value, spawnCredential: undefined };
+  return {
+    kind: "ok",
+    config: validation.value,
+    configFile,
+    spawnCredential: undefined,
+  };
 }
 
 /** Diagnostics on an OK validation are warnings: written to stderr as

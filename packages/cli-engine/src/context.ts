@@ -111,6 +111,16 @@ export interface CommandContext<
   readonly cwd: string;
 
   /**
+   * The config file this run read, absolute: the one `--config` named,
+   * resolved against cwd, otherwise the prisma.config.ts discovered in
+   * cwd. A relative path inside the file is relative to the file, so a
+   * handler anchors such paths on this file's directory, never on cwd —
+   * the two differ whenever `--config` points into another directory.
+   * Null for a command with no config need, which never reads the file.
+   */
+  readonly configFile: string | null;
+
+  /**
    * The invocation's environment, from Runtime.env. Handlers read env
    * via ctx.env, never process.env.
    */
