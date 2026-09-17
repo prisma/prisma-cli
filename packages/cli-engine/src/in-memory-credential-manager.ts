@@ -85,6 +85,7 @@ function asSession(record: SessionRecord): Session {
   return {
     workspaceId: record.workspaceId,
     workspaceName: record.workspaceName,
+    identity: claimedIdentity(record.credential.token),
     expiresAt: record.credential.expiresAt,
   };
 }
@@ -232,6 +233,10 @@ export class InMemoryCredentialManager implements CredentialManager {
       sessions: this.storedSessions.map((record) => asSession(record)),
       selectedWorkspaceId: this.resolvedSelection(),
     };
+  }
+
+  async enrichSessions(): Promise<StoredSessions> {
+    return this.sessions();
   }
 
   async createSession(

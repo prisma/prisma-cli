@@ -5,7 +5,6 @@ import {
   type Session,
 } from "@prisma/cli-engine";
 import { ok } from "@prisma/cli-engine/protocol";
-import { sessionsForDisplay } from "../../auth/credential-manager";
 import { environmentCredentialInForce } from "../../auth/service-token";
 import { CLI_NAME } from "../../cli-name";
 import { ENVIRONMENT_CREDENTIAL_NOTICE } from "./credential-card";
@@ -69,7 +68,17 @@ function listPresentations(result: WorkspaceListResult): Presentations {
           ]
         : [{ kind: "table", columns, rows } as const]),
     ],
-    stdout: () => rows.map((row) => row.join("  ").trimEnd()),
+    // Scripts read these columns by position, so the optional user stays out.
+    stdout: () =>
+      result.sessions.map((session) =>
+        [
+          sessionLabel(session),
+          session.workspaceId,
+          session.workspaceId === result.selectedWorkspaceId ? "current" : "",
+        ]
+          .join("  ")
+          .trimEnd(),
+      ),
     json: () => serializeWorkspaceList(result),
     next: () => [
       {
@@ -93,7 +102,7 @@ export const authWorkspaceListCommand = defineCommand({
     examples: ["auth workspace list", "auth workspace list --json"],
   },
   handler: async (_args, ctx) => {
-    const stored = await sessionsForDisplay(ctx.credentialManager);
+    const stored = await ctx.credentialManager.enrichSessions();
     const result: WorkspaceListResult = {
       sessions: stored.sessions,
       selectedWorkspaceId: stored.selectedWorkspaceId,

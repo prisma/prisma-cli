@@ -56,45 +56,6 @@ export type FetchSessionMetadata = (
   credential: Pick<Credential, "token">,
 ) => Promise<SessionMetadata | undefined>;
 
-export type AccountSession = Session & {
-  readonly identity: CredentialIdentity | undefined;
-};
-
-export interface AccountStoredSessions {
-  readonly sessions: readonly AccountSession[];
-  readonly selectedWorkspaceId: string | undefined;
-}
-
-interface AccountAwareCredentialManager extends CredentialManager {
-  enrichSessions(): Promise<AccountStoredSessions>;
-}
-
-/** Session display metadata is a CLI concern, not part of the shared engine
- *  contract. FileCredentialManager provides it; other managers degrade to the
- *  standard local session shape without inventing an account identity. */
-export async function sessionsForDisplay(
-  manager: CredentialManager,
-): Promise<StoredSessions> {
-  if (isAccountAwareCredentialManager(manager)) {
-    return manager.enrichSessions();
-  }
-  return manager.sessions();
-}
-
-export function sessionIdentity(
-  session: Session,
-): CredentialIdentity | undefined {
-  return normalizedIdentity(
-    Reflect.get(session, "identity") as CredentialIdentity | undefined,
-  );
-}
-
-function isAccountAwareCredentialManager(
-  manager: CredentialManager,
-): manager is AccountAwareCredentialManager {
-  return typeof Reflect.get(manager, "enrichSessions") === "function";
-}
-
 export interface FileCredentialManagerOptions {
   readonly env: Readonly<Record<string, string | undefined>>;
   readonly fetchSessionMetadata?: FetchSessionMetadata;
@@ -204,16 +165,17 @@ export class FileCredentialManager implements CredentialManager {
     return storedCredential(record);
   }
 
-  async sessions(): Promise<AccountStoredSessions> {
+  async sessions(): Promise<StoredSessions> {
     const state = await readCredentialState(this.#filePath);
     return storedSessions(state);
   }
 
-  async enrichSessions(): Promise<AccountStoredSessions> {
+  async enrichSessions(): Promise<StoredSessions> {
     if (this.#fetchSessionMetadata === undefined) return this.sessions();
     const state = await readCredentialState(this.#filePath);
-    const candidates = state.sessions.filter(
-      (session) => session.name === undefined || session.user === undefined,
+    const now = Date.now();
+    const candidates = state.sessions.filter((session) =>
+      lacksFetchableMetadata(session, now),
     );
     if (candidates.length === 0) return storedSessions(state);
 
@@ -259,7 +221,7 @@ export class FileCredentialManager implements CredentialManager {
   async createSession(
     credential: Credential,
     workspaceId: string,
-  ): Promise<AccountSession> {
+  ): Promise<Session> {
     const environmentInForce = this.#environmentToken() !== undefined;
     const claimed = credentialWorkspaceId(credential.token);
     if (claimed !== undefined && claimed !== workspaceId) {
@@ -328,7 +290,7 @@ export class FileCredentialManager implements CredentialManager {
     });
   }
 
-  async selectSession(workspaceId: string): Promise<AccountSession> {
+  async selectSession(workspaceId: string): Promise<Session> {
     const environmentInForce = this.#environmentToken() !== undefined;
 
     const selected = await this.#mutate((state) => {
@@ -695,14 +657,27 @@ function resolvedMarker(state: CredentialState): string | null {
   return null;
 }
 
-function storedSessions(state: CredentialState): AccountStoredSessions {
+/** Whether a lookup with this session's token could add metadata. An
+ *  expired token is rejected, and a workspace-only token has no user. */
+function lacksFetchableMetadata(session: StoredSession, now: number): boolean {
+  if (session.expiresAt !== undefined && Date.parse(session.expiresAt) <= now) {
+    return false;
+  }
+  if (session.name === undefined) return true;
+  return (
+    session.user === undefined &&
+    claimedIdentity(session.token)?.userId !== undefined
+  );
+}
+
+function storedSessions(state: CredentialState): StoredSessions {
   return {
     sessions: state.sessions.map((record) => toSession(record)),
     selectedWorkspaceId: resolvedMarker(state) ?? undefined,
   };
 }
 
-function toSession(record: StoredSession): AccountSession {
+function toSession(record: StoredSession): Session {
   return {
     workspaceId: record.workspaceId,
     workspaceName: record.name,

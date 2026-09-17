@@ -1157,6 +1157,45 @@ describe("enrichSessions", () => {
       (await readCredentialState(stateFilePath)).sessions[0]?.user,
     ).toBeUndefined();
   });
+
+  it("makes no request for a session whose access token has expired", async () => {
+    await makeManager().createSession(
+      {
+        token: mintToken(WORKSPACE_A),
+        refreshToken: "refresh-1",
+        expiresAt: new Date(Date.now() - 60_000),
+      },
+      WORKSPACE_A,
+    );
+    const fetchSessionMetadata = vi.fn(async () => ({
+      workspaceName: "Workspace A",
+    }));
+
+    const stored = await makeManager({ fetchSessionMetadata }).enrichSessions();
+
+    expect(fetchSessionMetadata).not.toHaveBeenCalled();
+    expect(stored.sessions[0]?.workspaceName).toBeUndefined();
+  });
+
+  it("makes no request for a named session whose token belongs to no user", async () => {
+    await makeManager({
+      fetchSessionMetadata: async () => ({ workspaceName: "Workspace A" }),
+    }).createSession(
+      {
+        token: mintToken(WORKSPACE_A, { sub: `workspace:${WORKSPACE_A}` }),
+        refreshToken: "refresh-1",
+        expiresAt: undefined,
+      },
+      WORKSPACE_A,
+    );
+    const fetchSessionMetadata = vi.fn(async () => ({
+      workspaceName: "Workspace A",
+    }));
+
+    await makeManager({ fetchSessionMetadata }).enrichSessions();
+
+    expect(fetchSessionMetadata).not.toHaveBeenCalled();
+  });
 });
 
 describe("the file-backed TokenStorage", () => {

@@ -213,6 +213,10 @@ names and account metadata for older records without replacing known values.
 Successful results are cached. Logout uses only locally stored metadata and
 never waits for a metadata request. Ordinary `sessions()` reads remain local-only.
 
+The CLI sends no metadata request that cannot succeed. It skips a session whose
+access token has expired, because the API rejects that token. It skips the user
+lookup for a token that belongs to a workspace and not to a user.
+
 Metadata lookups must not overwrite a session replaced during the lookup.
 Login returns the session still stored when the lookup finishes, even when no
 metadata was found. If another process ended that session, login reports the
@@ -224,6 +228,10 @@ distinguish same-named workspaces and sessions belonging to different
 accounts. When no email is known, output falls back to the user's name and then
 id. Tables render the standard unknown-value marker when no user identity is
 available, while selection prompts omit an identity they do not know.
+
+The plain stdout rows of `auth workspace list` keep their columns: workspace,
+id, status. Scripts read those columns by position, and the user is optional,
+so the user appears only in the table and in the structured output.
 
 Structured workspace-session output includes a nullable `user` object on every
 item. Its `context.scope` is `"local-sessions"`, making it explicit that the

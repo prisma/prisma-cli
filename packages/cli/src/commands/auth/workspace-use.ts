@@ -8,7 +8,6 @@ import {
   type StoredSessions,
 } from "@prisma/cli-engine";
 import { CliStructuredError, ok } from "@prisma/cli-engine/protocol";
-import { sessionsForDisplay } from "../../auth/credential-manager";
 import { environmentCredentialInForce } from "../../auth/service-token";
 import { CLI_NAME } from "../../cli-name";
 import { ENVIRONMENT_CREDENTIAL_NOTICE } from "./credential-card";
@@ -116,7 +115,7 @@ export const authWorkspaceUseCommand = defineCommand({
     examples: ["auth workspace use", "auth workspace use my-workspace"],
   },
   handler: async (args, ctx) => {
-    const stored = await sessionsForDisplay(ctx.credentialManager);
+    const stored = await ctx.credentialManager.enrichSessions();
     if (stored.sessions.length === 0) {
       throw noWorkspaceSessionsError();
     }

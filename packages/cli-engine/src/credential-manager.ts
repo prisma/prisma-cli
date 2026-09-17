@@ -26,6 +26,10 @@ export interface Credential {
 export interface Session {
   readonly workspaceId: string;
   readonly workspaceName: string | undefined;
+  /** Who authorized this workspace session. A persistent manager may enrich
+   *  this from the account API and fall back to credential claims. It contains
+   *  no token material and may be absent for workspace-only credentials. */
+  readonly identity: CredentialIdentity | undefined;
   /** The stored ACCESS TOKEN's expiry, which rotation changes — not a
    *  deadline on the logged-in-ness. */
   readonly expiresAt: Date | undefined;
@@ -105,13 +109,18 @@ export interface CredentialManager {
   /** The stored sessions and the selection, read fresh. Local-only. */
   sessions(): Promise<StoredSessions>;
 
+  /** Best-effort remote enrichment for session display metadata. Persistent
+   *  managers may cache safe account details; failure still returns the local
+   *  sessions. Commands opt into this explicitly so normal reads stay local. */
+  enrichSessions(): Promise<StoredSessions>;
+
   /**
    * Login's write. The caller names the workspace that identifies the
    * session; for workspace-bound credentials the manager verifies the
    * workspace_id claim matches and refuses on mismatch. Upserts by
-   * workspaceId and selects it. The workspace name is fetched
-   * best-effort after the write — failure leaves it undefined, never
-   * fails login.
+   * workspaceId and selects it. The workspace name and safe user identity are
+   * fetched best-effort after the write — failure leaves either undefined and
+   * never fails login.
    */
   createSession(credential: Credential, workspaceId: string): Promise<Session>;
 
