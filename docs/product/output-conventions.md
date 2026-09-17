@@ -195,6 +195,49 @@ Current MVP commands map to patterns like this:
 
 No current MVP command uses `verify` or `inspect`, but new commands must still choose one existing pattern rather than inventing a new one casually.
 
+### Workspace session identity
+
+Each `auth login` authorizes one workspace and stores one local session. Two
+sessions can belong to different Prisma users. `auth workspace list` shows the
+sessions authorized on this machine. It is not the full list of workspaces the
+user can see in Console.
+
+Human output shows the user next to every workspace session: the email when it
+is known, then the name, then the id. Selection prompts show the same identity.
+A table renders the standard unknown-value marker when no identity is known,
+and a prompt leaves it out.
+
+The plain stdout rows of `auth workspace list` keep their columns: workspace,
+id, status. Scripts read those columns by position, and the user is optional,
+so the user appears only in the table and in the structured output.
+
+Structured output carries a nullable `user` object on every item, and
+`context.scope` is `"local-sessions"`:
+
+```json
+{
+  "context": { "scope": "local-sessions" },
+  "items": [
+    {
+      "workspaceId": "workspace_123",
+      "workspaceName": "Acme Inc",
+      "user": { "id": "usr_123", "email": "developer@example.com", "name": null },
+      "current": true,
+      "expiresAt": "2026-08-19T09:10:49.000Z"
+    }
+  ]
+}
+```
+
+`user` is `null` when neither stored metadata nor token claims name a user. A
+user field is `null` when it is unknown. Tokens never appear in any output.
+`auth workspace list` always offers `auth login` as the next action.
+
+The CLI reads the workspace name and the user from one best-effort `/v1/me`
+request at login and stores them with the session. Sessions saved before this
+existed get the same lookup once, from `auth workspace list` and
+`auth workspace use`. Logout never waits for a lookup.
+
 ### One-Time Secret Output
 
 Commands that create one-time-view secrets print the secret bare in the human card and write the raw value to stdout. The card is the only place an interactive user ever sees the secret — when stdout and stderr render to one screen the stdout mirror is skipped, so masking the card would hide the secret from everyone including its owner (operator ruling, 2026-08-26). The stdout line is machine-readable output for pipes and redirection.

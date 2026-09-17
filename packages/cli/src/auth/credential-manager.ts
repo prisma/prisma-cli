@@ -4,6 +4,7 @@ import type {
   ActiveAccessTokenOptions,
   ActiveCredential,
   Credential,
+  CredentialIdentity,
   CredentialManager,
   CredentialRefresher,
   Session,
@@ -25,9 +26,11 @@ import {
   type DebugLog,
   EMPTY_STATE,
   makeDebugLog,
+  normalizeStoredSessionUser,
   readCredentialState,
   resolveStateFilePath,
   type StoredSession,
+  type StoredSessionUser,
   withRefreshFileLock,
   withStateLock,
   writeCredentialState,
@@ -43,16 +46,63 @@ type RefreshLock = <T>(fn: () => Promise<T>) => Promise<T>;
  *  never leaves the manager, and it is never the empty string. */
 const NO_WORKSPACE_CLAIMED = "(no workspace)";
 
-/** Looks the workspace's name up with the credential that was just
- *  minted. Best-effort: the manager treats any failure as "no name". */
-export type FetchWorkspaceName = (
-  credential: Credential,
-  workspaceId: string,
-) => Promise<string | undefined>;
+type SessionMetadata = {
+  readonly workspaceName?: string | undefined;
+  readonly user?: StoredSessionUser | undefined;
+};
+
+/** Looks up workspace and safe account metadata in one request.
+ *  Best-effort: a failed lookup never prevents the session from being saved. */
+export type FetchSessionMetadata = (
+  credential: Pick<Credential, "token">,
+) => Promise<SessionMetadata | undefined>;
+
+export type AccountSession = Session & {
+  readonly identity: CredentialIdentity | undefined;
+};
+
+export interface AccountStoredSessions {
+  readonly sessions: readonly AccountSession[];
+  readonly selectedWorkspaceId: string | undefined;
+}
+
+interface AccountAwareCredentialManager extends CredentialManager {
+  enrichSessions(): Promise<AccountStoredSessions>;
+}
+
+/** Session display metadata is a CLI concern, not part of the shared engine
+ *  contract. FileCredentialManager provides it; other managers degrade to the
+ *  standard local session shape without inventing an account identity. */
+export async function sessionsForDisplay(
+  manager: CredentialManager,
+): Promise<StoredSessions> {
+  if (isAccountAwareCredentialManager(manager)) {
+    return manager.enrichSessions();
+  }
+  return manager.sessions();
+}
+
+export function sessionIdentity(
+  session: Session,
+): CredentialIdentity | undefined {
+  return isAccountSession(session) ? session.identity : undefined;
+}
+
+function isAccountSession(session: Session): session is AccountSession {
+  return "identity" in session;
+}
+
+function isAccountAwareCredentialManager(
+  manager: CredentialManager,
+): manager is AccountAwareCredentialManager {
+  return (
+    "enrichSessions" in manager && typeof manager.enrichSessions === "function"
+  );
+}
 
 export interface FileCredentialManagerOptions {
   readonly env: Readonly<Record<string, string | undefined>>;
-  readonly fetchWorkspaceName?: FetchWorkspaceName;
+  readonly fetchSessionMetadata?: FetchSessionMetadata;
   readonly refreshCredential?: CredentialRefresher;
   readonly debugWrite?: (text: string) => void;
 }
@@ -114,7 +164,7 @@ export class FileCredentialManager implements CredentialManager {
   readonly #env: Readonly<Record<string, string | undefined>>;
   readonly #filePath: string;
   readonly #debug: DebugLog;
-  readonly #fetchWorkspaceName: FetchWorkspaceName | undefined;
+  readonly #fetchSessionMetadata: FetchSessionMetadata | undefined;
   readonly #refreshCredential: CredentialRefresher | undefined;
   #actingAs: ActingAs = { kind: "unresolved" };
   /** Built for the credential the process acts as. Every mutation that
@@ -128,7 +178,7 @@ export class FileCredentialManager implements CredentialManager {
     this.#env = options.env;
     this.#filePath = resolveStateFilePath(options.env).filePath;
     this.#debug = makeDebugLog(options.env, options.debugWrite);
-    this.#fetchWorkspaceName = options.fetchWorkspaceName;
+    this.#fetchSessionMetadata = options.fetchSessionMetadata;
     this.#refreshCredential = options.refreshCredential;
     this.#debug(`state file ${this.#filePath}`);
   }
@@ -159,25 +209,67 @@ export class FileCredentialManager implements CredentialManager {
     return storedCredential(record);
   }
 
-  async sessions(): Promise<StoredSessions> {
+  async sessions(): Promise<AccountStoredSessions> {
     const state = await readCredentialState(this.#filePath);
-    return {
-      sessions: state.sessions.map((record) => toSession(record)),
-      selectedWorkspaceId: resolvedMarker(state) ?? undefined,
-    };
+    return storedSessions(state);
+  }
+
+  async enrichSessions(): Promise<AccountStoredSessions> {
+    if (this.#fetchSessionMetadata === undefined) return this.sessions();
+    const state = await readCredentialState(this.#filePath);
+    const now = Date.now();
+    const candidates = state.sessions.filter((session) =>
+      lacksFetchableMetadata(session, now),
+    );
+    if (candidates.length === 0) return storedSessions(state);
+
+    const fetched = await Promise.all(
+      candidates.map(async (session) => ({
+        workspaceId: session.workspaceId,
+        token: session.token,
+        metadata: await this.#lookUpSessionMetadata(session),
+      })),
+    );
+    if (fetched.every((result) => result.metadata === undefined)) {
+      return this.sessions();
+    }
+    const byWorkspaceId = new Map(
+      fetched.map((result) => [result.workspaceId, result]),
+    );
+
+    return this.#mutate((current) => {
+      let changed = false;
+      const sessions = current.sessions.map((session) => {
+        const fetchedSession = byWorkspaceId.get(session.workspaceId);
+        if (
+          fetchedSession === undefined ||
+          fetchedSession.token !== session.token
+        ) {
+          return session;
+        }
+        const name = session.name ?? fetchedSession.metadata?.workspaceName;
+        const user = session.user ?? fetchedSession.metadata?.user;
+        if (name === session.name && user === session.user) return session;
+        changed = true;
+        return { ...session, name, user };
+      });
+      if (!changed) return { result: storedSessions(current) };
+      const next = { ...current, sessions };
+      return { state: next, result: storedSessions(next) };
+    });
   }
 
   async createSession(
     credential: Credential,
     workspaceId: string,
-  ): Promise<Session> {
+  ): Promise<AccountSession> {
     const environmentInForce = this.#environmentToken() !== undefined;
     const claimed = credentialWorkspaceId(credential.token);
     if (claimed !== undefined && claimed !== workspaceId) {
       throw credentialWorkspaceMismatchError(workspaceId);
     }
 
-    const created = await this.#mutate((state) => {
+    await this.#mutate((state) => {
       const existing = state.sessions.find(
         (session) => session.workspaceId === workspaceId,
       );
@@ -200,33 +292,46 @@ export class FileCredentialManager implements CredentialManager {
         ],
         currentWorkspaceId: workspaceId,
       };
-      return { state: next, result: toSession(record) };
+      return { state: next, result: undefined };
     });
 
     if (!environmentInForce) {
       this.#actAs({ kind: "session", workspaceId });
     }
 
-    const name = await this.#lookUpWorkspaceName(credential, workspaceId);
-    if (name === undefined) return created;
-
+    const { workspaceName: name, user } =
+      (await this.#lookUpSessionMetadata(credential)) ?? {};
     return this.#mutate((state) => {
       const record = state.sessions.find(
         (session) => session.workspaceId === workspaceId,
       );
-      if (record === undefined) return { result: created };
-      const named: StoredSession = { ...record, name };
+      // Lookups happen outside the lock. Do not attach their result to a
+      // credential that another process saved for this workspace meanwhile.
+      if (record === undefined) {
+        throw credentialsRequiredError("session-ended");
+      }
+      if (
+        record.token !== credential.token ||
+        (name === undefined && user === undefined)
+      ) {
+        return { result: toSession(record) };
+      }
+      const enriched: StoredSession = {
+        ...record,
+        ...(name === undefined ? {} : { name }),
+        ...(user === undefined ? {} : { user }),
+      };
       const next: CredentialState = {
         ...state,
         sessions: state.sessions.map((session) =>
-          session.workspaceId === workspaceId ? named : session,
+          session.workspaceId === workspaceId ? enriched : session,
         ),
       };
-      return { state: next, result: toSession(named) };
+      return { state: next, result: toSession(enriched) };
     });
   }
 
-  async selectSession(workspaceId: string): Promise<Session> {
+  async selectSession(workspaceId: string): Promise<AccountSession> {
     const environmentInForce = this.#environmentToken() !== undefined;
 
     const selected = await this.#mutate((state) => {
@@ -362,6 +467,7 @@ export class FileCredentialManager implements CredentialManager {
           const rotated: StoredSession = {
             workspaceId: record.workspaceId,
             ...(record.name === undefined ? {} : { name: record.name }),
+            user: record.user,
             token: tokens.accessToken,
             ...(tokens.refreshToken === undefined
               ? {}
@@ -476,9 +582,6 @@ export class FileCredentialManager implements CredentialManager {
     return token;
   }
 
-  /** A blank env token is an error state everywhere the environment
-   *  credential would be consulted, including the mutations that no
-   *  longer care whether a valid one is set. */
   /** A blank PRISMA_SERVICE_TOKEN is an error state everywhere the
    *  environment credential would be consulted, including the two
    *  mutations that do not otherwise read it. Reading is what raises;
@@ -509,14 +612,16 @@ export class FileCredentialManager implements CredentialManager {
     );
   }
 
-  async #lookUpWorkspaceName(
-    credential: Credential,
-    workspaceId: string,
-  ): Promise<string | undefined> {
-    if (this.#fetchWorkspaceName === undefined) return undefined;
+  async #lookUpSessionMetadata(
+    credential: Pick<Credential, "token">,
+  ): Promise<SessionMetadata | undefined> {
+    if (this.#fetchSessionMetadata === undefined) return undefined;
     try {
-      const name = await this.#fetchWorkspaceName(credential, workspaceId);
-      return name?.trim() ? name.trim() : undefined;
+      const metadata = await this.#fetchSessionMetadata(credential);
+      const workspaceName = metadata?.workspaceName?.trim() || undefined;
+      const user = normalizeStoredSessionUser(metadata?.user);
+      if (workspaceName === undefined && user === undefined) return undefined;
+      return { workspaceName, user };
     } catch {
       return undefined;
     }
@@ -591,10 +696,31 @@ function resolvedMarker(state: CredentialState): string | null {
   return null;
 }
 
-function toSession(record: StoredSession): Session {
+/** Whether a lookup with this session's token could add metadata. An
+ *  expired token is rejected, and a workspace-only token has no user. */
+function lacksFetchableMetadata(session: StoredSession, now: number): boolean {
+  if (session.expiresAt !== undefined && Date.parse(session.expiresAt) <= now) {
+    return false;
+  }
+  if (session.name === undefined) return true;
+  return (
+    session.user === undefined &&
+    claimedIdentity(session.token)?.userId !== undefined
+  );
+}
+
+function storedSessions(state: CredentialState): AccountStoredSessions {
+  return {
+    sessions: state.sessions.map((record) => toSession(record)),
+    selectedWorkspaceId: resolvedMarker(state) ?? undefined,
+  };
+}
+
+function toSession(record: StoredSession): AccountSession {
   return {
     workspaceId: record.workspaceId,
     workspaceName: record.name,
+    identity: storedIdentity(record),
     expiresAt:
       record.expiresAt === undefined ? undefined : new Date(record.expiresAt),
   };
@@ -606,9 +732,16 @@ function storedCredential(record: StoredSession): ActiveCredential {
     workspaceName: record.name,
     expiresAt:
       record.expiresAt === undefined ? undefined : new Date(record.expiresAt),
-    identity: claimedIdentity(record.token),
+    identity: storedIdentity(record),
     origin: { source: "stored" },
   };
+}
+
+function storedIdentity(record: StoredSession): CredentialIdentity | undefined {
+  const user = record.user;
+  return user === undefined
+    ? claimedIdentity(record.token)
+    : { userId: user.id, email: user.email, name: user.name };
 }
 
 /** An environment token whose claims name no workspace reports no

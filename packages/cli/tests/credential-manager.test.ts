@@ -18,7 +18,10 @@ import type { CredentialRefresher, TokenStorage } from "@prisma/cli-engine";
 import { mintTestJwt } from "@prisma/cli-engine/testing";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { FileCredentialManager } from "../src/auth/credential-manager";
+import {
+  type FetchSessionMetadata,
+  FileCredentialManager,
+} from "../src/auth/credential-manager";
 import { readCredentialState } from "../src/auth/state-file";
 import { getAuthContextFilePath } from "../src/auth/token-storage";
 
@@ -86,17 +89,14 @@ function credentialFor(workspaceId: string, refreshToken = "refresh-1") {
 function makeManager(
   options: {
     env?: Record<string, string | undefined>;
-    fetchWorkspaceName?: (
-      credential: { token: string },
-      workspaceId: string,
-    ) => Promise<string | undefined>;
+    fetchSessionMetadata?: FetchSessionMetadata;
     refreshCredential?: CredentialRefresher;
     debugWrite?: (text: string) => void;
   } = {},
 ) {
   return new FileCredentialManager({
     env: { PRISMA_AUTH_FILE: stateFilePath, ...options.env },
-    fetchWorkspaceName: options.fetchWorkspaceName,
+    fetchSessionMetadata: options.fetchSessionMetadata,
     refreshCredential: options.refreshCredential,
     debugWrite: options.debugWrite,
   });
@@ -795,6 +795,72 @@ describe("the environment credential", () => {
 });
 
 describe("createSession", () => {
+  it("persists and exposes the authorizing account without exposing token material", async () => {
+    const manager = makeManager({
+      fetchSessionMetadata: async () => ({
+        workspaceName: " Workspace A ",
+        user: {
+          id: "usr_work",
+          email: "developer@prisma.io",
+          name: "Prisma Developer",
+        },
+      }),
+    });
+    const credential = {
+      // Real OAuth tokens identify the user but do not necessarily carry the
+      // email needed to distinguish accounts in workspace-session output.
+      token: mintToken(WORKSPACE_A, { sub: "user:opaque-subject" }),
+      refreshToken: "refresh-work",
+      expiresAt: undefined,
+    };
+
+    const created = await manager.createSession(credential, WORKSPACE_A);
+    const listed = (await manager.sessions()).sessions[0];
+
+    expect(created.workspaceName).toBe("Workspace A");
+    expect(created.identity).toEqual({
+      userId: "usr_work",
+      email: "developer@prisma.io",
+      name: "Prisma Developer",
+    });
+    expect(listed?.identity).toEqual(created.identity);
+    expect(
+      (await readCredentialState(stateFilePath)).sessions[0]?.user,
+    ).toEqual({
+      id: "usr_work",
+      email: "developer@prisma.io",
+      name: "Prisma Developer",
+    });
+    expect(Object.keys(created)).not.toContain("token");
+    expect(Object.keys(listed ?? {})).not.toContain("token");
+  });
+
+  it("falls back to credential claims when account enrichment fails", async () => {
+    const manager = makeManager({
+      fetchSessionMetadata: async () => {
+        throw new Error("offline");
+      },
+    });
+    const session = await manager.createSession(
+      {
+        token: mintToken(WORKSPACE_A, { sub: "user:claimed" }),
+        refreshToken: "refresh-work",
+        expiresAt: undefined,
+      },
+      WORKSPACE_A,
+    );
+
+    expect(session.workspaceName).toBeUndefined();
+    expect(session.identity).toEqual({
+      userId: "user:claimed",
+      email: undefined,
+      name: undefined,
+    });
+    expect(
+      (await readCredentialState(stateFilePath)).sessions[0]?.user,
+    ).toBeUndefined();
+  });
+
   it("refuses a credential whose workspace_id claim names another workspace", async () => {
     const manager = makeManager();
     await expect(
@@ -803,16 +869,16 @@ describe("createSession", () => {
     expect(await readRawState()).toBeNull();
   });
 
-  it("holds no lock while the workspace name is fetched", async () => {
+  it("holds no lock while session metadata is fetched", async () => {
     let releaseFetch: () => void = () => {};
     const fetchStarted = new Promise<void>((resolve) => {
       const manager = makeManager({
-        fetchWorkspaceName: async () => {
+        fetchSessionMetadata: async () => {
           resolve();
           await new Promise<void>((done) => {
             releaseFetch = done;
           });
-          return "Workspace A";
+          return { workspaceName: "Workspace A" };
         },
       });
       void manager.createSession(credentialFor(WORKSPACE_A), WORKSPACE_A);
@@ -836,46 +902,100 @@ describe("createSession", () => {
     ]);
   });
 
-  it("keeps login working when the name lookup fails", async () => {
+  it.each([
+    true,
+    false,
+  ])("rejects login ended during lookup (metadata returned: %s)", async (hasMetadata) => {
+    let releaseFetch: () => void = () => {};
+    let markFetchStarted: () => void = () => {};
+    const fetchStarted = new Promise<void>((resolve) => {
+      markFetchStarted = resolve;
+    });
     const manager = makeManager({
-      fetchWorkspaceName: async () => {
-        throw new Error("offline");
+      fetchSessionMetadata: async () => {
+        markFetchStarted();
+        await new Promise<void>((done) => {
+          releaseFetch = done;
+        });
+        return hasMetadata ? { workspaceName: "Workspace A" } : undefined;
       },
     });
-    const session = await manager.createSession(
+    const login = manager.createSession(
       credentialFor(WORKSPACE_A),
       WORKSPACE_A,
     );
-    expect(session.workspaceName).toBeUndefined();
-  });
-
-  it("does not resurrect a record ended while the name was fetched", async () => {
-    let releaseFetch: () => void = () => {};
-    const fetchStarted = new Promise<void>((resolve) => {
-      const manager = makeManager({
-        fetchWorkspaceName: async () => {
-          resolve();
-          await new Promise<void>((done) => {
-            releaseFetch = done;
-          });
-          return "Workspace A";
-        },
-      });
-      void manager.createSession(credentialFor(WORKSPACE_A), WORKSPACE_A);
+    const rejected = expect(login).rejects.toMatchObject({
+      code: "CLI.CREDENTIALS_REQUIRED",
+      message: "The workspace session this command was using has ended.",
     });
 
     await fetchStarted;
     await makeManager().endSession(WORKSPACE_A);
     releaseFetch();
 
-    await vi.waitFor(async () => {
-      expect((await readCredentialState(stateFilePath)).sessions).toEqual([]);
+    await rejected;
+    expect((await readCredentialState(stateFilePath)).sessions).toEqual([]);
+  });
+
+  it.each([
+    true,
+    false,
+  ])("returns the concurrently replaced session (metadata returned: %s)", async (hasMetadata) => {
+    let releaseFetch: () => void = () => {};
+    let markFetchStarted: () => void = () => {};
+    const fetchStarted = new Promise<void>((resolve) => {
+      markFetchStarted = resolve;
     });
+    const first = makeManager({
+      fetchSessionMetadata: async () => {
+        markFetchStarted();
+        await new Promise<void>((resolve) => {
+          releaseFetch = resolve;
+        });
+        return hasMetadata
+          ? {
+              workspaceName: "Stale Workspace",
+              user: {
+                id: "usr_first",
+                email: "first@example.com",
+              },
+            }
+          : undefined;
+      },
+    });
+    const firstLogin = first.createSession(
+      {
+        token: mintToken(WORKSPACE_A, { sub: "user:first" }),
+        refreshToken: "refresh-first",
+        expiresAt: undefined,
+      },
+      WORKSPACE_A,
+    );
+
+    await fetchStarted;
+    await makeManager().createSession(
+      {
+        token: mintToken(WORKSPACE_A, { sub: "user:second" }),
+        refreshToken: "refresh-second",
+        expiresAt: undefined,
+      },
+      WORKSPACE_A,
+    );
+    releaseFetch();
+    expect((await firstLogin).identity?.userId).toBe("user:second");
+
+    const state = await readCredentialState(stateFilePath);
+    expect(state.sessions[0]).toMatchObject({ refreshToken: "refresh-second" });
+    expect(state.sessions[0]?.user).toBeUndefined();
+    expect(state.sessions[0]?.name).toBeUndefined();
+    expect((await makeManager().sessions()).sessions[0]?.identity?.userId).toBe(
+      "user:second",
+    );
   });
 
   it("upserts by workspace id, keeping the stored name and moving the marker", async () => {
     const manager = makeManager({
-      fetchWorkspaceName: async () => "Workspace A",
+      fetchSessionMetadata: async () => ({ workspaceName: "Workspace A" }),
     });
     await manager.createSession(credentialFor(WORKSPACE_A), WORKSPACE_A);
     await manager.createSession(credentialFor(WORKSPACE_B), WORKSPACE_B);
@@ -895,10 +1015,198 @@ describe("createSession", () => {
   });
 });
 
+describe("enrichSessions", () => {
+  it("caches account metadata without replacing an existing workspace name", async () => {
+    await makeManager({
+      fetchSessionMetadata: async () => ({ workspaceName: "Saved name" }),
+    }).createSession(
+      {
+        token: mintToken(WORKSPACE_A, { sub: "user:legacy" }),
+        refreshToken: "refresh-legacy",
+        expiresAt: undefined,
+      },
+      WORKSPACE_A,
+    );
+    const fetchSessionMetadata = vi.fn(async () => ({
+      workspaceName: "Different name",
+      user: {
+        id: "usr_work",
+        email: "developer@prisma.io",
+        name: "Prisma Developer",
+      },
+    }));
+    const manager = makeManager({ fetchSessionMetadata });
+
+    const first = await manager.enrichSessions();
+    const second = await manager.enrichSessions();
+
+    expect(first.sessions[0]?.workspaceName).toBe("Saved name");
+    expect(first.sessions[0]?.identity).toEqual({
+      userId: "usr_work",
+      email: "developer@prisma.io",
+      name: "Prisma Developer",
+    });
+    expect(second).toEqual(first);
+    expect(fetchSessionMetadata).toHaveBeenCalledTimes(1);
+    expect(
+      (await readCredentialState(stateFilePath)).sessions[0]?.user,
+    ).toEqual({
+      id: "usr_work",
+      email: "developer@prisma.io",
+      name: "Prisma Developer",
+    });
+  });
+
+  it.each([
+    true,
+    false,
+  ])("persists name-only metadata (account already stored: %s)", async (hasAccount) => {
+    const user = {
+      id: "usr_work",
+      email: "developer@prisma.io",
+      name: "Prisma Developer",
+    };
+    await makeManager({
+      fetchSessionMetadata: async () => ({
+        user: hasAccount ? user : undefined,
+      }),
+    }).createSession(credentialFor(WORKSPACE_A), WORKSPACE_A);
+    const manager = makeManager({
+      fetchSessionMetadata: async () => ({ workspaceName: "Workspace A" }),
+    });
+
+    const enriched = await manager.enrichSessions();
+    const stored = await readCredentialState(stateFilePath);
+
+    expect(enriched.sessions[0]?.workspaceName).toBe("Workspace A");
+    expect(stored.sessions[0]?.name).toBe("Workspace A");
+    expect(stored.sessions[0]?.user).toEqual(
+      hasAccount
+        ? {
+            id: "usr_work",
+            email: "developer@prisma.io",
+            name: "Prisma Developer",
+          }
+        : undefined,
+    );
+  });
+
+  it("discards enrichment when another process replaces or removes a session", async () => {
+    await seedTwoSessions();
+    let markStarted: () => void = () => {};
+    let release: () => void = () => {};
+    const started = new Promise<void>((resolve) => {
+      markStarted = resolve;
+    });
+    const released = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const manager = makeManager({
+      fetchSessionMetadata: async () => {
+        markStarted();
+        await released;
+        return {
+          workspaceName: "Stale name",
+          user: {
+            id: "usr_stale",
+            email: "stale@example.com",
+          },
+        };
+      },
+    });
+    const pending = manager.enrichSessions();
+    await started;
+    const other = makeManager();
+    await other.createSession(
+      {
+        ...credentialFor(WORKSPACE_A),
+        token: mintToken(WORKSPACE_A, { sub: "user:replacement" }),
+      },
+      WORKSPACE_A,
+    );
+    await other.endSession(WORKSPACE_B);
+    const current = await other.sessions();
+    const raw = await readRawState();
+    release();
+
+    expect(await pending).toEqual(current);
+    expect(await readRawState()).toBe(raw);
+  });
+
+  it("returns local sessions when metadata enrichment fails", async () => {
+    await makeManager().createSession(
+      {
+        token: mintToken(WORKSPACE_A, { sub: "user:legacy" }),
+        refreshToken: "refresh-legacy",
+        expiresAt: undefined,
+      },
+      WORKSPACE_A,
+    );
+    const manager = makeManager({
+      fetchSessionMetadata: async () => {
+        throw new Error("offline");
+      },
+    });
+
+    const stored = await manager.enrichSessions();
+
+    expect(stored.sessions[0]?.identity?.userId).toBe("user:legacy");
+    expect(
+      (await readCredentialState(stateFilePath)).sessions[0]?.user,
+    ).toBeUndefined();
+  });
+
+  it("makes no request for a session whose access token has expired", async () => {
+    await makeManager().createSession(
+      {
+        token: mintToken(WORKSPACE_A),
+        refreshToken: "refresh-1",
+        expiresAt: new Date(Date.now() - 60_000),
+      },
+      WORKSPACE_A,
+    );
+    const fetchSessionMetadata = vi.fn(async () => ({
+      workspaceName: "Workspace A",
+    }));
+
+    const stored = await makeManager({ fetchSessionMetadata }).enrichSessions();
+
+    expect(fetchSessionMetadata).not.toHaveBeenCalled();
+    expect(stored.sessions[0]?.workspaceName).toBeUndefined();
+  });
+
+  it("makes no request for a named session whose token belongs to no user", async () => {
+    await makeManager({
+      fetchSessionMetadata: async () => ({ workspaceName: "Workspace A" }),
+    }).createSession(
+      {
+        token: mintToken(WORKSPACE_A, { sub: `workspace:${WORKSPACE_A}` }),
+        refreshToken: "refresh-1",
+        expiresAt: undefined,
+      },
+      WORKSPACE_A,
+    );
+    const fetchSessionMetadata = vi.fn(async () => ({
+      workspaceName: "Workspace A",
+    }));
+
+    await makeManager({ fetchSessionMetadata }).enrichSessions();
+
+    expect(fetchSessionMetadata).not.toHaveBeenCalled();
+  });
+});
+
 describe("the file-backed TokenStorage", () => {
   it("writes only the token fields on rotation and re-derives the expiry", async () => {
     const manager = makeManager({
-      fetchWorkspaceName: async () => "Workspace A",
+      fetchSessionMetadata: async () => ({
+        workspaceName: "Workspace A",
+        user: {
+          id: "usr_work",
+          email: "developer@prisma.io",
+          name: "Prisma Developer",
+        },
+      }),
     });
     await manager.createSession(credentialFor(WORKSPACE_A), WORKSPACE_A);
     await makeManager().createSession(credentialFor(WORKSPACE_B), WORKSPACE_B);
@@ -916,6 +1224,11 @@ describe("the file-backed TokenStorage", () => {
     );
     expect(record).toMatchObject({
       name: "Workspace A",
+      user: {
+        id: "usr_work",
+        email: "developer@prisma.io",
+        name: "Prisma Developer",
+      },
       token: rotated,
       refreshToken: "refresh-2",
       expiresAt: new Date(2_000_000_000 * 1000).toISOString(),

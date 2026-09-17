@@ -8,22 +8,33 @@ import { ok } from "@prisma/cli-engine/protocol";
 import { environmentCredentialInForce } from "../../auth/service-token";
 import { CLI_NAME } from "../../cli-name";
 import { ENVIRONMENT_CREDENTIAL_NOTICE } from "./credential-card";
-import { requireSession, sessionLabel } from "./session-ref";
+import {
+  requireSession,
+  type SessionUser,
+  sessionLabel,
+  sessionUser,
+  sessionUserLabel,
+} from "./session-ref";
 
 export interface WorkspaceLogoutResult {
   readonly workspace: { readonly id: string; readonly name: string | null };
+  readonly user: SessionUser | null;
   readonly wasSelected: boolean;
 }
 
 function logoutPresentations(
   spec: {
     readonly label: string;
+    readonly user: string | undefined;
     readonly wasSelected: boolean;
     readonly environmentCredentialInForce: boolean;
   },
   result: WorkspaceLogoutResult,
 ): Presentations {
-  const rows = [{ label: "workspace", value: spec.label }];
+  const rows = [
+    { label: "workspace", value: spec.label },
+    ...(spec.user === undefined ? [] : [{ label: "user", value: spec.user }]),
+  ];
   return {
     json: () => result,
     human: () => [
@@ -96,6 +107,7 @@ export const authWorkspaceLogoutCommand = defineCommand({
         id: session.workspaceId,
         name: session.workspaceName ?? null,
       },
+      user: sessionUser(session),
       wasSelected,
     };
     return ok(
@@ -104,6 +116,7 @@ export const authWorkspaceLogoutCommand = defineCommand({
         logoutPresentations(
           {
             label: sessionLabel(session),
+            user: sessionUserLabel(session),
             wasSelected,
             environmentCredentialInForce: environmentCredentialInForce(ctx.env),
           },
