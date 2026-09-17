@@ -38,6 +38,18 @@ import {
 } from "./context";
 import { installWaitFailedError } from "./errors";
 
+/** Where the deploy workflow's inputs and the minimal file are documented. */
+const WORKFLOW_DOCS_URL =
+  "https://github.com/prisma/cloud-deploy-action#readme";
+
+/** The platform never builds on push; the repository's own Actions workflow
+ *  does, so a connection without one deploys nothing. Console import writes
+ *  the file through a setup pull request; this command does not. */
+const WORKFLOW_DETAIL =
+  "Deploys run from the repository's GitHub Actions workflow (prisma/cloud-deploy-action), which must exist on each pushed branch; the platform does not build on push.";
+const WORKFLOW_NEXT_STEP =
+  "If the repository has no .github/workflows/prisma-deploy.yml yet, add one running prisma/cloud-deploy-action@v1 with `id-token: write`; a push of any branch that lacks the file deploys nothing.";
+
 /** The legacy wait line, printed once before the poll loop. */
 const WAIT_MESSAGE =
   "Waiting for GitHub App installation or repository access approval...";
@@ -120,6 +132,8 @@ async function resolveInstalledRepository(
   return match;
 }
 
+/** The connect result in every mode: the connection card, plus the
+ *  workflow step the platform will not do for you. */
 function connectPresentations(
   result: ProjectRepositoryConnectionResult,
 ): Presentations {
@@ -127,7 +141,17 @@ function connectPresentations(
   return {
     stdout: () => [],
     json: () => result,
-    next: () => [],
+    next: () => [
+      {
+        kind: "edit-file",
+        label: WORKFLOW_NEXT_STEP,
+      },
+      {
+        kind: "open-url",
+        label: "Workflow reference (prisma/cloud-deploy-action)",
+        url: WORKFLOW_DOCS_URL,
+      },
+    ],
     human: (): Block[] => [
       {
         kind: "summary",
@@ -143,7 +167,10 @@ function connectPresentations(
           { label: "status", value: connection.status },
         ],
       },
-      { kind: "list", items: [formatGitConnectionDetail(connection.status)] },
+      {
+        kind: "list",
+        items: [formatGitConnectionDetail(connection.status), WORKFLOW_DETAIL],
+      },
     ],
   };
 }
@@ -159,9 +186,10 @@ export const gitConnectCommand = defineCommand({
     flags: { project: projectFlag },
   },
   help: {
-    summary: "Connect a project to a GitHub repository so every push deploys",
+    summary:
+      "Connect a project to a GitHub repository so its deploy workflow deploys every push",
     description:
-      "Turns on deploy-on-push: once connected, pushing a Git branch builds and deploys it to a matching Platform Branch, an isolated environment with its own services, databases, and buckets. If the Prisma GitHub App does not cover the repository yet, the command opens the install page and waits. Run without a URL to use this repository's origin remote.",
+      "Links the repository to the project. Once connected, the repository's prisma/cloud-deploy-action workflow authenticates each run through GitHub's OIDC token and deploys every pushed branch to a matching Platform Branch, an isolated environment with its own services, databases, and buckets. The platform does not build on push itself: a repository without the workflow must add .github/workflows/prisma-deploy.yml (importing in the Console opens a pull request that adds it). If the Prisma GitHub App does not cover the repository yet, the command opens the install page and waits. Run without a URL to use this repository's origin remote.",
     examples: [
       "git connect",
       "git connect git@github.com:prisma/prisma-cli.git",
