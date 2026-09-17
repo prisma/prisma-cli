@@ -2,7 +2,7 @@
 
 Every user-facing error the unified Prisma CLI emits is a structured envelope identified by a dotted `NAMESPACE.SUBCODE` code (see [Error Conventions](../product/error-conventions.md) and [ADR 0003](../architecture/adrs/0003-structured-output-and-errors.md)). This page lists every published code. It is the canonical source for the hosted reference at `https://docs.prisma.io/docs/cli/error-reference` (each code anchors as `#<CODE>`), and CI verifies completeness on every PR: `pnpm check:error-reference` fails if any code in production source is missing from this page.
 
-Recognize an error programmatically by running with `--json` and matching on `error.code` in the emitted envelope — never on message text. Envelopes carry `message`, and optionally `why`, `fix`, `where`, `meta`, `cause`, `nextActions`, and `docsUrl`.
+Recognize an error programmatically by running with `--json` and matching on `error.code` in the emitted envelope, never on message text. Envelopes carry `message`, and optionally `why`, `fix`, `where`, `meta`, `cause`, `nextActions`, and `docsUrl`.
 
 Most codes on this page are expected failures. Some are warn-severity diagnostics that ride a successful run: the command completes and exits `0`, and the diagnostic carries the code (the entry says so where it applies). The process exit-code contract is in [Error Conventions](../product/error-conventions.md).
 
@@ -28,7 +28,7 @@ Namespaces:
 
 ### AUTH.CREDENTIAL_WORKSPACE_MISMATCH
 
-A credential's `workspace_id` claim disagrees with the workspace it is being stored under — raised by every CredentialManager (the CLI's file-backed manager and the engine's in-memory one) both when `createSession` receives a token claiming a different workspace and when a rotated token written back during refresh would re-scope an existing session. The fix is to run `prisma auth login` again and pick the intended workspace. Meta: none.
+A credential's `workspace_id` claim disagrees with the workspace it is being stored under, raised by every CredentialManager (the CLI's file-backed manager and the engine's in-memory one) both when `createSession` receives a token claiming a different workspace and when a rotated token written back during refresh would re-scope an existing session. The fix is to run `prisma auth login` again and pick the intended workspace. Meta: none.
 
 ### AUTH.LOGIN_WORKSPACE_UNKNOWN
 
@@ -40,27 +40,27 @@ The OAuth callback reported `access_denied`. Authorization was not granted; this
 
 ### AUTH.NO_SESSION_FOR_WORKSPACE
 
-A workspace reference matched none of the stored workspace sessions — raised by the command-side ref resolver behind `prisma auth workspace use` and `prisma auth workspace logout` (exact id match first, then case-insensitive name match), and by the credential managers when a session operation names a workspace with no stored record. Sessions are created only by `prisma auth login`, so the suggested fix is to sign in and pick that workspace in the browser; the workspace reference appears in the message, not in meta. Meta: none.
+A workspace reference matched none of the stored workspace sessions, raised by the command-side ref resolver behind `prisma auth workspace use` and `prisma auth workspace logout` (exact id match first, then case-insensitive name match), and by the credential managers when a session operation names a workspace with no stored record. Sessions are created only by `prisma auth login`, so the suggested fix is to sign in and pick that workspace in the browser; the workspace reference appears in the message, not in meta. Meta: none.
 
 ### AUTH.NO_WORKSPACE_SESSIONS
 
-`prisma auth workspace use` was run with zero stored workspace sessions, so there is nothing to select among — the command only selects, it never creates a session or opens a browser. The fix is to run `prisma auth login` first. Meta: none.
+`prisma auth workspace use` was run with zero stored workspace sessions, so there is nothing to select among, the command only selects, it never creates a session or opens a browser. The fix is to run `prisma auth login` first. Meta: none.
 
 ### AUTH.SERVICE_TOKEN_EMPTY
 
-The `PRISMA_SERVICE_TOKEN` environment variable is set but blank; a blank token authenticates nothing while still overriding stored workspace sessions, so the CLI surfaces it instead of silently ignoring it. It is raised identically wherever the environment credential is read — `activeCredential()`, the command needs check, and the engine's request path, including at the start of `prisma auth login` before a browser opens. The suggested actions are to unset the variable or set it to a valid service token. Meta: none.
+The `PRISMA_SERVICE_TOKEN` environment variable is set but blank; a blank token authenticates nothing while still overriding stored workspace sessions, so the CLI surfaces it instead of silently ignoring it. It is raised identically wherever the environment credential is read, `activeCredential()`, the command needs check, and the engine's request path, including at the start of `prisma auth login` before a browser opens. The suggested actions are to unset the variable or set it to a valid service token. Meta: none.
 
 ### AUTH.SERVICE_TOKEN_REJECTED
 
-The management API rejected (401) the service token supplied through `PRISMA_SERVICE_TOKEN`; such a token carries no refresh token and can never be renewed, and nothing stored is cleared. Built only through the shared `credentialRejectedError` dispatcher in the engine's API request path — the one place wording differs by credential origin (a stored session with the same failure gets `CLI.CREDENTIALS_REQUIRED` instead). The suggested action is to replace the variable with a valid service token or unset it to fall back to stored sessions. Meta: none.
+The management API rejected (401) the service token supplied through `PRISMA_SERVICE_TOKEN`; such a token carries no refresh token and can never be renewed, and nothing stored is cleared. Built only through the shared `credentialRejectedError` dispatcher in the engine's API request path, the one place wording differs by credential origin (a stored session with the same failure gets `CLI.CREDENTIALS_REQUIRED` instead). The suggested action is to replace the variable with a valid service token or unset it to fall back to stored sessions. Meta: none.
 
 ### AUTH.SESSIONS_UNSUPPORTED
 
-A session mutation (`createSession`, `selectSession`, `endSession`, `endAllSessions`) was attempted on a host that uses the environment-only credential manager, whose sole credential source is `PRISMA_SERVICE_TOKEN` (plus `PRISMA_WORKSPACE_ID`) — such hosts, like composer's rebuilt CLI, hold no stored sessions, so there is nothing to create, select, or end. The suggested action is to set or change the environment variable instead. Meta: none.
+A session mutation (`createSession`, `selectSession`, `endSession`, `endAllSessions`) was attempted on a host that uses the environment-only credential manager, whose sole credential source is `PRISMA_SERVICE_TOKEN` (plus `PRISMA_WORKSPACE_ID`), such hosts, like composer's rebuilt CLI, hold no stored sessions, so there is nothing to create, select, or end. The suggested action is to set or change the environment variable instead. Meta: none.
 
 ### AUTH.USAGE_ERROR
 
-A command that needs an active workspace found an authenticated credential that names no workspace — raised by the resource commands' `resolveActiveWorkspace` and the service commands' `requireWorkspace`, which read the engine's pinned credential; an environment token whose claims carry no workspace id is the usual cause. The suggested fix is to run `prisma auth login` and choose a workspace. Meta: none.
+A command that needs an active workspace found an authenticated credential that names no workspace, raised by the resource commands' `resolveActiveWorkspace` and the service commands' `requireWorkspace`, which read the engine's pinned credential; an environment token whose claims carry no workspace id is the usual cause. The suggested fix is to run `prisma auth login` and choose a workspace. Meta: none.
 
 ### AUTH.WORKSPACE_AMBIGUOUS
 
@@ -80,7 +80,7 @@ A Management API call made by `prisma branch list` failed. The `why` carries the
 
 ### BUCKET.API_ERROR
 
-A bucket Management API request (listing, creating, or deleting buckets or bucket keys) failed — raised by the provider (`lib/bucket/provider.ts`). The `why` carries the API's message or HTTP status, and the fix is the API's hint when it sent one. An HTTP 401 or 403 raises this code too, with a `why` saying the API rejected the request as unauthorized and a `prisma auth login` next action. Meta: `status`, `apiCode` (the API's own error code, when the response supplied one).
+A bucket Management API request (listing, creating, or deleting buckets or bucket keys) failed, raised by the provider (`lib/bucket/provider.ts`). The `why` carries the API's message or HTTP status, and the fix is the API's hint when it sent one. An HTTP 401 or 403 raises this code too, with a `why` saying the API rejected the request as unauthorized and a `prisma auth login` next action. Meta: `status`, `apiCode` (the API's own error code, when the response supplied one).
 
 ### BUCKET.KEY_SECRET_MISSING
 
@@ -94,7 +94,7 @@ A bucket subcommand was called without its required id argument: `bucket delete`
 
 ### CLI.ABORTED
 
-The run's abort signal fired before the command completed — a thrown abort error is recognized in settlement and reported as this code rather than as a bug. When the abort came from a delivered SIGINT/SIGTERM the run exits 130/143; an abort with no recorded signal (an engine-internal abort) exits 3. Meta: none.
+The run's abort signal fired before the command completed, a thrown abort error is recognized in settlement and reported as this code rather than as a bug. When the abort came from a delivered SIGINT/SIGTERM the run exits 130/143; an abort with no recorded signal (an engine-internal abort) exits 3. Meta: none.
 
 ### CLI.AUTH_SERVICE_ERROR
 
@@ -114,11 +114,11 @@ The user typed a retired command path, or a retired flag on a surviving command,
 
 ### CLI.CONFIG_MISSING_MARKER
 
-The evaluated `prisma.config.ts` default export carries no `$prismaConfig` version marker — most likely a Prisma 7 config, which uses the same filename — so the loader stops rather than misread it; the fix is to wrap the exported object in `definePrismaConfig`. Raised by the config loader for any command with a `needs.config` section. The file's absolute path is in `where.path`. Meta: none.
+The evaluated `prisma.config.ts` default export carries no `$prismaConfig` version marker, most likely a Prisma 7 config, which uses the same filename, so the loader stops rather than misread it; the fix is to wrap the exported object in `definePrismaConfig`. Raised by the config loader for any command with a `needs.config` section. The file's absolute path is in `where.path`. Meta: none.
 
 ### CLI.CONFIG_NOT_FOUND
 
-The file `--config` named does not exist. Only an explicitly named file is an error — an absent `prisma.config.ts` found by discovery is fine, because section validators own absence and supply defaults. The path is in `where.path`. Meta: none.
+The file `--config` named does not exist. Only an explicitly named file is an error, an absent `prisma.config.ts` found by discovery is fine, because section validators own absence and supply defaults. The path is in `where.path`. Meta: none.
 
 ### CLI.CONFIG_SECTION_INVALID
 
@@ -154,7 +154,7 @@ The stored-credentials file exists but could not be read (any read failure other
 
 ### CLI.INTERACTION_REQUIRED
 
-The session is not interactive (no TTY stdin, CI, or `--no-interactive`) and the command cannot proceed without a person. Two raise sites: the engine's needs check for a command declaring `needs.interaction`, and `ctx.prompt.browserWait`, which refuses to start a browser wait it could never finish — in that case the URL travels in the error so the user can finish there manually. Meta: `url` (browserWait raise only; none from the needs check).
+The session is not interactive (no TTY stdin, CI, or `--no-interactive`) and the command cannot proceed without a person. Two raise sites: the engine's needs check for a command declaring `needs.interaction`, and `ctx.prompt.browserWait`, which refuses to start a browser wait it could never finish, in that case the URL travels in the error so the user can finish there manually. Meta: `url` (browserWait raise only; none from the needs check).
 
 ### CLI.INTERNAL_ERROR
 
@@ -170,19 +170,19 @@ A command declared an optional peer dependency in `needs.dependencies` that does
 
 ### CLI.PACKAGE_MANAGER_FAILED
 
-A `ctx.packages` operation (an install, or running a package through the manager) exited non-zero — or nothing ran at all because the host wires no package-manager runner, recorded in `meta.reason`. The redacted command line is offered as a run-command next action so the user can run it themselves. Meta: `form`, `manager`, `command`, `exitCode`, `stderrTail`, `reason` (only when the runner is unavailable).
+A `ctx.packages` operation (an install, or running a package through the manager) exited non-zero, or nothing ran at all because the host wires no package-manager runner, recorded in `meta.reason`. The redacted command line is offered as a run-command next action so the user can run it themselves. Meta: `form`, `manager`, `command`, `exitCode`, `stderrTail`, `reason` (only when the runner is unavailable).
 
 ### CLI.PROMPT_CANCELLED
 
-The user cancelled a prompt: EOF on stdin at a line-rendered prompt, a clack cancel (Ctrl-C at the prompt UI), an abort during a browserWait poll, or — via the service commands' `userCancelledError` — consent declined interactively. Settles with exit 3, the cancellation code, instead of 2. Meta: none.
+The user cancelled a prompt: EOF on stdin at a line-rendered prompt, a clack cancel (Ctrl-C at the prompt UI), an abort during a browserWait poll, or, via the service commands' `userCancelledError`, consent declined interactively. Settles with exit 3, the cancellation code, instead of 2. Meta: none.
 
 ### CLI.PROMPT_INVALID
 
-An answer could not be interpreted: not a yes/no for a confirm, not one of a select's options with no default to fall back to, or a consent token typed wrong where re-prompting is impossible (scripted answers or piped stdin — the interactive clack renderer re-prompts instead). Meta: `consentToken` (token-mismatch raise only).
+An answer could not be interpreted: not a yes/no for a confirm, not one of a select's options with no default to fall back to, or a consent token typed wrong where re-prompting is impossible (scripted answers or piped stdin, the interactive clack renderer re-prompts instead). Meta: `consentToken` (token-mismatch raise only).
 
 ### CLI.PROMPT_REQUIRED
 
-A prompt with no declared default was reached where it cannot be shown — under `--yes` or in a non-interactive session — so the run halts; the fix is to run from an interactive terminal or pass a flag that answers the prompt. Meta: none.
+A prompt with no declared default was reached where it cannot be shown, under `--yes` or in a non-interactive session, so the run halts; the fix is to run from an interactive terminal or pass a flag that answers the prompt. Meta: none.
 
 ### CLI.SPAWN_FAILED
 
@@ -222,7 +222,7 @@ The `prisma feedback` message exceeds 4000 characters, the feedback service's li
 
 ### GIT.REPO_CONNECTION_FAILED
 
-A management API call in the `prisma git connect`/`disconnect` flow failed — creating the install intent, listing installations or repositories, reading or writing the source-repository connection, or a pagination cursor that stopped advancing; the API's message and hint, when present, become `why` and the suggested fix, and a 401/403 is routed to the auth error path instead. Meta: `status`, `apiCode` (when the API supplied one).
+A management API call in the `prisma git connect`/`disconnect` flow failed, creating the install intent, listing installations or repositories, reading or writing the source-repository connection, or a pagination cursor that stopped advancing; the API's message and hint, when present, become `why` and the suggested fix, and a 401/403 is routed to the auth error path instead. Meta: `status`, `apiCode` (when the API supplied one).
 
 ### GIT.REPO_INSTALLATION_REQUIRED
 
@@ -230,7 +230,7 @@ A management API call in the `prisma git connect`/`disconnect` flow failed — c
 
 ### GIT.REPO_NOT_ACCESSIBLE
 
-`prisma git connect` waited for repository access but the wait ended with the workspace's existing GitHub App installations still not exposing the requested repository — the same install wait as `GIT.REPO_INSTALLATION_REQUIRED`, distinguished by at least one inspectable installation existing. The fix is to grant the App access to this repository at the install URL, then rerun `prisma git connect`. Meta: `repository`, `installUrl`.
+`prisma git connect` waited for repository access but the wait ended with the workspace's existing GitHub App installations still not exposing the requested repository, the same install wait as `GIT.REPO_INSTALLATION_REQUIRED`, distinguished by at least one inspectable installation existing. The fix is to grant the App access to this repository at the install URL, then rerun `prisma git connect`. Meta: `repository`, `installUrl`.
 
 ### GIT.REPO_NOT_CONNECTED
 
@@ -268,7 +268,7 @@ A warn diagnostic from `prisma init`: package.json exists but could not be parse
 
 ### INIT.PACKAGE_JSON_UNWRITABLE
 
-A warn diagnostic from `prisma init`: the manifest edit was prepared but writing package.json back failed, so the file was left unchanged. The nextActions cover only what the failed write would have added — the postinstall script, the dev dependency, or both. Meta: none.
+A warn diagnostic from `prisma init`: the manifest edit was prepared but writing package.json back failed, so the file was left unchanged. The nextActions cover only what the failed write would have added, the postinstall script, the dev dependency, or both. Meta: none.
 
 ### INIT.POSTINSTALL_KEPT
 
@@ -286,11 +286,11 @@ A warn diagnostic from `prisma init`: the final step, syncing the agent skills f
 
 ### POSTGRES.AMBIGUOUS
 
-A database name passed to a `prisma postgres` subcommand matched more than one database in the resolved project — raised by the shared database resolver (`controllers/database.ts`). The fix is to pass the database id, or `--branch <git-name>` to narrow the match; the candidates are carried in meta as `matches`, each with `id`, `name`, and `branchName`. Meta: `matches`.
+A database name passed to a `prisma postgres` subcommand matched more than one database in the resolved project, raised by the shared database resolver (`controllers/database.ts`). The fix is to pass the database id, or `--branch <git-name>` to narrow the match; the candidates are carried in meta as `matches`, each with `id`, `name`, and `branchName`. Meta: `matches`.
 
 ### POSTGRES.API_ERROR
 
-A database Management API request failed without a more specific code — the generic fallback for every `prisma postgres` operation, raised by the provider (`lib/database/provider.ts`), and also when a database response omits its project id. The `why` carries the API's message or HTTP status, and the fix is the API's hint when it sent one. An HTTP 401 or 403 raises this code too, with a `why` saying the API rejected the request as unauthorized and a `prisma auth login` next action. Meta: `status`, `apiCode` (the API's own error code, when the response supplied one).
+A database Management API request failed without a more specific code, the generic fallback for every `prisma postgres` operation, raised by the provider (`lib/database/provider.ts`), and also when a database response omits its project id. The `why` carries the API's message or HTTP status, and the fix is the API's hint when it sent one. An HTTP 401 or 403 raises this code too, with a `why` saying the API rejected the request as unauthorized and a `prisma auth login` next action. Meta: `status`, `apiCode` (the API's own error code, when the response supplied one).
 
 ### POSTGRES.BACKUP_NOT_FOUND
 
@@ -298,7 +298,7 @@ A database Management API request failed without a more specific code — the ge
 
 ### POSTGRES.BACKUPS_UNSUPPORTED
 
-Listing backups returned a 422 because the platform does not manage backups for this database — for example a remote/BYO database (raised by `prisma postgres backup list`). The fix is to use your own backup tooling for externally managed databases. Meta: none.
+Listing backups returned a 422 because the platform does not manage backups for this database, for example a remote/BYO database (raised by `prisma postgres backup list`). The fix is to use your own backup tooling for externally managed databases. Meta: none.
 
 ### POSTGRES.CONNECTION_MISSING
 
@@ -314,11 +314,11 @@ The database a `prisma postgres` subcommand targets could not be resolved: eithe
 
 ### POSTGRES.PLAN_LIMIT_REACHED
 
-A database operation was blocked because the workspace has used up the operations included in its plan — the API's structured plan-limit discriminator, detected on any `prisma postgres` Management API call; this is a workspace plan restriction, not a Prisma outage. The one nextAction is to upgrade the workspace plan, with the upgrade URL and current plan name when the workspace subscription could be read. Meta: `workspaceId`, `blockedFeature`, `planName`, `usageBlocked`, `upgradeUrl` (each `null` when unavailable).
+A database operation was blocked because the workspace has used up the operations included in its plan, the API's structured plan-limit discriminator, detected on any `prisma postgres` Management API call; this is a workspace plan restriction, not a Prisma outage. The one nextAction is to upgrade the workspace plan, with the upgrade URL and current plan name when the workspace subscription could be read. Meta: `workspaceId`, `blockedFeature`, `planName`, `usageBlocked`, `upgradeUrl` (each `null` when unavailable).
 
 ### POSTGRES.RESTORE_CONFLICT
 
-`prisma postgres backup restore` got a 409 because the target database is provisioning or already recovering. The fix is to wait for the database to become ready — check with `prisma postgres show <database>` — then retry. Meta: none.
+`prisma postgres backup restore` got a 409 because the target database is provisioning or already recovering. The fix is to wait for the database to become ready, check with `prisma postgres show <database>`, then retry. Meta: none.
 
 ### POSTGRES.USAGE_ERROR
 
@@ -328,7 +328,7 @@ A `prisma postgres` subcommand was called with missing or invalid arguments: `cr
 
 ### PROJECT.AMBIGUOUS
 
-Project resolution matched more than one project: an explicit project reference (matched by id first, then by name) hit several projects, or the implicit directory context did — raised by any command that resolves a project, including `branch list`. The fix is to pass `--project <id-or-name>`, and the next actions include `prisma project link <id>` with the first match's id verbatim so the user can copy an exact disambiguating reference. Meta: `matches`.
+Project resolution matched more than one project: an explicit project reference (matched by id first, then by name) hit several projects, or the implicit directory context did, raised by any command that resolves a project, including `branch list`. The fix is to pass `--project <id-or-name>`, and the next actions include `prisma project link <id>` with the first match's id verbatim so the user can copy an exact disambiguating reference. Meta: `matches`.
 
 ### PROJECT.API_ERROR
 
@@ -336,7 +336,7 @@ A Management API project operation (list, rename, delete, or transfer) failed. L
 
 ### PROJECT.CREATE_FAILED
 
-The platform rejected creating a project — raised by `prisma project create` and by the create-a-new-project path of `prisma project link`. An HTTP 401/403 gets a permissions-focused fix; any other failure surfaces the underlying error message as the `why`. Meta: none.
+The platform rejected creating a project, raised by `prisma project create` and by the create-a-new-project path of `prisma project link`. An HTTP 401/403 gets a permissions-focused fix; any other failure surfaces the underlying error message as the `why`. Meta: none.
 
 ### PROJECT.DELETE_BLOCKED
 
@@ -352,7 +352,7 @@ A Management API call made by the `prisma project env` commands (reading, writin
 
 ### PROJECT.ENV_BRANCH_NOT_FOUND
 
-A `prisma project env` update, list, or delete named a branch scope (`--branch <git-name>`) that does not exist — only `env add` creates missing branches. The fix is to create the branch by deploying it, or to use `project env add --branch` to create its first override. Meta: none.
+A `prisma project env` update, list, or delete named a branch scope (`--branch <git-name>`) that does not exist, only `env add` creates missing branches. The fix is to create the branch by deploying it, or to use `project env add --branch` to create its first override. Meta: none.
 
 ### PROJECT.ENV_BRANCH_SCOPE_IS_PRODUCTION
 
@@ -376,19 +376,19 @@ Not an error: a warn diagnostic emitted on a successful `prisma project env add`
 
 ### PROJECT.LOCAL_STATE_STALE
 
-The local project binding in `.prisma/local.json` is unusable: the pinned project is no longer in the selected workspace's project list, or the pin file is invalid JSON or has an invalid shape — raised by any command that resolves the project implicitly through the pin. The fix is to delete the pin file and choose a project explicitly. Meta: `pinPath`.
+The local project binding in `.prisma/local.json` is unusable: the pinned project is no longer in the selected workspace's project list, or the pin file is invalid JSON or has an invalid shape, raised by any command that resolves the project implicitly through the pin. The fix is to delete the pin file and choose a project explicitly. Meta: `pinPath`.
 
 ### PROJECT.LOCAL_STATE_WRITE_FAILED
 
-`prisma project link` or `project create` could not save the local binding: writing `.prisma/local.json` failed, or updating `.gitignore` to keep the binding out of git failed — the fix is to check directory permissions and retry. The same code is also emitted as a warn diagnostic (not an error) by `project delete` and `project transfer` when the operation itself succeeded but the now-stale local pin could not be removed or rewritten. Meta: `pinPath` or `gitignorePath`, plus `operation` (the error form; the diagnostic form carries none).
+`prisma project link` or `project create` could not save the local binding: writing `.prisma/local.json` failed, or updating `.gitignore` to keep the binding out of git failed, the fix is to check directory permissions and retry. The same code is also emitted as a warn diagnostic (not an error) by `project delete` and `project transfer` when the operation itself succeeded but the now-stale local pin could not be removed or rewritten. Meta: `pinPath` or `gitignorePath`, plus `operation` (the error form; the diagnostic form carries none).
 
 ### PROJECT.LOCAL_WORKSPACE_MISMATCH
 
-`.prisma/local.json` links the directory to a project in one workspace, but the CLI session's active workspace is a different one — raised by any command that resolves the project through the pin. The fix is to switch to the pinned workspace (`prisma auth workspace use <id>`) or relink the directory to a project in the current workspace. Meta: `pinPath`, `pinnedWorkspaceId`, `pinnedProjectId`, `activeWorkspaceId`, `activeWorkspaceName`.
+`.prisma/local.json` links the directory to a project in one workspace, but the CLI session's active workspace is a different one, raised by any command that resolves the project through the pin. The fix is to switch to the pinned workspace (`prisma auth workspace use <id>`) or relink the directory to a project in the current workspace. Meta: `pinPath`, `pinnedWorkspaceId`, `pinnedProjectId`, `activeWorkspaceId`, `activeWorkspaceName`.
 
 ### PROJECT.NOT_FOUND
 
-An explicit project reference matched no project in the active workspace, either because it does not exist or because the credential cannot see it — raised during project resolution for any command that accepts one, including `branch list` and the `project link`/`transfer`/`delete` target lookup. The fix is to pass an id or name from `prisma project list`. Service commands raise the same code one step later, when the services API answers "Resource Not Found" for a project that did resolve — the directory binding points at a project that no longer exists or is no longer accessible — and their next actions point at `project show` to inspect the binding and `project link` to fix it. Meta: none.
+An explicit project reference matched no project in the active workspace, either because it does not exist or because the credential cannot see it, raised during project resolution for any command that accepts one, including `branch list` and the `project link`/`transfer`/`delete` target lookup. The fix is to pass an id or name from `prisma project list`. Service commands raise the same code one step later, when the services API answers "Resource Not Found" for a project that did resolve, the directory binding points at a project that no longer exists or is no longer accessible, and their next actions point at `project show` to inspect the binding and `project link` to fix it. Meta: none.
 
 ### PROJECT.RENAME_FAILED
 
@@ -408,11 +408,11 @@ A command needed a project but the directory is not linked and no `--project` fl
 
 ### PROJECT.TRANSFER_REJECTED
 
-The Management API answered `prisma project transfer` with HTTP 400 — for example because the recipient token is invalid or expired; the API's message replaces the default `why` when present, and the fix is to check the recipient session or token and retry. Meta: none.
+The Management API answered `prisma project transfer` with HTTP 400, for example because the recipient token is invalid or expired; the API's message replaces the default `why` when present, and the fix is to check the recipient session or token and retry. Meta: none.
 
 ### PROJECT.USAGE_ERROR
 
-A `project` or `branch` group command was invoked with unusable arguments — for example a `project env` write without an explicit `--role` or `--branch` scope, `project transfer` with both recipient flags at once, `project create` with an empty name, or an interactive `project link` whose selection was cancelled. Usage errors exit 2. Meta: none.
+A `project` or `branch` group command was invoked with unusable arguments, for example a `project env` write without an explicit `--role` or `--branch` scope, `project transfer` with both recipient flags at once, `project create` with an empty name, or an interactive `project link` whose selection was cancelled. Usage errors exit 2. Meta: none.
 
 ## SERVICE
 
@@ -430,7 +430,7 @@ A `service domain` command was pointed at a non-production branch, which the dom
 
 ### SERVICE.DEPLOY_FAILED
 
-The general "Management API call failed" wrapper for the `service` command family — despite the name there is no deploy command here: it wraps failures to create a service, list services or versions, show/promote/roll back/delete/start/stop a version, resolve a service URL, and unrecognized custom-domain API failures. The underlying error's message becomes `why` and the original error is carried in `cause`; each raise site attaches its own next actions. On the domain fallback path only, a `DomainApiError` adds debug meta. Meta: `status`, `apiCode`, `hint` (domain fallback path only; otherwise none).
+The general "Management API call failed" wrapper for the `service` command family, despite the name there is no deploy command here: it wraps failures to create a service, list services or versions, show/promote/roll back/delete/start/stop a version, resolve a service URL, and unrecognized custom-domain API failures. The underlying error's message becomes `why` and the original error is carried in `cause`; each raise site attaches its own next actions. On the domain fallback path only, a `DomainApiError` adds debug meta. Meta: `status`, `apiCode`, `hint` (domain fallback path only; otherwise none).
 
 ### SERVICE.DOMAIN_ALREADY_REGISTERED
 
@@ -442,15 +442,15 @@ The general "Management API call failed" wrapper for the `service` command famil
 
 ### SERVICE.DOMAIN_HOSTNAME_INVALID
 
-The hostname given to a `service domain` command is not a usable custom domain — raised either by local validation before any API call (protocol, path, port, wildcard, single label, or bad DNS labels) or when `service domain add` gets a plain HTTP 400 rejection from the domain API. The fix is to pass a bare hostname such as `shop.acme.com`. Meta: `status`, `apiCode`, `hint` (API-rejection path only; none for local validation).
+The hostname given to a `service domain` command is not a usable custom domain, raised either by local validation before any API call (protocol, path, port, wildcard, single label, or bad DNS labels) or when `service domain add` gets a plain HTTP 400 rejection from the domain API. The fix is to pass a bare hostname such as `shop.acme.com`. Meta: `status`, `apiCode`, `hint` (API-rejection path only; none for local validation).
 
 ### SERVICE.DOMAIN_NOT_FOUND
 
-A `service domain` command targeted a hostname that is not attached to the resolved service — raised when the service's domain listing has no matching hostname, or when a show/delete/retry/wait call gets HTTP 404. The fix is to check the hostname and service, or add the domain first. Meta: none.
+A `service domain` command targeted a hostname that is not attached to the resolved service, raised when the service's domain listing has no matching hostname, or when a show/delete/retry/wait call gets HTTP 404. The fix is to check the hostname and service, or add the domain first. Meta: none.
 
 ### SERVICE.DOMAIN_QUOTA_EXCEEDED
 
-`service domain add` was refused because the custom-domain quota is reached — HTTP 429, or a 409 whose text mentions a quota, maximum, or limit. The fix is to delete an existing custom domain before adding another. Meta: `status`, `apiCode`, `hint`.
+`service domain add` was refused because the custom-domain quota is reached: HTTP 429, or a 409 whose text mentions a quota, maximum, or limit. The fix is to delete an existing custom domain before adding another. Meta: `status`, `apiCode`, `hint`.
 
 ### SERVICE.DOMAIN_RETRY_NOT_ELIGIBLE
 
@@ -470,11 +470,11 @@ A `service domain` command targeted a hostname that is not attached to the resol
 
 ### SERVICE.LIVE_VERSION_UNKNOWN
 
-`service version rollback` without `--to` needs to know which version is live, because the default rollback target is defined relative to it, and the service record names no live version — the CLI refuses rather than guess what production is serving. The fix is to pass `--to <version>` explicitly. Meta: none.
+`service version rollback` without `--to` needs to know which version is live, because the default rollback target is defined relative to it, and the service record names no live version, the CLI refuses rather than guess what production is serving. The fix is to pass `--to <version>` explicitly. Meta: none.
 
 ### SERVICE.LOGS_FAILED
 
-`service logs` could not read the log — either the logs endpoint answered with a non-OK HTTP status (other than 404, which becomes SERVICE.VERSION_NOT_FOUND), or a page's closing terminal record reported `kind: "error"`, meaning the platform itself says the log read failed. The meta differs by path: the HTTP path carries `status`; the terminal-record path carries the platform's error `code`, `retryable`, and the resume `cursor` when present (in `--follow` mode one retryable terminal error is retried once before this settles the run). Meta: `status` (HTTP path) or `code`, `retryable`, `cursor` (stream path).
+`service logs` could not read the log, either the logs endpoint answered with a non-OK HTTP status (other than 404, which becomes SERVICE.VERSION_NOT_FOUND), or a page's closing terminal record reported `kind: "error"`, meaning the platform itself says the log read failed. The meta differs by path: the HTTP path carries `status`; the terminal-record path carries the platform's error `code`, `retryable`, and the resume `cursor` when present (in `--follow` mode one retryable terminal error is retried once before this settles the run). Meta: `status` (HTTP path) or `code`, `retryable`, `cursor` (stream path).
 
 ### SERVICE.LOGS_INCOMPLETE
 
@@ -482,7 +482,7 @@ A `service logs` response body ended without the terminal record that closes a p
 
 ### SERVICE.LOGS_NO_CURSOR
 
-`service logs --follow` needs a resume cursor from each page to fetch the next one, and the page ended without one — continuing would re-request the default tail and silently print the same lines every interval, so the run stops and says why. It settles as an error rather than a clean end because `--follow` has no successful ending. The fix is to rerun without `--follow`, or retry if the version is still starting. Meta: none.
+`service logs --follow` needs a resume cursor from each page to fetch the next one, and the page ended without one, continuing would re-request the default tail and silently print the same lines every interval, so the run stops and says why. It settles as an error rather than a clean end because `--follow` has no successful ending. The fix is to rerun without `--follow`, or retry if the version is still starting. Meta: none.
 
 ### SERVICE.LOGS_RANGE_CONFLICT
 
@@ -494,19 +494,19 @@ A `service logs` response body ended without the terminal record that closes a p
 
 ### SERVICE.NO_PREVIOUS_VERSION
 
-`service version rollback` without `--to` found no earlier version to switch back to — the service has no versions at all, or every version is the live one. The fix is to deploy a second version first, or pass `--to <version-id>` for a specific version. Meta: none.
+`service version rollback` without `--to` found no earlier version to switch back to, the service has no versions at all, or every version is the live one. The fix is to deploy a second version first, or pass `--to <version-id>` for a specific version. Meta: none.
 
 ### SERVICE.NO_VERSIONS
 
-The resolved service has no usable version for the command — raised by `service open` when the service has no versions, by `service logs` when it has no live version, and by `service domain add` when the API answers 422 because the production service has no promoted version that can receive a custom domain. The fix on the domain path is to promote a version on the production branch first, then add the domain again. Meta: `status`, `apiCode`, `hint` (domain-add path only; otherwise none).
+The resolved service has no usable version for the command, raised by `service open` when the service has no versions, by `service logs` when it has no live version, and by `service domain add` when the API answers 422 because the production service has no promoted version that can receive a custom domain. The fix on the domain path is to promote a version on the production branch first, then add the domain again. Meta: `status`, `apiCode`, `hint` (domain-add path only; otherwise none).
 
 ### SERVICE.SELECTION_INVALID
 
-The named service could not be found among the resolved project branch's services — the match tries the stable platform id first, then the name. The fix is to pass the id or name of an existing service; the suggested command is `service list`, deliberately not `service version list`, which itself has to resolve a service and would fail the same way. Meta: none.
+The named service could not be found among the resolved project branch's services, the match tries the stable platform id first, then the name. The fix is to pass the id or name of an existing service; the suggested command is `service list`, deliberately not `service version list`, which itself has to resolve a service and would fail the same way. Meta: none.
 
 ### SERVICE.TARGET_REQUIRED
 
-A service command that acts on an existing service was run without naming one; service commands act only on an explicitly named target — nothing is inferred, remembered, or prompted for. The fix is to pass the service id or name as the first argument, with `service list` to find one. Meta: none.
+A service command that acts on an existing service was run without naming one; service commands act only on an explicitly named target, nothing is inferred, remembered, or prompted for. The fix is to pass the service id or name as the first argument, with `service list` to find one. Meta: none.
 
 ### SERVICE.TIMEOUT_INVALID
 
@@ -514,15 +514,15 @@ The `--timeout` value passed to `service domain wait` is not a duration the pars
 
 ### SERVICE.VERSION_ALREADY_LIVE
 
-Not an error: a warn-severity diagnostic attached by `service version promote` and `service version rollback` when the selected version is already live for the service — the command skips the promote call, still reports the result, and exits 0. Meta: none.
+Not an error: a warn-severity diagnostic attached by `service version promote` and `service version rollback` when the selected version is already live for the service, the command skips the promote call, still reports the result, and exits 0. Meta: none.
 
 ### SERVICE.VERSION_ALREADY_RUNNING
 
-Not an error: a warn-severity diagnostic attached by `service version start` when the selected version already reports `running` status — the start call is skipped, the result carries `alreadyInState: true`, and the run exits 0. Meta: none.
+Not an error: a warn-severity diagnostic attached by `service version start` when the selected version already reports `running` status, the start call is skipped, the result carries `alreadyInState: true`, and the run exits 0. Meta: none.
 
 ### SERVICE.VERSION_ALREADY_STOPPED
 
-Not an error: a warn-severity diagnostic attached by `service version stop` when the selected version already reports `stopped` status — the stop call is skipped, the result carries `alreadyInState: true`, and the run exits 0. Meta: none.
+Not an error: a warn-severity diagnostic attached by `service version stop` when the selected version already reports `stopped` status, the stop call is skipped, the result carries `alreadyInState: true`, and the run exits 0. Meta: none.
 
 ### SERVICE.VERSION_DETACHED
 
@@ -530,11 +530,11 @@ A version was resolved by its globally-unique id but the Management API returned
 
 ### SERVICE.VERSION_NOT_FOUND
 
-The requested service version does not exist or is not available — raised when resolving a version by its globally-unique id finds nothing (including a 404 from the logs endpoint), and, in the "for service" variant used by rollback and logs `--version-id`, when the id exists but does not belong to the resolved service. The fix is to pick an id from `service version list`. Meta: none.
+The requested service version does not exist or is not available, raised when resolving a version by its globally-unique id finds nothing (including a 404 from the logs endpoint), and, in the "for service" variant used by rollback and logs `--version-id`, when the id exists but does not belong to the resolved service. The fix is to pick an id from `service version list`. Meta: none.
 
 ### SERVICE.WORKSPACE_REQUIRED
 
-A service command ran without a credential that names a workspace — either no authenticated session, or an environment token whose claims carry no workspace, which cannot scope these commands and is treated the same as having no credential. The fix is `auth login`. Meta: none.
+A service command ran without a credential that names a workspace, either no authenticated session, or an environment token whose claims carry no workspace, which cannot scope these commands and is treated the same as having no credential. The fix is `auth login`. Meta: none.
 
 ## SKILLS
 
