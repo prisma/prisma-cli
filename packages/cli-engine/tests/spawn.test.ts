@@ -1773,6 +1773,7 @@ function controllableRuntime() {
     cwd: "/",
     env: {},
     isTty: { stdin: false, stdout: false, stderr: false },
+    outputStreamsShareDevice: true,
     exit: (code: number): never => {
       exited.push(code);
       throw new Error(`runtime.exit(${code})`);
