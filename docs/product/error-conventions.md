@@ -64,6 +64,24 @@ Examples:
 
 Operational errors may be translated into stable structured envelopes when that improves recovery, but they should not be disguised as programming bugs.
 
+`auth whoami` looks up the signed-in identity online as a best-effort
+enrichment, and an operational failure of that lookup never fails the command.
+A network error, a timeout, a 5xx response, or `CLI.AUTH_SERVICE_ERROR` leaves
+it answering from the stored credential's own claims, so it works offline.
+
+The engine's verdict on the credential itself is not such a failure, and whoami
+never reports `authenticated: true` for a credential the same run found
+unusable:
+
+- `CLI.CREDENTIALS_REQUIRED` — the session expired beyond refresh, or ended
+  while the command ran. That is the question whoami exists to answer, so it
+  answers: signed out, `authenticated: false`, exit `0`, with the `Sign in` next
+  action — the same result as when no credential is stored.
+- `AUTH.SERVICE_TOKEN_REJECTED` — the API refused the `PRISMA_SERVICE_TOKEN`
+  credential. The error settles as itself, exit `2`, as `AUTH.SERVICE_TOKEN_EMPTY`
+  does: signing in cannot help while the variable is set, so the answer must name
+  the variable instead of suggesting `auth login`.
+
 ### Bug
 
 An unexpected fault or invariant break where the system cannot reliably continue.
