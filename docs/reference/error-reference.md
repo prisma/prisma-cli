@@ -64,7 +64,7 @@ A command that needs an active workspace found an authenticated credential that 
 
 ### AUTH.WORKSPACE_AMBIGUOUS
 
-A user-typed workspace name matched more than one workspace, from two raise sites with different meta: the session-ref resolver behind `prisma auth workspace use`/`logout` when several stored sessions share the name (meta carries `workspaceIds`), and `prisma project transfer` when a `--to-workspace` reference matches several authenticated workspaces (meta carries `workspaceRef` and `matches`, each match holding `id`, `name`, `credentialWorkspaceId`). Both point the user at `prisma auth workspace list` to retry with an exact workspace id. Meta: `workspaceIds` (workspace commands) or `workspaceRef`, `matches` (project transfer).
+A user-typed workspace name matched more than one workspace, from two raise sites with different meta: the session-ref resolver behind `prisma auth workspace use`/`logout` when several stored sessions share the name (meta carries `workspaceIds` and `sessions`, each session holding `workspaceId` and a nullable `user`), and `prisma project transfer` when a `--to-workspace` reference matches several authenticated workspaces (meta carries `workspaceRef` and `matches`, each match holding `id`, `name`, `credentialWorkspaceId`). Both point the user at `prisma auth workspace list` to retry with an exact workspace id. Meta: `workspaceIds`, `sessions` (workspace commands) or `workspaceRef`, `matches` (project transfer).
 
 ### AUTH.WORKSPACE_NOT_AUTHENTICATED
 

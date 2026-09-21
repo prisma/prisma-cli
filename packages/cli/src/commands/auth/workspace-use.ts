@@ -1,6 +1,7 @@
 /** The `auth workspace use` command: it SELECTS among the sessions you
  *  have — it never creates one, and never opens a browser. */
 import {
+  type CredentialManager,
   defineCommand,
   type Presentations,
   positional,
@@ -14,6 +15,7 @@ import { CLI_NAME } from "../../cli-name";
 import { ENVIRONMENT_CREDENTIAL_NOTICE } from "./credential-card";
 import {
   requireSession,
+  resolveSessionRef,
   type SessionUser,
   sessionChoiceLabel,
   sessionLabel,
@@ -116,11 +118,13 @@ export const authWorkspaceUseCommand = defineCommand({
     examples: ["auth workspace use", "auth workspace use my-workspace"],
   },
   handler: async (args, ctx) => {
-    const stored = await sessionsForDisplay(ctx.credentialManager);
+    const ref = args.positionals.workspace?.trim();
+    const stored = ref
+      ? await sessionsForRef(ctx.credentialManager, ref)
+      : await sessionsForDisplay(ctx.credentialManager);
     if (stored.sessions.length === 0) {
       throw noWorkspaceSessionsError();
     }
-    const ref = args.positionals.workspace?.trim();
     const chosen = ref
       ? requireSession(stored.sessions, ref)
       : await promptForSession(stored, ctx.prompt.select);
@@ -154,6 +158,20 @@ export const authWorkspaceUseCommand = defineCommand({
     );
   },
 });
+
+/** An explicit ref is a local switch: it resolves against stored state and
+ *  waits for no lookup. Only a ref that matches nothing looks metadata up,
+ *  because a session saved before names were stored may be the one meant. */
+async function sessionsForRef(
+  manager: CredentialManager,
+  ref: string,
+): Promise<StoredSessions> {
+  const stored = await manager.sessions();
+  if (resolveSessionRef(stored.sessions, ref).kind !== "no-match") {
+    return stored;
+  }
+  return sessionsForDisplay(manager);
+}
 
 async function promptForSession(
   stored: StoredSessions,

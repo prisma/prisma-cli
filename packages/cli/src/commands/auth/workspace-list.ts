@@ -4,12 +4,18 @@ import {
   type Presentations,
   type Session,
 } from "@prisma/cli-engine";
-import { ok } from "@prisma/cli-engine/protocol";
+import { type NextAction, ok } from "@prisma/cli-engine/protocol";
 import { sessionsForDisplay } from "../../auth/credential-manager";
 import { environmentCredentialInForce } from "../../auth/service-token";
 import { CLI_NAME } from "../../cli-name";
 import { ENVIRONMENT_CREDENTIAL_NOTICE } from "./credential-card";
 import { sessionLabel, sessionUser, sessionUserLabel } from "./session-ref";
+
+const LOGIN_NEXT_ACTION: NextAction = {
+  kind: "run-command",
+  label: "Authorize a workspace",
+  command: `${CLI_NAME} auth login`,
+};
 
 export interface WorkspaceListResult {
   readonly sessions: readonly Session[];
@@ -81,16 +87,7 @@ function listPresentations(result: WorkspaceListResult): Presentations {
           .trimEnd(),
       ),
     json: () => serializeWorkspaceList(result),
-    next: () => [
-      {
-        kind: "run-command",
-        label:
-          result.sessions.length === 0
-            ? "Authorize a workspace"
-            : "Authorize another workspace",
-        command: `${CLI_NAME} auth login`,
-      },
-    ],
+    next: () => (result.sessions.length === 0 ? [LOGIN_NEXT_ACTION] : []),
   };
 }
 

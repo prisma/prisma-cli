@@ -547,7 +547,7 @@ describe("auth workspace list", () => {
     ]);
   });
 
-  it("distinguishes sessions from different users and offers another authorization", async () => {
+  it("distinguishes sessions from different users and offers no next action", async () => {
     const cli = makeCli({
       sessions: [
         record("ws_personal", "Personal workspace", {
@@ -579,13 +579,39 @@ describe("auth workspace list", () => {
         },
       ],
     });
-    expect(result.presented?.presentation.next).toEqual([
-      {
-        kind: "run-command",
-        label: "Authorize another workspace",
-        command: "prisma auth login",
-      },
-    ]);
+    expect(result.presented?.presentation.next).toEqual([]);
+  });
+
+  it("lists what the metadata lookup returns", async () => {
+    const cli = makeCli({
+      sessions: [record("ws_legacy", undefined)],
+      selectedWorkspaceId: "ws_legacy",
+    });
+    const enrichSessions = vi.fn(async () => ({
+      sessions: [
+        {
+          workspaceId: "ws_legacy",
+          workspaceName: "Acme Inc",
+          identity: { userId: "usr_1", email: "alice@example.com" },
+          expiresAt: undefined,
+        },
+      ],
+      selectedWorkspaceId: "ws_legacy",
+    }));
+    Object.assign(cli.credentialManager, { enrichSessions });
+
+    const result = await cli.run(["auth", "workspace", "list", "--json"]);
+
+    expect(enrichSessions).toHaveBeenCalledTimes(1);
+    expect(resultOf(result)).toMatchObject({
+      items: [
+        {
+          workspaceId: "ws_legacy",
+          workspaceName: "Acme Inc",
+          user: { id: "usr_1", email: "alice@example.com", name: null },
+        },
+      ],
+    });
   });
 });
 
@@ -629,6 +655,59 @@ describe("auth workspace use", () => {
 
     expect(result.exitCode).toBe(0);
     expect(cli.credentialManager?.state().selectedWorkspaceId).toBe("ws_2");
+  });
+
+  it("switches to an explicit workspace without a network lookup", async () => {
+    const cli = makeCli({ sessions: twoSessions, selectedWorkspaceId: "ws_1" });
+    const enrichSessions = vi.fn(async () => {
+      throw new Error("Metadata lookup must not block a local switch");
+    });
+    Object.assign(cli.credentialManager, { enrichSessions });
+
+    const result = await cli.run([
+      "auth",
+      "workspace",
+      "use",
+      "Globex",
+      "--json",
+    ]);
+
+    expect(result.exitCode).toBe(0);
+    expect(cli.credentialManager?.state().selectedWorkspaceId).toBe("ws_2");
+    expect(enrichSessions).not.toHaveBeenCalled();
+  });
+
+  it("looks metadata up when the workspace matches no stored name", async () => {
+    const cli = makeCli({
+      sessions: [record("ws_1", "Acme Inc"), record("ws_legacy", undefined)],
+      selectedWorkspaceId: "ws_1",
+    });
+    const enrichSessions = vi.fn(async () => {
+      const stored = await cli.credentialManager?.sessions();
+      return {
+        selectedWorkspaceId: stored?.selectedWorkspaceId,
+        sessions: (stored?.sessions ?? []).map((session) =>
+          session.workspaceId === "ws_legacy"
+            ? { ...session, workspaceName: "Globex" }
+            : session,
+        ),
+      };
+    });
+    Object.assign(cli.credentialManager, { enrichSessions });
+
+    const result = await cli.run([
+      "auth",
+      "workspace",
+      "use",
+      "Globex",
+      "--json",
+    ]);
+
+    expect(result.exitCode).toBe(0);
+    expect(enrichSessions).toHaveBeenCalledTimes(1);
+    expect(cli.credentialManager?.state().selectedWorkspaceId).toBe(
+      "ws_legacy",
+    );
   });
 
   it("refuses an ambiguous name, listing the workspaces that matched", async () => {

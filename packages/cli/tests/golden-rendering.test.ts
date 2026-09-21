@@ -123,9 +123,7 @@ describe("golden rendering", () => {
         "\n" +
         "Workspace  User              Id    Status\n" +
         "Acme Inc   ws_1@example.com  ws_1  current\n" +
-        "Globex     ws_2@example.com  ws_2  \u2014\n" +
-        "\n" +
-        "→ Authorize another workspace: prisma auth login\n",
+        "Globex     ws_2@example.com  ws_2  \u2014\n",
     );
     expect(result.stdout).toBe("Acme Inc  ws_1  current\nGlobex  ws_2\n");
   });
@@ -220,9 +218,7 @@ describe("golden rendering", () => {
         "\n" +
         "\u001b[36mWorkspace\u001b[39m  \u001b[36mUser            \u001b[39m  \u001b[36mId  \u001b[39m  \u001b[36mStatus\u001b[39m\n" +
         "Acme Inc   ws_1@example.com  ws_1  current\n" +
-        "Globex     ws_2@example.com  ws_2  [2m\u2014[22m\n" +
-        "\n" +
-        "\u001b[36m→\u001b[39m Authorize another workspace: \u001b[36mprisma auth login\u001b[39m\n",
+        "Globex     ws_2@example.com  ws_2  [2m\u2014[22m\n",
     );
   });
 });

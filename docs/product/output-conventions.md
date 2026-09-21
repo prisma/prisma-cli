@@ -231,12 +231,13 @@ Structured output carries a nullable `user` object on every item, and
 
 `user` is `null` when neither stored metadata nor token claims name a user. A
 user field is `null` when it is unknown. Tokens never appear in any output.
-`auth workspace list` always offers `auth login` as the next action.
 
 The CLI reads the workspace name and the user from one best-effort `/v1/me`
 request at login and stores them with the session. Sessions saved before this
-existed get the same lookup once, from `auth workspace list` and
-`auth workspace use`. Logout never waits for a lookup.
+existed get the same lookup once, from `auth workspace list` and the
+`auth workspace use` picker. `auth workspace use <workspace>` is a local switch:
+it looks metadata up only when the argument matches no stored session. Logout
+never waits for a lookup.
 
 ### One-Time Secret Output
 
