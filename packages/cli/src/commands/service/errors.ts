@@ -70,17 +70,13 @@ export function serviceNameRequiredError(): CliStructuredError {
 }
 
 export function projectNotFoundError(projectId: string): CliStructuredError {
-  return new CliStructuredError(
-    "SERVICE.PROJECT_NOT_FOUND",
-    "Project not found",
-    {
-      why: `The resolved project "${projectId}" does not exist in the authenticated workspace or is no longer accessible.`,
-      nextActions: [
-        runCommandAction("Inspect the directory binding", "project show"),
-        runCommandAction("Link a project", "project link <id-or-name>"),
-      ],
-    },
-  );
+  return new CliStructuredError("PROJECT.NOT_FOUND", "Project not found", {
+    why: `The resolved project "${projectId}" does not exist in the authenticated workspace or is no longer accessible.`,
+    nextActions: [
+      runCommandAction("Inspect the directory binding", "project show"),
+      runCommandAction("Link a project", "project link <id-or-name>"),
+    ],
+  });
 }
 
 export function deployFailedError(

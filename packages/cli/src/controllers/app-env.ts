@@ -2,7 +2,6 @@
 
 import { CliStructuredError } from "@prisma/cli-engine/protocol";
 import type { ManagementApiClient } from "@prisma/management-api-sdk";
-import type { CommandContext } from "../legacy/runtime";
 import {
   type EnvScope,
   type EnvVarRole,
@@ -19,6 +18,7 @@ import {
   type RawEnvironmentVariable,
   type ResolvedEnvApiScope,
 } from "./app-env-api";
+import type { CommandContext } from "./context";
 
 interface ResolvedScope extends ResolvedEnvApiScope {
   scope: EnvScope;

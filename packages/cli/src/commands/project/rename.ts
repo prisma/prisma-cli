@@ -50,13 +50,16 @@ export const projectRenameCommand = defineCommand({
     },
     flags: {
       project: flag.string({
-        brief: "Project id or name",
+        brief:
+          "Project id or name (default: the project this directory is linked to)",
         placeholder: "id-or-name",
       }),
     },
   },
   help: {
-    summary: "Rename the resolved Project",
+    summary: "Rename a Project",
+    description:
+      "Changes the display name of the linked project, or of the one named by --project. The project id stays the same, so existing links and automation keep working.",
     examples: [
       'project rename "Acme Dashboard v2"',
       "project rename billing-api --project proj_123",

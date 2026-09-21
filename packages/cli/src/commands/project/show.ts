@@ -13,7 +13,7 @@ import {
 } from "../../lib/project/resolution";
 import type { ProjectShowResult } from "../../types/project";
 import { resolveActiveWorkspace } from "../resources-shared/workspace";
-import { legacyOperationContext, listWorkspaceProjects } from "./context";
+import { listWorkspaceProjects, operationContext } from "./context";
 
 interface FieldRow {
   readonly label: string;
@@ -111,20 +111,23 @@ export const projectShowCommand = defineCommand({
   args: {
     positionals: {
       project: positional.optionalString({
-        brief: "Project id or name (default: the linked project)",
+        brief:
+          "Project id or name (default: the project this directory is linked to)",
         placeholder: "id-or-name",
       }),
     },
   },
   help: {
-    summary: "Show this directory's Project binding",
+    summary: "Show which Project this directory is linked to",
+    description:
+      "Reports which Project this directory is linked to, or that it is not linked, with next steps. Pass an id or name to inspect any project without changing the local link.",
     examples: ["project show", "project show proj_123 --json"],
   },
   needs: { credentials: true },
   handler: async (args, ctx) => {
     const workspace = await resolveActiveWorkspace(ctx);
     const inspected = await inspectProjectBinding({
-      context: legacyOperationContext(ctx),
+      context: operationContext(ctx),
       workspace,
       explicitProject: args.positionals.project,
       listProjects: () => listWorkspaceProjects(ctx),

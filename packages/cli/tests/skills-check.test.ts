@@ -1,7 +1,8 @@
 // biome-ignore-all lint/performance/noAwaitInLoops: the fixture writes one harness directory after another.
 /**
- * The staleness check as the bin runs it: one stderr line after the
- * command's own output, never touching the exit code, and silent
+ * The staleness check as the bin runs it: one line after the command's
+ * own output — on stderr, or on stdout as a Markdown section under
+ * `--format markdown` — never touching the exit code, and silent
  * through every off switch.
  */
 import { existsSync } from "node:fs";
@@ -90,6 +91,20 @@ function stubCli(exitCode = 0, marker?: string) {
       if (marker !== undefined) {
         runtime.stderr.write(`${marker}\n`);
       }
+      return exitCode;
+    },
+  });
+}
+
+/** What a command writes under --format markdown: its document on
+ *  stdout and nothing on stderr. */
+function stubMarkdownCli(document: string, exitCode = 0) {
+  return () => ({
+    run: async (
+      _argv: readonly string[],
+      runtime: { stdout: { write(text: string): void } },
+    ) => {
+      runtime.stdout.write(document);
       return exitCode;
     },
   });
@@ -229,6 +244,99 @@ describe("the skills check", () => {
   });
 });
 
+describe("the skills check under --format markdown", () => {
+  const MARKDOWN_NOTICE =
+    "\n### Notice\n" +
+    "Prisma agent skills are out of date (installed @prisma/orm-postgres 8.1.0, synced 8.0.0).\n" +
+    "- Sync agent skills: `prisma skills sync`\n";
+
+  it.each([
+    ["--format markdown", ["auth", "whoami", "--format", "markdown"]],
+    ["--format=markdown", ["auth", "whoami", "--format=markdown"]],
+  ])("writes the notice to stdout under %s", async (_name, argv) => {
+    const proc = makeProcess({ cwd: await makeStaleProject(), argv });
+
+    const exitCode = await main(
+      proc,
+      stubMarkdownCli("[ok] Signed in as ada@example.com\n"),
+    );
+
+    expect(exitCode).toBe(0);
+    expect(proc.stdoutText).toBe(
+      `[ok] Signed in as ada@example.com\n${MARKDOWN_NOTICE}`,
+    );
+    expect(proc.stderrText).toBe("");
+  });
+
+  it("reports a project that was never synced the same way", async () => {
+    const root = await makeProjectRoot("check-");
+    await installPackage(root, {
+      name: "@prisma/orm-postgres",
+      version: "8.1.0",
+      skills: ["prisma-8"],
+    });
+    const proc = makeProcess({
+      cwd: root,
+      argv: ["auth", "whoami", "--format", "markdown"],
+    });
+
+    await main(proc, stubMarkdownCli(""));
+
+    expect(proc.stdoutText).toContain(
+      "(installed @prisma/orm-postgres 8.1.0, synced none)",
+    );
+    expect(proc.stderrText).toBe("");
+  });
+
+  it("says nothing on either stream when every copy is current", async () => {
+    const proc = makeProcess({
+      cwd: await makeSyncedProject(),
+      argv: ["auth", "whoami", "--format", "markdown"],
+    });
+
+    await main(proc, stubMarkdownCli(""));
+
+    expect(proc.stdoutText).toBe("");
+    expect(proc.stderrText).toBe("");
+  });
+
+  it("leaves the exit code of a failing command alone", async () => {
+    const proc = makeProcess({
+      cwd: await makeStaleProject(),
+      argv: ["auth", "whoami", "--format", "markdown"],
+    });
+
+    const exitCode = await main(proc, stubMarkdownCli("", 2));
+
+    expect(exitCode).toBe(2);
+    expect(proc.stdoutText).toBe(MARKDOWN_NOTICE);
+  });
+
+  it("stays on stderr when --format names another value", async () => {
+    const proc = makeProcess({
+      cwd: await makeStaleProject(),
+      argv: ["auth", "whoami", "--format", "human"],
+    });
+
+    await main(proc, stubCli());
+
+    expect(proc.stdoutText).toBe("");
+    expect(proc.stderrText).toContain(NOTICE);
+  });
+
+  it("ignores a markdown format after a bare --", async () => {
+    const proc = makeProcess({
+      cwd: await makeStaleProject(),
+      argv: ["auth", "whoami", "--", "--format", "markdown"],
+    });
+
+    await main(proc, stubCli());
+
+    expect(proc.stdoutText).toBe("");
+    expect(proc.stderrText).toContain(NOTICE);
+  });
+});
+
 describe("the skills check off switches", () => {
   it.each([
     ["--quiet", { argv: ["auth", "whoami", "--quiet"] }],
@@ -250,6 +358,7 @@ describe("the skills check off switches", () => {
     await main(proc, stubCli());
 
     expect(proc.stderrText).toBe("");
+    expect(proc.stdoutText).toBe("");
   });
 
   it.each([

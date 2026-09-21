@@ -1,7 +1,7 @@
-import { spawn } from "node:child_process";
 import { type Readable, Writable } from "node:stream";
 import { pipeline } from "node:stream/promises";
 import type { ChildResult, SpawnChild } from "@prisma/cli-engine";
+import spawn from "cross-spawn";
 
 interface DiagnosticStream {
   write(text: string): unknown;
@@ -25,7 +25,7 @@ export interface SpawnChildOptions {
 }
 
 /**
- * The engine's spawn seam, adapted to node:child_process. Human mode
+ * The engine's spawn seam, adapted through cross-spawn. Human mode
  * inherits stdio; structured mode pipes both child output streams to
  * diagnostics. Neither mode detaches or opens a new console, so the child
  * stays in this process's group (POSIX) or console (Windows).

@@ -83,6 +83,8 @@ function listPresentations(result: ProjectListResult): Presentations {
 export const projectListCommand = defineCommand({
   help: {
     summary: "List all projects in your workspace",
+    description:
+      "A Project groups one product or codebase. It is the child of a workspace and the parent of Branches: isolated environments that hold your services, databases, and buckets.",
     examples: ["project list", "project list --json"],
   },
   needs: { credentials: true },

@@ -3,10 +3,15 @@
  * that ship inside the Prisma packages a project installs, so they go
  * out of date whenever those packages move and nothing re-copies them.
  * The project's postinstall normally does; this catches every way that
- * can be bypassed, by naming the mismatch once on stderr.
+ * can be bypassed, by naming the mismatch once.
  *
- * It never changes the exit code, never writes to stdout, and is not
- * conditioned on a TTY: agents run without one and are who this is for.
+ * It goes to stderr, except under `--format markdown`, which promises
+ * that everything the command produces arrives on stdout as one
+ * Markdown document; there the notice is a trailing `### Notice`
+ * section on stdout instead.
+ *
+ * It never changes the exit code and is not conditioned on a TTY:
+ * agents run without one and are who this is for.
  */
 import { detectCI } from "@prisma/cli-engine";
 import {
@@ -26,6 +31,7 @@ export interface SkillsCheckRuntime {
   readonly env: NodeJS.ProcessEnv;
   readonly argv: readonly string[];
   readonly cwd: string;
+  readonly stdout: { write(text: string): unknown };
   readonly stderr: { write(text: string): unknown };
   /** The Runtime's config loader, so the notice reads the same chain
    *  through the same seam as the commands. */
@@ -75,6 +81,13 @@ export async function maybeWriteSkillsStaleNotice(
       return;
     }
     const dirs = agentSkillDirs(agents);
+    if (isFormat(flagTokens(runtime.argv), "markdown")) {
+      const notice = renderStaleNoticeMarkdown(status, dirs);
+      if (notice !== null) {
+        runtime.stdout.write(notice);
+      }
+      return;
+    }
     const notice = renderStaleNotice(status, dirs);
     if (notice !== null) {
       runtime.stderr.write(notice);
@@ -103,7 +116,8 @@ function firstOutdatedSkillIn(
   );
 }
 
-export function renderStaleNotice(
+/** The mismatch in words, without the stream's framing around it. */
+function staleNoticeSentence(
   status: SkillsStatus,
   dirs: readonly string[],
 ): string | null {
@@ -117,9 +131,31 @@ export function renderStaleNotice(
   )?.syncedVersion;
   return (
     `Prisma agent skills are out of date (installed ${outdated.library} ` +
-    `${outdated.version}, synced ${synced ?? "none"}). ` +
-    `Run: ${getCliName()} skills sync\n`
+    `${outdated.version}, synced ${synced ?? "none"})`
   );
+}
+
+export function renderStaleNotice(
+  status: SkillsStatus,
+  dirs: readonly string[],
+): string | null {
+  const sentence = staleNoticeSentence(status, dirs);
+  return sentence === null
+    ? null
+    : `${sentence}. Run: ${getCliName()} skills sync\n`;
+}
+
+/** The same notice as a trailing section of the Markdown document, in
+ *  the heading-then-bullet shape the engine renders `### Diagnostics`
+ *  in. The leading blank line separates it from the command's output. */
+export function renderStaleNoticeMarkdown(
+  status: SkillsStatus,
+  dirs: readonly string[],
+): string | null {
+  const sentence = staleNoticeSentence(status, dirs);
+  return sentence === null
+    ? null
+    : `\n### Notice\n${sentence}.\n- Sync agent skills: \`${getCliName()} skills sync\`\n`;
 }
 
 /** The shared flags that take a separate value, so the word after them
@@ -182,10 +218,14 @@ function isSuppressedByInvocation(runtime: SkillsCheckRuntime): boolean {
   if (argv.includes("--version")) {
     return true;
   }
-  return argv.some(
+  return isFormat(argv, "json");
+}
+
+function isFormat(tokens: readonly string[], format: string): boolean {
+  return tokens.some(
     (token, index) =>
-      token === "--format=json" ||
-      (token === "--format" && argv[index + 1] === "json"),
+      token === `--format=${format}` ||
+      (token === "--format" && tokens[index + 1] === format),
   );
 }
 

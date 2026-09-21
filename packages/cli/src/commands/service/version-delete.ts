@@ -12,6 +12,8 @@ import { resolveVersionSubject, toServiceSummary } from "./target";
 export const serviceVersionDeleteCommand = defineCommand({
   help: {
     summary: "Delete a service version and the artifact it holds",
+    description:
+      "Permanently removes the version and its built artifact, so it can no longer be started or rolled back to. Pass the exact version id with --confirm to run non-interactively.",
     examples: [
       "service version delete cpv_123",
       "service version delete cpv_123 --confirm cpv_123",

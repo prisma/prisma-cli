@@ -67,11 +67,12 @@ export const postgresBackupRestoreCommand = defineCommand({
     },
     flags: {
       backup: flag.string({
-        brief: "Backup to restore from",
+        brief: "Backup to restore from, listed by 'postgres backup list'",
         placeholder: "backup-id",
       }),
       sourceDatabase: flag.string({
-        brief: "Database the backup belongs to (defaults to the target)",
+        brief:
+          "Database the backup belongs to; use when restoring another database's backup into the target",
         placeholder: "database",
       }),
       project: projectFlag,
@@ -80,6 +81,8 @@ export const postgresBackupRestoreCommand = defineCommand({
   },
   help: {
     summary: "Restore a database from a backup after exact id confirmation",
+    description:
+      "Replaces the target database's current state with the backup's contents; anything written since that backup is lost, so the exact target database id is the consent token. To restore another database's backup into this one, name where the backup came from with --source-database.",
     examples: [
       "postgres backup restore db_123 --backup bkp_456 --confirm db_123",
     ],

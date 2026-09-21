@@ -21,13 +21,17 @@ export const projectCreateCommand = defineCommand({
     },
     flags: {
       region: flag.string({
-        brief: "Prisma Compute region id",
+        brief:
+          "Prisma Compute region for the project's infrastructure; set it when data or users must stay near a location",
         placeholder: "region",
       }),
     },
   },
   help: {
-    summary: "Create a Project and link this directory",
+    summary:
+      "Create a Project and link this directory: commands run here target it",
+    description:
+      "Creates a Project in your workspace and links the current directory to it, so later commands resolve it without --project. A Project groups one product or codebase; its Branches are isolated environments, each with its own services, databases, and buckets. This is usually the first command after 'auth login' in a new repository.",
     examples: ["project create my-app", "project create my-app --json"],
   },
   needs: { credentials: true },

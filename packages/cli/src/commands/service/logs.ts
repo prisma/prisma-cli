@@ -381,6 +381,8 @@ async function resolveLogsTarget(
 export const serviceLogsCommand = defineSessionCommand({
   help: {
     summary: "Read logs for a version of the service",
+    description:
+      "Reads the live version's logs by default; point --version-id at any other version, such as a failed build being debugged. --follow keeps streaming new lines, and --tail or --from-start choose where reading starts.",
     examples: [
       "service logs my-service",
       "service logs my-service --tail 500",
@@ -405,7 +407,8 @@ export const serviceLogsCommand = defineSessionCommand({
         placeholder: "name",
       }),
       versionId: flag.string({
-        brief: "Service version id to read (default: the live version)",
+        brief:
+          "Service version id to read; use for a failed or stopped version (default: the live version)",
         placeholder: "id",
       }),
       tail: flag.number({

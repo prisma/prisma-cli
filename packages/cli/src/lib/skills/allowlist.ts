@@ -18,6 +18,9 @@ export const SKILL_SOURCE_PACKAGES: readonly string[] = [
   "@prisma/orm-sqlite",
   "@prisma/orm-mongo",
   "@prisma/composer",
+  // The CLI's own package: ships prisma-platform-core-concepts, staged
+  // into the tarball by scripts/stage-skills.mjs at prepack.
+  "prisma",
 ];
 
 /** The directory inside a source package's tarball that holds its skill

@@ -14,12 +14,13 @@ export type BucketCommandContext = CommandContext<undefined, never>;
 export const LIST_BUCKETS_COMMAND = `${CLI_NAME} bucket list`;
 
 export const projectFlag = flag.string({
-  brief: "Project id or name",
+  brief:
+    "Project id or name (default: the project this directory is linked to)",
   placeholder: "id-or-name",
 });
 
 export const branchFlag = flag.string({
-  brief: "Branch git name",
+  brief: "Branch git name; use to target one branch's environment",
   placeholder: "git-name",
 });
 

@@ -52,8 +52,9 @@ export interface SkillsListResult {
   readonly agents: readonly AgentName[];
   readonly packages: readonly SkillsPackageReport[];
   readonly skills: readonly SkillsListEntry[];
-  /** Copies from an allowlisted package that nothing installed still
-   *  provides; the next sync removes them. */
+  /** Copies from an allowlisted package that nothing wants any more —
+   *  no installed package provides them, or their agent is no longer
+   *  named in skills.agents; the next sync removes them. */
   readonly orphaned: readonly {
     readonly skill: string;
     readonly library: string | null;

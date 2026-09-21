@@ -5,11 +5,12 @@ export function domainTargetArgs() {
   return {
     flags: {
       service: flag.string({
-        brief: "Service id or name",
+        brief: "Service id or name the domain belongs to",
         placeholder: "name",
       }),
       project: flag.string({
-        brief: "Project id or name",
+        brief:
+          "Project id or name (default: the project this directory is linked to)",
         placeholder: "id-or-name",
       }),
       branch: flag.string({

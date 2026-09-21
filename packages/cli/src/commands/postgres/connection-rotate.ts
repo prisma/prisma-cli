@@ -21,6 +21,8 @@ export const postgresConnectionRotateCommand = defineCommand({
   help: {
     summary:
       "Rotate connection credentials and print the new one-time connection URL",
+    description:
+      "Replaces the connection's credentials: the old URL stops working and the new one prints exactly once. Use it after a suspected leak or on a rotation schedule. The exact connection id is the consent token.",
     examples: ["postgres connection rotate conn_123 --confirm conn_123"],
   },
   needs: { credentials: true },

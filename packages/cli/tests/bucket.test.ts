@@ -741,12 +741,8 @@ describe("prisma bucket key create", () => {
         kind: "fields",
         rows: [
           { label: "S3_ENDPOINT", value: "https://s3.prisma.io" },
-          {
-            label: "S3_ACCESS_KEY_ID",
-            value: "AKIAEXAMPLE",
-            sensitive: true,
-          },
-          { label: "S3_SECRET_ACCESS_KEY", value: "s3cr3t", sensitive: true },
+          { label: "S3_ACCESS_KEY_ID", value: "AKIAEXAMPLE" },
+          { label: "S3_SECRET_ACCESS_KEY", value: "s3cr3t" },
           { label: "S3_BUCKET", value: "assets" },
         ],
       },

@@ -103,7 +103,18 @@ The CLI prints one advisory line after normal command output when the agent skil
 Prisma agent skills are out of date (installed @prisma/orm-postgres 8.1.0, synced 8.0.0). Run: prisma skills sync
 ```
 
-A project that has never been synced is reported the same way, with `synced none`. Like the update notification, this is human-oriented stderr output, must never reach stdout, and must never change the command's exit code. Unlike the update notification it is **not** conditioned on a TTY: its main reader is a coding agent, which runs the CLI without one.
+A project that has never been synced is reported the same way, with `synced none`. Like the update notification, this is human-oriented stderr output and must never change the command's exit code. Unlike the update notification it is **not** conditioned on a TTY: its main reader is a coding agent, which runs the CLI without one.
+
+Under `--format markdown` the notice goes to stdout instead, because that format promises the whole run on one stream. It is the last section of the document, separated from the command's output by a blank line:
+
+```markdown
+
+### Notice
+Prisma agent skills are out of date (installed @prisma/orm-postgres 8.1.0, synced 8.0.0).
+- Sync agent skills: `prisma skills sync`
+```
+
+Under every other format the notice is stderr output and must never reach stdout.
 
 It is silent when:
 
@@ -118,7 +129,7 @@ It is silent when:
 
 This notice covers every project whose install does not resync the skills. `skills sync` itself never edits the user's `package.json` or root `.gitignore`. The synced copies are ordinary files that git tracks like any other file in the repository. Sync removes the `*` ignore file an older CLI wrote into its copies, but leaves a `.gitignore` the user authored in place.
 
-Which agents get skill copies is configuration, never detection: `skills: { agents: [...] }` in `prisma.config.ts` names them, each agent name mapping to its directory — `claude` (`.claude/skills`), `cursor` (`.cursor/skills`), `agents` (`.agents/skills`), `devin` (`.devin/skills`). An unknown name is a config error naming the known agents. When the field or the whole config is absent, the default is every known agent, so a harness adopted later finds the skills already in place. An empty list (`agents: []`, what `prisma init --skills=none` scaffolds) is a recorded choice, not an omission: sync writes nothing and answers `No agents are configured to sync skills for.`, `skills list` reports the same, and the staleness notice never fires. `prisma init` writes the section into a fresh `prisma.config.ts`; a config that already exists is never edited — init reports the exact snippet to add instead. init also adds `prisma` to `devDependencies` at the CLI's exact version when no dependency field declares it, so the scaffolded config's `prisma/config` import resolves after the next install. Everything anchors at the directory the command runs in: sync, list, and the `.prisma/skills.json` opt-out read from cwd (the postinstall hook runs with cwd at the package root, so the mainline never guesses), and the config resolves over the chain discovered from that anchor — cwd, or the file `--config` names — upward to the repository boundary, so the staleness notice and the skills commands agree on the governing settings from any directory. The notice reads the config only when the discovered chain holds at least one file and the full agent set already looks out of date, and evaluates the chain at most once; discovery is stat-only until a file exists, so a project without a config never pays a TypeScript transpile, uses the default agent set, and leans on the postinstall hook as the primary resync trigger.
+Which agents get skill copies is configuration, never detection: `skills: { agents: [...] }` in `prisma.config.ts` names them, each agent name mapping to its directory — `claude` (`.claude/skills`), `cursor` (`.cursor/skills`), `agents` (`.agents/skills`), `devin` (`.devin/skills`). An unknown name is a config error naming the known agents. When the field or the whole config is absent, the default is every known agent, so a harness adopted later finds the skills already in place. An empty list (`agents: []`, what `prisma init --skills=none` scaffolds) is a recorded choice, not an omission: sync writes nothing and answers `No agents are configured to sync skills for.`, `skills list` reports the same, and the staleness notice never fires. Narrowing the list also removes what an earlier sync wrote: a copy this CLI installed (its `SKILL.md` names an allowlisted package) in the directory of an agent the config no longer names is reported by `skills list` as orphaned and removed by the next sync, along with the `<agent>/skills` and `<agent>` directories when that leaves them empty; `agents: []` after a full sync therefore removes all four directories and answers `Removed 1 skill.`. A skill in those directories that this CLI did not write is never touched. `prisma init` writes the section into a fresh `prisma.config.ts`; a config that already exists is never edited — init reports the exact snippet to add instead. init also adds `prisma` to `devDependencies` at the CLI's exact version when no dependency field declares it, so the scaffolded config's `prisma/config` import resolves after the next install. Everything anchors at the directory the command runs in: sync, list, and the `.prisma/skills.json` opt-out read from cwd (the postinstall hook runs with cwd at the package root, so the mainline never guesses), and the config resolves over the chain discovered from that anchor — cwd, or the file `--config` names — upward to the repository boundary, so the staleness notice and the skills commands agree on the governing settings from any directory. The notice reads the config only when the discovered chain holds at least one file and the full agent set already looks out of date, and evaluates the chain at most once; discovery is stat-only until a file exists, so a project without a config never pays a TypeScript transpile, uses the default agent set, and leans on the postinstall hook as the primary resync trigger.
 
 `Agent skills are up to date.` appears only when installed skills exist and are current — a project with nothing to sync never borrows that line. The three empty states each name themselves: `agents: []` answers `No agents are configured to sync skills for.`; a project with no allowlisted package installed answers `No Prisma packages with agent skills are installed.`; installed packages whose versions ship no skills at all (older releases without a `skills/` directory) answer `No Prisma dependencies in your project ship agent skills to sync.` from sync and `No Prisma dependencies in your project ship agent skills.` from list. The sync JSON result carries a `skills` array naming every skill the installed packages ship, so machine consumers can make the same distinction. `prisma init` reports it in its JSON `skills.outcome`, whose values are `synced`, `up-to-date`, `no-agents`, `no-packages`, `no-skills`, `failed`, and `skipped`; a `skipped` outcome that no flag explains carries `reason: "governing-config"` — another `prisma.config.ts` on the discovered chain governs the directory, so the step belongs at the repository root — and the JSON `postinstall` report carries the same field for the same case. A project where at least one installed package ships skills keeps the ordinary summaries even when another installed package ships none.
 
@@ -186,16 +197,13 @@ No current MVP command uses `verify` or `inspect`, but new commands must still c
 
 ### One-Time Secret Output
 
-Commands that create one-time-view secrets may write the raw secret value to
-stdout in human mode. This is still machine-readable output, not decorative
-human output.
+Commands that create one-time-view secrets print the secret bare in the human card and write the raw value to stdout. The card is the only place an interactive user ever sees the secret — when stdout and stderr render to one screen the stdout mirror is skipped, so masking the card would hide the secret from everyone including its owner (operator ruling, 2026-08-26). The stdout line is machine-readable output for pipes and redirection.
 
 Rules:
 
-- write exactly one raw secret value per successful create command
-- write human creation summaries to stderr before writing the raw secret to stdout
-- do not repeat the secret on stderr
-- do not wrap the secret in labels such as `DATABASE_URL=`
+- show the bare secret in the human card on stderr
+- write exactly one raw secret value per successful create command to stdout
+- do not wrap the stdout secret in labels such as `DATABASE_URL=`
 - use `--verbose` for human metadata such as resource ids; keep generated names and opaque ids out of default human output unless they are the user-selected target
 - `--quiet` suppresses successful human stderr output and still writes the raw secret to stdout
 - list and show commands must never print or return secret values
@@ -270,7 +278,7 @@ Rules:
 
 - use a flat aligned key-value card with no bullets
 - keys use the accent color and values use the default foreground unless status coloring applies
-- sensitive values are masked rather than omitted
+- values print bare; a secret the command exists to hand over is never masked (operator ruling, 2026-08-26)
 - human output prefers display labels, URLs, and statuses over opaque ids
 
 #### `mutate`
@@ -474,6 +482,10 @@ Rules:
 - human-oriented decoration should be suppressed in JSON mode
 - missing values should be `null`, not placeholder strings
 
+## `--format markdown`
+
+`--format markdown` renders the same blocks a command describes for human output as plain Markdown: a summary line, `label: value` rows, GFM pipe tables, bullet lists, nested bullets for trees, and fenced code for drawings, followed by `### Next` for the suggested next actions and `### Diagnostics` for any findings. It exists for an agent that reads CLI output as text rather than parsing JSON: every value is labelled, nothing is padded, wrapped, aligned, or coloured, and no tokens go to envelope keys. Every part of the run's output — blocks, next actions, diagnostics, structured errors, help, `--version`, and live events — lands on stdout, and the engine writes nothing to stderr. The out-of-date agent skills notice follows the same rule: under this format it is a trailing `### Notice` section on stdout rather than a stderr line. The format is only ever explicit: without `--format markdown` a terminal gets human output and a pipe gets JSON.
+
 ## Non-Streaming JSON Shape
 
 Commands that return one final result should emit one JSON object to stdout.
@@ -595,6 +607,12 @@ context, status, decoration, and errors stay on stderr.
 ```
 
 ## Design Rule
+
+Delegated commands must support installed Windows `.cmd` shims as well as
+native executables and POSIX shebang scripts. The host uses cross-spawn for
+platform-specific resolution and argument escaping; callers still pass a
+command and argument array, not a shell command string. Human stdio inheritance,
+structured diagnostic forwarding, and child exit status remain unchanged.
 
 Human output and JSON output should describe the same underlying model.
 

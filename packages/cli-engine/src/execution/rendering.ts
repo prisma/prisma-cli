@@ -55,18 +55,25 @@ export function renderEventHuman(
     case "remediation":
       return;
     case "endpoint":
-      stderr.write(`${event.name}: ${event.url}\n`);
-      return;
     case "status":
-      stderr.write(
-        `${event.subject}: ${event.from === undefined ? "" : `${event.from} → `}${event.status}\n`,
-      );
-      return;
     case "artifact":
-      stderr.write(
-        `${event.path}${event.description === undefined ? "" : ` — ${event.description}`}\n`,
-      );
+      stderr.write(`${commentaryLine(event)}\n`);
       return;
+  }
+}
+
+/** The one line an endpoint, status, or artifact event prints, in
+ *  every text format. */
+export function commentaryLine(
+  event: Extract<EngineEvent, { kind: "endpoint" | "status" | "artifact" }>,
+): string {
+  switch (event.kind) {
+    case "endpoint":
+      return `${event.name}: ${event.url}`;
+    case "status":
+      return `${event.subject}: ${event.from === undefined ? "" : `${event.from} → `}${event.status}`;
+    case "artifact":
+      return `${event.path}${event.description === undefined ? "" : ` — ${event.description}`}`;
   }
 }
 
@@ -83,7 +90,7 @@ const STATUS_SYMBOL: Readonly<Record<Status, string>> = {
   info: "ℹ",
 };
 
-const MASK = "********";
+export const MASK = "********";
 const COLUMN_GAP = "  ";
 const RAIL = "│";
 const BRANCH = "├─";
@@ -200,14 +207,14 @@ function writeFields(
  */
 /** One header convention for every table: plain-string headers are
  *  normalized to sentence case, so casing is not a per-command choice. */
-function sentenceCase(text: Text): Text {
+export function sentenceCase(text: Text): Text {
   if (typeof text !== "string" || text === "") {
     return text;
   }
   return `${text[0].toUpperCase()}${text.slice(1)}`;
 }
 
-const PLACEHOLDER = "—";
+export const PLACEHOLDER = "—";
 
 /** An absent value renders as a dim em dash rather than invented prose
  *  ("none", "n/a") in data tone. */

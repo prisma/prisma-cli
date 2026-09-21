@@ -94,7 +94,7 @@ Rules:
 - align keys in a compact column
 - use accent color for keys and default text for values
 - prefer display labels in default human output and keep opaque ids in JSON unless a later verbose mode explicitly asks for them
-- mask sensitive values rather than omitting their presence entirely when the value matters to the flow
+- print values bare; a secret the command exists to hand over is never masked, because the human card is where its owner reads it (operator ruling, 2026-08-26)
 - include only rows that are actually known for the current command
 - use human labels such as `Not linked` instead of internal resolution terms such as `unbound`
 - hide internal resolution terms such as `local pin` from default human output when the visible binding is clearer
@@ -119,6 +119,10 @@ Rules:
 
 ## Help and Usage
 
+The wording contract for help text, and the reasoning behind it, is
+`cli-help-standard.md`. This section covers the card structure and
+formatting.
+
 Help should feel like the rest of the CLI:
 
 - concise
@@ -140,6 +144,26 @@ Help output should:
 
 Unknown commands should show "Did you mean ..." suggestions when there is a clear close match.
 
+### Descriptions Describe Intent
+
+Help text is read by people and by agents that have never seen the platform's resource model. Help is a manual, not a summary. Write for both:
+
+- The summary states what the command does. When the command name already says it, the summary stays a plain restatement (`project list` → "List the projects in your workspace") and no description is added.
+- A description earns its place by adding intent: when to run the command, what it operates on, and what happens next. It must not paraphrase the command name.
+- A group's brief is a short lead sentence, then the scope of what lives beneath it ("Manage S3-compatible object-store buckets for a project. CRUD operations and access keys"). "CRUD" may stand in for the common verbs; operations a reader would not guess (link, transfer, promote) are named.
+- A group's description defines every term its command rows rely on. If a row says "linked", the group card says what linking is before the reader opens the leaf.
+- Do not assume the reader knows Prisma nouns. The first time a group or command depends on one, define it in one clause: a Project groups one product or codebase inside a workspace; a Branch maps to a Git branch and is an isolated environment with its own services, databases, and buckets.
+- Internal resolution terms stay out of help: no "binding", "resolved", "pinned", or "active" without a plain-language definition in the same card. Prefer the plain phrase outright ("the project this directory is linked to" over "the resolved project").
+- Refer to Prisma ORM by that name. Do not use retired product names such as "Prisma Next" in help text.
+
+### Flag Briefs Say When
+
+A flag brief states what the flag does; when the flag exists for a distinct situation, it also says when to reach for it ("--branch: target a preview branch instead of the default branch"). Defaults render as an automatic suffix, so briefs do not repeat them.
+
+### Workflow Sections
+
+A group card may declare a workflow: the ordered commands of that group's common path, each with a short purpose column. The engine renders it as a `Workflow` section, before any examples, with each step `$`-prefixed and copy-pastable. Declare a workflow only where a real multi-command path exists; a group of independent commands has no workflow.
+
 ## Flags
 
 Shared flag rules:
@@ -149,19 +173,20 @@ Shared flag rules:
 - short aliases exist only for high-frequency flags
 - flags should mean the same thing across commands whenever possible
 
-Shared global flags for the MVP:
+Shared global flags, defined by the engine in `SHARED_FLAG_PARAMETERS` (`packages/cli-engine/src/execution/shared-flags.ts`, the source of truth for this list):
 
-- `--json`
-- `-q`, `--quiet`
-- `-v`, `--verbose`
-- `--trace`
-- `--interactive`
-- `--no-interactive`
-- `-y`, `--yes`
-- `--color`
-- `--no-color`
+- `--format <human|json|markdown>`
+- `--json` (shorthand for `--format json`)
+- `--log-level <error|warn|info|verbose>`
+- `-v`, `--verbose` (shorthand for `--log-level verbose`)
+- `-q`, `--quiet` (shorthand for `--log-level error`)
+- `-y`, `--yes` (accept prompt defaults)
+- `--confirm <value>` (grant a consent prompt non-interactively; repeatable)
+- `--interactive`, `--no-interactive`
+- `--color`, `--no-color`
+- `--config <path>`
 
-`--quiet`, `--verbose`, and `--trace` affect human output detail, not the JSON schema.
+`--log-level` and its `--verbose`/`--quiet` shorthands affect human commentary detail, not the JSON schema.
 
 ## Interactivity
 
@@ -211,8 +236,7 @@ Non-TTY behavior should be automation-friendly:
 
 - Do not rely on color alone.
 - Keep text compact and translatable.
-- Never print secrets.
-- Scrub sensitive values in logs, errors, and previews.
+- Never leak secrets into logs, errors, telemetry, or previews. A secret the command exists to hand over prints bare, once.
 
 ## Design Rule
 

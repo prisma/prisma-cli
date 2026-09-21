@@ -18,6 +18,8 @@ export const bucketCreateCommand = defineCommand({
   },
   help: {
     summary: "Create an object-store bucket",
+    description:
+      "Creates blob storage in a Branch of the project. A bucket holds no credentials of its own: mint them with 'bucket key create', which prints them once.",
     examples: [
       "bucket create",
       "bucket create --name my-store",

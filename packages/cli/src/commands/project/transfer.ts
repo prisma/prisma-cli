@@ -34,8 +34,8 @@ import {
 import type { ProjectTransferResult } from "../../types/project";
 import { resolveActiveWorkspace } from "../resources-shared/workspace";
 import {
-  legacyOperationContext,
   listWorkspaceProjects,
+  operationContext,
   type ProjectCommandContext,
 } from "./context";
 import { localPinDiagnostics } from "./presentation";
@@ -177,11 +177,13 @@ export const projectTransferCommand = defineCommand({
     },
     flags: {
       toWorkspace: flag.string({
-        brief: "Locally authenticated workspace to receive the project",
+        brief:
+          "Receiving workspace, when it is one of your own stored sessions",
         placeholder: "id-or-name",
       }),
       recipientToken: flag.string({
-        brief: "Access token for the receiving workspace",
+        brief:
+          "Access token for the receiving workspace, when you are not a member of it",
         placeholder: "token",
       }),
     },
@@ -189,6 +191,8 @@ export const projectTransferCommand = defineCommand({
   help: {
     summary:
       "Transfer a Project to another workspace after exact id confirmation",
+    description:
+      "Moves a project, with everything in it, out of the current workspace. Name the receiving workspace with --to-workspace when you are logged in to it too, or pass --recipient-token when someone else owns it. The exact project id is the consent token.",
     examples: [
       'project transfer proj_123 --to-workspace "Prisma Labs" --confirm proj_123',
       "project transfer proj_123 --recipient-token <token> --confirm proj_123",
@@ -255,7 +259,7 @@ export const projectTransferCommand = defineCommand({
 
     const warnings: string[] = [];
     const action = await rewriteOrClearLocalPinForProject(
-      legacyOperationContext(ctx),
+      operationContext(ctx),
       project.id,
       recipient.workspaceId,
       { onError: (message) => warnings.push(message) },

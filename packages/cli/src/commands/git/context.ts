@@ -9,7 +9,8 @@ import { resolveActiveWorkspace } from "../resources-shared/workspace";
 export type GitCommandContext = CommandContext<undefined, never>;
 
 export const projectFlag = flag.string({
-  brief: "Project id or name",
+  brief:
+    "Project id or name (default: the project this directory is linked to)",
   placeholder: "id-or-name",
 });
 

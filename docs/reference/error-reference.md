@@ -34,6 +34,10 @@ A credential's `workspace_id` claim disagrees with the workspace it is being sto
 
 `prisma auth login` completed the browser sign-in but the minted credential carries no `workspace_id` claim, so no workspace session can be keyed by it. The fix is to sign in again and pick a workspace in the browser. Meta: none.
 
+### AUTH.LOGIN_DENIED
+
+The OAuth callback reported `access_denied`. Authorization was not granted; this is an expected refusal, not a CLI crash. No session is created or cleared. Run `prisma auth login` again only to grant access intentionally. The callback description is not echoed. Meta: none.
+
 ### AUTH.NO_SESSION_FOR_WORKSPACE
 
 A workspace reference matched none of the stored workspace sessions — raised by the command-side ref resolver behind `prisma auth workspace use` and `prisma auth workspace logout` (exact id match first, then case-insensitive name match), and by the credential managers when a session operation names a workspace with no stored record. Sessions are created only by `prisma auth login`, so the suggested fix is to sign in and pick that workspace in the browser; the workspace reference appears in the message, not in meta. Meta: none.
@@ -396,7 +400,7 @@ The local project binding in `.prisma/local.json` is unusable: the pinned projec
 
 ### PROJECT.NOT_FOUND
 
-An explicit project reference matched no project in the active workspace, either because it does not exist or because the credential cannot see it — raised during project resolution for any command that accepts one, including `branch list` and the `project link`/`transfer`/`delete` target lookup. The fix is to pass an id or name from `prisma project list`. Meta: none.
+An explicit project reference matched no project in the active workspace, either because it does not exist or because the credential cannot see it — raised during project resolution for any command that accepts one, including `branch list` and the `project link`/`transfer`/`delete` target lookup. The fix is to pass an id or name from `prisma project list`. Service commands raise the same code one step later, when the services API answers "Resource Not Found" for a project that did resolve — the directory binding points at a project that no longer exists or is no longer accessible — and their next actions point at `project show` to inspect the binding and `project link` to fix it. Meta: none.
 
 ### PROJECT.RENAME_FAILED
 
@@ -507,10 +511,6 @@ A `service logs` response body ended without the terminal record that closes a p
 ### SERVICE.NO_VERSIONS
 
 The resolved service has no usable version for the command — raised by `service open` when the service has no versions, by `service logs` when it has no live version, and by `service domain add` when the API answers 422 because the production service has no promoted version that can receive a custom domain. The fix on the domain path is to promote a version on the production branch first, then add the domain again. Meta: `status`, `apiCode`, `hint` (domain-add path only; otherwise none).
-
-### SERVICE.PROJECT_NOT_FOUND
-
-The project a service command resolved to does not exist in the authenticated workspace or is no longer accessible — raised when listing services answers "Resource Not Found" for the resolved project id. A service command that cannot match an explicit `--project` reference fails with the project group's own `PROJECT.NOT_FOUND` instead, because the condition is the same one whichever command met it. Next actions point at `project show` to inspect the directory binding and `project link` to fix it. Meta: none.
 
 ### SERVICE.SELECTION_INVALID
 

@@ -16,22 +16,26 @@ import { resolveActiveWorkspace } from "../resources-shared/workspace";
 import { type ProjectCommandContext, resolvePinnedProject } from "./context";
 
 export const roleFlag = flag.enum({
-  brief: "Project template scope (production or preview)",
+  brief:
+    "Project-wide scope: production, or preview (shared by every preview branch)",
   values: ["production", "preview"],
 });
 
 export const projectFlag = flag.string({
-  brief: "Project id or name",
+  brief:
+    "Project id or name (default: the project this directory is linked to)",
   placeholder: "id-or-name",
 });
 
 export const branchFlag = flag.string({
-  brief: "Preview branch override scope",
+  brief:
+    "Scope to one preview branch's override; use for values only that branch needs",
   placeholder: "git-name",
 });
 
 export const fileFlag = flag.string({
-  brief: "Read KEY=VALUE assignments from a dotenv file",
+  brief:
+    "Read KEY=VALUE assignments from a dotenv file; use to import many variables at once",
   placeholder: "path",
 });
 

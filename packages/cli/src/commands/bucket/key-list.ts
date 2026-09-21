@@ -48,6 +48,8 @@ export const bucketKeyListCommand = defineCommand({
   args: { positionals: { bucketId: bucketPositional } },
   help: {
     summary: "List access keys for a bucket",
+    description:
+      "Shows each key's id, name, and role. Key secrets print once, at 'bucket key create'; listing never reveals them.",
     examples: ["bucket key list bkt_123", "bucket key list bkt_123 --json"],
   },
   needs: { credentials: true },

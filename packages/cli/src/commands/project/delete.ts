@@ -15,7 +15,7 @@ import {
 } from "../../lib/project/setup";
 import type { ProjectDeleteResult } from "../../types/project";
 import { resolveActiveWorkspace } from "../resources-shared/workspace";
-import { legacyOperationContext, listWorkspaceProjects } from "./context";
+import { listWorkspaceProjects, operationContext } from "./context";
 import { localPinDiagnostics } from "./presentation";
 
 const CONSENT_QUESTION =
@@ -60,6 +60,8 @@ export const projectDeleteCommand = defineCommand({
   },
   help: {
     summary: "Delete a Project permanently after exact id confirmation",
+    description:
+      "Deletion is permanent: it destroys the project's databases and stops its deployed services. Because of that, the command asks for the exact project id as a consent token; pass it with --confirm to run non-interactively.",
     examples: ["project delete proj_123 --confirm proj_123"],
   },
   needs: { credentials: true },
@@ -83,7 +85,7 @@ export const projectDeleteCommand = defineCommand({
 
     const warnings: string[] = [];
     const cleared = await cleanupLocalPinForProject(
-      legacyOperationContext(ctx),
+      operationContext(ctx),
       project.id,
       { onError: (message) => warnings.push(message) },
     );

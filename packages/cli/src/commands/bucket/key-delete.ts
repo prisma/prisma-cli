@@ -32,6 +32,8 @@ export const bucketKeyDeleteCommand = defineCommand({
   },
   help: {
     summary: "Revoke and delete a bucket access key",
+    description:
+      "The key's credentials stop working immediately; anything still using them loses access to the bucket. The bucket and its other keys are untouched.",
     examples: ["bucket key delete bkt_123 bkey_456"],
   },
   needs: { credentials: true },

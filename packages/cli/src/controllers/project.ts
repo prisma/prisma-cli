@@ -10,7 +10,6 @@ import type { ManagementApiClient } from "@prisma/management-api-sdk";
 import { matchError } from "better-result";
 
 import type { GitHubRepositoryReference } from "../adapters/git";
-import type { CommandContext } from "../legacy/runtime";
 import type { PrismaCliPackageCommandFormatter } from "../lib/agent/cli-command";
 import {
   LOCAL_RESOLUTION_PIN_RELATIVE_PATH,
@@ -24,6 +23,7 @@ import type {
   GitRepositoryConnection,
   ProjectListResult,
 } from "../types/project";
+import type { CommandContext } from "./context";
 
 export const GITHUB_INSTALL_POLL_INTERVAL_MS = 2_000;
 export const GITHUB_INSTALL_POLL_TIMEOUT_MS = 120_000;

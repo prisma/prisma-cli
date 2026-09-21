@@ -39,23 +39,59 @@ export function configFlagGivenNoValue(argv: readonly string[]): boolean {
   return flagTokens(argv).includes("--config=");
 }
 
+const FORMATS: readonly Format[] = ["human", "json", "markdown"];
+
+function isFormat(value: string | undefined): value is Format {
+  return value !== undefined && FORMATS.includes(value as Format);
+}
+
+/** argv with the format-selection tokens removed: `--json`,
+ *  `--format=<value>`, and `--format` with the value after it, only
+ *  when the value is a recognised format. Nothing after a bare `--` is
+ *  a flag, so the scan stops there and keeps the rest. */
+export function withoutFormatFlags(argv: readonly string[]): string[] {
+  const terminator = argv.indexOf("--");
+  const tokens = terminator === -1 ? argv : argv.slice(0, terminator);
+  const rest = terminator === -1 ? [] : argv.slice(terminator);
+  const kept: string[] = [];
+  for (let index = 0; index < tokens.length; index += 1) {
+    const token = tokens[index];
+    if (token === "--json") {
+      continue;
+    }
+    if (
+      token.startsWith("--format=") &&
+      isFormat(token.slice("--format=".length))
+    ) {
+      continue;
+    }
+    if (token === "--format" && isFormat(tokens[index + 1])) {
+      index += 1;
+      continue;
+    }
+    kept.push(token);
+  }
+  return [...kept, ...rest];
+}
+
 /** The format requested by --json / --format / --format=<value>, if
- *  any. */
+ *  any. An explicit `--format` wins over `--json` whichever comes
+ *  first, as applySharedFlags decides it after parsing. */
 export function formatFlagGiven(argv: readonly string[]): Format | undefined {
   const tokens = flagTokens(argv);
   for (const [index, token] of tokens.entries()) {
-    if (token === "--json" || token === "--format=json") {
-      return "json";
-    }
-    if (token === "--format=human") {
-      return "human";
+    if (token.startsWith("--format=")) {
+      const value = token.slice("--format=".length);
+      if (isFormat(value)) {
+        return value;
+      }
     }
     if (token === "--format") {
       const value = tokens[index + 1];
-      if (value === "json" || value === "human") {
+      if (isFormat(value)) {
         return value;
       }
     }
   }
-  return undefined;
+  return tokens.includes("--json") ? "json" : undefined;
 }

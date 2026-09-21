@@ -1,4 +1,5 @@
 import type { CommandFamily, MountedTree } from "./command-family";
+import type { WorkflowStep } from "./commands";
 import { buildEngine } from "./execution/engine";
 import type { RunSummary } from "./run-summary";
 import type { Runtime } from "./runtime";
@@ -41,13 +42,23 @@ export function createCli(spec: {
   readonly version: string;
   readonly commandFamilies: readonly CommandFamily[];
   readonly groups: Readonly<
-    Record<string, { readonly brief: string; readonly description?: string }>
+    Record<
+      string,
+      {
+        readonly brief: string;
+        readonly description?: string;
+        /** The group's common path, rendered as a `Workflow` section. */
+        readonly workflow?: readonly WorkflowStep[];
+      }
+    >
   >;
   readonly commands: MountedTree;
   /** Words for the root help card; the engine formats. */
   readonly help?: {
     readonly tagline?: string;
     readonly description?: string;
+    /** The CLI's common path, rendered as a `Workflow` section. */
+    readonly workflow?: readonly WorkflowStep[];
     readonly examples?: readonly string[];
     readonly docsUrl?: string;
   };

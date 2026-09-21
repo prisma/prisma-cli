@@ -8,7 +8,9 @@ import { resolveServiceReadState, toServiceSummary } from "./target";
 
 export const serviceDeleteCommand = defineCommand({
   help: {
-    summary: "Delete the service from the resolved branch",
+    summary: "Delete a service from one branch",
+    description:
+      "Removes the service from the targeted Branch only: its versions stop serving and its URL goes away. The same service on other branches is untouched. Pass the confirmation token with --confirm to run non-interactively.",
     examples: [
       "service delete my-service",
       "service delete my-service --confirm my-service",

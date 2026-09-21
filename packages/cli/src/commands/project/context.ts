@@ -1,13 +1,13 @@
 /**
- * Glue between the engine command context and the legacy project
- * operations. The legacy resolution and env-file operations take a
- * shell `CommandContext` but read only `runtime.cwd`, `runtime.env`
+ * Glue between the engine command context and the project controllers.
+ * The resolution and env-file operations take a controller
+ * `CommandContext` but read only `runtime.cwd`, `runtime.env`
  * and `runtime.signal`, so the CLI hands them exactly that.
  */
 import path from "node:path";
 import type { CommandContext } from "@prisma/cli-engine";
+import type { CommandContext as ControllerCommandContext } from "../../controllers/context";
 import { listRealWorkspaceProjects } from "../../controllers/project";
-import type { CommandContext as LegacyCommandContext } from "../../legacy/runtime";
 import {
   ensureLocalResolutionPinGitignore,
   LOCAL_RESOLUTION_PIN_RELATIVE_PATH,
@@ -26,10 +26,10 @@ import type { ProjectSetupResult, ProjectSummary } from "../../types/project";
 export type ProjectCommandContext = CommandContext<undefined, never>;
 
 /**
- * The legacy shell's `CommandContext` has many more fields than the
- * three the CLI supplies, and the cast that makes the adapter compile also
- * hides the day a legacy edit starts reading a fourth. Left alone that
- * surfaces as `Cannot read properties of undefined`, worst case inside
+ * The controllers' `CommandContext` is typed to the three fields the
+ * CLI supplies today, but a controller edit could start reading a
+ * fourth. Left alone that surfaces as
+ * `Cannot read properties of undefined`, worst case inside
  * `project transfer` after the project has already moved. Refusing the
  * read here names the missing field at the moment it is read instead.
  * Probes pass through rather than throwing: symbols are how the language
@@ -46,21 +46,24 @@ function refuseUnknownReads<T extends object>(fields: T, prefix: string): T {
         return Reflect.get(target, key);
       }
       throw new Error(
-        "the legacy-context adapter provides only runtime.cwd, " +
+        "the operation-context adapter provides only runtime.cwd, " +
           `runtime.env and runtime.signal; ${prefix}${key} was read`,
       );
     },
   });
 }
 
-export function legacyOperationContext(
+export function operationContext(
   ctx: ProjectCommandContext,
-): LegacyCommandContext {
+): ControllerCommandContext {
   const runtime = refuseUnknownReads(
     { cwd: ctx.cwd, env: ctx.env, signal: ctx.signal },
     "runtime.",
   );
-  return refuseUnknownReads({ runtime }, "") as unknown as LegacyCommandContext;
+  return refuseUnknownReads(
+    { runtime },
+    "",
+  ) as unknown as ControllerCommandContext;
 }
 
 export function listWorkspaceProjects(
@@ -80,7 +83,7 @@ export async function resolvePinnedProject(
   commandName: string | undefined,
 ): Promise<ResolvedProjectTarget> {
   const target = await resolveProjectTarget({
-    context: legacyOperationContext(ctx),
+    context: operationContext(ctx),
     workspace,
     explicitProject,
     listProjects: () => listWorkspaceProjects(ctx),
