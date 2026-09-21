@@ -3,7 +3,7 @@
  * the child-status settlement are built from. The engine never imports
  * node:child_process — the bin injects an adapter satisfying SpawnChild.
  */
-import type { NextAction } from "./protocol";
+import type { CliStructuredError, NextAction } from "./protocol";
 
 /** A fully composed child invocation. `env` is the child's COMPLETE
  *  environment: the engine has already merged the invocation
@@ -76,6 +76,7 @@ export const CHILD_STATUS: unique symbol = Symbol.for(
 export interface ChildStatusSettlement {
   readonly [CHILD_STATUS]: true;
   readonly nextActions: readonly NextAction[];
+  readonly error: CliStructuredError | undefined;
 }
 
 export interface ExitWithChildStatusOptions {
@@ -84,6 +85,10 @@ export interface ExitWithChildStatusOptions {
    *  a signal-killed child drops these entirely: the user stopped the
    *  run, so there is nothing to reproduce. */
   readonly nextActions?: readonly NextAction[];
+  /** The command's own structured error for a failed child. It replaces
+   *  CLI.CHILD_PROCESS_FAILED in the json envelope only; the exit code
+   *  stays the child's. Ignored when the child exited 0 or was signalled. */
+  readonly error?: CliStructuredError;
 }
 
 /** Signal numbers shared by Linux, macOS and the BSDs. Numbers that
@@ -133,6 +138,7 @@ export function exitWithChildStatus(
   return Object.freeze({
     [CHILD_STATUS]: true as const,
     nextActions: Object.freeze([...(options?.nextActions ?? [])]),
+    error: options?.error,
   });
 }
 

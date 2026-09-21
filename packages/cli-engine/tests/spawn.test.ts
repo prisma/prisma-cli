@@ -11,7 +11,7 @@ import {
   exitWithChildStatus,
   type Runtime,
 } from "@prisma/cli-engine";
-import { ok } from "@prisma/cli-engine/protocol";
+import { CliStructuredError, ok } from "@prisma/cli-engine/protocol";
 import {
   createTestCli,
   mintTestJwt,
@@ -1419,6 +1419,75 @@ describe("next actions on a child-status settlement", () => {
           },
         ],
       },
+    });
+  });
+});
+
+describe("a structured error on a child-status settlement", () => {
+  const deploy = defineCommand({
+    help: { summary: "A converge that knows why its child failed" },
+    maySpawn: true,
+    handler: async (_args, ctx) => {
+      await ctx.spawn({ command: "alchemy" });
+      return ok(
+        exitWithChildStatus({
+          error: new CliStructuredError("DEPLOY.ENGINE_FAILED", "Failed.", {
+            meta: { stackFilePath: "/app/stack.ts", exitCode: 99 },
+          }),
+        }),
+      );
+    },
+  });
+
+  async function settle(child: {
+    readonly exitCode: number | null;
+    readonly signal: string | null;
+  }) {
+    const cli = createTestCli({
+      commands: { deploy },
+      now: CLOCK,
+      spawnScript: () => child,
+    });
+    return cli.run(["deploy", "--json"]);
+  }
+
+  test("json carries the command's error and exits with the child's code", async () => {
+    const result = await settle({ exitCode: 3, signal: null });
+
+    expect(result.exitCode).toBe(3);
+    expect(result.json.at(-1)).toMatchObject({
+      envelope: {
+        ok: false,
+        error: {
+          code: "DEPLOY.ENGINE_FAILED",
+          summary: "Failed.",
+          meta: { stackFilePath: "/app/stack.ts", exitCode: 3, signal: null },
+        },
+      },
+    });
+  });
+
+  test("a signal-killed child is still CLI.CHILD_PROCESS_FAILED", async () => {
+    const result = await settle({ exitCode: null, signal: "SIGINT" });
+
+    expect(result.exitCode).toBe(130);
+    expect(result.json.at(-1)).toMatchObject({
+      envelope: {
+        ok: false,
+        error: {
+          code: "CLI.CHILD_PROCESS_FAILED",
+          meta: { exitCode: null, signal: "SIGINT" },
+        },
+      },
+    });
+  });
+
+  test("a child that exited 0 settles ok", async () => {
+    const result = await settle({ exitCode: 0, signal: null });
+
+    expect(result.exitCode).toBe(0);
+    expect(result.json.at(-1)).toMatchObject({
+      envelope: { ok: true, result: null, exitCode: 0 },
     });
   });
 });

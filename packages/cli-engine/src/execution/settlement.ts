@@ -293,6 +293,26 @@ function settleStructuredChildStatus(
     });
     return;
   }
+  const status = { exitCode: child.exitCode, signal: child.signal };
+  // A signal-killed child drops the command's error with its next actions.
+  const attached = child.signal === null ? settlement.error : undefined;
+  if (attached !== undefined) {
+    const error = diagnosticOf(attached);
+    const actions = [...error.nextActions, ...nextActions];
+    emitErrored(invocation, {
+      ok: false,
+      commandId: invocation.state.commandId,
+      // The engine's record of the child wins over the handler's meta.
+      error: {
+        ...error,
+        nextActions: actions,
+        meta: { ...error.meta, ...status },
+      },
+      diagnostics: accompanyingFindings(attached.diagnostics),
+      nextActions: actions,
+    });
+    return;
+  }
   const how =
     child.signal === null
       ? `exited with code ${String(child.exitCode ?? "unknown")}`
@@ -305,7 +325,7 @@ function settleStructuredChildStatus(
       severity: "error",
       summary: `The delegated process ${how}.`,
       nextActions,
-      meta: { exitCode: child.exitCode, signal: child.signal },
+      meta: status,
     },
     diagnostics: [],
     nextActions,

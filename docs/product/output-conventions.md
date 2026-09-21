@@ -42,6 +42,9 @@ command:
 - a non-zero child status is preserved as the process exit code and is
   represented by `CLI.CHILD_PROCESS_FAILED`, with `exitCode` and `signal` in
   `error.meta`
+- a command may attach its own structured error (`exitWithChildStatus({ error })`);
+  for a child that exited non-zero the JSON result carries it in place of
+  `CLI.CHILD_PROCESS_FAILED`, keeping the child's exit code and those two `meta` keys
 
 This lets automation consume a command family's structured result without
 having to parse the delegated tool's human output.
