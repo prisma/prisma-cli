@@ -1,6 +1,7 @@
 /** The `auth workspace use` command: it SELECTS among the sessions you
  *  have — it never creates one, and never opens a browser. */
 import {
+  type CredentialManager,
   defineCommand,
   type Presentations,
   positional,
@@ -8,13 +9,23 @@ import {
   type StoredSessions,
 } from "@prisma/cli-engine";
 import { CliStructuredError, ok } from "@prisma/cli-engine/protocol";
+import { sessionsForDisplay } from "../../auth/credential-manager";
 import { environmentCredentialInForce } from "../../auth/service-token";
 import { CLI_NAME } from "../../cli-name";
 import { ENVIRONMENT_CREDENTIAL_NOTICE } from "./credential-card";
-import { requireSession, sessionLabel } from "./session-ref";
+import {
+  requireSession,
+  resolveSessionRef,
+  type SessionUser,
+  sessionChoiceLabel,
+  sessionLabel,
+  sessionUser,
+  sessionUserLabel,
+} from "./session-ref";
 
 export interface WorkspaceUseResult {
   readonly workspace: { readonly id: string; readonly name: string | null };
+  readonly user: SessionUser | null;
   readonly previousWorkspaceId: string | null;
 }
 
@@ -42,11 +53,13 @@ function usePresentations(
   },
   result: WorkspaceUseResult,
 ): Presentations {
+  const user = sessionUserLabel(spec.session);
   const rows = [
     ...(spec.previous === undefined
       ? []
       : [{ label: "previous", value: sessionLabel(spec.previous) }]),
     { label: "workspace", value: sessionLabel(spec.session) },
+    ...(user === undefined ? [] : [{ label: "user", value: user }]),
   ];
   return {
     json: () => result,
@@ -105,11 +118,13 @@ export const authWorkspaceUseCommand = defineCommand({
     examples: ["auth workspace use", "auth workspace use my-workspace"],
   },
   handler: async (args, ctx) => {
-    const stored = await ctx.credentialManager.sessions();
+    const ref = args.positionals.workspace?.trim();
+    const stored = ref
+      ? await sessionsForRef(ctx.credentialManager, ref)
+      : await sessionsForDisplay(ctx.credentialManager);
     if (stored.sessions.length === 0) {
       throw noWorkspaceSessionsError();
     }
-    const ref = args.positionals.workspace?.trim();
     const chosen = ref
       ? requireSession(stored.sessions, ref)
       : await promptForSession(stored, ctx.prompt.select);
@@ -125,6 +140,7 @@ export const authWorkspaceUseCommand = defineCommand({
         id: session.workspaceId,
         name: session.workspaceName ?? null,
       },
+      user: sessionUser(session),
       previousWorkspaceId: previous?.workspaceId ?? null,
     };
     return ok(
@@ -143,6 +159,20 @@ export const authWorkspaceUseCommand = defineCommand({
   },
 });
 
+/** An explicit ref is a local switch: it resolves against stored state and
+ *  waits for no lookup. Only a ref that matches nothing looks metadata up,
+ *  because a session saved before names were stored may be the one meant. */
+async function sessionsForRef(
+  manager: CredentialManager,
+  ref: string,
+): Promise<StoredSessions> {
+  const stored = await manager.sessions();
+  if (resolveSessionRef(stored.sessions, ref).kind !== "no-match") {
+    return stored;
+  }
+  return sessionsForDisplay(manager);
+}
+
 async function promptForSession(
   stored: StoredSessions,
   select: <T extends string>(
@@ -157,7 +187,7 @@ async function promptForSession(
     "Select a workspace",
     stored.sessions.map((session) => ({
       value: session.workspaceId,
-      label: `${sessionLabel(session)} (${session.workspaceId})${
+      label: `${sessionChoiceLabel(session)} (${session.workspaceId})${
         session.workspaceId === stored.selectedWorkspaceId ? " current" : ""
       }`,
     })),

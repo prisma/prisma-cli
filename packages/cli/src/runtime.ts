@@ -17,12 +17,12 @@ import {
 } from "./auth/client";
 import { FileCredentialManager } from "./auth/credential-manager";
 import { makeCredentialRefresher } from "./auth/refresh";
+import { fetchSessionMetadata } from "./auth/session-metadata";
 import {
   DEPRECATED_STATE_FILE_ENV_VAR,
   resolveStateFilePath,
   STATE_FILE_ENV_VAR,
 } from "./auth/state-file";
-import { fetchWorkspaceName } from "./auth/workspace-name";
 import { getCliVersion } from "./lib/version";
 import { runPackageManager } from "./package-manager-runner";
 import { makeSpawnChild } from "./spawn";
@@ -156,7 +156,7 @@ export async function assembleRuntime(proc: HostProcess): Promise<Runtime> {
     loadConfig: memoizedConfigLoader(proc),
     credentialManager: new FileCredentialManager({
       env: proc.env,
-      fetchWorkspaceName: fetchWorkspaceName(apiBaseUrl),
+      fetchSessionMetadata: fetchSessionMetadata(apiBaseUrl),
       refreshCredential: makeCredentialRefresher(authBaseUrl),
     }),
     managementApiClientConfig: {
