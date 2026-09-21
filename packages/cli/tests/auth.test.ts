@@ -298,6 +298,7 @@ describe("auth whoami", () => {
     expect(result.exitCode).toBe(0);
     expect(resultOf(result)).toEqual({
       authenticated: false,
+      verified: false,
       workspace: null,
       user: null,
       source: null,

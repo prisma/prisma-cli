@@ -98,7 +98,7 @@ The run's abort signal fired before the command completed — a thrown abort err
 
 ### CLI.AUTH_SERVICE_ERROR
 
-The authentication service failed transiently while refreshing a stored OAuth session; the stored credentials are left untouched, and the guidance is to retry rather than sign in again, because the credentials themselves were not rejected. Meta: none.
+The authentication service failed transiently while refreshing a stored OAuth session; the stored credentials are left untouched, and the guidance is to retry rather than sign in again, because the credentials themselves were not rejected. `prisma auth whoami` does not fail with this code: it answers from the credential's own claims and reports `verified: false`. Meta: none.
 
 ### CLI.BROWSER_WAIT_TIMEOUT
 

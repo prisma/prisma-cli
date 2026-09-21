@@ -146,7 +146,8 @@ describe("prisma auth whoami", () => {
     expect(result.stderr).toBe("");
     expect(result.stdout).toBe(
       `{"kind":"result","envelope":{"ok":true,"commandId":"auth.whoami",` +
-        `"result":{"authenticated":false,"workspace":null,"user":null,` +
+        `"result":{"authenticated":false,"verified":false,"workspace":null,` +
+        `"user":null,` +
         `"source":null,"expiresAt":null},"exitCode":0,"diagnostics":[],` +
         `"nextActions":[{"kind":"run-command","label":"Sign in",` +
         `"command":"prisma auth login"}]},"commandId":"auth.whoami",` +
@@ -168,6 +169,7 @@ describe("prisma auth whoami", () => {
       commandId: "auth.whoami",
       result: {
         authenticated: true,
+        verified: true,
         workspace: { id: "ws_123", name: "Acme Inc" },
         user: { id: "usr_456", email: "bob@example.com", name: "Bob" },
         source: "stored",
@@ -311,6 +313,7 @@ describe("prisma auth whoami", () => {
       ok: true,
       result: {
         authenticated: false,
+        verified: false,
         workspace: null,
         user: null,
         source: null,
@@ -327,11 +330,19 @@ describe("prisma auth whoami", () => {
   });
 
   it("still answers from the claims when the auth service fails transiently", async () => {
-    const result = await makeCli({
+    const cli = makeCli({
       sessions: [SESSION],
       selectedWorkspaceId: "ws_123",
       client: apiFailingWith(authServiceError()),
-    }).run(["auth", "whoami", "--json"]);
+    });
+    const human = await cli.run(["auth", "whoami"], {
+      isTty: { stdout: true },
+    });
+    expect(human.stderr).toContain(
+      "ℹ Could not reach Prisma to confirm this sign-in. Showing what the local credential says.\n",
+    );
+
+    const result = await cli.run(["auth", "whoami", "--json"]);
 
     expect(result.exitCode).toBe(0);
     const frame = result.json[0];
@@ -341,6 +352,7 @@ describe("prisma auth whoami", () => {
     expect(frame.envelope).toMatchObject({
       result: {
         authenticated: true,
+        verified: false,
         user: { id: "usr_456", email: null, name: null },
         source: "stored",
       },

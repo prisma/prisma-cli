@@ -14,6 +14,7 @@ import { CLI_NAME } from "../../cli-name";
 import {
   credentialFieldRows,
   ENVIRONMENT_CREDENTIAL_NOTICE,
+  UNVERIFIED_CREDENTIAL_NOTICE,
 } from "./credential-card";
 
 const TITLE = "Showing the active authenticated identity.";
@@ -26,6 +27,8 @@ const SIGN_IN: NextAction = {
 
 export interface WhoamiResult {
   readonly authenticated: boolean;
+  /** True only when the API accepted the credential during this run. */
+  readonly verified: boolean;
   readonly workspace: {
     readonly id: string;
     readonly name: string | null;
@@ -45,6 +48,14 @@ export interface WhoamiResult {
  *  and never answers would otherwise hold the command for minutes. */
 const ENRICHMENT_TIMEOUT_MS = 3_000;
 
+type Lookup =
+  | {
+      readonly kind: "confirmed";
+      readonly identity: CredentialIdentity | undefined;
+    }
+  | { readonly kind: "signed-out" }
+  | { readonly kind: "inconclusive" };
+
 /** Best-effort online enrichment: whoami works offline, so a transient
  *  failure leaves the identity as the credential's own claims said.
  *  CLI.CREDENTIALS_REQUIRED means signed out; AUTH.SERVICE_TOKEN_REJECTED
@@ -52,33 +63,38 @@ const ENRICHMENT_TIMEOUT_MS = 3_000;
 async function fetchedIdentity(
   api: ManagementApiClient,
   signal: AbortSignal,
-): Promise<CredentialIdentity | undefined | "signed-out"> {
+): Promise<Lookup> {
   const bounded = AbortSignal.any([
     signal,
     AbortSignal.timeout(ENRICHMENT_TIMEOUT_MS),
   ]);
   try {
     const { data } = await api.GET("/v1/me", { signal: bounded });
-    const user = data?.data?.user;
-    if (!user) {
-      return undefined;
+    if (data === undefined) {
+      return { kind: "inconclusive" };
     }
+    const user = data.data?.user;
     return {
-      userId: user.id ?? undefined,
-      email: user.email ?? undefined,
-      name: user.name ?? undefined,
+      kind: "confirmed",
+      identity: user
+        ? {
+            userId: user.id ?? undefined,
+            email: user.email ?? undefined,
+            name: user.name ?? undefined,
+          }
+        : undefined,
     };
   } catch (cause) {
     signal.throwIfAborted();
     if (CliStructuredError.is(cause)) {
       if (cause.code === "CLI.CREDENTIALS_REQUIRED") {
-        return "signed-out";
+        return { kind: "signed-out" };
       }
       if (cause.code === "AUTH.SERVICE_TOKEN_REJECTED") {
         throw cause;
       }
     }
-    return undefined;
+    return { kind: "inconclusive" };
   }
 }
 
@@ -134,6 +150,15 @@ function presentationsFor(
             } as const,
           ]
         : []),
+      ...(result.authenticated && !result.verified
+        ? [
+            {
+              kind: "summary",
+              status: "info",
+              text: UNVERIFIED_CREDENTIAL_NOTICE,
+            } as const,
+          ]
+        : []),
     ],
     stdout: () => rows.map((row) => `${row.label}: ${row.value}`),
     next: () => (spec.credential === null ? [SIGN_IN] : []),
@@ -149,15 +174,19 @@ export const authWhoamiCommand = defineCommand({
   },
   handler: async (_args, ctx) => {
     const active = await ctx.activeCredential();
-    const fetched =
+    const lookup =
       active === null ? undefined : await fetchedIdentity(ctx.api, ctx.signal);
-    const credential = fetched === "signed-out" ? null : active;
+    const credential = lookup?.kind === "signed-out" ? null : active;
     const identity =
-      credential === null || fetched === "signed-out"
+      credential === null
         ? null
-        : mergedIdentity(credential.identity, fetched);
+        : mergedIdentity(
+            credential.identity,
+            lookup?.kind === "confirmed" ? lookup.identity : undefined,
+          );
     const result: WhoamiResult = {
       authenticated: credential !== null,
+      verified: credential !== null && lookup?.kind === "confirmed",
       workspace:
         credential === null || credential.workspaceId === undefined
           ? null
