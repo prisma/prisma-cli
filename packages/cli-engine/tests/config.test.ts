@@ -2213,6 +2213,28 @@ describe("withBaseDir", () => {
     });
   });
 
+  test("keeps two overlapping evaluations apart", async () => {
+    let seenA: string | undefined;
+    let seenB: string | undefined;
+    let release: () => void = () => {};
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+
+    await Promise.all([
+      withBaseDir("/a", async () => {
+        await gate;
+        seenA = baseDir();
+      }),
+      withBaseDir("/b", async () => {
+        release();
+        seenB = baseDir();
+      }),
+    ]);
+
+    expect({ seenA, seenB }).toEqual({ seenA: "/a", seenB: "/b" });
+  });
+
   test("clears the directory when the evaluation throws", async () => {
     await expect(
       withBaseDir("/app", async () => {
@@ -2225,30 +2247,40 @@ describe("withBaseDir", () => {
 });
 
 describe("loadConfig publishes the base directory", { timeout: 60_000 }, () => {
-  test("a discovered file sees its own directory", async () => {
-    const dir = join(FIXTURES, "base-dir");
+  const dir = join(FIXTURES, "base-dir");
+  const child = join(dir, "child");
 
+  function baseDirOf(loaded: LoadedConfig, path: string): unknown {
+    const file = loaded.files.find((entry) => entry.path === path);
+    return (file?.sections.toy as { baseDir?: unknown } | undefined)?.baseDir;
+  }
+
+  test("a discovered file sees its own directory", async () => {
     const loaded = await loadConfig(dir);
 
     expect(loaded.diagnostics).toEqual([]);
-    expect(loaded.sections).toEqual({
-      toy: { greeting: "hello", baseDir: dir },
-    });
+    expect(baseDirOf(loaded, join(dir, "prisma.config.ts"))).toBe(dir);
   });
 
   test("a --config file elsewhere sees its own directory, not cwd", async () => {
-    const dir = join(FIXTURES, "base-dir");
-
     const loaded = await loadConfig(
       FIXTURES,
       join("base-dir", "prisma.config.ts"),
     );
 
-    expect((loaded.sections.toy as { baseDir: string }).baseDir).toBe(dir);
+    expect(baseDirOf(loaded, join(dir, "prisma.config.ts"))).toBe(dir);
   });
 
-  test("the slot is clear once the file has been read", async () => {
-    await loadConfig(join(FIXTURES, "base-dir"));
+  test("each file on a discovery chain sees its own directory", async () => {
+    const loaded = await loadConfig(child);
+
+    expect(loaded.diagnostics).toEqual([]);
+    expect(baseDirOf(loaded, join(child, "prisma.config.ts"))).toBe(child);
+    expect(baseDirOf(loaded, join(dir, "prisma.config.ts"))).toBe(dir);
+  });
+
+  test("the store is empty once the files have been read", async () => {
+    await loadConfig(child);
 
     expect(baseDir()).toBeUndefined();
   });
