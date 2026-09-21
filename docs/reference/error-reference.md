@@ -106,7 +106,7 @@ A `ctx.prompt.browserWait` flow (the command opened a URL and polled for the use
 
 ### CLI.CHILD_PROCESS_FAILED
 
-Emitted only as a json-mode error envelope when a command that handed the terminal to a child process (`exitWithChildStatus`) saw that child exit non-zero or die on a signal; the run's exit code is the child's own status verbatim, not the CLI's usual 2. Meta: `exitCode`, `signal`.
+Emitted only as a json-mode error envelope when a command that handed the terminal to a child process (`exitWithChildStatus`) saw that child exit non-zero or die on a signal; the run's exit code is the child's own status verbatim, not the CLI's usual 2. A command that attaches its own structured error to that settlement replaces this code for a child that exited non-zero — the envelope carries the command's code, the exit code is still the child's, and `exitCode` and `signal` are still written into `error.meta` — so this code then appears only for a signal-killed child. Meta: `exitCode`, `signal`.
 
 ### CLI.COMMAND_MOVED
 

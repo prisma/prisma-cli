@@ -42,9 +42,25 @@ command:
 - a non-zero child status is preserved as the process exit code and is
   represented by `CLI.CHILD_PROCESS_FAILED`, with `exitCode` and `signal` in
   `error.meta`
+- a command that knows why its child failed attaches its own structured error
+  to the settlement (`exitWithChildStatus({ error })`), and the JSON result
+  carries that error's code, summary, `why`, `where`, and `meta` in place of
+  `CLI.CHILD_PROCESS_FAILED`. The process exit code is still the child's, and
+  the engine still writes the child's `exitCode` and `signal` into
+  `error.meta` from its own record, so those two keys mean the same thing
+  under every code. The error's own next actions come first, followed by the
+  settlement's
+- a child killed by a signal is always reported as
+  `CLI.CHILD_PROCESS_FAILED` with no next actions, whatever the command
+  attached: the user stopped the run, which is not the failure the command's
+  error describes
+- human and markdown output never print the attached error. The child owned
+  the terminal and has already reported its failure; only the settlement's
+  next actions follow it
 
-This lets automation consume a command family's structured result without
-having to parse the delegated tool's human output.
+This lets automation consume a command family's structured result, and branch
+on the precise code the command assigned, without having to parse the
+delegated tool's human output.
 
 ## TTY and Piped Behavior
 

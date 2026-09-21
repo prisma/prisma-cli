@@ -3,7 +3,7 @@
  * the child-status settlement are built from. The engine never imports
  * node:child_process — the bin injects an adapter satisfying SpawnChild.
  */
-import type { NextAction } from "./protocol";
+import type { CliStructuredError, NextAction } from "./protocol";
 
 /** A fully composed child invocation. `env` is the child's COMPLETE
  *  environment: the engine has already merged the invocation
@@ -71,11 +71,13 @@ export const CHILD_STATUS: unique symbol = Symbol.for(
  * command that declares maySpawn. It carries no exit code, because the
  * code is not the handler's to state: the engine reads it off its own
  * record of the child. `nextActions` render to stderr before the
- * process exits with the child's code.
+ * process exits with the child's code. `error` is the command's own
+ * account of why the child failed, and reaches only the json envelope.
  */
 export interface ChildStatusSettlement {
   readonly [CHILD_STATUS]: true;
   readonly nextActions: readonly NextAction[];
+  readonly error: CliStructuredError | undefined;
 }
 
 export interface ExitWithChildStatusOptions {
@@ -84,6 +86,20 @@ export interface ExitWithChildStatusOptions {
    *  a signal-killed child drops these entirely: the user stopped the
    *  run, so there is nothing to reproduce. */
   readonly nextActions?: readonly NextAction[];
+  /** The structured error the command built for this failure, when it
+   *  knows a more precise one than "the child failed". It names the
+   *  json envelope in place of CLI.CHILD_PROCESS_FAILED: its code,
+   *  summary, why, where and meta are the envelope's, its own next
+   *  actions lead the list ahead of `nextActions`, and its accompanying
+   *  diagnostics are reported alongside it. The engine still writes the
+   *  child's `exitCode` and `signal` into `error.meta` from its own
+   *  record, over any keys of those names, and the process still exits
+   *  with the child's code — an error attached here never settles 2.
+   *  Human and markdown output do not print it: the child owned the
+   *  terminal and has already said what went wrong. A child that exited
+   *  0 ignores it, and so does a signal-killed one: the user stopped
+   *  the run, which is not the failure this error describes. */
+  readonly error?: CliStructuredError;
 }
 
 /** Signal numbers shared by Linux, macOS and the BSDs. Numbers that
@@ -124,8 +140,8 @@ export function childExitCode(child: ChildResult): number {
  * construction error at settlement.
  *
  * A signal-killed child overrules everything the caller asked for: it
- * settles 128 + the signal number with no `nextActions`, because the
- * user stopped the run and there is nothing to reproduce.
+ * settles 128 + the signal number with no `nextActions` and no `error`,
+ * because the user stopped the run and there is nothing to reproduce.
  */
 export function exitWithChildStatus(
   options?: ExitWithChildStatusOptions,
@@ -133,6 +149,7 @@ export function exitWithChildStatus(
   return Object.freeze({
     [CHILD_STATUS]: true as const,
     nextActions: Object.freeze([...(options?.nextActions ?? [])]),
+    error: options?.error,
   });
 }
 
