@@ -52,7 +52,7 @@ The `PRISMA_SERVICE_TOKEN` environment variable is set but blank; a blank token 
 
 ### AUTH.SERVICE_TOKEN_REJECTED
 
-The management API rejected (401) the service token supplied through `PRISMA_SERVICE_TOKEN`; such a token carries no refresh token and can never be renewed, and nothing stored is cleared. Built only through the shared `credentialRejectedError` dispatcher in the engine's API request path — the one place wording differs by credential origin (a stored session with the same failure gets `CLI.CREDENTIALS_REQUIRED` instead). `prisma auth whoami` lets this error settle as itself when its identity lookup meets it, rather than reporting the rejected token as signed in. The suggested action is to replace the variable with a valid service token or unset it to fall back to stored sessions. Meta: none.
+The management API rejected (401) the service token supplied through `PRISMA_SERVICE_TOKEN`; such a token carries no refresh token and can never be renewed, and nothing stored is cleared. Built only through the shared `credentialRejectedError` dispatcher in the engine's API request path — the one place wording differs by credential origin (a stored session with the same failure gets `CLI.CREDENTIALS_REQUIRED` instead). `prisma auth whoami` fails with this code too rather than reporting the rejected token as signed in. The suggested action is to replace the variable with a valid service token or unset it to fall back to stored sessions. Meta: none.
 
 ### AUTH.SESSIONS_UNSUPPORTED
 
@@ -146,7 +146,7 @@ The advisory lock on the stored-credentials file was held by another prisma proc
 
 ### CLI.CREDENTIALS_REQUIRED
 
-The command needs a signed-in credential and none is usable. One constructor covers five reasons: not signed in at all, an expired session, a session expiring too soon for a command that hands credentials to a child process (which cannot refresh them), a workspace session that ended mid-run, and workspace sessions held with none selected as current. Raised identically by the engine's needs check, `ctx.activeCredential`, and the request path; next actions point at signing in or `prisma auth workspace use`. `prisma auth whoami` reports being signed out rather than failing with this code: no credential at all, or a session its identity lookup finds expired or ended, is `authenticated: false` with exit `0` (sessions held with none selected still fails, because signing in is not the only fix). Meta: none.
+The command needs a signed-in credential and none is usable. One constructor covers five reasons: not signed in at all, an expired session, a session expiring too soon for a command that hands credentials to a child process (which cannot refresh them), a workspace session that ended mid-run, and workspace sessions held with none selected as current. Raised identically by the engine's needs check, `ctx.activeCredential`, and the request path; next actions point at signing in or `prisma auth workspace use`. When `prisma auth whoami` meets this code during its identity lookup it reports `authenticated: false` with exit `0` instead of failing. Meta: none.
 
 ### CLI.CREDENTIALS_UNREADABLE
 

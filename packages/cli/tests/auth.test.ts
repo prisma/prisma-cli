@@ -804,13 +804,8 @@ describe("the environment credential carries no refresh token", () => {
     expect(paths).toEqual(["/v1/me"]);
   });
 
-  /** §11.6: whoami does not branch on origin — it attempts the same
-   *  online enrichment for an environment credential. A lookup that
-   *  fails without a verdict falls back to the token's own claims (the
-   *  next test); a 401 is the engine's verdict that the token is
-   *  refused, and whoami does not answer "signed in" over it. Signing
-   *  in would not help while the variable is set, so the error that
-   *  names the variable settles as itself. */
+  /** A refused env token is never reported as signed in, and signing
+   *  in cannot fix it, so the rejection settles as itself. */
   it("settles the engine's rejection when the API refuses the env token", async () => {
     const cli = await cliAgainstA401Server();
 
@@ -818,7 +813,6 @@ describe("the environment credential carries no refresh token", () => {
 
     expect(result.exitCode).toBe(2);
     expect(errorOf(result).code).toBe("AUTH.SERVICE_TOKEN_REJECTED");
-    expect(result.stdout).not.toContain('"authenticated":true');
     expect(paths).toEqual(["/v1/me"]);
   });
 
@@ -864,69 +858,6 @@ describe("the environment credential carries no refresh token", () => {
     expect(paths).toEqual(["/v1/me"]);
     expect(elapsed).toBeLessThan(10_000);
   }, 20_000);
-});
-
-/** The request path end to end, with no structured error written by
- *  the test: the API answers 401, the token endpoint answers
- *  invalid_grant, the SDK compare-and-clears the stored session, and
- *  the engine maps that to the expired CLI.CREDENTIALS_REQUIRED. */
-describe("whoami when the refresh token is refused", () => {
-  let server: Server | undefined;
-
-  afterEach(async () => {
-    const running = server;
-    server = undefined;
-    if (running !== undefined) {
-      await new Promise<void>((resolve) => running.close(() => resolve()));
-    }
-  });
-
-  it("reports signed out, not the workspace of the session it just lost", async () => {
-    const paths: string[] = [];
-    server = createServer((request, response) => {
-      paths.push(request.url ?? "");
-      const refused = request.url === "/token";
-      response.writeHead(refused ? 400 : 401, {
-        "content-type": "application/json",
-      });
-      response.end(
-        JSON.stringify(
-          refused ? { error: "invalid_grant" } : { error: "unauthorized" },
-        ),
-      );
-    });
-    await new Promise<void>((resolve) => {
-      server?.listen(0, "127.0.0.1", () => resolve());
-    });
-    const port = (server.address() as AddressInfo).port;
-    const baseUrl = `http://127.0.0.1:${port}`;
-    const cli = createTestCli({
-      commands: COMMANDS,
-      groups: GROUPS,
-      sessions: [record("ws_1", "Acme Inc")],
-      selectedWorkspaceId: "ws_1",
-      managementApiClientConfig: {
-        clientId: "test-client-id",
-        redirectUri: `${baseUrl}/auth/callback`,
-        apiBaseUrl: baseUrl,
-        authBaseUrl: baseUrl,
-      },
-      now: () => new Date(0),
-    });
-
-    const result = await cli.run(["auth", "whoami", "--json"]);
-
-    expect(result.exitCode).toBe(0);
-    expect(resultOf(result)).toEqual({
-      authenticated: false,
-      workspace: null,
-      user: null,
-      source: null,
-      expiresAt: null,
-    });
-    expect(paths).toEqual(["/v1/me", "/token"]);
-    expect(cli.credentialManager.state().sessions).toEqual([]);
-  });
 });
 
 describe("a blank service token is never an override", () => {

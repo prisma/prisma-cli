@@ -45,46 +45,14 @@ export interface WhoamiResult {
  *  and never answers would otherwise hold the command for minutes. */
 const ENRICHMENT_TIMEOUT_MS = 3_000;
 
-/**
- * What the `/v1/me` lookup established. `identity` is absent whenever
- * the lookup could not supply one; `usable: false` is the engine's own
- * verdict, reached during this run, that the stored session is expired
- * beyond refresh or has ended underneath the process.
- */
-type Lookup =
-  | {
-      readonly usable: true;
-      readonly identity: CredentialIdentity | undefined;
-    }
-  | { readonly usable: false };
-
-const NO_IDENTITY: Lookup = { usable: true, identity: undefined };
-
-/**
- * Online enrichment, best-effort for everything that leaves the
- * credential's standing unknown: whoami works offline, so a network
- * failure, a timeout, a 5xx, or the auth service failing transiently
- * (CLI.AUTH_SERVICE_ERROR — nothing was cleared) leaves the identity as
- * whatever the credential's own claims said.
- *
- * Two failures are not unknowns. They are the engine's definitive
- * verdict on the credential in force, told apart by the structured
- * error's code exactly as the engine raised it — never by origin, and
- * never by message:
- *
- * - CLI.CREDENTIALS_REQUIRED: the stored session is expired beyond
- *   refresh or has ended. That is the state whoami exists to report, so
- *   it is answered as signed out rather than raised.
- * - AUTH.SERVICE_TOKEN_REJECTED: the environment's token was refused.
- *   Signing in cannot fix that while the variable is set, so "signed
- *   out" would send the reader the wrong way; the error names the
- *   variable and settles as itself, as AUTH.SERVICE_TOKEN_EMPTY already
- *   does for this command.
- */
-async function lookUpIdentity(
+/** Best-effort online enrichment: whoami works offline, so a transient
+ *  failure leaves the identity as the credential's own claims said.
+ *  CLI.CREDENTIALS_REQUIRED means signed out; AUTH.SERVICE_TOKEN_REJECTED
+ *  is rethrown because signing in cannot fix an environment token. */
+async function fetchedIdentity(
   api: ManagementApiClient,
   signal: AbortSignal,
-): Promise<Lookup> {
+): Promise<CredentialIdentity | undefined | "signed-out"> {
   const bounded = AbortSignal.any([
     signal,
     AbortSignal.timeout(ENRICHMENT_TIMEOUT_MS),
@@ -93,27 +61,24 @@ async function lookUpIdentity(
     const { data } = await api.GET("/v1/me", { signal: bounded });
     const user = data?.data?.user;
     if (!user) {
-      return NO_IDENTITY;
+      return undefined;
     }
     return {
-      usable: true,
-      identity: {
-        userId: user.id ?? undefined,
-        email: user.email ?? undefined,
-        name: user.name ?? undefined,
-      },
+      userId: user.id ?? undefined,
+      email: user.email ?? undefined,
+      name: user.name ?? undefined,
     };
   } catch (cause) {
     signal.throwIfAborted();
     if (CliStructuredError.is(cause)) {
       if (cause.code === "CLI.CREDENTIALS_REQUIRED") {
-        return { usable: false };
+        return "signed-out";
       }
       if (cause.code === "AUTH.SERVICE_TOKEN_REJECTED") {
         throw cause;
       }
     }
-    return NO_IDENTITY;
+    return undefined;
   }
 }
 
@@ -183,20 +148,14 @@ export const authWhoamiCommand = defineCommand({
     examples: ["auth whoami", "auth whoami --json"],
   },
   handler: async (_args, ctx) => {
-    const held = await ctx.activeCredential();
-    const lookup =
-      held === null ? NO_IDENTITY : await lookUpIdentity(ctx.api, ctx.signal);
-    // A credential the engine has just ruled unusable is not one this
-    // process is signed in with: it is reported exactly as no
-    // credential is, never as the workspace it used to open.
-    const credential = lookup.usable ? held : null;
+    const active = await ctx.activeCredential();
+    const fetched =
+      active === null ? undefined : await fetchedIdentity(ctx.api, ctx.signal);
+    const credential = fetched === "signed-out" ? null : active;
     const identity =
-      credential === null
+      credential === null || fetched === "signed-out"
         ? null
-        : mergedIdentity(
-            credential.identity,
-            lookup.usable ? lookup.identity : undefined,
-          );
+        : mergedIdentity(credential.identity, fetched);
     const result: WhoamiResult = {
       authenticated: credential !== null,
       workspace:
