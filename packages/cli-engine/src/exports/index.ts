@@ -45,6 +45,7 @@ export {
   type SpawnDeclarations,
   type WorkflowStep,
 } from "../commands";
+export { BASE_DIR_KEY, baseDir, withBaseDir } from "../config-base-dir";
 export {
   definePrismaConfig,
   loadConfig,

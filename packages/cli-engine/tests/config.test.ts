@@ -18,6 +18,7 @@ import { tmpdir } from "node:os";
 import { dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
+  baseDir,
   type ConfigSection,
   createCli,
   defineCommand,
@@ -34,6 +35,7 @@ import {
   resolveSectionPath,
   type SectionProvenance,
   type SectionValidation,
+  withBaseDir,
 } from "@prisma/cli-engine";
 import { ok } from "@prisma/cli-engine/protocol";
 import { createTestCli, type TestCli } from "@prisma/cli-engine/testing";
@@ -2173,5 +2175,81 @@ describe("warnings on a successful section validation", {
     });
     expect(run.exitCode).toBe(0);
     expect(run.stderr).toBe("✔ hi\n");
+  });
+});
+
+/**
+ * A relative path inside a config file means "relative to this file". The
+ * loader is the one party that knows which file it is evaluating, so it
+ * publishes the file's directory while the file runs and the family's config
+ * helper resolves its own paths against it (ADR 253 in prisma/orm).
+ */
+describe("withBaseDir", () => {
+  test("publishes the directory during the evaluation and clears it after", async () => {
+    let seen: string | undefined;
+
+    await withBaseDir("/app", async () => {
+      seen = baseDir();
+    });
+
+    expect(seen).toBe("/app");
+    expect(baseDir()).toBeUndefined();
+  });
+
+  test("restores the outer directory after a nested evaluation", async () => {
+    let inner: string | undefined;
+    let afterInner: string | undefined;
+
+    await withBaseDir("/outer", async () => {
+      await withBaseDir("/inner", async () => {
+        inner = baseDir();
+      });
+      afterInner = baseDir();
+    });
+
+    expect({ inner, afterInner }).toEqual({
+      inner: "/inner",
+      afterInner: "/outer",
+    });
+  });
+
+  test("clears the directory when the evaluation throws", async () => {
+    await expect(
+      withBaseDir("/app", async () => {
+        throw new Error("boom");
+      }),
+    ).rejects.toThrow("boom");
+
+    expect(baseDir()).toBeUndefined();
+  });
+});
+
+describe("loadConfig publishes the base directory", { timeout: 60_000 }, () => {
+  test("a discovered file sees its own directory", async () => {
+    const dir = join(FIXTURES, "base-dir");
+
+    const loaded = await loadConfig(dir);
+
+    expect(loaded.diagnostics).toEqual([]);
+    expect(loaded.sections).toEqual({
+      toy: { greeting: "hello", baseDir: dir },
+    });
+  });
+
+  test("a --config file elsewhere sees its own directory, not cwd", async () => {
+    const dir = join(FIXTURES, "base-dir");
+
+    const loaded = await loadConfig(
+      FIXTURES,
+      join("base-dir", "prisma.config.ts"),
+    );
+
+    expect((loaded.sections.toy as { baseDir: string }).baseDir).toBe(dir);
+  });
+
+  test("the slot is clear once the file has been read", async () => {
+    await loadConfig(join(FIXTURES, "base-dir"));
+
+    expect(baseDir()).toBeUndefined();
   });
 });

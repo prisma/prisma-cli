@@ -15,11 +15,13 @@ import { describe, expect, test } from "vitest";
 describe("main export", () => {
   test("exposes exactly the definition-surface runtime values", () => {
     expect(Object.keys(engine).sort()).toEqual([
+      "BASE_DIR_KEY",
       "EnvironmentCredentialManager",
       "PRESENTED",
       "PRISMA_CONFIG_VERSION",
       "SERVICE_TOKEN_ENV_VAR",
       "authServiceError",
+      "baseDir",
       "claimedExpiresAt",
       "claimedIdentity",
       "createCli",
@@ -45,6 +47,7 @@ describe("main export", () => {
       "resolveSectionOverChain",
       "resolveSectionPath",
       "telemetryCommandGroup",
+      "withBaseDir",
     ]);
   });
 

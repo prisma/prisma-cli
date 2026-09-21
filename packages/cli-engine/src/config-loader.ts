@@ -23,6 +23,10 @@
  * a Runtime member a host can replace — checks them against the
  * sections the mounted commands declare.
  *
+ * A section's relative paths are relative to the file that wrote them. The
+ * loader publishes each file's directory (withBaseDir) while that file
+ * runs, and the family's config helper resolves its own paths against it.
+ *
  * Finding no file is not an error: section validators own absence, so
  * a chain with no files yields no sections and no diagnostics.
  * Absence of a file the user NAMED with --config is an error — they
@@ -41,6 +45,7 @@
 import { existsSync, realpathSync, statSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
+import { withBaseDir } from "./config-base-dir";
 import type { Diagnostic } from "./protocol";
 import type { LoadedConfig, LoadedConfigFile } from "./runtime";
 import { PRISMA_CONFIG_VERSION } from "./runtime";
@@ -456,7 +461,9 @@ async function evaluateChainFile(
 ): Promise<EvaluatedChainFile> {
   let exported: unknown;
   try {
-    exported = await evaluateConfigFile(path);
+    // The file's config helpers read the base directory while the file
+    // runs, so relative paths inside it resolve against this file.
+    exported = await withBaseDir(dirname(path), () => evaluateConfigFile(path));
   } catch (cause) {
     return {
       ok: false,
