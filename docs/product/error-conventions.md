@@ -53,6 +53,13 @@ diagnostics because they are untrusted input.
 Both browser redirects and pasted callback URLs end login with that error;
 an explicit denial must not reopen the paste prompt.
 
+Ctrl-C at the `auth login` paste prompt is the user cancelling sign-in. It is
+reported as `CLI.PROMPT_CANCELLED`, the code Ctrl-C at any other prompt
+produces, not as `CLI.INTERNAL_ERROR`. The prompt reads the terminal in raw
+mode, so that Ctrl-C never arrives as a signal; the prompt's own abort is what
+distinguishes it from the browser callback finishing sign-in first. No session
+is created or cleared.
+
 An expected external fault, not a product bug.
 
 Examples:
