@@ -7,7 +7,13 @@
  */
 export interface CheckableSection {
   readonly name: string;
-  readonly validate: (raw: unknown) => unknown;
+  readonly validate: (raw: unknown, provenance: CheckableProvenance) => unknown;
+}
+
+/** The engine's `SectionProvenance`, structurally, for the same reason. */
+export interface CheckableProvenance {
+  readonly files: readonly string[];
+  readonly keys: Readonly<Record<string, string>>;
 }
 
 /**

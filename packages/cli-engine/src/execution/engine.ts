@@ -660,6 +660,7 @@ export class EngineImpl implements Engine {
       invocation,
       entry.def,
       needsOutcome.config,
+      needsOutcome.configFiles,
       declaredCapabilities(entry.def),
     );
     if (entry.def.kind === "session-command") {

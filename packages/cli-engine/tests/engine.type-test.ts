@@ -19,11 +19,13 @@ import type {
   FlagSpec,
   InputStream,
   LoadedConfig,
+  LoadedConfigFile,
   MountedTree,
   Presentations,
   PresentedResult,
   RedirectSpec,
   Runtime,
+  SectionProvenance,
   SectionValidation,
   Session,
   StreamEvent,
@@ -37,6 +39,7 @@ import {
   defineSessionCommand,
   flag,
   positional,
+  resolveSectionPath,
 } from "@prisma/cli-engine";
 import type {
   CliStructuredError,
@@ -146,6 +149,8 @@ interface CheckCfg {
   readonly strict: boolean;
 }
 
+// A one-argument validator stays assignable to the two-parameter
+// declared type of ConfigSection.validate.
 export const checkSection: ConfigSection<CheckCfg> = defineConfigSection({
   name: "check",
   validate: (raw): SectionValidation<CheckCfg> =>
@@ -153,6 +158,24 @@ export const checkSection: ConfigSection<CheckCfg> = defineConfigSection({
       ? { ok: true, value: { strict: false }, diagnostics: [] }
       : { ok: true, value: { strict: true }, diagnostics: [] },
 });
+
+// The validator's second parameter is the resolved value's provenance,
+// typed for resolveSectionPath without annotation.
+export const pathSection: ConfigSection<{ readonly out: string }> =
+  defineConfigSection({
+    name: "paths",
+    validate: (
+      raw,
+      provenance,
+    ): SectionValidation<{ readonly out: string }> => {
+      const typed: SectionProvenance = provenance;
+      return {
+        ok: true,
+        value: { out: resolveSectionPath(typed, "out", String(raw)) },
+        diagnostics: [],
+      };
+    },
+  });
 
 export const checkCommand = defineCommand({
   help: { summary: "Check the project" },
@@ -203,12 +226,15 @@ export const runCheck: CommandHandler<typeof checkCommand> = async (
   const cfg: CheckCfg = ctx.config;
   const strictCfg: boolean = ctx.config.strict;
 
+  // The chain the config was resolved from rides the context
+  const chain: ReadonlyArray<LoadedConfigFile> = ctx.configFiles;
+
   // r5(1)/r4(b): documented exit codes compile at every return site
   const p4 = ctx.present(
     { data: { strict, filter, name, rest }, exitCode: 4 },
     presentations,
   );
-  const p5 = ctx.present({ data: cfg, exitCode: 5 }, presentations);
+  const p5 = ctx.present({ data: { cfg, chain }, exitCode: 5 }, presentations);
   const p0 = ctx.present({ data: strictCfg, exitCode: 0 }, presentations);
   // r5(1): diagnostics are optional alongside the exit code
   const pDiag = ctx.present(
@@ -242,12 +268,14 @@ export const runPlain: CommandHandler<typeof plainCommand> = async (
 ) => {
   // r5(3): with no needs.config, TConfig defaults to undefined
   const noConfig: undefined = ctx.config;
+  // ctx.configFiles exists on every context; it is empty here
+  const noChain: ReadonlyArray<LoadedConfigFile> = ctx.configFiles;
 
   // r5(1): present({ data }) compiles without an exit code
   const bare = ctx.present({ data: noConfig }, presentations);
   // r5(1): diagnostics still accepted without a catalogue
   const withDiagnostics = ctx.present(
-    { data: 1, diagnostics: [] },
+    { data: noChain, diagnostics: [] },
     presentations,
   );
 
@@ -462,8 +490,12 @@ export const invalidMessage: EngineEvent = {
 // —————————————————————————————————————————————————————————————————————
 
 export const loadedConfig: LoadedConfig = {
-  path: "/project/prisma.config.ts",
-  sections: { check: { strict: true } },
+  files: [
+    {
+      path: "/project/prisma.config.ts",
+      sections: { check: { strict: true } },
+    },
+  ],
   diagnostics: [{ section: null, diagnostic }],
 };
 
@@ -479,9 +511,7 @@ export const runtimeShape: Runtime = {
   },
   onSignal: () => () => {},
   loadConfig: async (configPath?: string) =>
-    configPath === undefined
-      ? { path: "/project/prisma.config.ts", sections: {}, diagnostics: [] }
-      : loadedConfig,
+    configPath === undefined ? { files: [], diagnostics: [] } : loadedConfig,
   managementApi: { baseUrl: "https://test.invalid" },
   host: {
     runtime: { name: "node", version: "v22.12.0" },

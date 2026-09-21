@@ -120,8 +120,7 @@ describe("scripted and non-TTY paths are clack-free", () => {
       },
       onSignal: () => () => {},
       loadConfig: async () => ({
-        path: "/prisma.config.ts",
-        sections: {},
+        files: [],
         diagnostics: [],
       }),
       managementApi: { baseUrl: "https://test.invalid" },

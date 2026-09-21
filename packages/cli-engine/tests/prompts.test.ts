@@ -529,8 +529,7 @@ describe("stdin cleanup", () => {
       },
       onSignal: () => () => {},
       loadConfig: async () => ({
-        path: "/prisma.config.ts",
-        sections: {},
+        files: [],
         diagnostics: [],
       }),
       managementApi: { baseUrl: "https://test.invalid" },

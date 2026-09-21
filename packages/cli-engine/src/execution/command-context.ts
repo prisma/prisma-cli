@@ -14,7 +14,7 @@ import {
   type Ui,
 } from "../presentation";
 import { type Diagnostic, notOk, okVoid } from "../protocol";
-import type { OutputStream } from "../runtime";
+import type { LoadedConfigFile, OutputStream } from "../runtime";
 import { buildManagementApiClient } from "./api-client";
 import { constructionError } from "./command-tree";
 import type { Invocation, RunState } from "./engine";
@@ -123,6 +123,7 @@ export function makeContext(
   invocation: Invocation,
   def: AnyCommand,
   config: unknown,
+  configFiles: readonly LoadedConfigFile[],
   capabilities: CommandCapabilities,
 ): CommandContext<unknown, number> {
   const state = invocation.state;
@@ -164,6 +165,8 @@ export function makeContext(
   let api: ManagementApiClient | undefined;
   const context: CommandContext<unknown, number> = {
     config,
+    configFiles,
+    configPath: state.configPath,
     present: present as CommandContext<unknown, number>["present"],
     activeCredential: (): Promise<ActiveCredential | null> =>
       invocation.runtime.credentialManager?.activeCredential() ??

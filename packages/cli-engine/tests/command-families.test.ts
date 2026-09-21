@@ -106,6 +106,7 @@ describe("section names the config file reserves", () => {
 
   test.each([
     "extends",
+    "parent",
     "__proto__",
     "$env",
     "$meta",

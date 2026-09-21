@@ -916,6 +916,23 @@ describe("init", () => {
     });
   });
 
+  it("runs every step when discovery finds no config file", async () => {
+    const root = await makeProjectRoot("init-");
+    const cli = createTestCli({
+      commands: { init: initCommand },
+      loadConfig: async () => ({ files: [], diagnostics: [] }),
+      now: () => new Date(0),
+    });
+
+    const run = await cli.run(["init"], { cwd: root });
+    const result = run.presented?.data as InitResult;
+
+    expect(run.exitCode).toBe(0);
+    expect(result.postinstall.outcome).toBe("added");
+    expect(result.config.outcome).toBe("created");
+    expect(result.skills.outcome).toBe("no-packages");
+  });
+
   it.skipIf(process.platform === "win32")(
     "turns a sync failure into a diagnostic on a successful init",
     async () => {
@@ -942,4 +959,181 @@ describe("init", () => {
       }
     },
   );
+});
+
+/**
+ * Init below an ancestor config. The handler reads the chain from
+ * ctx.configFiles — the load the engine's needs check already did —
+ * so these tests seed the chain through the test CLI's loadConfig,
+ * exactly as a real run's resolver would hand it over. The real-disk
+ * discovery path is the init e2e's.
+ */
+describe("init below an ancestor config", () => {
+  async function makeRepoWithAncestorConfig(): Promise<{
+    root: string;
+    nested: string;
+  }> {
+    const root = await makeProjectRoot("init-repo-");
+    const nested = path.join(root, "packages", "db");
+    await mkdir(nested, { recursive: true });
+    await writeFile(
+      path.join(nested, "package.json"),
+      `${JSON.stringify({ name: "db-package", version: "0.0.0" }, null, 2)}\n`,
+      "utf8",
+    );
+    return { root, nested };
+  }
+
+  /** The chain a subdirectory run resolves: one file, at the fixture
+   *  root, above the run's cwd. */
+  function ancestorChainCli(root: string) {
+    return createTestCli({
+      commands: { init: initCommand },
+      loadConfig: async () => ({
+        files: [{ path: path.join(root, "prisma.config.ts"), sections: {} }],
+        diagnostics: [],
+      }),
+      now: () => new Date(0),
+    });
+  }
+
+  it("skips the postinstall hook, the dependency, and the skills sync, and says why", async () => {
+    const { root, nested } = await makeRepoWithAncestorConfig();
+
+    const run = await ancestorChainCli(root).run(["init"], {
+      cwd: nested,
+      isTty: { stdout: true, stderr: true },
+    });
+    const result = run.presented?.data as InitResult;
+
+    expect(run.exitCode).toBe(0);
+    expect(result.postinstall).toEqual({
+      outcome: "skipped",
+      reason: "governing-config",
+      script: null,
+      dependency: "skipped",
+    });
+    expect(result.skills).toEqual({
+      outcome: "skipped",
+      reason: "governing-config",
+      sync: null,
+    });
+    expect(result.config).toEqual({
+      outcome: "created",
+      agents: [...DEFAULT_AGENTS],
+    });
+    expect(run.stderr).toContain(
+      "Skipped the postinstall hook and the prisma dev dependency",
+    );
+    expect(run.stderr).toContain("Skipped the skills sync");
+    expect(run.stderr).toContain(
+      "another prisma.config.ts already governs this directory",
+    );
+    expect(run.stderr).toContain("belong at the repository root");
+    expect(await exists(path.join(nested, "prisma.config.ts"))).toBe(true);
+    const manifest = await readManifest(nested);
+    expect(manifest.scripts).toBeUndefined();
+    expect(manifest.devDependencies).toBeUndefined();
+  });
+
+  it("--postinstall opts the manifest edit back in, the sync stays skipped", async () => {
+    const { root, nested } = await makeRepoWithAncestorConfig();
+
+    const run = await ancestorChainCli(root).run(["init", "--postinstall"], {
+      cwd: nested,
+    });
+    const result = run.presented?.data as InitResult;
+
+    expect(run.exitCode).toBe(0);
+    expect(result.postinstall).toEqual({
+      outcome: "added",
+      script: POSTINSTALL_SCRIPT,
+      dependency: "added",
+    });
+    expect(result.skills).toEqual({
+      outcome: "skipped",
+      reason: "governing-config",
+      sync: null,
+    });
+    const manifest = await readManifest(nested);
+    expect((manifest.scripts as Record<string, unknown>).postinstall).toBe(
+      POSTINSTALL_SCRIPT,
+    );
+    expect(manifest.devDependencies).toEqual({ prisma: getCliVersion() });
+  });
+
+  it("--skills opts the sync back in, the manifest edit stays skipped", async () => {
+    const { root, nested } = await makeRepoWithAncestorConfig();
+    await installPackage(nested, {
+      name: "@prisma/orm-postgres",
+      version: "8.1.0",
+      skills: ["prisma-8"],
+    });
+
+    const run = await ancestorChainCli(root).run(["init", "--skills=claude"], {
+      cwd: nested,
+    });
+    const result = run.presented?.data as InitResult;
+
+    expect(run.exitCode).toBe(0);
+    expect(result.skills.outcome).toBe("synced");
+    expect(
+      await exists(path.join(nested, ".claude/skills", "prisma-8", "SKILL.md")),
+    ).toBe(true);
+    expect(result.postinstall).toEqual({
+      outcome: "skipped",
+      reason: "governing-config",
+      script: null,
+      dependency: "skipped",
+    });
+    expect(result.config).toEqual({ outcome: "created", agents: ["claude"] });
+  });
+
+  it("a config in cwd itself is not an ancestor and defers nothing", async () => {
+    const root = await makeProjectRoot("init-repo-");
+    await writeFile(
+      path.join(root, "prisma.config.ts"),
+      "export default { $prismaConfig: 1 };\n",
+      "utf8",
+    );
+
+    // The default test-CLI loader places the seeded config in the
+    // run's cwd, the non-ancestor shape.
+    const { exitCode, result } = await runInit(root, [], {
+      skills: { agents: [...DEFAULT_AGENTS] },
+    });
+
+    expect(exitCode).toBe(0);
+    expect(result.postinstall.outcome).toBe("added");
+    expect(result.postinstall.reason).toBeUndefined();
+    expect(result.config.outcome).toBe("exists");
+    expect(result.skills.outcome).toBe("no-packages");
+  });
+
+  it("a chain reached sideways (--config to a file elsewhere) is not an ancestor and defers nothing", async () => {
+    const { root, nested } = await makeRepoWithAncestorConfig();
+
+    // The chain a `--config ../shared/elsewhere.config.ts` run resolves:
+    // one file in a sibling directory, not on cwd's ancestor path.
+    const cli = createTestCli({
+      commands: { init: initCommand },
+      loadConfig: async () => ({
+        files: [
+          {
+            path: path.join(root, "shared", "elsewhere.config.ts"),
+            sections: {},
+          },
+        ],
+        diagnostics: [],
+      }),
+      now: () => new Date(0),
+    });
+    const run = await cli.run(["init"], { cwd: nested });
+    const result = run.presented?.data as InitResult;
+
+    expect(run.exitCode).toBe(0);
+    expect(result.postinstall.outcome).toBe("added");
+    expect(result.postinstall.reason).toBeUndefined();
+    expect(result.skills.outcome).toBe("no-packages");
+  });
 });

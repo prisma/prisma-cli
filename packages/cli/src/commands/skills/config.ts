@@ -1,6 +1,9 @@
-import { existsSync } from "node:fs";
-import path from "node:path";
-import { defineConfigSection, loadConfig } from "@prisma/cli-engine";
+import {
+  defineConfigSection,
+  type LoadedConfig,
+  loadConfig,
+  resolveSectionOverChain,
+} from "@prisma/cli-engine";
 import type { Diagnostic } from "@prisma/cli-engine/protocol";
 import {
   type AgentName,
@@ -8,6 +11,7 @@ import {
   isKnownAgent,
   KNOWN_AGENTS,
 } from "../../lib/skills/allowlist";
+import { getCliVersion } from "../../lib/version";
 
 export interface SkillsConfig {
   /** Whether other commands may report out-of-date agent skills.
@@ -121,44 +125,52 @@ function validateAgents(
   return { ok: true, agents };
 }
 
-/**
- * The validated skills section of an already-loaded config, or null
- * when the section does not validate. Used by code that runs outside a
- * command handler (the staleness check, the post-login tip), which has
- * no ctx.config.
- *
- * Null deliberately collapses "no config" and "config invalid": both
- * callers fall back to the default agent set, so a broken config never
- * silences the check. The commands that consume the config surface the
- * validation error themselves.
- */
-export function readSkillsConfig(loaded: {
-  readonly sections: Readonly<Record<string, unknown>>;
-}): SkillsConfig | null {
-  const section = skillsConfigSection.validate(
-    loaded.sections[SKILLS_CONFIG_SECTION_NAME],
-  );
-  return section.ok ? section.value : null;
+/** Runtime.loadConfig's shape: cwd and CLI version already bound. */
+export type ProjectConfigLoader = (
+  configPath?: string,
+) => Promise<LoadedConfig>;
+
+/** The disk loader bound the way the bin's Runtime binds it, for
+ *  callers with no Runtime in scope (the post-login tip). */
+export function projectConfigLoader(cwd: string): ProjectConfigLoader {
+  return (configPath) => loadConfig(cwd, configPath, getCliVersion());
 }
 
 /**
- * The project's skills settings from prisma.config.ts, or null when no
- * config file exists — decided with one stat, so a project without a
- * config never pays the file's TypeScript transpile — or the section
- * does not validate.
+ * The project's skills settings, resolved per key over the discovered
+ * config chain exactly as the skills commands resolve them, so callers
+ * that run outside a command handler (the staleness check, the
+ * post-login tip) agree with the commands on the governing config from
+ * any directory. `load` is Runtime.loadConfig wherever a Runtime is in
+ * scope, so a host-supplied loader governs these reads too. Chain
+ * discovery is stat-only until a file exists, so a project without a
+ * config never pays a TypeScript transpile.
+ *
+ * Null deliberately collapses "no config" and "config broken or
+ * invalid": both callers fall back to the default agent set, so a
+ * broken config never silences the check. The commands that consume
+ * the config surface the error themselves.
  */
 export async function readProjectSkillsConfig(
-  cwd: string,
+  load: ProjectConfigLoader,
   configPath?: string,
 ): Promise<SkillsConfig | null> {
-  const file =
-    configPath === undefined
-      ? path.join(cwd, "prisma.config.ts")
-      : path.resolve(cwd, configPath);
-  if (!existsSync(file)) {
+  const loaded = await load(configPath);
+  const broken = loaded.diagnostics.some(
+    (entry) => entry.diagnostic.severity === "error",
+  );
+  if (broken || loaded.files.length === 0) {
     return null;
   }
-  return readSkillsConfig(await loadConfig(cwd, configPath));
+  const resolved = resolveSectionOverChain(skillsConfigSection, loaded.files);
+  if (!resolved.ok) {
+    return null;
+  }
+  const section = skillsConfigSection.validate(
+    resolved.value,
+    resolved.provenance,
+  );
+  return section.ok ? section.value : null;
 }
 
 export const skillsConfigSection = defineConfigSection<SkillsConfig>({
@@ -170,8 +182,9 @@ export const skillsConfigSection = defineConfigSection<SkillsConfig>({
     if (typeof raw !== "object" || raw === null || Array.isArray(raw)) {
       return { ok: false, diagnostics: [invalidSection(raw)] };
     }
-    // Reading a property can throw — a config file is user code, and
-    // may hand over an object whose getter does.
+    // The engine's chain resolver snapshots plain objects, but carries
+    // any other object (a class instance) atomically, so its getters —
+    // user code that can throw — first run here.
     let check: unknown;
     let rawAgents: unknown;
     try {

@@ -108,8 +108,7 @@ function makeRuntime(overrides?: {
     },
     onSignal: () => () => {},
     loadConfig: async () => ({
-      path: "/prisma.config.ts",
-      sections: {},
+      files: [],
       diagnostics: [],
     }),
     credentialManager: overrides?.credentialManager,

@@ -7,12 +7,15 @@
  */
 import { resolvePrismaCliPackageCommand } from "../../lib/agent/cli-command";
 import { readSkillsStatus } from "../../lib/skills/status";
-import { readProjectSkillsConfig } from "../skills/config";
+import { projectConfigLoader, readProjectSkillsConfig } from "../skills/config";
 
 const SKILLS_SYNC_ARGS = ["skills", "sync"] as const;
 
 export interface AgentSetupTipContext {
   readonly cwd: string;
+  /** The file `--config` named, so the tip reads the config the rest
+   *  of the run read. */
+  readonly configPath: string | undefined;
   readonly env: Readonly<Record<string, string | undefined>>;
   readonly signal: AbortSignal;
 }
@@ -28,7 +31,10 @@ export async function resolveAgentSetupTipCommand(
   // status scan or command resolver cannot read must not fail a login
   // that succeeded.
   try {
-    const config = await readProjectSkillsConfig(ctx.cwd);
+    const config = await readProjectSkillsConfig(
+      projectConfigLoader(ctx.cwd),
+      ctx.configPath,
+    );
     if (config !== null && !config.check) {
       return null;
     }

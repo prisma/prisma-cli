@@ -44,6 +44,7 @@ export async function main(
     cwd: proc.cwd(),
     stdout: proc.stdout,
     stderr: proc.stderr,
+    loadConfig: runtime.loadConfig,
   });
   return exitCode;
 }

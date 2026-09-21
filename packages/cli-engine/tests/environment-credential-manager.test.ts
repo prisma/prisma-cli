@@ -172,8 +172,7 @@ describe("wired as a Runtime's manager", () => {
       },
       onSignal: () => () => {},
       loadConfig: async () => ({
-        path: "/prisma.config.ts",
-        sections: {},
+        files: [],
         diagnostics: [],
       }),
       credentialManager: new EnvironmentCredentialManager({ env }),

@@ -3,6 +3,7 @@ import { fileURLToPath } from "node:url";
 import {
   type HostProcess,
   type InputStream,
+  type LoadedConfig,
   loadConfig,
   type Runtime,
 } from "@prisma/cli-engine";
@@ -96,6 +97,24 @@ function outputStreamsShareDevice(): boolean | undefined {
   }
 }
 
+/** One chain discovery and transpile per config path per process: a
+ *  command's needs check and the skills staleness check both load the
+ *  config, and the process is single-shot, so nothing invalidates. The
+ *  promise is cached, not the value, so concurrent calls coalesce. */
+function memoizedConfigLoader(
+  proc: HostProcess,
+): (configPath?: string) => Promise<LoadedConfig> {
+  const loads = new Map<string | undefined, Promise<LoadedConfig>>();
+  return (configPath) => {
+    let load = loads.get(configPath);
+    if (load === undefined) {
+      load = loadConfig(proc.cwd(), configPath, getCliVersion());
+      loads.set(configPath, load);
+    }
+    return load;
+  };
+}
+
 export async function assembleRuntime(proc: HostProcess): Promise<Runtime> {
   const stdin: InputStream = {
     setRawMode:
@@ -134,8 +153,7 @@ export async function assembleRuntime(proc: HostProcess): Promise<Runtime> {
     outputStreamsShareDevice: outputStreamsShareDevice(),
     exit: (code) => proc.exit(code),
     onSignal: makeOnSignal(proc),
-    loadConfig: (configPath) =>
-      loadConfig(proc.cwd(), configPath, getCliVersion()),
+    loadConfig: memoizedConfigLoader(proc),
     credentialManager: new FileCredentialManager({
       env: proc.env,
       fetchWorkspaceName: fetchWorkspaceName(apiBaseUrl),
