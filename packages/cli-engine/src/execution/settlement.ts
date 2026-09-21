@@ -226,12 +226,6 @@ export function settleVerbatimExitCode(
  * A signal-killed child overrules whatever the handler asked for. The
  * user stopped the run: it settles 128 + the signal number, with no
  * envelope and no next actions, because there is nothing to reproduce.
- *
- * The settlement may carry the command's own structured error. It
- * changes what the json envelope says about a failed child — the
- * command's code in place of CLI.CHILD_PROCESS_FAILED — and nothing
- * else: not the exit code, and not human or markdown output, where the
- * child owned the terminal and has already reported its failure.
  */
 export function settleChildStatus(
   invocation: Invocation,
@@ -300,9 +294,7 @@ function settleStructuredChildStatus(
     return;
   }
   const status = { exitCode: child.exitCode, signal: child.signal };
-  // The command's own error names the failure only when the child
-  // failed by itself. A signal-killed child is the user stopping the
-  // run, which is not the failure that error describes.
+  // A signal-killed child drops the command's error with its next actions.
   const attached = child.signal === null ? settlement.error : undefined;
   if (attached !== undefined) {
     const error = diagnosticOf(attached);
@@ -310,8 +302,7 @@ function settleStructuredChildStatus(
     emitErrored(invocation, {
       ok: false,
       commandId: invocation.state.commandId,
-      // The status is spread last: it is the engine's record of the
-      // child, and a handler's meta cannot restate it.
+      // The engine's record of the child wins over the handler's meta.
       error: {
         ...error,
         nextActions: actions,

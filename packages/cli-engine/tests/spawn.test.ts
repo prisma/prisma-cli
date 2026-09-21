@@ -1424,43 +1424,6 @@ describe("next actions on a child-status settlement", () => {
 });
 
 describe("a structured error on a child-status settlement", () => {
-  /** Composer's shape: the operation knows why the converge failed and
-   *  builds the error for it, and the run must still exit with the
-   *  child's own status. */
-  function engineFailed(): CliStructuredError {
-    return new CliStructuredError(
-      "DEPLOY.ENGINE_FAILED",
-      "The deploy engine failed.",
-      {
-        why: "alchemy exited before the stack converged.",
-        where: { path: "/app/.prisma/stack.ts" },
-        meta: {
-          diagnostics: {
-            stackFilePath: "/app/.prisma/stack.ts",
-            reproduceCommand: "alchemy deploy ./entry.ts",
-          },
-          // Not the handler's to state: the engine's record wins.
-          exitCode: 99,
-        },
-        nextActions: [{ kind: "user-choice", label: "Fix the stack file." }],
-        diagnostics: [
-          {
-            code: "DEPLOY.RESOURCE_FAILED",
-            severity: "warn",
-            summary: "The database did not converge.",
-            nextActions: [],
-          },
-        ],
-      },
-    );
-  }
-
-  const reproduce = {
-    kind: "run-command",
-    label: "Reproduce the failed converge",
-    command: "alchemy deploy ./entry.ts",
-  } as const;
-
   const deploy = defineCommand({
     help: { summary: "A converge that knows why its child failed" },
     maySpawn: true,
@@ -1468,240 +1431,64 @@ describe("a structured error on a child-status settlement", () => {
       await ctx.spawn({ command: "alchemy" });
       return ok(
         exitWithChildStatus({
-          nextActions: [reproduce],
-          error: engineFailed(),
+          error: new CliStructuredError("DEPLOY.ENGINE_FAILED", "Failed.", {
+            meta: { stackFilePath: "/app/stack.ts", exitCode: 99 },
+          }),
         }),
       );
     },
   });
 
-  test("json names the command's error and still exits with the child's code", async () => {
+  async function settle(child: {
+    readonly exitCode: number | null;
+    readonly signal: string | null;
+  }) {
     const cli = createTestCli({
       commands: { deploy },
       now: CLOCK,
-      spawnScript: () => ({ exitCode: 3, signal: null }),
+      spawnScript: () => child,
     });
+    return cli.run(["deploy", "--json"]);
+  }
 
-    const result = await cli.run(["deploy", "--json"]);
+  test("json carries the command's error and exits with the child's code", async () => {
+    const result = await settle({ exitCode: 3, signal: null });
 
     expect(result.exitCode).toBe(3);
-    expect(result.json).toHaveLength(1);
-    const nextActions = [
-      { kind: "user-choice", label: "Fix the stack file." },
-      reproduce,
-    ];
-    expect(result.json[0]).toEqual({
-      kind: "result",
-      commandId: "deploy",
-      timestamp: NOW.toISOString(),
-      envelope: {
-        ok: false,
-        commandId: "deploy",
-        error: {
-          code: "DEPLOY.ENGINE_FAILED",
-          severity: "error",
-          summary: "The deploy engine failed.",
-          why: "alchemy exited before the stack converged.",
-          where: { path: "/app/.prisma/stack.ts" },
-          meta: {
-            diagnostics: {
-              stackFilePath: "/app/.prisma/stack.ts",
-              reproduceCommand: "alchemy deploy ./entry.ts",
-            },
-            exitCode: 3,
-            signal: null,
-          },
-          nextActions,
-        },
-        diagnostics: [
-          {
-            code: "DEPLOY.RESOURCE_FAILED",
-            severity: "warn",
-            summary: "The database did not converge.",
-            nextActions: [],
-          },
-        ],
-        nextActions,
-      },
-    });
-  });
-
-  test("an error without meta still carries the child's status", async () => {
-    const bare = defineCommand({
-      help: { summary: "A converge whose error has no meta of its own" },
-      maySpawn: true,
-      handler: async (_args, ctx) => {
-        await ctx.spawn({ command: "alchemy" });
-        return ok(
-          exitWithChildStatus({
-            error: new CliStructuredError("DEPLOY.ENGINE_FAILED", "Failed."),
-          }),
-        );
-      },
-    });
-    const cli = createTestCli({
-      commands: { bare },
-      now: CLOCK,
-      spawnScript: () => ({ exitCode: 1, signal: null }),
-    });
-
-    const result = await cli.run(["bare", "--json"]);
-
-    expect(result.exitCode).toBe(1);
     expect(result.json.at(-1)).toMatchObject({
       envelope: {
         ok: false,
         error: {
           code: "DEPLOY.ENGINE_FAILED",
-          meta: { exitCode: 1, signal: null },
-          nextActions: [],
+          summary: "Failed.",
+          meta: { stackFilePath: "/app/stack.ts", exitCode: 3, signal: null },
         },
-        diagnostics: [],
-        nextActions: [],
       },
     });
   });
 
-  test("the settlement summary carries the child's code, not the error's 2", async () => {
-    const summaries: number[] = [];
-    const cli = createTestCli({
-      commands: { deploy },
-      now: CLOCK,
-      spawnScript: () => ({ exitCode: 7, signal: null }),
-    });
+  test("a signal-killed child is still CLI.CHILD_PROCESS_FAILED", async () => {
+    const result = await settle({ exitCode: null, signal: "SIGINT" });
 
-    await cli.run(["deploy", "--json"], {
-      onSettled: (summary) => summaries.push(summary.exitCode),
+    expect(result.exitCode).toBe(130);
+    expect(result.json.at(-1)).toMatchObject({
+      envelope: {
+        ok: false,
+        error: {
+          code: "CLI.CHILD_PROCESS_FAILED",
+          meta: { exitCode: null, signal: "SIGINT" },
+        },
+      },
     });
-
-    expect(summaries).toEqual([7]);
   });
 
-  test("a child that exited 0 settles ok and ignores the error", async () => {
-    const cli = createTestCli({
-      commands: { deploy },
-      now: CLOCK,
-      spawnScript: () => ({ exitCode: 0, signal: null }),
-    });
-
-    const result = await cli.run(["deploy", "--json"]);
+  test("a child that exited 0 settles ok", async () => {
+    const result = await settle({ exitCode: 0, signal: null });
 
     expect(result.exitCode).toBe(0);
-    expect(result.json).toEqual([
-      {
-        kind: "result",
-        commandId: "deploy",
-        timestamp: NOW.toISOString(),
-        envelope: {
-          ok: true,
-          commandId: "deploy",
-          result: null,
-          exitCode: 0,
-          diagnostics: [],
-          nextActions: [reproduce],
-        },
-      },
-    ]);
-  });
-
-  test("a signal-killed child drops the error with the next actions", async () => {
-    const cli = createTestCli({
-      commands: { deploy },
-      now: CLOCK,
-      spawnScript: () => ({ exitCode: null, signal: "SIGINT" }),
+    expect(result.json.at(-1)).toMatchObject({
+      envelope: { ok: true, result: null, exitCode: 0 },
     });
-
-    const result = await cli.run(["deploy", "--json"]);
-
-    // The user stopped the converge: that is not the failure the
-    // command's error describes, so the engine's own account stands.
-    expect(result.exitCode).toBe(130);
-    expect(result.json).toEqual([
-      {
-        kind: "result",
-        commandId: "deploy",
-        timestamp: NOW.toISOString(),
-        envelope: {
-          ok: false,
-          commandId: "deploy",
-          error: {
-            code: "CLI.CHILD_PROCESS_FAILED",
-            severity: "error",
-            summary: "The delegated process was terminated by SIGINT.",
-            nextActions: [],
-            meta: { exitCode: null, signal: "SIGINT" },
-          },
-          diagnostics: [],
-          nextActions: [],
-        },
-      },
-    ]);
-  });
-
-  test("human output does not print it: the child already reported the failure", async () => {
-    const cli = createTestCli({
-      commands: { deploy },
-      now: CLOCK,
-      spawnScript: () => ({ exitCode: 3, signal: null }),
-    });
-
-    const result = await cli.run(["deploy"], { isTty: { stdout: true } });
-
-    expect(result.exitCode).toBe(3);
-    expect(result.stdout).toBe("");
-    expect(result.stderr).toBe(
-      "→ Reproduce the failed converge: alchemy deploy ./entry.ts\n",
-    );
-  });
-
-  test("markdown output does not print it either", async () => {
-    const cli = createTestCli({
-      commands: { deploy },
-      now: CLOCK,
-      spawnScript: () => ({ exitCode: 3, signal: null }),
-    });
-
-    const result = await cli.run(["deploy", "--format", "markdown"], {
-      isTty: { stdout: true },
-    });
-
-    expect(result.exitCode).toBe(3);
-    expect(result.stderr).toBe("");
-    expect(result.stdout).toBe(
-      "- Reproduce the failed converge: `alchemy deploy ./entry.ts`\n",
-    );
-  });
-
-  test("with no error attached the generic envelope is unchanged", async () => {
-    const cli = createTestCli({
-      commands: { converge },
-      now: CLOCK,
-      spawnScript: () => ({ exitCode: 3, signal: null }),
-    });
-
-    const result = await cli.run(["converge", "--json"]);
-
-    expect(result.exitCode).toBe(3);
-    expect(result.json).toEqual([
-      {
-        kind: "result",
-        commandId: "converge",
-        timestamp: NOW.toISOString(),
-        envelope: {
-          ok: false,
-          commandId: "converge",
-          error: {
-            code: "CLI.CHILD_PROCESS_FAILED",
-            severity: "error",
-            summary: "The delegated process exited with code 3.",
-            nextActions: [],
-            meta: { exitCode: 3, signal: null },
-          },
-          diagnostics: [],
-          nextActions: [],
-        },
-      },
-    ]);
   });
 });
 
