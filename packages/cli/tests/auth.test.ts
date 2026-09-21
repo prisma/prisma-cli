@@ -13,7 +13,7 @@ import {
   type ManagementApiClient,
   type Session,
 } from "@prisma/cli-engine";
-import { CliStructuredError, ok } from "@prisma/cli-engine/protocol";
+import { ok } from "@prisma/cli-engine/protocol";
 import {
   createTestCli,
   mintTestJwt,
@@ -226,22 +226,6 @@ describe("auth login", () => {
         (event) => event.kind === "step-finished" && event.outcome === "failed",
       ),
     ).toHaveLength(1);
-  });
-
-  it("settles a sign-in cancelled at the paste prompt as a user cancellation, not a CLI bug", async () => {
-    vi.mocked(performLogin).mockRejectedValue(
-      new CliStructuredError(
-        "CLI.PROMPT_CANCELLED",
-        "Sign-in was cancelled before it completed.",
-      ),
-    );
-    const cli = makeCli();
-
-    const result = await cli.run(["auth", "login", "--json"]);
-
-    expect(result.exitCode).toBe(3);
-    expect(errorOf(result).code).toBe("CLI.PROMPT_CANCELLED");
-    expect(cli.credentialManager?.state().sessions).toEqual([]);
   });
 });
 

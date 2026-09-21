@@ -208,15 +208,9 @@ async function readPastedCallbackUrl(
     });
   } catch (error) {
     if ((error as { name?: string } | null)?.name === "AbortError") {
-      // Our own signal says who aborted the question. It fires only once the
-      // login is over (the browser callback won the race, or the command
-      // itself was interrupted), so there is nothing left to prompt for.
+      // Our signal aborted: the login is over.
       if (options.signal.aborted) return null;
-      // Otherwise readline aborted it. readline holds the terminal in raw
-      // mode, so Ctrl-C never becomes a SIGINT the engine could record:
-      // readline closes the interface and rejects the question itself. That
-      // is the user cancelling sign-in, which the engine settles the way it
-      // settles Ctrl-C at its own prompts (exit 3).
+      // readline's own abort is the user's Ctrl-C (raw mode, no SIGINT).
       throw new CliStructuredError(
         "CLI.PROMPT_CANCELLED",
         "Sign-in was cancelled before it completed.",

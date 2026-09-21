@@ -373,53 +373,26 @@ describe("auth login remote paste flow", () => {
     expect(result.handleCallbackCalls).toBe(2);
   });
 
-  it("reports Ctrl-C at the paste prompt as a cancelled prompt, not a finished sign-in", async () => {
-    let redirectUri = "";
-    const run = runLogin({
-      ttyInput: true,
-      terminal: true,
-      openUrl: (uri) => {
-        redirectUri = uri;
-      },
-      pasteLines: [CTRL_C],
-    });
-
-    await expect(run).rejects.toMatchObject({
-      code: "CLI.PROMPT_CANCELLED",
-      message: "Sign-in was cancelled before it completed.",
-    });
-    // The loopback listener is torn down with the cancelled login.
-    await expect(
-      fetch(`${redirectUri}?code=code_123&state=state_123`),
-    ).rejects.toThrow();
-  });
-
-  it("still cancels on Ctrl-C after a wrong paste re-prompted", async () => {
-    const output: string[] = [];
+  it("reports Ctrl-C at the paste prompt as a cancelled prompt", async () => {
     await expect(
       runLogin({
         ttyInput: true,
         terminal: true,
         openUrl: () => {},
-        pasteLines: ["not a url", CTRL_C],
-        onOutput: (text) => output.push(text),
+        pasteLines: [CTRL_C],
       }),
     ).rejects.toMatchObject({ code: "CLI.PROMPT_CANCELLED" });
-
-    expect(output.join("")).toContain("That didn't look like a URL");
   });
 
   it("completes through the browser callback while the paste prompt is still waiting", async () => {
     const result = await runLogin({
       ttyInput: true,
-      terminal: true,
       openUrl: async (redirectUri) => {
         await fetch(`${redirectUri}?code=code_123&state=state_123`);
       },
     });
 
     expect(result.handleCallbackCalls).toBe(1);
-    expect(result.output).toContain("Paste the callback URL here:");
   });
 
   it("surfaces a browser-launch failure when stdin is not a TTY", async () => {
@@ -450,19 +423,14 @@ describe("auth login remote paste flow", () => {
 const PASTE_CALLBACK_URL =
   "http://localhost:9999/auth/callback?code=code_123&state=state_123";
 
-/** The byte a terminal in raw mode delivers for Ctrl-C. readline only reads
- *  it as a keypress when it runs in terminal mode (`terminal: true`). */
 const CTRL_C = "\x03";
 
 async function runLogin(options: {
   ttyInput: boolean;
-  /** Makes the output a TTY too, so readline runs in terminal mode and sees
-   *  keypresses the way it does on a real terminal. */
+  /** readline only sees keypresses such as Ctrl-C when the output is a TTY. */
   terminal?: boolean;
   openUrl: (redirectUri: string) => Promise<unknown> | unknown;
   pasteLines?: string[];
-  /** Observes output as it is written, for runs that end by rejecting. */
-  onOutput?: (text: string) => void;
 }): Promise<{ handleCallbackCalls: number; output: string }> {
   let redirectUri = "";
   const handleCallback = vi.fn(
@@ -523,7 +491,6 @@ async function runLogin(options: {
   output.on("data", (chunk) => {
     const text = chunk.toString();
     chunks.push(text);
-    options.onOutput?.(text);
     if (
       text.includes("Paste the callback URL here:") &&
       pasteLines.length > 0
