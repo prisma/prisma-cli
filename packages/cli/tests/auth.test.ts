@@ -298,6 +298,7 @@ describe("auth whoami", () => {
     expect(result.exitCode).toBe(0);
     expect(resultOf(result)).toEqual({
       authenticated: false,
+      verified: false,
       workspace: null,
       user: null,
       source: null,
@@ -804,19 +805,15 @@ describe("the environment credential carries no refresh token", () => {
     expect(paths).toEqual(["/v1/me"]);
   });
 
-  /** §11.6: whoami does not branch on origin — it attempts the same
-   *  online enrichment for an environment credential, and falls back to
-   *  the token's own claims when the request fails. */
-  it("falls back to the env token's own claims when the enrichment is rejected", async () => {
+  /** A refused env token is never reported as signed in, and signing
+   *  in cannot fix it, so the rejection settles as itself. */
+  it("settles the engine's rejection when the API refuses the env token", async () => {
     const cli = await cliAgainstA401Server();
 
     const result = await cli.run(["auth", "whoami", "--json"]);
 
-    expect(result.exitCode).toBe(0);
-    expect(resultOf(result)).toMatchObject({
-      source: "environment",
-      user: { id: "usr_env", email: null },
-    });
+    expect(result.exitCode).toBe(2);
+    expect(errorOf(result).code).toBe("AUTH.SERVICE_TOKEN_REJECTED");
     expect(paths).toEqual(["/v1/me"]);
   });
 

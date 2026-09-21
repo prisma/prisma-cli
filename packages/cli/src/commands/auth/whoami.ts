@@ -5,11 +5,16 @@ import {
   type ManagementApiClient,
   type Presentations,
 } from "@prisma/cli-engine";
-import { type NextAction, ok } from "@prisma/cli-engine/protocol";
+import {
+  CliStructuredError,
+  type NextAction,
+  ok,
+} from "@prisma/cli-engine/protocol";
 import { CLI_NAME } from "../../cli-name";
 import {
   credentialFieldRows,
   ENVIRONMENT_CREDENTIAL_NOTICE,
+  UNVERIFIED_CREDENTIAL_NOTICE,
 } from "./credential-card";
 
 const TITLE = "Showing the active authenticated identity.";
@@ -22,6 +27,8 @@ const SIGN_IN: NextAction = {
 
 export interface WhoamiResult {
   readonly authenticated: boolean;
+  /** True only when the API accepted the credential during this run. */
+  readonly verified: boolean;
   readonly workspace: {
     readonly id: string;
     readonly name: string | null;
@@ -41,30 +48,53 @@ export interface WhoamiResult {
  *  and never answers would otherwise hold the command for minutes. */
 const ENRICHMENT_TIMEOUT_MS = 3_000;
 
-/** Best-effort online enrichment: whoami works offline, so any failure
- *  leaves the identity as whatever the credential's own claims said. */
+type Lookup =
+  | {
+      readonly kind: "confirmed";
+      readonly identity: CredentialIdentity | undefined;
+    }
+  | { readonly kind: "signed-out" }
+  | { readonly kind: "inconclusive" };
+
+/** Best-effort online enrichment: whoami works offline, so a transient
+ *  failure leaves the identity as the credential's own claims said.
+ *  CLI.CREDENTIALS_REQUIRED means signed out; AUTH.SERVICE_TOKEN_REJECTED
+ *  is rethrown because signing in cannot fix an environment token. */
 async function fetchedIdentity(
   api: ManagementApiClient,
   signal: AbortSignal,
-): Promise<CredentialIdentity | undefined> {
+): Promise<Lookup> {
   const bounded = AbortSignal.any([
     signal,
     AbortSignal.timeout(ENRICHMENT_TIMEOUT_MS),
   ]);
   try {
     const { data } = await api.GET("/v1/me", { signal: bounded });
-    const user = data?.data?.user;
-    if (!user) {
-      return undefined;
+    if (data === undefined) {
+      return { kind: "inconclusive" };
     }
+    const user = data.data?.user;
     return {
-      userId: user.id ?? undefined,
-      email: user.email ?? undefined,
-      name: user.name ?? undefined,
+      kind: "confirmed",
+      identity: user
+        ? {
+            userId: user.id ?? undefined,
+            email: user.email ?? undefined,
+            name: user.name ?? undefined,
+          }
+        : undefined,
     };
-  } catch {
+  } catch (cause) {
     signal.throwIfAborted();
-    return undefined;
+    if (CliStructuredError.is(cause)) {
+      if (cause.code === "CLI.CREDENTIALS_REQUIRED") {
+        return { kind: "signed-out" };
+      }
+      if (cause.code === "AUTH.SERVICE_TOKEN_REJECTED") {
+        throw cause;
+      }
+    }
+    return { kind: "inconclusive" };
   }
 }
 
@@ -120,6 +150,15 @@ function presentationsFor(
             } as const,
           ]
         : []),
+      ...(result.authenticated && !result.verified
+        ? [
+            {
+              kind: "summary",
+              status: "info",
+              text: UNVERIFIED_CREDENTIAL_NOTICE,
+            } as const,
+          ]
+        : []),
     ],
     stdout: () => rows.map((row) => `${row.label}: ${row.value}`),
     next: () => (spec.credential === null ? [SIGN_IN] : []),
@@ -134,16 +173,20 @@ export const authWhoamiCommand = defineCommand({
     examples: ["auth whoami", "auth whoami --json"],
   },
   handler: async (_args, ctx) => {
-    const credential = await ctx.activeCredential();
+    const active = await ctx.activeCredential();
+    const lookup =
+      active === null ? undefined : await fetchedIdentity(ctx.api, ctx.signal);
+    const credential = lookup?.kind === "signed-out" ? null : active;
     const identity =
       credential === null
         ? null
         : mergedIdentity(
             credential.identity,
-            await fetchedIdentity(ctx.api, ctx.signal),
+            lookup?.kind === "confirmed" ? lookup.identity : undefined,
           );
     const result: WhoamiResult = {
       authenticated: credential !== null,
+      verified: credential !== null && lookup?.kind === "confirmed",
       workspace:
         credential === null || credential.workspaceId === undefined
           ? null
