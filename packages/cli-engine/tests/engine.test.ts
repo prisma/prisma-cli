@@ -22,6 +22,7 @@ describe("main export", () => {
       "authServiceError",
       "claimedExpiresAt",
       "claimedIdentity",
+      "configSchema",
       "createCli",
       "credentialRejectedError",
       "credentialWorkspaceId",
@@ -45,6 +46,7 @@ describe("main export", () => {
       "resolveSectionOverChain",
       "resolveSectionPath",
       "telemetryCommandGroup",
+      "validateSectionWithSchema",
     ]);
   });
 

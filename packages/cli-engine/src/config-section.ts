@@ -1,4 +1,9 @@
 import type { SectionProvenance } from "./config-merge";
+import {
+  type ConfigSchema,
+  type ConfigSchemaValue,
+  validateSectionWithSchema,
+} from "./config-schema";
 import type { Diagnostic } from "./protocol";
 
 /**
@@ -42,17 +47,50 @@ export type SectionValidation<T> =
     }
   | { readonly ok: false; readonly diagnostics: readonly Diagnostic[] };
 
+type SectionValidator<T> = (
+  raw: unknown | undefined,
+  provenance: SectionProvenance,
+) => SectionValidation<T>;
+
+type SectionMerge = (parent: unknown, child: unknown) => unknown;
+
+/**
+ * A section declared by its schema: validation, the diagnostics naming
+ * each bad field and the file to fix, and the resolution of every field
+ * declared `path` all derive from the one declaration (see configSchema).
+ * A section that needs logic a schema cannot express supplies `validate`
+ * instead; it then resolves its own path fields through resolveSectionPath.
+ */
+export function defineConfigSection<S extends ConfigSchema>(spec: {
+  readonly name: string;
+  readonly schema: S;
+  readonly merge?: SectionMerge;
+}): ConfigSection<ConfigSchemaValue<S>>;
 export function defineConfigSection<T>(spec: {
   readonly name: string;
-  readonly validate: (
-    raw: unknown | undefined,
-    provenance: SectionProvenance,
-  ) => SectionValidation<T>;
-  readonly merge?: (parent: unknown, child: unknown) => unknown;
-}): ConfigSection<T> {
+  readonly validate: SectionValidator<T>;
+  readonly merge?: SectionMerge;
+}): ConfigSection<T>;
+export function defineConfigSection(spec: {
+  readonly name: string;
+  readonly schema?: ConfigSchema;
+  readonly validate?: SectionValidator<unknown>;
+  readonly merge?: SectionMerge;
+}): ConfigSection<unknown> {
+  const schema = spec.schema;
+  const validate: SectionValidator<unknown> | undefined =
+    schema === undefined
+      ? spec.validate
+      : (raw, provenance) =>
+          validateSectionWithSchema(spec.name, schema, raw, provenance);
+  if (validate === undefined) {
+    throw new Error(
+      `@prisma/cli-engine: config section '${spec.name}' declares neither a schema nor a validate function`,
+    );
+  }
   return Object.freeze({
     name: spec.name,
-    validate: spec.validate,
+    validate,
     merge: spec.merge,
   });
 }
