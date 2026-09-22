@@ -99,17 +99,112 @@ function isPlainObject(value: unknown): value is Record<string, unknown> {
   return prototype === Object.prototype || prototype === null;
 }
 
-/** Plain objects and arrays copied; anything else, functions included, by reference. */
-function copyPlainData(value: unknown): unknown {
-  if (Array.isArray(value)) {
-    return value.map(copyPlainData);
+/**
+ * The part of a compiled arktype node this copy reads: a structural node
+ * declares object keys (`props`) and, for an array, an element node.
+ */
+interface StructureLike {
+  readonly props?: ReadonlyArray<{
+    readonly key: PropertyKey;
+    readonly value: NodeLike;
+  }>;
+  readonly sequence?: { readonly element?: NodeLike };
+}
+
+interface NodeLike {
+  readonly structure?: StructureLike;
+  readonly branches?: readonly NodeLike[];
+  /** A morph node validates its `in` side, where the declared structure lives. */
+  readonly in?: NodeLike;
+  /** Whether a morph (a pipe, or a default) applies at or under this node. */
+  readonly includesTransform?: boolean;
+}
+
+function structureOf(node: NodeLike | undefined): StructureLike | undefined {
+  if (node === undefined) return undefined;
+  if (node.structure !== undefined) return node.structure;
+  // A morph (a default or a pipe anywhere inside an object literal makes
+  // the whole literal one) keeps its declared structure on its `in` side.
+  if (node.in !== undefined && node.in !== node) {
+    const inner = structureOf(node.in);
+    if (inner !== undefined) return inner;
   }
-  if (isPlainObject(value)) {
-    return Object.fromEntries(
-      Object.entries(value).map(([key, entry]) => [key, copyPlainData(entry)]),
+  // A union: the structural branch, if any, is the one arktype may write
+  // defaults into.
+  return node.branches
+    ?.map((branch) => branch.structure)
+    .find((s) => s !== undefined);
+}
+
+/**
+ * Copies `value` along the paths the schema declares as structure, and no
+ * further. arktype applies a default by assigning to the parent object, so
+ * every plain object on a declared path must be writable even when the
+ * config file froze it. A value the schema does not open — an `object`
+ * predicate, a `Function`, a `Date` — is user-constructed runtime data:
+ * closures over module state, class instances relying on `this`, codec
+ * tables. It passes through by reference, which is why a section schema
+ * validates such values by predicate rather than by shape.
+ */
+function copyAlongSchema(value: unknown, node: NodeLike | undefined): unknown {
+  const structure = structureOf(node);
+  if (structure === undefined) return value;
+  if (Array.isArray(value)) {
+    const element = structure.sequence?.element;
+    return value.map((entry) => copyAlongSchema(entry, element));
+  }
+  if (!isPlainObject(value)) return value;
+  const declared = new Map(
+    structure.props?.map((prop) => [prop.key, prop.value]) ?? [],
+  );
+  return Object.fromEntries(
+    Object.entries(value).map(([key, entry]) => [
+      key,
+      copyAlongSchema(entry, declared.get(key)),
+    ]),
+  );
+}
+
+/**
+ * arktype rebuilds an object whenever a morph or a default applies anywhere
+ * inside it, and the rebuild deep-clones every property, opaque ones
+ * included. An opaque value — an `object` predicate, a `Function`, a `Date`
+ * — is user-constructed runtime data: closures over module state, class
+ * instances relying on `this`, codec tables. A clone of it is not it. So
+ * after validation the input's own value is put back at every path the
+ * schema does not open, which is why a section schema validates such values
+ * by predicate rather than by shape.
+ */
+function restoreOpaque(
+  input: unknown,
+  output: unknown,
+  node: NodeLike | undefined,
+): unknown {
+  const structure = structureOf(node);
+  if (structure === undefined) {
+    // A node that transforms (a pipe, a resolved path) produced its output
+    // on purpose. An untransformed opaque object was merely cloned, and the
+    // input is the value the config file built.
+    if (node?.includesTransform === true) return output;
+    return typeof input === "object" && input !== null ? input : output;
+  }
+  if (Array.isArray(output)) {
+    if (!Array.isArray(input)) return output;
+    const element = structure.sequence?.element;
+    return output.map((entry, index) =>
+      restoreOpaque(input[index], entry, element),
     );
   }
-  return value;
+  if (!isPlainObject(output) || !isPlainObject(input)) return output;
+  const declared = new Map(
+    structure.props?.map((prop) => [prop.key, prop.value]) ?? [],
+  );
+  return Object.fromEntries(
+    Object.entries(output).map(([key, entry]) => [
+      key,
+      restoreOpaque(input[key], entry, declared.get(key)),
+    ]),
+  );
 }
 
 function fieldDiagnostic(
@@ -161,9 +256,22 @@ export function validateSectionWithSchema<S extends ConfigSchema>(
   const previous = current;
   current = { name, provenance };
   try {
-    // arktype applies defaults and morphs onto the objects it is handed, and
-    // the merged section value arrives frozen, so it validates a copy.
-    const out: unknown = schema(raw === undefined ? {} : copyPlainData(raw));
+    // arktype writes a default by assigning to the parent object, and the
+    // merged section value arrives frozen, so the declared structure is
+    // copied first; everything the schema leaves opaque keeps its identity.
+    const node = schema.internal as unknown as NodeLike;
+    const validated: unknown = schema(
+      raw === undefined ? {} : copyAlongSchema(raw, node),
+    );
+    if (validated instanceof type.errors) {
+      return {
+        ok: false,
+        diagnostics: [...validated].map((error) =>
+          fieldDiagnostic(name, error, provenance),
+        ),
+      };
+    }
+    const out = restoreOpaque(raw, validated, node);
     if (out instanceof type.errors) {
       return {
         ok: false,

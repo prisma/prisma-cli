@@ -166,6 +166,115 @@ describe("validateSectionWithSchema", () => {
     expect(dir).toBe("/app");
   });
 
+  test("an opaque value keeps its identity even inside a frozen section", () => {
+    class Serializer {
+      deserialize(json: unknown): unknown {
+        return json;
+      }
+    }
+    const opaque = configSchema("object").narrow(() => true);
+    const schema = configSchema({
+      target: opaque,
+      "contract?": { source: opaque, "output?": "path" },
+      "extensions?": [opaque, "[]"],
+      migrations: [
+        { dir: ["path", "=", () => "./migrations"] },
+        "=",
+        () => ({}),
+      ],
+    });
+    const target = Object.freeze({
+      kind: "target",
+      serializer: new Serializer(),
+      create() {
+        return this.kind;
+      },
+    });
+    const source = Object.freeze({ load: () => 1 });
+    const raw = Object.freeze({
+      target,
+      contract: Object.freeze({ source, output: "./out.json" }),
+      extensions: Object.freeze([target]),
+    });
+
+    const result = validateSectionWithSchema("toy", schema, raw, single);
+
+    if (!result.ok) throw new Error(JSON.stringify(result.diagnostics));
+    const value = result.value as {
+      target: typeof target;
+      contract: { source: typeof source; output: string };
+      extensions: (typeof target)[];
+      migrations: { dir: string };
+    };
+    expect(value.target).toBe(target);
+    expect(value.target.create()).toBe("target");
+    expect(value.contract.source).toBe(source);
+    expect(value.extensions[0]).toBe(target);
+    expect(value.contract.output).toBe("/app/out.json");
+    expect(value.migrations.dir).toBe("/app/migrations");
+  });
+
+  test("an opaque value keeps its identity when the section has a root narrow and defaults", () => {
+    const opaque = configSchema("object").narrow(() => true);
+    const schema = configSchema({
+      family: opaque,
+      migrations: [
+        { dir: ["path", "=", () => "./migrations"] },
+        "=",
+        () => ({}),
+      ],
+    }).narrow(() => true);
+    const family = { kind: "family", create: () => 1 };
+
+    const result = validateSectionWithSchema("toy", schema, { family }, single);
+
+    if (!result.ok) throw new Error(JSON.stringify(result.diagnostics));
+    expect((result.value as { family: unknown }).family).toBe(family);
+    expect(
+      (result.value as { migrations: { dir: string } }).migrations.dir,
+    ).toBe("/app/migrations");
+  });
+
+  test("an opaque value with its own pipe keeps the pipe's output", () => {
+    const source = { load: () => 1, inputs: ["./a"] };
+    const withResolvedInputs = configSchema("object")
+      .narrow(() => true)
+      .pipe((value) => ({ ...(value as object), inputs: ["/resolved/a"] }));
+    const schema = configSchema({ source: withResolvedInputs, "out?": "path" });
+
+    const result = validateSectionWithSchema(
+      "toy",
+      schema,
+      { source, out: "./o" },
+      single,
+    );
+
+    if (!result.ok) throw new Error(JSON.stringify(result.diagnostics));
+    const value = result.value as {
+      source: { load: () => number; inputs: string[] };
+      out: string;
+    };
+    expect(value.source.inputs).toEqual(["/resolved/a"]);
+    expect(value.source.load).toBe(source.load);
+    expect(value.out).toBe("/app/o");
+  });
+
+  test("a default nested under a frozen declared object is applied without writing to the input", () => {
+    const schema = configSchema({
+      "given?": { "deeper?": { c: "string = 'w'" } },
+    });
+    const deeper = Object.freeze({});
+    const given = Object.freeze({ deeper });
+    const raw = Object.freeze({ given });
+
+    const result = validateSectionWithSchema("toy", schema, raw, single);
+
+    expect(result.ok && result.value).toMatchObject({
+      given: { deeper: { c: "w" } },
+    });
+    expect("c" in deeper).toBe(false);
+  });
+
   test("a value that is not a plain object keeps its identity and data", () => {
     const schema = configSchema({ when: "Date" });
     const when = new Date(0);
