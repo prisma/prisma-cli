@@ -18,7 +18,7 @@ export const ormConfigSection = defineConfigSection({
       source: { "inputs?": "path[]", load: "Function" },
       "output?": "path",
     },
-    "migrations?": { "dir?": "path = './migrations'" },
+    "migrations?": { dir: ["path", "=", () => "./migrations"] },
   }),
 });
 ```
@@ -49,9 +49,9 @@ Several designs were tried before this one, and each put the knowledge in the wr
 ## How it works
 
 - `configSchema` is arktype's `type` in a scope with one extra keyword, `path`: a string that validation resolves against the directory of the file that declared the value's top-level key, using the section's provenance. An absolute value passes through unchanged. Every other arktype feature (optional keys, defaults, unions, narrows for cross-field rules) is available as is.
-- `defineConfigSection({ name, schema })` derives the section's validator. The engine runs it on the merged section value with its provenance, after discovery and merging, so defaults declared in the schema apply once to the merged value and never let one file's default shadow another file's authored value. A `path` default resolves against the nearest file.
+- `defineConfigSection({ name, schema })` derives the section's validator. The engine runs it on the merged section value with its provenance, after discovery and merging, so defaults declared in the schema apply once to the merged value and never let one file's default shadow another file's authored value. A relative `path` default is declared as a thunk, `["path", "=", () => "./migrations"]`, which arktype evaluates and morphs when the default is applied, so it resolves against the nearest file like an authored value; a relative literal default would be stored unresolved, and is refused when the schema is defined.
 - Each arktype error becomes a `CLI.CONFIG_FIELD_INVALID` diagnostic carrying `meta.section`, `meta.field`, and `where.path`, the file that declared the field's top-level key, so a chain of files still tells the user which one to fix.
-- The validated value of a plain-object section carries `baseDir`, the directory of the nearest file declaring the section, for commands that need the project's location rather than one of its files.
+- The validated value of a plain-object section carries `baseDir`, the directory of the nearest file declaring the section, for commands that need the project's location rather than one of its files. The key is reserved: a config file that writes it is refused.
 - An absent section is validated as an empty object: a schema whose fields are all optional accepts it, and a required field is reported by name.
 - `defineConfigSection({ name, validate })` remains for a section a schema cannot express; such a validator resolves its own path fields through `resolveSectionPath`.
 

@@ -16,6 +16,7 @@ import {
 } from "@prisma/cli-engine";
 import { ok } from "@prisma/cli-engine/protocol";
 import { createTestCli } from "@prisma/cli-engine/testing";
+import { type } from "arktype";
 import { describe, expect, test } from "vitest";
 
 const FIXTURES = join(
@@ -93,8 +94,8 @@ describe("validateSectionWithSchema", () => {
     });
   });
 
-  test("a defaulted key no file wrote is attributed to the nearest file", () => {
-    const schema = configSchema({ dir: "path = './migrations'" });
+  test("a thunk path default resolves against the nearest file when it is applied", () => {
+    const schema = configSchema({ dir: ["path", "=", () => "./migrations"] });
     const provenance: SectionProvenance = {
       files: ["/child/prisma.config.ts", "/parent/prisma.config.ts"],
       keys: {},
@@ -105,6 +106,93 @@ describe("validateSectionWithSchema", () => {
     expect(result.ok && result.value).toMatchObject({
       dir: "/child/migrations",
     });
+  });
+
+  test("a relative literal path default is refused when the schema is defined", () => {
+    expect(() => configSchema({ dir: "path = './migrations'" })).toThrow(
+      'must be a thunk so it resolves against the config file when applied: ["path", "=", () => "./migrations"]',
+    );
+    expect(() =>
+      configSchema({ dir: "path = '/abs/migrations'" }),
+    ).not.toThrow();
+  });
+
+  test("a morph other than path runs once", () => {
+    let runs = 0;
+    const schema = configSchema({
+      dir: "path",
+      counted: type("string").pipe((value) => {
+        runs += 1;
+        return value.toUpperCase();
+      }),
+    });
+
+    const result = validateSectionWithSchema(
+      "toy",
+      schema,
+      { dir: "./d", counted: "x" },
+      single,
+    );
+
+    expect(result.ok && result.value).toMatchObject({
+      dir: "/app/d",
+      counted: "X",
+    });
+    expect(runs).toBe(1);
+  });
+
+  test("baseDir is reserved: a section that writes it is refused", () => {
+    const result = validateSectionWithSchema(
+      "toy",
+      toySchema,
+      { baseDir: "/elsewhere" },
+      single,
+    );
+
+    expect(result.ok).toBe(false);
+    expect(result.diagnostics).toMatchObject([
+      {
+        code: "CLI.CONFIG_FIELD_INVALID",
+        meta: { section: "toy", field: "baseDir" },
+      },
+    ]);
+  });
+
+  test("baseDir is part of the validated value's type", () => {
+    const result = validateSectionWithSchema("toy", toySchema, {}, single);
+
+    if (!result.ok) throw new Error("expected ok");
+    const dir: string | undefined = result.value.baseDir;
+    expect(dir).toBe("/app");
+  });
+
+  test("a value that is not a plain object keeps its identity and data", () => {
+    const schema = configSchema({ when: "Date" });
+    const when = new Date(0);
+
+    const result = validateSectionWithSchema("toy", schema, { when }, single);
+
+    expect(result.ok && result.value.when).toBe(when);
+  });
+
+  test("a validation started by a morph inside another does not lose the outer context", () => {
+    const inner = configSchema({ dir: "path" });
+    const outer = configSchema({
+      first: type("string").pipe((value) => {
+        validateSectionWithSchema("other", inner, { dir: "./inner" }, single);
+        return value;
+      }),
+      dir: "path",
+    });
+
+    const result = validateSectionWithSchema(
+      "toy",
+      outer,
+      { first: "x", dir: "./d" },
+      single,
+    );
+
+    expect(result.ok && result.value).toMatchObject({ dir: "/app/d" });
   });
 
   test("an absent section validates as the empty section", () => {

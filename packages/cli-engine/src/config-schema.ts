@@ -26,14 +26,22 @@ function declaringFile(
 }
 
 /**
- * Outside a section validation there is no file to resolve against, and
- * the value is returned as written. arktype runs a field's morph when a
- * default is declared, at schema definition time, so this branch is what
- * a `path` default takes then; the default is resolved when it is applied.
+ * A `path` value reaches this morph in two situations. During a section
+ * validation `current` names the provenance and the value resolves
+ * against the file that declared its top-level key. Outside one, arktype
+ * is evaluating a literal default while the schema is defined; a relative
+ * literal would be stored already resolved against nothing, so it is
+ * refused with the thunk form, which arktype evaluates and morphs at
+ * application time instead.
  */
 function resolvePathValue(value: string, path: readonly PropertyKey[]): string {
-  if (isAbsolute(value) || current === undefined) {
+  if (isAbsolute(value)) {
     return value;
+  }
+  if (current === undefined) {
+    throw new Error(
+      `@prisma/cli-engine: a relative 'path' default must be a thunk so it resolves against the config file when applied: ["path", "=", () => ${JSON.stringify(value)}]`,
+    );
   }
   const file = declaringFile(current.provenance, path);
   return file === undefined ? value : resolve(dirname(file), value);
@@ -59,19 +67,36 @@ const configScope = scope({
  * const toySchema = configSchema({
  *   "out?": "path",
  *   "inputs?": "path[]",
+ *   dir: ["path", "=", () => "./migrations"],
  *   greeting: "string = 'hello'",
  * });
  * ```
+ *
+ * A relative `path` default is declared as a thunk, as above: arktype
+ * evaluates a thunk when the default is applied, so it resolves against
+ * the config file like an authored value. A relative literal default is
+ * refused when the schema is defined.
  */
 export const configSchema: typeof configScope.type = configScope.type;
 
 export type ConfigSchema<T = unknown> = Type<T, typeof configScope.t>;
 
-/** The validated value a schema produces: its output type, plus `baseDir` on a plain object. */
-export type ConfigSchemaValue<S extends ConfigSchema> = S["infer"];
+/**
+ * The validated value a schema produces: its output type plus `baseDir`,
+ * the directory of the nearest file declaring the section, which the engine
+ * adds to a plain-object value. `baseDir` is reserved: a schema may not
+ * declare it and a config file may not write it.
+ */
+export type ConfigSchemaValue<S extends ConfigSchema> = S["infer"] & {
+  readonly baseDir?: string;
+};
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    return false;
+  }
+  const prototype = Object.getPrototypeOf(value);
+  return prototype === Object.prototype || prototype === null;
 }
 
 /** Plain objects and arrays copied; anything else, functions included, by reference. */
@@ -127,24 +152,18 @@ export function validateSectionWithSchema<S extends ConfigSchema>(
   raw: unknown,
   provenance: SectionProvenance,
 ): SectionValidation<ConfigSchemaValue<S>> {
+  if (isPlainObject(raw) && Object.hasOwn(raw, "baseDir")) {
+    return {
+      ok: false,
+      diagnostics: [reservedKeyDiagnostic(name, "baseDir", provenance)],
+    };
+  }
+  const previous = current;
   current = { name, provenance };
   try {
     // arktype applies defaults and morphs onto the objects it is handed, and
     // the merged section value arrives frozen, so it validates a copy.
-    const input: unknown = raw === undefined ? {} : copyPlainData(raw);
-    const validated: unknown = schema(input);
-    if (validated instanceof type.errors) {
-      return {
-        ok: false,
-        diagnostics: [...validated].map((error) =>
-          fieldDiagnostic(name, error, provenance),
-        ),
-      };
-    }
-    // A `path` default is stored as written when the schema is defined and
-    // inserted verbatim, so a second pass over the validated value resolves
-    // it; every path already resolved passes through unchanged.
-    const out: unknown = schema(validated);
+    const out: unknown = schema(raw === undefined ? {} : copyPlainData(raw));
     if (out instanceof type.errors) {
       return {
         ok: false,
@@ -160,15 +179,36 @@ export function validateSectionWithSchema<S extends ConfigSchema>(
         : out;
     return { ok: true, value: value as ConfigSchemaValue<S>, diagnostics: [] };
   } catch (cause) {
-    // A nested value the file froze, or a getter that throws when arktype
-    // reads it: config-file content, reported as such rather than as a bug.
+    // A getter that throws when arktype reads it, or a morph that throws:
+    // config-file content, reported as such rather than as a bug.
     return {
       ok: false,
       diagnostics: [unreadableDiagnostic(name, cause, provenance)],
     };
   } finally {
-    current = undefined;
+    current = previous;
   }
+}
+
+function reservedKeyDiagnostic(
+  name: string,
+  key: string,
+  provenance: SectionProvenance,
+): Diagnostic {
+  const file = provenance.keys[key] ?? provenance.files[0];
+  return {
+    code: "CLI.CONFIG_FIELD_INVALID",
+    severity: "error",
+    summary: `In the '${name}' section, ${key} is reserved: the CLI records it when the section is loaded`,
+    nextActions: [
+      {
+        kind: "edit-file",
+        label: `Remove ${name}.${key} from ${file ?? "prisma.config.ts"}`,
+      },
+    ],
+    ...(file === undefined ? {} : { where: { path: file } }),
+    meta: { section: name, field: key },
+  };
 }
 
 function unreadableDiagnostic(
