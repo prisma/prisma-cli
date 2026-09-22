@@ -132,6 +132,10 @@ A config file declares `parent` with a value that is neither `false` nor a path 
 
 A config file's explicit `parent` names a file that does not exist. Naming a parent is deliberate, so its absence is an error — unlike discovery, where finding no file is fine. Raised by the config loader while following the chain; the declaring file's absolute path is in `where.path` and the summary names the missing target. Meta: none.
 
+### CLI.CONFIG_FIELD_INVALID
+
+One field of a config section declared by schema failed that schema: the wrong type, a missing required field, or a value outside the declared set. The summary names the section and the field with arktype's description of the problem; `where.path` is the config file that declared the field's top-level key (so the file to fix on a chain), and `meta.section` and `meta.field` carry the names. Travels as an accompanying diagnostic under `CLI.CONFIG_SECTION_INVALID`. Raised by the engine's schema validation before the handler runs. Meta: `section`, `field`.
+
 ### CLI.CONFIG_SECTION_INVALID
 
 The config section a command declared in `needs.config` failed its validator; the individual problems travel as accompanying diagnostics on the envelope, and the summary names the section and the config file actually read (respecting `--config`). Raised by the engine's needs check before the handler runs. Meta: none.

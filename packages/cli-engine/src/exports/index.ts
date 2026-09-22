@@ -57,6 +57,12 @@ export {
   type SectionProvenance,
 } from "../config-merge";
 export {
+  type ConfigSchema,
+  type ConfigSchemaValue,
+  configSchema,
+  validateSectionWithSchema,
+} from "../config-schema";
+export {
   type ConfigSection,
   defineConfigSection,
   type SectionValidation,
