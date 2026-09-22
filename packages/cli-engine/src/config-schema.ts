@@ -243,15 +243,37 @@ function copyWhereDescribed(
 }
 
 /**
+ * Whether `output` is arktype's rebuild of `input`, rather than a different
+ * value a pipe produced in its place. A rebuild carries the same own keys;
+ * a replacement is a different object. Asking this per value is what keeps
+ * the walk below from undoing a pipe that returns an object of its own,
+ * without having to tell arktype's own rebuild apart from a pipe at the
+ * node above (in a compiled schema they look the same).
+ */
+function isRebuildOf(input: unknown, output: unknown): boolean {
+  if (typeof input !== "object" || input === null) return false;
+  if (typeof output !== "object" || output === null) return false;
+  if (Array.isArray(input) !== Array.isArray(output)) return false;
+  const inputKeys = Reflect.ownKeys(input);
+  const outputKeys = new Set(Reflect.ownKeys(output));
+  return (
+    inputKeys.length === outputKeys.size &&
+    inputKeys.every((key) => outputKeys.has(key))
+  );
+}
+
+/**
  * arktype rebuilds an object whenever a default or a pipe applies anywhere
  * inside it, and the rebuild clones every property, including values the
  * schema only checked. Such a value is something the config file built at
  * runtime: a function closing over module state, a class instance whose
  * methods need their own `this`, a table of codecs. A clone of it is not it.
  * So this walk puts the config file's own value back wherever the schema
- * described no shape, which is why a section schema checks such values with
- * a predicate instead of describing them. A value the schema transformed on
- * purpose (a pipe, a resolved path) keeps what the transform produced.
+ * described no shape and the result is a rebuild of it, which is why a
+ * section schema checks such values with a predicate instead of describing
+ * them. A value the schema transformed on purpose keeps what the transform
+ * produced: a pipe at the value itself, and a pipe further up that returned
+ * a different object rather than a rebuild of this one.
  */
 function putBackOriginalValues(
   input: unknown,
@@ -262,7 +284,7 @@ function putBackOriginalValues(
   const shape = shapeOf(applicable);
   if (shape === undefined) {
     if (applicable?.includesTransform === true) return output;
-    return typeof input === "object" && input !== null ? input : output;
+    return isRebuildOf(input, output) ? input : output;
   }
   if (Array.isArray(output)) {
     if (!Array.isArray(input)) return output;

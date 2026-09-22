@@ -45,6 +45,8 @@ const single: SectionProvenance = {
 };
 
 describe("validateSectionWithSchema", () => {
+  const checkedOnlyValue = configSchema("object").narrow(() => true);
+
   test("resolves a path field against the file that declared it and records baseDir", () => {
     const result = validateSectionWithSchema(
       "toy",
@@ -341,6 +343,32 @@ describe("validateSectionWithSchema", () => {
         (diagnostic) => diagnostic.code === "CLI.CONFIG_FIELD_INVALID",
       ),
     ).toBe(true);
+  });
+
+  test("a pipe that returns an object of its own keeps it, rather than the input", () => {
+    const replacement = { replaced: true };
+    const schema = configSchema({
+      nested: configSchema({ source: checkedOnlyValue }).pipe(() => ({
+        source: replacement,
+      })),
+      "out?": "path",
+    });
+    const original = { keep: () => 1 };
+
+    const result = validateSectionWithSchema(
+      "toy",
+      schema,
+      { nested: { source: original }, out: "./o" },
+      single,
+    );
+
+    if (!result.ok) throw new Error(JSON.stringify(result.diagnostics));
+    const value = result.value as {
+      nested: { source: unknown };
+      out: string;
+    };
+    expect(value.nested.source).toBe(replacement);
+    expect(value.out).toBe("/app/o");
   });
 
   test("a symbol-keyed property a morph adds survives the restore", () => {
