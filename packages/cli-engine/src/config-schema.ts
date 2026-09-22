@@ -100,103 +100,141 @@ function isPlainObject(value: unknown): value is Record<string, unknown> {
 }
 
 /**
- * The part of a compiled arktype node the copy and restore walks read. A
- * structural node declares object keys (`props`), a tuple's positions
- * (`sequence.prefix`), a list's element (`sequence.element`), or index
- * signatures (`index`). A union offers `branches`; a morph keeps its
- * declared structure on its `in` side.
+ * Thrown when a section's schema itself is wrong, as opposed to the config
+ * file being wrong. It escapes validateSectionWithSchema rather than becoming
+ * a diagnostic, so the schema's author sees it instead of the user being told
+ * to fix a config file that is fine.
  */
-interface StructureLike {
+export class ConfigSchemaError extends Error {}
+
+/**
+ * What a compiled arktype schema says about one value: the object keys it
+ * declares (`props`), the positions of a tuple or list (`sequence`), or an
+ * index signature. A schema that says nothing about a value has no shape
+ * here, which is what tells the two walks below to leave that value alone.
+ */
+interface SchemaShape {
   readonly props?: ReadonlyArray<{
     readonly key: PropertyKey;
-    readonly value: NodeLike;
+    readonly value: SchemaNode;
   }>;
   readonly sequence?: {
-    readonly prefix?: readonly NodeLike[];
-    readonly element?: NodeLike;
+    readonly prefix?: readonly SchemaNode[];
+    readonly optionals?: readonly SchemaNode[];
+    readonly postfix?: readonly SchemaNode[];
+    readonly element?: SchemaNode;
   };
   readonly index?: readonly unknown[];
 }
 
-interface NodeLike {
-  readonly structure?: StructureLike;
-  readonly branches?: readonly NodeLike[];
-  readonly in?: NodeLike;
-  /** Whether a morph (a pipe, or a default) applies at or under this node. */
+/** One node of a compiled arktype schema. */
+interface SchemaNode {
+  readonly structure?: SchemaShape;
+  /** The alternatives of a union. */
+  readonly branches?: readonly SchemaNode[];
+  /** A node that transforms its input keeps what it accepts on its `in` side. */
+  readonly in?: SchemaNode;
+  /** Whether a pipe or a default applies at or under this node. */
   readonly includesTransform?: boolean;
   readonly allows?: (value: unknown) => boolean;
 }
 
 /**
- * The node that governs `value` at this position: the node itself, a
- * morph's `in` side, or the union branch that accepts the value. Undefined
- * for a union no branch of which accepts the value, which validation is
- * about to report anyway.
+ * The node that applies to `value` here: the node itself, what a
+ * transforming node accepts, or the union alternative that matches. Nothing
+ * when no alternative matches, which validation is about to report.
  */
-function governingNode(
-  node: NodeLike | undefined,
+function nodeForValue(
+  node: SchemaNode | undefined,
   value: unknown,
-): NodeLike | undefined {
+): SchemaNode | undefined {
   if (node === undefined) return undefined;
   if (node.branches !== undefined && node.branches.length > 1) {
-    const branch = node.branches.find(
-      (candidate) => candidate.allows?.(value) === true,
+    const match = node.branches.find(
+      (branch) => branch.allows?.(value) === true,
     );
-    return branch === undefined ? undefined : governingNode(branch, value);
+    return match === undefined ? undefined : nodeForValue(match, value);
   }
   if (
     node.structure === undefined &&
     node.in !== undefined &&
     node.in !== node
   ) {
-    const inner = governingNode(node.in, value);
+    const inner = nodeForValue(node.in, value);
     return inner?.structure === undefined ? node : inner;
   }
   return node;
 }
 
-function structureOf(
-  node: NodeLike | undefined,
-  value: unknown,
-): StructureLike | undefined {
-  const structure = governingNode(node, value)?.structure;
-  if (structure?.index !== undefined && structure.index.length > 0) {
-    throw new Error(
-      "@prisma/cli-engine: a config section schema cannot declare an index signature; declare the keys, or validate the value by predicate",
+/** The shape `node` gives this value, having already resolved the node. */
+function shapeOf(node: SchemaNode | undefined): SchemaShape | undefined {
+  const shape = node?.structure;
+  if (shape?.index !== undefined && shape.index.length > 0) {
+    throw new ConfigSchemaError(
+      "@prisma/cli-engine: a config section schema cannot declare an index signature, because the keys it would match are not known ahead of the value; declare the keys, or check the value with a predicate",
     );
   }
-  return structure;
-}
-
-/** The node for array position `index`: a tuple's own position, else the list element. */
-function elementNode(
-  structure: StructureLike,
-  index: number,
-): NodeLike | undefined {
-  return structure.sequence?.prefix?.[index] ?? structure.sequence?.element;
+  return shape;
 }
 
 /**
- * Copies `value` along the paths the schema declares as structure, and no
- * further, so arktype can assign a default to a parent object the config
- * file froze. Everything the schema leaves opaque passes through untouched.
+ * The node for one position of an array: a tuple's own position counting
+ * from either end, else the element every remaining entry shares.
  */
-function copyAlongSchema(value: unknown, node: NodeLike | undefined): unknown {
-  const structure = structureOf(node, value);
-  if (structure === undefined) return value;
+function nodeForPosition(
+  shape: SchemaShape,
+  index: number,
+  length: number,
+): SchemaNode | undefined {
+  const sequence = shape.sequence;
+  if (sequence === undefined) return undefined;
+  const prefix = sequence.prefix ?? [];
+  if (index < prefix.length) return prefix[index];
+  const optionals = sequence.optionals ?? [];
+  if (index < prefix.length + optionals.length) {
+    return optionals[index - prefix.length];
+  }
+  const postfix = sequence.postfix ?? [];
+  const fromEnd = length - index;
+  if (fromEnd <= postfix.length) return postfix[postfix.length - fromEnd];
+  return sequence.element;
+}
+
+/**
+ * Copies `value` wherever the schema describes its shape, and no further.
+ * arktype applies a default by assigning to the object that holds it, so an
+ * object the config file froze has to be copied first. Anything the schema
+ * only checks, never describes, is passed through untouched.
+ */
+function copyWhereDescribed(
+  value: unknown,
+  node: SchemaNode | undefined,
+): unknown {
+  const shape = shapeOf(nodeForValue(node, value));
+  // No alternative of a union matched: the value is about to fail
+  // validation, and copying it one level keeps a frozen object from turning
+  // that failure into a write to a read-only property.
+  const unmatchedUnion =
+    shape === undefined &&
+    node?.branches !== undefined &&
+    node.branches.length > 1;
+  if (shape === undefined && !unmatchedUnion) return value;
   if (Array.isArray(value)) {
     return value.map((entry, index) =>
-      copyAlongSchema(entry, elementNode(structure, index)),
+      shape === undefined
+        ? entry
+        : copyWhereDescribed(
+            entry,
+            nodeForPosition(shape, index, value.length),
+          ),
     );
   }
   if (!isPlainObject(value)) return value;
-  const declared = new Map(
-    structure.props?.map((prop) => [prop.key, prop.value]) ?? [],
-  );
+  const declared = new Map(shape?.props?.map((prop) => [prop.key, prop.value]));
   return Object.fromEntries(
     Reflect.ownKeys(value).map((key) => [
       key,
-      copyAlongSchema(
+      copyWhereDescribed(
         (value as Record<PropertyKey, unknown>)[key],
         declared.get(key),
       ),
@@ -205,41 +243,43 @@ function copyAlongSchema(value: unknown, node: NodeLike | undefined): unknown {
 }
 
 /**
- * arktype rebuilds an object whenever a morph or a default applies anywhere
- * inside it, and the rebuild deep-clones every property, opaque ones
- * included. An opaque value — an `object` predicate, a `Function`, a `Date`
- * — is user-constructed runtime data: closures over module state, class
- * instances relying on `this`, codec tables. A clone of it is not it. So
- * after validation the input's own value is put back at every path the
- * schema does not open, which is why a section schema validates such values
- * by predicate rather than by shape. A transformed node (a pipe, a resolved
- * path) produced its output on purpose and keeps it.
+ * arktype rebuilds an object whenever a default or a pipe applies anywhere
+ * inside it, and the rebuild clones every property, including values the
+ * schema only checked. Such a value is something the config file built at
+ * runtime: a function closing over module state, a class instance whose
+ * methods need their own `this`, a table of codecs. A clone of it is not it.
+ * So this walk puts the config file's own value back wherever the schema
+ * described no shape, which is why a section schema checks such values with
+ * a predicate instead of describing them. A value the schema transformed on
+ * purpose (a pipe, a resolved path) keeps what the transform produced.
  */
-function restoreOpaque(
+function putBackOriginalValues(
   input: unknown,
   output: unknown,
-  node: NodeLike | undefined,
+  node: SchemaNode | undefined,
 ): unknown {
-  const governing = governingNode(node, output);
-  const structure = structureOf(governing, output);
-  if (structure === undefined) {
-    if (governing?.includesTransform === true) return output;
+  const applicable = nodeForValue(node, output);
+  const shape = shapeOf(applicable);
+  if (shape === undefined) {
+    if (applicable?.includesTransform === true) return output;
     return typeof input === "object" && input !== null ? input : output;
   }
   if (Array.isArray(output)) {
     if (!Array.isArray(input)) return output;
     return output.map((entry, index) =>
-      restoreOpaque(input[index], entry, elementNode(structure, index)),
+      putBackOriginalValues(
+        input[index],
+        entry,
+        nodeForPosition(shape, index, output.length),
+      ),
     );
   }
   if (!isPlainObject(output) || !isPlainObject(input)) return output;
-  const declared = new Map(
-    structure.props?.map((prop) => [prop.key, prop.value]) ?? [],
-  );
+  const declared = new Map(shape.props?.map((prop) => [prop.key, prop.value]));
   return Object.fromEntries(
     Reflect.ownKeys(output).map((key) => [
       key,
-      restoreOpaque(
+      putBackOriginalValues(
         (input as Record<PropertyKey, unknown>)[key],
         (output as Record<PropertyKey, unknown>)[key],
         declared.get(key),
@@ -297,12 +337,12 @@ export function validateSectionWithSchema<S extends ConfigSchema>(
   const previous = current;
   current = { name, provenance };
   try {
-    // arktype writes a default by assigning to the parent object, and the
-    // merged section value arrives frozen, so the declared structure is
-    // copied first; everything the schema leaves opaque keeps its identity.
-    const node = schema.internal as unknown as NodeLike;
+    // arktype applies a default by assigning to the object that holds it,
+    // and the merged section arrives frozen, so the described shape is
+    // copied first; values the schema only checks keep their identity.
+    const node = schema.internal as unknown as SchemaNode;
     const validated: unknown = schema(
-      raw === undefined ? {} : copyAlongSchema(raw, node),
+      raw === undefined ? {} : copyWhereDescribed(raw, node),
     );
     if (validated instanceof type.errors) {
       return {
@@ -312,15 +352,7 @@ export function validateSectionWithSchema<S extends ConfigSchema>(
         ),
       };
     }
-    const out = restoreOpaque(raw, validated, node);
-    if (out instanceof type.errors) {
-      return {
-        ok: false,
-        diagnostics: [...out].map((error) =>
-          fieldDiagnostic(name, error, provenance),
-        ),
-      };
-    }
+    const out = putBackOriginalValues(raw, validated, node);
     const nearest = provenance.files[0];
     const value =
       isPlainObject(out) && nearest !== undefined
@@ -328,6 +360,9 @@ export function validateSectionWithSchema<S extends ConfigSchema>(
         : out;
     return { ok: true, value: value as ConfigSchemaValue<S>, diagnostics: [] };
   } catch (cause) {
+    // A schema that cannot be walked is its author's bug, not the user's
+    // config, so it is never turned into a diagnostic about their file.
+    if (cause instanceof ConfigSchemaError) throw cause;
     // A getter that throws when arktype reads it, or a morph that throws:
     // config-file content, reported as such rather than as a bug.
     return {

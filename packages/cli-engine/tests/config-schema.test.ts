@@ -7,6 +7,7 @@
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
+  ConfigSchemaError,
   configSchema,
   defineCommand,
   defineConfigSection,
@@ -166,17 +167,17 @@ describe("validateSectionWithSchema", () => {
     expect(dir).toBe("/app");
   });
 
-  test("an opaque value keeps its identity even inside a frozen section", () => {
+  test("a value the schema only checks is the config file's own object, frozen section or not", () => {
     class Serializer {
       deserialize(json: unknown): unknown {
         return json;
       }
     }
-    const opaque = configSchema("object").narrow(() => true);
+    const checkedOnly = configSchema("object").narrow(() => true);
     const schema = configSchema({
-      target: opaque,
-      "contract?": { source: opaque, "output?": "path" },
-      "extensions?": [opaque, "[]"],
+      target: checkedOnly,
+      "contract?": { source: checkedOnly, "output?": "path" },
+      "extensions?": [checkedOnly, "[]"],
       migrations: [
         { dir: ["path", "=", () => "./migrations"] },
         "=",
@@ -214,10 +215,10 @@ describe("validateSectionWithSchema", () => {
     expect(value.migrations.dir).toBe("/app/migrations");
   });
 
-  test("an opaque value keeps its identity when the section has a root narrow and defaults", () => {
-    const opaque = configSchema("object").narrow(() => true);
+  test("a checked-only value survives a section whose root has a narrow and defaults", () => {
+    const checkedOnly = configSchema("object").narrow(() => true);
     const schema = configSchema({
-      family: opaque,
+      family: checkedOnly,
       migrations: [
         { dir: ["path", "=", () => "./migrations"] },
         "=",
@@ -235,7 +236,7 @@ describe("validateSectionWithSchema", () => {
     ).toBe("/app/migrations");
   });
 
-  test("an opaque value with its own pipe keeps the pipe's output", () => {
+  test("a checked-only value with its own pipe keeps what the pipe produced", () => {
     const source = { load: () => 1, inputs: ["./a"] };
     const withResolvedInputs = configSchema("object")
       .narrow(() => true)
@@ -260,12 +261,12 @@ describe("validateSectionWithSchema", () => {
   });
 
   test("a union picks the branch the value matches, for copying and for restoring", () => {
-    const opaque = configSchema("object").narrow(() => true);
+    const checkedOnly = configSchema("object").narrow(() => true);
     const schema = configSchema({
       either: [
         { kind: "'a'", "dir?": "path" },
         "|",
-        { kind: "'b'", inner: opaque },
+        { kind: "'b'", inner: checkedOnly },
       ],
     });
     const inner = { keep: () => 1 };
@@ -291,24 +292,55 @@ describe("validateSectionWithSchema", () => {
     ).toBe(inner);
   });
 
-  test("a tuple resolves and restores by position", () => {
-    const opaque = configSchema("object").narrow(() => true);
-    const schema = configSchema({ pair: ["path", opaque] });
+  test("a tuple resolves and restores by position, prefix and postfix alike", () => {
+    const checkedOnly = configSchema("object").narrow(() => true);
+    const schema = configSchema({
+      pair: ["path", checkedOnly],
+      tail: ["path", "...", "object[]", "path"],
+    });
     const second = { keep: () => 1 };
+    const middle = { keep: () => 2 };
 
     const result = validateSectionWithSchema(
       "toy",
       schema,
-      { pair: ["./first", second] },
+      { pair: ["./first", second], tail: ["./head", middle, "./last"] },
       single,
     );
 
+    if (!result.ok) throw new Error(JSON.stringify(result.diagnostics));
+    const value = result.value as {
+      pair: [string, unknown];
+      tail: [string, unknown, string];
+    };
+    expect(value.pair).toEqual(["/app/first", second]);
+    expect(value.pair[1]).toBe(second);
+    expect(value.tail).toEqual(["/app/head", middle, "/app/last"]);
+    expect(value.tail[1]).toBe(middle);
+  });
+
+  test("a union no alternative matches fails as a field error, not a write to a frozen object", () => {
+    const schema = configSchema({
+      either: [
+        { kind: "'a'", dir: ["path", "=", () => "./d"] },
+        "|",
+        { kind: "'b'" },
+      ],
+    });
+
+    const result = validateSectionWithSchema(
+      "toy",
+      schema,
+      Object.freeze({ either: Object.freeze({ kind: "c" }) }),
+      single,
+    );
+
+    expect(result.ok).toBe(false);
     expect(
-      result.ok && (result.value as { pair: [string, unknown] }).pair,
-    ).toEqual(["/app/first", second]);
-    expect(
-      result.ok && (result.value as { pair: [string, unknown] }).pair[1],
-    ).toBe(second);
+      result.diagnostics.every(
+        (diagnostic) => diagnostic.code === "CLI.CONFIG_FIELD_INVALID",
+      ),
+    ).toBe(true);
   });
 
   test("a symbol-keyed property a morph adds survives the restore", () => {
@@ -334,20 +366,12 @@ describe("validateSectionWithSchema", () => {
     ).toBe(true);
   });
 
-  test("an index signature on declared structure is refused", () => {
+  test("an index signature in a schema is the schema author's error, not the user's", () => {
     const schema = configSchema({ "[string]": "path" });
 
     expect(() =>
       validateSectionWithSchema("toy", schema, { a: "./x" }, single),
-    ).not.toThrow();
-    const result = validateSectionWithSchema(
-      "toy",
-      schema,
-      { a: "./x" },
-      single,
-    );
-    expect(result.ok).toBe(false);
-    expect(result.diagnostics[0]?.summary).toContain("index signature");
+    ).toThrow(ConfigSchemaError);
   });
 
   test("a default nested under a frozen declared object is applied without writing to the input", () => {
