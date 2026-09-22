@@ -49,8 +49,10 @@
     "conformance": {
       // Packs and installs the real tarballs, so never cached; the
       // package's own build is a dependency because the entry reads
-      // dist/ before packing rebuilds it.
-      "dependsOn": ["build"],
+      // dist/ before packing rebuilds it, and so is the prisma
+      // package's, whose dist/ the import-purity sweep reads too but
+      // which nothing here depends on.
+      "dependsOn": ["build", "prisma#build"],
       "cache": false,
       // turbo passes only declared variables to a task, and the
       // dev-build check answers differently per channel. Undeclared, it
