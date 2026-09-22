@@ -259,6 +259,97 @@ describe("validateSectionWithSchema", () => {
     expect(value.out).toBe("/app/o");
   });
 
+  test("a union picks the branch the value matches, for copying and for restoring", () => {
+    const opaque = configSchema("object").narrow(() => true);
+    const schema = configSchema({
+      either: [
+        { kind: "'a'", "dir?": "path" },
+        "|",
+        { kind: "'b'", inner: opaque },
+      ],
+    });
+    const inner = { keep: () => 1 };
+
+    const a = validateSectionWithSchema(
+      "toy",
+      schema,
+      Object.freeze({ either: Object.freeze({ kind: "a", dir: "./d" }) }),
+      single,
+    );
+    const b = validateSectionWithSchema(
+      "toy",
+      schema,
+      { either: { kind: "b", inner } },
+      single,
+    );
+
+    expect(a.ok && (a.value as { either: { dir: string } }).either.dir).toBe(
+      "/app/d",
+    );
+    expect(
+      b.ok && (b.value as { either: { inner: unknown } }).either.inner,
+    ).toBe(inner);
+  });
+
+  test("a tuple resolves and restores by position", () => {
+    const opaque = configSchema("object").narrow(() => true);
+    const schema = configSchema({ pair: ["path", opaque] });
+    const second = { keep: () => 1 };
+
+    const result = validateSectionWithSchema(
+      "toy",
+      schema,
+      { pair: ["./first", second] },
+      single,
+    );
+
+    expect(
+      result.ok && (result.value as { pair: [string, unknown] }).pair,
+    ).toEqual(["/app/first", second]);
+    expect(
+      result.ok && (result.value as { pair: [string, unknown] }).pair[1],
+    ).toBe(second);
+  });
+
+  test("a symbol-keyed property a morph adds survives the restore", () => {
+    const TAG = Symbol("tag");
+    const schema = configSchema({
+      tagged: configSchema({ n: "number" }).pipe((value) => ({
+        ...value,
+        [TAG]: true,
+      })),
+      "out?": "path",
+    });
+
+    const result = validateSectionWithSchema(
+      "toy",
+      schema,
+      { tagged: { n: 1 }, out: "./o" },
+      single,
+    );
+
+    expect(
+      result.ok &&
+        (result.value as { tagged: Record<symbol, unknown> }).tagged[TAG],
+    ).toBe(true);
+  });
+
+  test("an index signature on declared structure is refused", () => {
+    const schema = configSchema({ "[string]": "path" });
+
+    expect(() =>
+      validateSectionWithSchema("toy", schema, { a: "./x" }, single),
+    ).not.toThrow();
+    const result = validateSectionWithSchema(
+      "toy",
+      schema,
+      { a: "./x" },
+      single,
+    );
+    expect(result.ok).toBe(false);
+    expect(result.diagnostics[0]?.summary).toContain("index signature");
+  });
+
   test("a default nested under a frozen declared object is applied without writing to the input", () => {
     const schema = configSchema({
       "given?": { "deeper?": { c: "string = 'w'" } },

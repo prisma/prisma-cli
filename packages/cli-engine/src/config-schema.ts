@@ -100,67 +100,106 @@ function isPlainObject(value: unknown): value is Record<string, unknown> {
 }
 
 /**
- * The part of a compiled arktype node this copy reads: a structural node
- * declares object keys (`props`) and, for an array, an element node.
+ * The part of a compiled arktype node the copy and restore walks read. A
+ * structural node declares object keys (`props`), a tuple's positions
+ * (`sequence.prefix`), a list's element (`sequence.element`), or index
+ * signatures (`index`). A union offers `branches`; a morph keeps its
+ * declared structure on its `in` side.
  */
 interface StructureLike {
   readonly props?: ReadonlyArray<{
     readonly key: PropertyKey;
     readonly value: NodeLike;
   }>;
-  readonly sequence?: { readonly element?: NodeLike };
+  readonly sequence?: {
+    readonly prefix?: readonly NodeLike[];
+    readonly element?: NodeLike;
+  };
+  readonly index?: readonly unknown[];
 }
 
 interface NodeLike {
   readonly structure?: StructureLike;
   readonly branches?: readonly NodeLike[];
-  /** A morph node validates its `in` side, where the declared structure lives. */
   readonly in?: NodeLike;
   /** Whether a morph (a pipe, or a default) applies at or under this node. */
   readonly includesTransform?: boolean;
+  readonly allows?: (value: unknown) => boolean;
 }
 
-function structureOf(node: NodeLike | undefined): StructureLike | undefined {
+/**
+ * The node that governs `value` at this position: the node itself, a
+ * morph's `in` side, or the union branch that accepts the value. Undefined
+ * for a union no branch of which accepts the value, which validation is
+ * about to report anyway.
+ */
+function governingNode(
+  node: NodeLike | undefined,
+  value: unknown,
+): NodeLike | undefined {
   if (node === undefined) return undefined;
-  if (node.structure !== undefined) return node.structure;
-  // A morph (a default or a pipe anywhere inside an object literal makes
-  // the whole literal one) keeps its declared structure on its `in` side.
-  if (node.in !== undefined && node.in !== node) {
-    const inner = structureOf(node.in);
-    if (inner !== undefined) return inner;
+  if (node.branches !== undefined && node.branches.length > 1) {
+    const branch = node.branches.find(
+      (candidate) => candidate.allows?.(value) === true,
+    );
+    return branch === undefined ? undefined : governingNode(branch, value);
   }
-  // A union: the structural branch, if any, is the one arktype may write
-  // defaults into.
-  return node.branches
-    ?.map((branch) => branch.structure)
-    .find((s) => s !== undefined);
+  if (
+    node.structure === undefined &&
+    node.in !== undefined &&
+    node.in !== node
+  ) {
+    const inner = governingNode(node.in, value);
+    return inner?.structure === undefined ? node : inner;
+  }
+  return node;
+}
+
+function structureOf(
+  node: NodeLike | undefined,
+  value: unknown,
+): StructureLike | undefined {
+  const structure = governingNode(node, value)?.structure;
+  if (structure?.index !== undefined && structure.index.length > 0) {
+    throw new Error(
+      "@prisma/cli-engine: a config section schema cannot declare an index signature; declare the keys, or validate the value by predicate",
+    );
+  }
+  return structure;
+}
+
+/** The node for array position `index`: a tuple's own position, else the list element. */
+function elementNode(
+  structure: StructureLike,
+  index: number,
+): NodeLike | undefined {
+  return structure.sequence?.prefix?.[index] ?? structure.sequence?.element;
 }
 
 /**
  * Copies `value` along the paths the schema declares as structure, and no
- * further. arktype applies a default by assigning to the parent object, so
- * every plain object on a declared path must be writable even when the
- * config file froze it. A value the schema does not open — an `object`
- * predicate, a `Function`, a `Date` — is user-constructed runtime data:
- * closures over module state, class instances relying on `this`, codec
- * tables. It passes through by reference, which is why a section schema
- * validates such values by predicate rather than by shape.
+ * further, so arktype can assign a default to a parent object the config
+ * file froze. Everything the schema leaves opaque passes through untouched.
  */
 function copyAlongSchema(value: unknown, node: NodeLike | undefined): unknown {
-  const structure = structureOf(node);
+  const structure = structureOf(node, value);
   if (structure === undefined) return value;
   if (Array.isArray(value)) {
-    const element = structure.sequence?.element;
-    return value.map((entry) => copyAlongSchema(entry, element));
+    return value.map((entry, index) =>
+      copyAlongSchema(entry, elementNode(structure, index)),
+    );
   }
   if (!isPlainObject(value)) return value;
   const declared = new Map(
     structure.props?.map((prop) => [prop.key, prop.value]) ?? [],
   );
   return Object.fromEntries(
-    Object.entries(value).map(([key, entry]) => [
+    Reflect.ownKeys(value).map((key) => [
       key,
-      copyAlongSchema(entry, declared.get(key)),
+      copyAlongSchema(
+        (value as Record<PropertyKey, unknown>)[key],
+        declared.get(key),
+      ),
     ]),
   );
 }
@@ -173,26 +212,24 @@ function copyAlongSchema(value: unknown, node: NodeLike | undefined): unknown {
  * instances relying on `this`, codec tables. A clone of it is not it. So
  * after validation the input's own value is put back at every path the
  * schema does not open, which is why a section schema validates such values
- * by predicate rather than by shape.
+ * by predicate rather than by shape. A transformed node (a pipe, a resolved
+ * path) produced its output on purpose and keeps it.
  */
 function restoreOpaque(
   input: unknown,
   output: unknown,
   node: NodeLike | undefined,
 ): unknown {
-  const structure = structureOf(node);
+  const governing = governingNode(node, output);
+  const structure = structureOf(governing, output);
   if (structure === undefined) {
-    // A node that transforms (a pipe, a resolved path) produced its output
-    // on purpose. An untransformed opaque object was merely cloned, and the
-    // input is the value the config file built.
-    if (node?.includesTransform === true) return output;
+    if (governing?.includesTransform === true) return output;
     return typeof input === "object" && input !== null ? input : output;
   }
   if (Array.isArray(output)) {
     if (!Array.isArray(input)) return output;
-    const element = structure.sequence?.element;
     return output.map((entry, index) =>
-      restoreOpaque(input[index], entry, element),
+      restoreOpaque(input[index], entry, elementNode(structure, index)),
     );
   }
   if (!isPlainObject(output) || !isPlainObject(input)) return output;
@@ -200,9 +237,13 @@ function restoreOpaque(
     structure.props?.map((prop) => [prop.key, prop.value]) ?? [],
   );
   return Object.fromEntries(
-    Object.entries(output).map(([key, entry]) => [
+    Reflect.ownKeys(output).map((key) => [
       key,
-      restoreOpaque(input[key], entry, declared.get(key)),
+      restoreOpaque(
+        (input as Record<PropertyKey, unknown>)[key],
+        (output as Record<PropertyKey, unknown>)[key],
+        declared.get(key),
+      ),
     ]),
   );
 }
