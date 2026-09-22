@@ -110,7 +110,7 @@ describe("validateSectionWithSchema", () => {
 
   test("a relative literal path default is refused when the schema is defined", () => {
     expect(() => configSchema({ dir: "path = './migrations'" })).toThrow(
-      'must be a thunk so it resolves against the config file when applied: ["path", "=", () => "./migrations"]',
+      "the relative 'path' default './migrations' must be declared as a thunk",
     );
     expect(() =>
       configSchema({ dir: "path = '/abs/migrations'" }),

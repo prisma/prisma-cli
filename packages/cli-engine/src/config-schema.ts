@@ -40,7 +40,7 @@ function resolvePathValue(value: string, path: readonly PropertyKey[]): string {
   }
   if (current === undefined) {
     throw new Error(
-      `@prisma/cli-engine: a relative 'path' default must be a thunk so it resolves against the config file when applied: ["path", "=", () => ${JSON.stringify(value)}]`,
+      `@prisma/cli-engine: the relative 'path' default '${value}' must be declared as a thunk, ["path", "=", () => "..."], so it resolves against the config file when the default is applied`,
     );
   }
   const file = declaringFile(current.provenance, path);
