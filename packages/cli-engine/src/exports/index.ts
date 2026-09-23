@@ -58,7 +58,6 @@ export {
 } from "../config-merge";
 export {
   type ConfigSchema,
-  ConfigSchemaError,
   type ConfigSchemaValue,
   configSchema,
   validateSectionWithSchema,

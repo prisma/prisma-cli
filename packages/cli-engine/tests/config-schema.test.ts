@@ -7,7 +7,6 @@
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
-  ConfigSchemaError,
   configSchema,
   defineCommand,
   defineConfigSection,
@@ -169,7 +168,7 @@ describe("validateSectionWithSchema", () => {
     expect(dir).toBe("/app");
   });
 
-  test("a value the schema only checks is the config file's own object, frozen section or not", () => {
+  test("what a config file constructed reaches the command working, frozen section or not", () => {
     class Serializer {
       deserialize(json: unknown): unknown {
         return json;
@@ -186,17 +185,21 @@ describe("validateSectionWithSchema", () => {
         () => ({}),
       ],
     });
+    const serializer = new Serializer();
+    const load = () => 1;
     const target = Object.freeze({
       kind: "target",
-      serializer: new Serializer(),
+      serializer,
       create() {
         return this.kind;
       },
     });
-    const source = Object.freeze({ load: () => 1 });
     const raw = Object.freeze({
       target,
-      contract: Object.freeze({ source, output: "./out.json" }),
+      contract: Object.freeze({
+        source: Object.freeze({ load }),
+        output: "./out.json",
+      }),
       extensions: Object.freeze([target]),
     });
 
@@ -205,16 +208,52 @@ describe("validateSectionWithSchema", () => {
     if (!result.ok) throw new Error(JSON.stringify(result.diagnostics));
     const value = result.value as {
       target: typeof target;
-      contract: { source: typeof source; output: string };
+      contract: { source: { load: () => number }; output: string };
       extensions: (typeof target)[];
       migrations: { dir: string };
     };
-    expect(value.target).toBe(target);
+    expect(value.target.serializer).toBe(serializer);
     expect(value.target.create()).toBe("target");
-    expect(value.contract.source).toBe(source);
-    expect(value.extensions[0]).toBe(target);
+    expect(value.contract.source.load).toBe(load);
+    expect(value.extensions[0].serializer).toBe(serializer);
     expect(value.contract.output).toBe("/app/out.json");
     expect(value.migrations.dir).toBe("/app/migrations");
+  });
+
+  test("a plain object the schema describes is copied, not written to in place", () => {
+    const schema = configSchema({ contract: { output: "path" } });
+    const contract = { output: "./out.json" };
+
+    const result = validateSectionWithSchema(
+      "toy",
+      schema,
+      { contract },
+      single,
+    );
+
+    expect(
+      result.ok &&
+        (result.value as { contract: { output: string } }).contract.output,
+    ).toBe("/app/out.json");
+    expect(contract.output).toBe("./out.json");
+  });
+
+  test("a plain object that refers back to itself is copied once", () => {
+    const schema = configSchema({ node: "object", "out?": "path" });
+    const node: { name: string; self?: unknown } = { name: "root" };
+    node.self = node;
+
+    const result = validateSectionWithSchema(
+      "toy",
+      schema,
+      { node, out: "./o" },
+      single,
+    );
+
+    if (!result.ok) throw new Error(JSON.stringify(result.diagnostics));
+    const value = result.value as { node: typeof node; out: string };
+    expect(value.node.self).toBe(value.node);
+    expect(value.out).toBe("/app/o");
   });
 
   test("a checked-only value survives a section whose root has a narrow and defaults", () => {
@@ -227,12 +266,16 @@ describe("validateSectionWithSchema", () => {
         () => ({}),
       ],
     }).narrow(() => true);
-    const family = { kind: "family", create: () => 1 };
+    const create = () => 1;
+    const family = { kind: "family", create };
 
     const result = validateSectionWithSchema("toy", schema, { family }, single);
 
     if (!result.ok) throw new Error(JSON.stringify(result.diagnostics));
-    expect((result.value as { family: unknown }).family).toBe(family);
+    expect((result.value as { family: typeof family }).family).toEqual(family);
+    expect((result.value as { family: typeof family }).family.create).toBe(
+      create,
+    );
     expect(
       (result.value as { migrations: { dir: string } }).migrations.dir,
     ).toBe("/app/migrations");
@@ -262,7 +305,7 @@ describe("validateSectionWithSchema", () => {
     expect(value.out).toBe("/app/o");
   });
 
-  test("a union picks the branch the value matches, for copying and for restoring", () => {
+  test("a union resolves paths in the branch the value matches, keeping the rest", () => {
     const checkedOnly = configSchema("object").narrow(() => true);
     const schema = configSchema({
       either: [
@@ -294,14 +337,14 @@ describe("validateSectionWithSchema", () => {
     ).toBe(inner);
   });
 
-  test("a tuple resolves and restores by position, prefix and postfix alike", () => {
+  test("a tuple resolves paths by position, prefix and postfix alike", () => {
     const checkedOnly = configSchema("object").narrow(() => true);
     const schema = configSchema({
       pair: ["path", checkedOnly],
       tail: ["path", "...", "object[]", "path"],
     });
-    const second = { keep: () => 1 };
-    const middle = { keep: () => 2 };
+    const second = new Date(1);
+    const middle = new Date(2);
 
     const result = validateSectionWithSchema(
       "toy",
@@ -371,7 +414,7 @@ describe("validateSectionWithSchema", () => {
     expect(value.out).toBe("/app/o");
   });
 
-  test("a symbol-keyed property a morph adds survives the restore", () => {
+  test("a symbol-keyed property a morph adds is kept", () => {
     const TAG = Symbol("tag");
     const schema = configSchema({
       tagged: configSchema({ n: "number" }).pipe((value) => ({
@@ -394,12 +437,20 @@ describe("validateSectionWithSchema", () => {
     ).toBe(true);
   });
 
-  test("an index signature in a schema is the schema author's error, not the user's", () => {
+  test("an index signature resolves every value it describes", () => {
     const schema = configSchema({ "[string]": "path" });
 
-    expect(() =>
-      validateSectionWithSchema("toy", schema, { a: "./x" }, single),
-    ).toThrow(ConfigSchemaError);
+    const result = validateSectionWithSchema(
+      "toy",
+      schema,
+      { a: "./x", b: "./y" },
+      single,
+    );
+
+    expect(result.ok && result.value).toMatchObject({
+      a: "/app/x",
+      b: "/app/y",
+    });
   });
 
   test("a default nested under a frozen declared object is applied without writing to the input", () => {
