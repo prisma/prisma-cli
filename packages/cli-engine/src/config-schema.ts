@@ -47,14 +47,22 @@ function resolvePathValue(value: string, path: readonly PropertyKey[]): string {
   return file === undefined ? value : resolve(dirname(file), value);
 }
 
-const configScope = scope({
-  /**
-   * A string relative to the config file that wrote it. Validation turns it
-   * into an absolute path against that file's directory; an absolute value
-   * passes through unchanged.
-   */
-  path: type("string").pipe((value, ctx) => resolvePathValue(value, ctx.path)),
-});
+const configScope = scope(
+  {
+    /**
+     * A string relative to the config file that wrote it. Validation turns it
+     * into an absolute path against that file's directory; an absolute value
+     * passes through unchanged.
+     */
+    path: type("string").pipe((value, ctx) =>
+      resolvePathValue(value, ctx.path),
+    ),
+  },
+  {
+    clone: <original extends object>(original: original): original =>
+      copyPlainParts(original, new Map()) as original,
+  },
+);
 
 /**
  * Declares the shape of a config section once. Definitions are arktype
@@ -99,17 +107,45 @@ function isPlainObject(value: unknown): value is Record<string, unknown> {
   return prototype === Object.prototype || prototype === null;
 }
 
-/** Plain objects and arrays copied; anything else, functions included, by reference. */
-function copyPlainData(value: unknown): unknown {
-  if (Array.isArray(value)) {
-    return value.map(copyPlainData);
+/**
+ * Before arktype applies a morph it clones the value, so resolving a path or
+ * applying a default never writes into what the caller passed in. Its own
+ * clone rebuilds every object it reaches. A config file's objects cannot
+ * survive that: a codec table, a contract serializer, anything whose
+ * behaviour lives in the instance rather than in its keys comes back as a
+ * lookalike that no longer works.
+ *
+ * So the scope above clones through arktype's `clone` option instead, and
+ * rebuilds only the plain objects and arrays a schema can write into.
+ * Everything else a config file constructed reaches the command as the file
+ * built it. `seen` carries the copies made so far, so a value that refers
+ * back to itself is copied once rather than followed forever.
+ */
+function copyPlainParts(value: unknown, seen: Map<object, unknown>): unknown {
+  if (!Array.isArray(value) && !isPlainObject(value)) {
+    return value;
   }
-  if (isPlainObject(value)) {
-    return Object.fromEntries(
-      Object.entries(value).map(([key, entry]) => [key, copyPlainData(entry)]),
+  const copied = seen.get(value);
+  if (copied !== undefined) {
+    return copied;
+  }
+  if (Array.isArray(value)) {
+    const elements: unknown[] = [];
+    seen.set(value, elements);
+    for (const element of value) {
+      elements.push(copyPlainParts(element, seen));
+    }
+    return elements;
+  }
+  const entries: Record<PropertyKey, unknown> = {};
+  seen.set(value, entries);
+  for (const key of Reflect.ownKeys(value)) {
+    entries[key] = copyPlainParts(
+      (value as Record<PropertyKey, unknown>)[key],
+      seen,
     );
   }
-  return value;
+  return entries;
 }
 
 function fieldDiagnostic(
@@ -161,9 +197,7 @@ export function validateSectionWithSchema<S extends ConfigSchema>(
   const previous = current;
   current = { name, provenance };
   try {
-    // arktype applies defaults and morphs onto the objects it is handed, and
-    // the merged section value arrives frozen, so it validates a copy.
-    const out: unknown = schema(raw === undefined ? {} : copyPlainData(raw));
+    const out: unknown = schema(raw === undefined ? {} : raw);
     if (out instanceof type.errors) {
       return {
         ok: false,
