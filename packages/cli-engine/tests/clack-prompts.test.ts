@@ -21,10 +21,16 @@ const ENTER = "\r";
 const CTRL_C = "\x03";
 const BACKSPACE = "\x7f";
 
-function keystrokeStdin(keys: readonly string[]) {
+/** `returnSettles: false` behaves like Node's own stdin iterator, whose
+ *  return cannot settle while it is awaiting a keystroke. */
+function keystrokeStdin(
+  keys: readonly string[],
+  opts: { returnSettles: boolean } = { returnSettles: true },
+) {
   let cursor = 0;
   const encoder = new TextEncoder();
   const rawModeCalls: boolean[] = [];
+  let returned = 0;
   const stdin = {
     setRawMode: (enabled: boolean) => {
       rawModeCalls.push(enabled);
@@ -39,13 +45,15 @@ function keystrokeStdin(keys: readonly string[]) {
           cursor += 1;
           setTimeout(() => resolve({ done: false, value }), 5);
         }),
-      return: async (): Promise<IteratorResult<Uint8Array>> => ({
-        done: true,
-        value: undefined,
-      }),
+      return: (): Promise<IteratorResult<Uint8Array>> => {
+        returned += 1;
+        return opts.returnSettles
+          ? Promise.resolve({ done: true, value: undefined })
+          : new Promise(() => {});
+      },
     }),
   };
-  return { stdin, rawModeCalls };
+  return { stdin, rawModeCalls, returnCount: () => returned };
 }
 
 function promptCli(run: (prompt: PromptSurface) => Promise<unknown>) {
@@ -84,8 +92,9 @@ function promptCli(run: (prompt: PromptSurface) => Promise<unknown>) {
 async function runInteractive(
   run: (prompt: PromptSurface) => Promise<unknown>,
   keys: readonly string[],
+  opts?: { returnSettles: boolean },
 ) {
-  const { stdin, rawModeCalls } = keystrokeStdin(keys);
+  const { stdin, rawModeCalls, returnCount } = keystrokeStdin(keys, opts);
   let stdout = "";
   let stderr = "";
   const runtime: Runtime = {
@@ -121,7 +130,7 @@ async function runInteractive(
   const exitCode = await promptCli(run).run(["probe"], runtime);
   // biome-ignore lint/suspicious/noControlCharactersInRegex: ANSI stripping
   const plainStderr = stderr.replace(/\x1b\[[0-9;]*[A-Za-z]/g, "");
-  return { exitCode, stdout, stderr, plainStderr, rawModeCalls };
+  return { exitCode, stdout, stderr, plainStderr, rawModeCalls, returnCount };
 }
 
 function answerIn(plainStderr: string): string | undefined {
@@ -306,6 +315,20 @@ describe("clack tier channels and raw mode", () => {
 
     expect(result.rawModeCalls[0]).toBe(true);
     expect(result.rawModeCalls[result.rawModeCalls.length - 1]).toBe(false);
+  });
+});
+
+describe("clack tier stdin release", () => {
+  test("the run settles even when the stdin iterator's return never does", async () => {
+    const result = await runInteractive(
+      (prompt) => prompt.confirm("Proceed?", { default: true }),
+      [ENTER],
+      { returnSettles: false },
+    );
+
+    expect(result.exitCode).toBe(0);
+    expect(answerIn(result.plainStderr)).toBe("true");
+    expect(result.returnCount()).toBe(1);
   });
 });
 

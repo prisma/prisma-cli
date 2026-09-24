@@ -115,16 +115,39 @@ function memoizedConfigLoader(
   };
 }
 
-export async function assembleRuntime(proc: HostProcess): Promise<Runtime> {
-  const stdin: InputStream = {
+/**
+ * The engine returns the iterator when it has finished prompting. Node's
+ * stdin iterator cannot honour that while it is awaiting a keystroke,
+ * and a terminal being read keeps the process alive, so the adapter
+ * unrefs stdin itself and settles at once. The underlying return is
+ * left to complete whenever it can, and the next run refs stdin again
+ * before it reads.
+ */
+export function makeStdin(proc: HostProcess): InputStream {
+  return {
     setRawMode:
       proc.stdin.isTTY === true && proc.stdin.setRawMode !== undefined
         ? (enabled) => {
             proc.stdin.setRawMode?.(enabled);
           }
         : undefined,
-    [Symbol.asyncIterator]: () => proc.stdin[Symbol.asyncIterator](),
+    [Symbol.asyncIterator]: () => {
+      proc.stdin.ref?.();
+      const chunks = proc.stdin[Symbol.asyncIterator]();
+      return {
+        next: () => chunks.next(),
+        return: async () => {
+          proc.stdin.unref?.();
+          void chunks.return?.()?.catch(() => {});
+          return { done: true, value: undefined };
+        },
+      };
+    },
   };
+}
+
+export async function assembleRuntime(proc: HostProcess): Promise<Runtime> {
+  const stdin = makeStdin(proc);
   warnOnDeprecatedStateFileEnvVar(proc);
   const apiBaseUrl = getApiBaseUrl(proc.env);
   const authBaseUrl = getAuthBaseUrl(proc.env);
