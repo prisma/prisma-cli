@@ -30,11 +30,11 @@ importers:
         specifier: workspace:0.6.1
         version: link:../cli-engine
       '@prisma/composer-cli':
-        specifier: 0.22.0
-        version: 0.22.0(@prisma/cli-engine@packages+cli-engine)(@types/node@22.19.19)(@vercel/nft@1.10.2(rollup@4.62.2))(magicast@0.5.3)(mongodb@6.21.0(@aws-sdk/credential-providers@3.1107.0))(pg@8.23.0)(typescript@6.0.3)(vite@7.3.5(@types/node@22.19.19)(jiti@2.7.0)(tsx@4.22.4)(yaml@2.9.0))(vitest@4.1.8(@types/node@22.19.19)(vite@7.3.5(@types/node@22.19.19)(jiti@2.7.0)(tsx@4.22.4)(yaml@2.9.0)))(ws@8.21.0)
+        specifier: 0.23.0
+        version: 0.23.0(@prisma/cli-engine@packages+cli-engine)(@types/node@22.19.19)(@vercel/nft@1.10.2(rollup@4.62.2))(magicast@0.5.3)(mongodb@6.21.0(@aws-sdk/credential-providers@3.1107.0))(pg@8.23.0)(typescript@6.0.3)(vite@7.3.5(@types/node@22.19.19)(jiti@2.7.0)(tsx@4.22.4)(yaml@2.9.0))(vitest@4.1.8(@types/node@22.19.19)(vite@7.3.5(@types/node@22.19.19)(jiti@2.7.0)(tsx@4.22.4)(yaml@2.9.0)))(ws@8.21.0)
       '@prisma/compute-sdk':
-        specifier: 0.42.0
-        version: 0.42.0(@prisma/management-api-sdk@1.69.0)(rollup@4.62.2)
+        specifier: 0.43.0
+        version: 0.43.0(@prisma/management-api-sdk@1.69.0)(rollup@4.62.2)
       '@prisma/management-api-sdk':
         specifier: 1.69.0
         version: 1.69.0
@@ -61,19 +61,19 @@ importers:
         version: 11.0.0
     devDependencies:
       '@prisma/composer':
-        specifier: 0.22.0
-        version: 0.22.0(@types/node@22.19.19)(@vercel/nft@1.10.2(rollup@4.62.2))(magicast@0.5.3)(mongodb@6.21.0(@aws-sdk/credential-providers@3.1107.0))(pg@8.23.0)(typescript@6.0.3)(vite@7.3.5(@types/node@22.19.19)(jiti@2.7.0)(tsx@4.22.4)(yaml@2.9.0))(vitest@4.1.8(@types/node@22.19.19)(vite@7.3.5(@types/node@22.19.19)(jiti@2.7.0)(tsx@4.22.4)(yaml@2.9.0)))(ws@8.21.0)
+        specifier: 0.23.0
+        version: 0.23.0(@types/node@22.19.19)(@vercel/nft@1.10.2(rollup@4.62.2))(magicast@0.5.3)(mongodb@6.21.0(@aws-sdk/credential-providers@3.1107.0))(pg@8.23.0)(typescript@6.0.3)(vite@7.3.5(@types/node@22.19.19)(jiti@2.7.0)(tsx@4.22.4)(yaml@2.9.0))(vitest@4.1.8(@types/node@22.19.19)(vite@7.3.5(@types/node@22.19.19)(jiti@2.7.0)(tsx@4.22.4)(yaml@2.9.0)))(ws@8.21.0)
       '@prisma/credentials-store':
         specifier: ^7.8.0
         version: 7.8.0
       '@repo/cli-conformance':
-        specifier: workspace:8.0.0-rc.16
+        specifier: workspace:8.0.0-rc.17
         version: link:../cli-conformance
       '@repo/cli-telemetry':
-        specifier: workspace:8.0.0-rc.16
+        specifier: workspace:8.0.0-rc.17
         version: link:../cli-telemetry
       '@repo/tsconfig':
-        specifier: workspace:8.0.0-rc.16
+        specifier: workspace:8.0.0-rc.17
         version: link:../tsconfig
       '@types/cross-spawn':
         specifier: ^6.0.6
@@ -97,7 +97,7 @@ importers:
   packages/cli-conformance:
     devDependencies:
       '@repo/tsconfig':
-        specifier: workspace:8.0.0-rc.16
+        specifier: workspace:8.0.0-rc.17
         version: link:../tsconfig
       '@types/node':
         specifier: ^22.19.19
@@ -143,10 +143,10 @@ importers:
         specifier: 1.69.0
         version: 1.69.0
       '@repo/cli-conformance':
-        specifier: workspace:8.0.0-rc.16
+        specifier: workspace:8.0.0-rc.17
         version: link:../cli-conformance
       '@repo/tsconfig':
-        specifier: workspace:8.0.0-rc.16
+        specifier: workspace:8.0.0-rc.17
         version: link:../tsconfig
       '@types/node':
         specifier: ^22.19.19
@@ -171,7 +171,7 @@ importers:
         version: 1.2.4
     devDependencies:
       '@repo/tsconfig':
-        specifier: workspace:8.0.0-rc.16
+        specifier: workspace:8.0.0-rc.17
         version: link:../tsconfig
       '@types/node':
         specifier: ^22.19.19
@@ -189,7 +189,7 @@ importers:
   packages/compute:
     devDependencies:
       '@repo/tsconfig':
-        specifier: workspace:8.0.0-rc.16
+        specifier: workspace:8.0.0-rc.17
         version: link:../tsconfig
       '@types/node':
         specifier: ^22.19.19
@@ -213,11 +213,11 @@ importers:
         specifier: workspace:0.6.1
         version: link:../cli-engine
       '@prisma/composer-cli':
-        specifier: 0.22.0
-        version: 0.22.0(@prisma/cli-engine@packages+cli-engine)(@types/node@22.19.19)(@vercel/nft@1.10.2(rollup@4.62.2))(magicast@0.5.3)(mongodb@6.21.0(@aws-sdk/credential-providers@3.1107.0))(pg@8.23.0)(typescript@6.0.3)(vite@7.3.5(@types/node@22.19.19)(jiti@2.7.0)(tsx@4.22.4)(yaml@2.9.0))(vitest@4.1.8(@types/node@22.19.19)(vite@7.3.5(@types/node@22.19.19)(jiti@2.7.0)(tsx@4.22.4)(yaml@2.9.0)))(ws@8.21.0)
+        specifier: 0.23.0
+        version: 0.23.0(@prisma/cli-engine@packages+cli-engine)(@types/node@22.19.19)(@vercel/nft@1.10.2(rollup@4.62.2))(magicast@0.5.3)(mongodb@6.21.0(@aws-sdk/credential-providers@3.1107.0))(pg@8.23.0)(typescript@6.0.3)(vite@7.3.5(@types/node@22.19.19)(jiti@2.7.0)(tsx@4.22.4)(yaml@2.9.0))(vitest@4.1.8(@types/node@22.19.19)(vite@7.3.5(@types/node@22.19.19)(jiti@2.7.0)(tsx@4.22.4)(yaml@2.9.0)))(ws@8.21.0)
       '@prisma/compute-sdk':
-        specifier: 0.42.0
-        version: 0.42.0(@prisma/management-api-sdk@1.69.0)(rollup@4.62.2)
+        specifier: 0.43.0
+        version: 0.43.0(@prisma/management-api-sdk@1.69.0)(rollup@4.62.2)
       '@prisma/management-api-sdk':
         specifier: 1.69.0
         version: 1.69.0
@@ -244,16 +244,16 @@ importers:
         version: 11.0.0
     devDependencies:
       '@prisma/cli':
-        specifier: workspace:8.0.0-rc.16
+        specifier: workspace:8.0.0-rc.17
         version: link:../cli
       '@prisma/credentials-store':
         specifier: ^7.8.0
         version: 7.8.0
       '@repo/cli-telemetry':
-        specifier: workspace:8.0.0-rc.16
+        specifier: workspace:8.0.0-rc.17
         version: link:../cli-telemetry
       '@repo/tsconfig':
-        specifier: workspace:8.0.0-rc.16
+        specifier: workspace:8.0.0-rc.17
         version: link:../tsconfig
       '@types/node':
         specifier: ^22.19.19
@@ -371,10 +371,6 @@ packages:
 
   '@aws-sdk/token-providers@3.1103.0':
     resolution: {integrity: sha512-N4wy26MNn31ItGVHYHPrEuCIFY4MBBjC+C5v1lJKqIUSA7OZBdhleCY53zCCrXn27hsk7YNOaTuhQu807S4AfQ==}
-    engines: {node: '>=20.0.0'}
-
-  '@aws-sdk/types@3.974.2':
-    resolution: {integrity: sha512-3W6IUtSxFbH6X7Wb7DzGCV5QiFQsd0g8bOfntpmDxQlzBoKWUMBu/JPQR0DwkE+Hpnxd6db1tXbOwdeHddG6cA==}
     engines: {node: '>=20.0.0'}
 
   '@aws-sdk/types@3.974.6':
@@ -1305,19 +1301,19 @@ packages:
   '@oxc-project/types@0.146.0':
     resolution: {integrity: sha512-XC0QsnnhVe7sLIWmYmdPw7x5P0h4W8vUU3Nv1ySgWXtvCz8NizoAEpGXA0sOYoJQV2Rl13LgURAHQ5cI5ILCSA==}
 
-  '@prisma/composer-cli@0.22.0':
-    resolution: {integrity: sha512-PnpO5iJCkQA6nCCvcKe50KUiGa6T8y8UCn/JsI/I9BZ4lGy+Wh4I7S5gjIdFgKTwbqnohOSOa1UMbbQJ9hp02A==}
+  '@prisma/composer-cli@0.23.0':
+    resolution: {integrity: sha512-+E/x1THncSzgbAGXbmXG4iJgHCZpQASu8SwnzwB4mAt4PbtKhKQWXSFVyNv2EQXi2nuAVVCsKpP5kiWJEWXjPg==}
     engines: {node: '>=22.18.0'}
     hasBin: true
     peerDependencies:
-      '@prisma/cli-engine': 0.5.0
+      '@prisma/cli-engine': 0.6.1
 
-  '@prisma/composer@0.22.0':
-    resolution: {integrity: sha512-l1+SFEgVqd0n8ScCBTpw7TJs+pzUUUu5x2Ph+RloFIhDKiPIqARrtUJjACSK+5cBTkIC+L8vHtBb6tq1kiUJKA==}
+  '@prisma/composer@0.23.0':
+    resolution: {integrity: sha512-TL4CDydxIpeODNyo2gago29kVJIPKrRjWF2ib+kpmtY6RiktbEMDiHOt70X9Umr3GIMKa2HI+6LVp1YEqyQaIw==}
     engines: {node: '>=22.18.0'}
 
-  '@prisma/compute-sdk@0.42.0':
-    resolution: {integrity: sha512-Rtgjd5tX/5mWp+wzcar+NiyKRPTpPaPhGtvq4WtkTnJaYKGO6cH5a/P51JQ3GapTE3hnFPDWfA33QiUwFtkPHQ==}
+  '@prisma/compute-sdk@0.43.0':
+    resolution: {integrity: sha512-q5Tf5hpDFZmcS4eNeH7IU8OnavToP9h4NsrDXjW7uIZf/pjaQIWItQJi9DZHPkH8n/SvT/oHQrmzPsJ9NPW/hg==}
     engines: {node: '>=18.0.0'}
     peerDependencies:
       '@prisma/management-api-sdk': ^1.69.0
@@ -1730,10 +1726,6 @@ packages:
     resolution: {integrity: sha512-tlqY9xq5ukxTUZBmoOp+m61cqwQD5pHJtFY3Mn8CA8ps6yghLH/Hw8UPdqg4OLmFW3IFlcXnQNmo/dh8HzXYIQ==}
     engines: {node: '>=18'}
 
-  '@smithy/core@3.31.1':
-    resolution: {integrity: sha512-CyogUINxvi7C7LDsh8Syo6hVJOT9ckz4rG8dRZfTJ8r91HkMY59PnNooaj7WcHyxEkxPfBAmbgztZU+xTo76lg==}
-    engines: {node: '>=18.0.0'}
-
   '@smithy/core@3.35.0':
     resolution: {integrity: sha512-zRMhfkByhT2snNdr1si24vJitU6Cr9ix2MikUfWmkAgp4jrNP0GcKSP5YvwQ+TlI8AZXER5QOGJn3JsVtSD9/A==}
     engines: {node: '>=18.0.0'}
@@ -1756,10 +1748,6 @@ packages:
 
   '@smithy/signature-v4@5.6.12':
     resolution: {integrity: sha512-I6KLtq3H0qqSuV9vLglfi8puHqzygzWHOnI4z/Rdoo+q50vvo18vBRdPAvvEtcaKROz7Zn6qnPa14kRfPH6PcQ==}
-    engines: {node: '>=18.0.0'}
-
-  '@smithy/types@4.16.1':
-    resolution: {integrity: sha512-0JFs3V2y2M9tKW5na/qxe69Zv+uxLMO7QBbhxF/FHu/Gp2NFZAAL9tWl9PU02xxo07pb3G9FTyjNc6D5uZrJIg==}
     engines: {node: '>=18.0.0'}
 
   '@smithy/types@4.19.0':
@@ -3186,39 +3174,39 @@ snapshots:
 
   '@aws-sdk/core@3.977.6':
     dependencies:
-      '@aws-sdk/types': 3.974.2
+      '@aws-sdk/types': 3.974.6
       '@aws-sdk/xml-builder': 3.972.37
       '@aws/lambda-invoke-store': 0.3.0
-      '@smithy/core': 3.31.1
+      '@smithy/core': 3.35.0
       '@smithy/signature-v4': 5.6.12
-      '@smithy/types': 4.16.1
+      '@smithy/types': 4.19.0
       bowser: 2.14.1
       tslib: 2.8.1
 
   '@aws-sdk/credential-provider-cognito-identity@3.972.66':
     dependencies:
       '@aws-sdk/nested-clients': 3.997.41
-      '@aws-sdk/types': 3.974.2
-      '@smithy/core': 3.31.1
-      '@smithy/types': 4.16.1
+      '@aws-sdk/types': 3.974.6
+      '@smithy/core': 3.35.0
+      '@smithy/types': 4.19.0
       tslib: 2.8.1
 
   '@aws-sdk/credential-provider-env@3.972.67':
     dependencies:
       '@aws-sdk/core': 3.977.6
-      '@aws-sdk/types': 3.974.2
-      '@smithy/core': 3.31.1
-      '@smithy/types': 4.16.1
+      '@aws-sdk/types': 3.974.6
+      '@smithy/core': 3.35.0
+      '@smithy/types': 4.19.0
       tslib: 2.8.1
 
   '@aws-sdk/credential-provider-http@3.972.69':
     dependencies:
       '@aws-sdk/core': 3.977.6
-      '@aws-sdk/types': 3.974.2
-      '@smithy/core': 3.31.1
+      '@aws-sdk/types': 3.974.6
+      '@smithy/core': 3.35.0
       '@smithy/fetch-http-handler': 5.6.13
       '@smithy/node-http-handler': 4.9.13
-      '@smithy/types': 4.16.1
+      '@smithy/types': 4.19.0
       tslib: 2.8.1
 
   '@aws-sdk/credential-provider-ini@3.973.12':
@@ -3231,19 +3219,19 @@ snapshots:
       '@aws-sdk/credential-provider-sso': 3.973.11
       '@aws-sdk/credential-provider-web-identity': 3.972.73
       '@aws-sdk/nested-clients': 3.997.41
-      '@aws-sdk/types': 3.974.2
-      '@smithy/core': 3.31.1
+      '@aws-sdk/types': 3.974.6
+      '@smithy/core': 3.35.0
       '@smithy/credential-provider-imds': 4.4.16
-      '@smithy/types': 4.16.1
+      '@smithy/types': 4.19.0
       tslib: 2.8.1
 
   '@aws-sdk/credential-provider-login@3.972.74':
     dependencies:
       '@aws-sdk/core': 3.977.6
       '@aws-sdk/nested-clients': 3.997.41
-      '@aws-sdk/types': 3.974.2
-      '@smithy/core': 3.31.1
-      '@smithy/types': 4.16.1
+      '@aws-sdk/types': 3.974.6
+      '@smithy/core': 3.35.0
+      '@smithy/types': 4.19.0
       tslib: 2.8.1
 
   '@aws-sdk/credential-provider-node@3.972.78':
@@ -3254,18 +3242,18 @@ snapshots:
       '@aws-sdk/credential-provider-process': 3.972.67
       '@aws-sdk/credential-provider-sso': 3.973.11
       '@aws-sdk/credential-provider-web-identity': 3.972.73
-      '@aws-sdk/types': 3.974.2
-      '@smithy/core': 3.31.1
+      '@aws-sdk/types': 3.974.6
+      '@smithy/core': 3.35.0
       '@smithy/credential-provider-imds': 4.4.16
-      '@smithy/types': 4.16.1
+      '@smithy/types': 4.19.0
       tslib: 2.8.1
 
   '@aws-sdk/credential-provider-process@3.972.67':
     dependencies:
       '@aws-sdk/core': 3.977.6
-      '@aws-sdk/types': 3.974.2
-      '@smithy/core': 3.31.1
-      '@smithy/types': 4.16.1
+      '@aws-sdk/types': 3.974.6
+      '@smithy/core': 3.35.0
+      '@smithy/types': 4.19.0
       tslib: 2.8.1
 
   '@aws-sdk/credential-provider-sso@3.973.11':
@@ -3273,18 +3261,18 @@ snapshots:
       '@aws-sdk/core': 3.977.6
       '@aws-sdk/nested-clients': 3.997.41
       '@aws-sdk/token-providers': 3.1103.0
-      '@aws-sdk/types': 3.974.2
-      '@smithy/core': 3.31.1
-      '@smithy/types': 4.16.1
+      '@aws-sdk/types': 3.974.6
+      '@smithy/core': 3.35.0
+      '@smithy/types': 4.19.0
       tslib: 2.8.1
 
   '@aws-sdk/credential-provider-web-identity@3.972.73':
     dependencies:
       '@aws-sdk/core': 3.977.6
       '@aws-sdk/nested-clients': 3.997.41
-      '@aws-sdk/types': 3.974.2
-      '@smithy/core': 3.31.1
-      '@smithy/types': 4.16.1
+      '@aws-sdk/types': 3.974.6
+      '@smithy/core': 3.35.0
+      '@smithy/types': 4.19.0
       tslib: 2.8.1
 
   '@aws-sdk/credential-providers@3.1107.0':
@@ -3300,42 +3288,37 @@ snapshots:
       '@aws-sdk/credential-provider-sso': 3.973.11
       '@aws-sdk/credential-provider-web-identity': 3.972.73
       '@aws-sdk/nested-clients': 3.997.41
-      '@aws-sdk/types': 3.974.2
-      '@smithy/core': 3.31.1
+      '@aws-sdk/types': 3.974.6
+      '@smithy/core': 3.35.0
       '@smithy/credential-provider-imds': 4.4.16
-      '@smithy/types': 4.16.1
+      '@smithy/types': 4.19.0
       tslib: 2.8.1
 
   '@aws-sdk/nested-clients@3.997.41':
     dependencies:
       '@aws-sdk/core': 3.977.6
       '@aws-sdk/signature-v4-multi-region': 3.996.43
-      '@aws-sdk/types': 3.974.2
-      '@smithy/core': 3.31.1
+      '@aws-sdk/types': 3.974.6
+      '@smithy/core': 3.35.0
       '@smithy/fetch-http-handler': 5.6.13
       '@smithy/node-http-handler': 4.9.13
-      '@smithy/types': 4.16.1
+      '@smithy/types': 4.19.0
       tslib: 2.8.1
 
   '@aws-sdk/signature-v4-multi-region@3.996.43':
     dependencies:
-      '@aws-sdk/types': 3.974.2
+      '@aws-sdk/types': 3.974.6
       '@smithy/signature-v4': 5.6.12
-      '@smithy/types': 4.16.1
+      '@smithy/types': 4.19.0
       tslib: 2.8.1
 
   '@aws-sdk/token-providers@3.1103.0':
     dependencies:
       '@aws-sdk/core': 3.977.6
       '@aws-sdk/nested-clients': 3.997.41
-      '@aws-sdk/types': 3.974.2
-      '@smithy/core': 3.31.1
-      '@smithy/types': 4.16.1
-      tslib: 2.8.1
-
-  '@aws-sdk/types@3.974.2':
-    dependencies:
-      '@smithy/types': 4.16.1
+      '@aws-sdk/types': 3.974.6
+      '@smithy/core': 3.35.0
+      '@smithy/types': 4.19.0
       tslib: 2.8.1
 
   '@aws-sdk/types@3.974.6':
@@ -3345,7 +3328,7 @@ snapshots:
 
   '@aws-sdk/xml-builder@3.972.37':
     dependencies:
-      '@smithy/types': 4.16.1
+      '@smithy/types': 4.19.0
       tslib: 2.8.1
 
   '@aws/lambda-invoke-store@0.3.0': {}
@@ -4042,10 +4025,10 @@ snapshots:
 
   '@oxc-project/types@0.146.0': {}
 
-  '@prisma/composer-cli@0.22.0(@prisma/cli-engine@packages+cli-engine)(@types/node@22.19.19)(@vercel/nft@1.10.2(rollup@4.62.2))(magicast@0.5.3)(mongodb@6.21.0(@aws-sdk/credential-providers@3.1107.0))(pg@8.23.0)(typescript@6.0.3)(vite@7.3.5(@types/node@22.19.19)(jiti@2.7.0)(tsx@4.22.4)(yaml@2.9.0))(vitest@4.1.8(@types/node@22.19.19)(vite@7.3.5(@types/node@22.19.19)(jiti@2.7.0)(tsx@4.22.4)(yaml@2.9.0)))(ws@8.21.0)':
+  '@prisma/composer-cli@0.23.0(@prisma/cli-engine@packages+cli-engine)(@types/node@22.19.19)(@vercel/nft@1.10.2(rollup@4.62.2))(magicast@0.5.3)(mongodb@6.21.0(@aws-sdk/credential-providers@3.1107.0))(pg@8.23.0)(typescript@6.0.3)(vite@7.3.5(@types/node@22.19.19)(jiti@2.7.0)(tsx@4.22.4)(yaml@2.9.0))(vitest@4.1.8(@types/node@22.19.19)(vite@7.3.5(@types/node@22.19.19)(jiti@2.7.0)(tsx@4.22.4)(yaml@2.9.0)))(ws@8.21.0)':
     dependencies:
       '@prisma/cli-engine': link:packages/cli-engine
-      '@prisma/composer': 0.22.0(@types/node@22.19.19)(@vercel/nft@1.10.2(rollup@4.62.2))(magicast@0.5.3)(mongodb@6.21.0(@aws-sdk/credential-providers@3.1107.0))(pg@8.23.0)(typescript@6.0.3)(vite@7.3.5(@types/node@22.19.19)(jiti@2.7.0)(tsx@4.22.4)(yaml@2.9.0))(vitest@4.1.8(@types/node@22.19.19)(vite@7.3.5(@types/node@22.19.19)(jiti@2.7.0)(tsx@4.22.4)(yaml@2.9.0)))(ws@8.21.0)
+      '@prisma/composer': 0.23.0(@types/node@22.19.19)(@vercel/nft@1.10.2(rollup@4.62.2))(magicast@0.5.3)(mongodb@6.21.0(@aws-sdk/credential-providers@3.1107.0))(pg@8.23.0)(typescript@6.0.3)(vite@7.3.5(@types/node@22.19.19)(jiti@2.7.0)(tsx@4.22.4)(yaml@2.9.0))(vitest@4.1.8(@types/node@22.19.19)(vite@7.3.5(@types/node@22.19.19)(jiti@2.7.0)(tsx@4.22.4)(yaml@2.9.0)))(ws@8.21.0)
       alchemy: 2.0.0-beta.78(@types/node@22.19.19)(@vercel/nft@1.10.2(rollup@4.62.2))(effect@4.0.0-rc.115)(mongodb@6.21.0(@aws-sdk/credential-providers@3.1107.0))(pg@8.23.0)(typescript@6.0.3)(vite@7.3.5(@types/node@22.19.19)(jiti@2.7.0)(tsx@4.22.4)(yaml@2.9.0))(vitest@4.1.8(@types/node@22.19.19)(vite@7.3.5(@types/node@22.19.19)(jiti@2.7.0)(tsx@4.22.4)(yaml@2.9.0)))(ws@8.21.0)
       c12: 3.3.4(magicast@0.5.3)
       cross-spawn: 7.0.6
@@ -4076,7 +4059,7 @@ snapshots:
       - vitest
       - ws
 
-  '@prisma/composer@0.22.0(@types/node@22.19.19)(@vercel/nft@1.10.2(rollup@4.62.2))(magicast@0.5.3)(mongodb@6.21.0(@aws-sdk/credential-providers@3.1107.0))(pg@8.23.0)(typescript@6.0.3)(vite@7.3.5(@types/node@22.19.19)(jiti@2.7.0)(tsx@4.22.4)(yaml@2.9.0))(vitest@4.1.8(@types/node@22.19.19)(vite@7.3.5(@types/node@22.19.19)(jiti@2.7.0)(tsx@4.22.4)(yaml@2.9.0)))(ws@8.21.0)':
+  '@prisma/composer@0.23.0(@types/node@22.19.19)(@vercel/nft@1.10.2(rollup@4.62.2))(magicast@0.5.3)(mongodb@6.21.0(@aws-sdk/credential-providers@3.1107.0))(pg@8.23.0)(typescript@6.0.3)(vite@7.3.5(@types/node@22.19.19)(jiti@2.7.0)(tsx@4.22.4)(yaml@2.9.0))(vitest@4.1.8(@types/node@22.19.19)(vite@7.3.5(@types/node@22.19.19)(jiti@2.7.0)(tsx@4.22.4)(yaml@2.9.0)))(ws@8.21.0)':
     dependencies:
       '@effect/sql-d1': 4.0.0-rc.115(effect@4.0.0-rc.115)
       '@effect/sql-sqlite-do': 4.0.0-rc.115(effect@4.0.0-rc.115)
@@ -4114,7 +4097,7 @@ snapshots:
       - vitest
       - ws
 
-  '@prisma/compute-sdk@0.42.0(@prisma/management-api-sdk@1.69.0)(rollup@4.62.2)':
+  '@prisma/compute-sdk@0.43.0(@prisma/management-api-sdk@1.69.0)(rollup@4.62.2)':
     dependencies:
       '@prisma/management-api-sdk': 1.69.0
       '@vercel/nft': 1.10.2(rollup@4.62.2)
@@ -4412,11 +4395,6 @@ snapshots:
 
   '@sindresorhus/merge-streams@4.0.0': {}
 
-  '@smithy/core@3.31.1':
-    dependencies:
-      '@smithy/types': 4.16.1
-      tslib: 2.8.1
-
   '@smithy/core@3.35.0':
     dependencies:
       '@smithy/types': 4.19.0
@@ -4424,20 +4402,20 @@ snapshots:
 
   '@smithy/credential-provider-imds@4.4.16':
     dependencies:
-      '@smithy/core': 3.31.1
-      '@smithy/types': 4.16.1
+      '@smithy/core': 3.35.0
+      '@smithy/types': 4.19.0
       tslib: 2.8.1
 
   '@smithy/fetch-http-handler@5.6.13':
     dependencies:
-      '@smithy/core': 3.31.1
-      '@smithy/types': 4.16.1
+      '@smithy/core': 3.35.0
+      '@smithy/types': 4.19.0
       tslib: 2.8.1
 
   '@smithy/node-http-handler@4.9.13':
     dependencies:
-      '@smithy/core': 3.31.1
-      '@smithy/types': 4.16.1
+      '@smithy/core': 3.35.0
+      '@smithy/types': 4.19.0
       tslib: 2.8.1
 
   '@smithy/shared-ini-file-loader@4.7.2':
@@ -4447,12 +4425,8 @@ snapshots:
 
   '@smithy/signature-v4@5.6.12':
     dependencies:
-      '@smithy/core': 3.31.1
-      '@smithy/types': 4.16.1
-      tslib: 2.8.1
-
-  '@smithy/types@4.16.1':
-    dependencies:
+      '@smithy/core': 3.35.0
+      '@smithy/types': 4.19.0
       tslib: 2.8.1
 
   '@smithy/types@4.19.0':
