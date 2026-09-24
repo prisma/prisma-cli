@@ -197,6 +197,16 @@ No current MVP command uses `verify` or `inspect`, but new commands must still c
 
 ### Workspace session identity
 
+`auth login --ui-context prisma-plugin` changes only the browser completion
+guidance for an invocation started by the Prisma plugin. Its success page says
+“You’re connected to Prisma. Return to your ChatGPT conversation.” Its failure
+page says “Sign-in couldn’t be completed. Return to your ChatGPT conversation to
+try again.” The plugin completion page omits the skills-install command.
+Omitting the flag preserves the terminal guidance and skills-install prompt.
+The only accepted explicit value is `prisma-plugin`; other values fail argument
+validation before login starts. The context is never inferred or stored and
+does not change OAuth, consent, scopes, credential storage, or terminal output.
+
 Each `auth login` authorizes one workspace and stores one local session. Two
 sessions can belong to different Prisma users. `auth workspace list` shows the
 sessions authorized on this machine. It is not the full list of workspaces the

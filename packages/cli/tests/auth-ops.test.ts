@@ -4,10 +4,55 @@ import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 afterEach(() => {
+  vi.doUnmock("../src/auth/login");
   vi.doUnmock("../src/auth/token-storage");
   vi.doUnmock("../src/auth/guard");
   vi.resetModules();
   vi.restoreAllMocks();
+});
+
+describe("performLogin", () => {
+  it.each([
+    undefined,
+    "prisma-plugin",
+  ] as const)("propagates UI context (%s) to login without adding it to the credential", async (uiContext) => {
+    const token = encodeJwt({ workspace_id: "plugin_test" });
+    const login = vi.fn().mockImplementation(async (options) => {
+      options.onVerificationUrl?.("https://auth.example.test/authorize");
+      await options.tokenStorage.setTokens({
+        accessToken: token,
+        refreshToken: "test-refresh-token",
+      });
+    });
+    vi.doMock("../src/auth/login", async (importOriginal) => ({
+      ...(await importOriginal<typeof import("../src/auth/login")>()),
+      login,
+    }));
+    const { performLogin } = await import("../src/auth/operations");
+    const onVerificationUrl = vi.fn();
+    const signal = new AbortController().signal;
+
+    const credential = await performLogin({}, signal, {
+      uiContext,
+      onVerificationUrl,
+    });
+
+    expect(login).toHaveBeenCalledWith(
+      expect.objectContaining({
+        uiContext,
+        onVerificationUrl,
+        signal,
+      }),
+    );
+    expect(onVerificationUrl).toHaveBeenCalledWith(
+      "https://auth.example.test/authorize",
+    );
+    expect(credential).toEqual({
+      token,
+      refreshToken: "test-refresh-token",
+      expiresAt: undefined,
+    });
+  });
 });
 
 function encodeJwt(claims: Record<string, unknown>): string {

@@ -9,7 +9,10 @@ afterEach(() => {
 });
 
 describe("auth login callback", () => {
-  it("reports OAuth denial as an expected refusal without persisting credentials or reflecting callback text", async () => {
+  it.each([
+    undefined,
+    "prisma-plugin",
+  ] as const)("reports OAuth denial without persisting credentials or reflecting callback text (UI context: %s)", async (uiContext) => {
     const tokenStorage: TokenStorage = {
       getTokens: vi.fn().mockResolvedValue(null),
       setTokens: vi.fn(),
@@ -18,6 +21,7 @@ describe("auth login callback", () => {
     const { login } = await import("../src/auth/login");
     await expect(
       login({
+        uiContext,
         hostname: "127.0.0.1",
         tokenStorage,
         openUrl: async (authorizationUrl) => {
@@ -33,8 +37,10 @@ describe("auth login callback", () => {
           );
           const response = await fetch(callback);
           expect(response.status).toBe(400);
-          expect(await response.text()).not.toContain(
-            "private-callback-detail",
+          expect(await response.text()).toBe(
+            uiContext === "prisma-plugin"
+              ? "Sign-in couldn’t be completed. Return to your ChatGPT conversation to try again."
+              : "Sign-in could not be completed. Return to your terminal.",
           );
         },
       }),
@@ -51,6 +57,27 @@ describe("auth login callback", () => {
 
     expect(result.contentType).toContain("text/html; charset=utf-8");
     expect(result.body).toContain('<meta charset="utf-8">');
+  });
+
+  it.each([
+    'Acme <Corp> & "Team"',
+    undefined,
+  ])("renders plugin guidance without terminal or installation instructions (workspace: %s)", async (workspaceName) => {
+    const result = await requestSuccessPage({
+      uiContext: "prisma-plugin",
+      workspaceName,
+      ...(workspaceName ? {} : { workspaceLookupError: new Error("offline") }),
+    });
+
+    expect(result.body).toContain(
+      "You’re connected to Prisma. Return to your ChatGPT conversation.",
+    );
+    expect(result.body).not.toContain("terminal");
+    expect(result.body).not.toContain("npx skills");
+    expect(result.body).not.toContain("<script>");
+    expect(result.body).not.toContain('<section class="skills">');
+    expect(result.body).not.toContain('Acme <Corp> & "Team"');
+    expect(result.loginScope).toBe("workspace:admin offline_access");
   });
 
   it("requests the supported Management API OAuth scopes", async () => {
@@ -144,11 +171,13 @@ describe("auth login callback", () => {
         hostname: "127.0.0.1",
         tokenStorage,
         signal: controller.signal,
+        uiContext: "prisma-plugin",
         openUrl: () => {
           controller.abort(reason);
         },
       }),
     ).rejects.toBe(reason);
+    expect(tokenStorage.setTokens).not.toHaveBeenCalled();
   });
 
   it("rejects when the command signal aborts during workspace lookup", async () => {
@@ -206,6 +235,7 @@ describe("auth login callback", () => {
 });
 
 async function requestSuccessPage(options: {
+  uiContext?: "prisma-plugin";
   workspaceName?: string;
   workspaceLookupError?: Error;
 }): Promise<{
@@ -273,6 +303,7 @@ async function requestSuccessPage(options: {
   const { login } = await import("../src/auth/login");
 
   await login({
+    uiContext: options.uiContext,
     hostname: "127.0.0.1",
     tokenStorage,
     openUrl: async () => {
@@ -290,6 +321,37 @@ async function requestSuccessPage(options: {
 }
 
 describe("auth login remote paste flow", () => {
+  it("keeps the plugin attempt alive after a browser-launch failure so the emitted link can complete it", async () => {
+    let callback: Promise<Response> | undefined;
+    const onVerificationUrl = vi.fn();
+    const result = await runLogin({
+      uiContext: "prisma-plugin",
+      ttyInput: true,
+      onVerificationUrl,
+      openUrl: (redirectUri) => {
+        // Simulate opening the emitted authorization link separately, then
+        // returning to this same listener. No callback URL is pasted.
+        callback = new Promise((resolve, reject) => {
+          setImmediate(() => {
+            fetch(`${redirectUri}?code=code_123&state=state_123`).then(
+              resolve,
+              reject,
+            );
+          });
+        });
+        throw new Error("no browser available");
+      },
+    });
+
+    expect(onVerificationUrl).toHaveBeenCalledExactlyOnceWith(
+      "https://auth.example.test/login",
+    );
+    expect(result.handleCallbackCalls).toBe(1);
+    expect(await (await callback)?.text()).toContain(
+      "You’re connected to Prisma. Return to your ChatGPT conversation.",
+    );
+  });
+
   it("ends login when a pasted callback denies authorization instead of retrying", async () => {
     await expect(
       runLogin({
@@ -402,6 +464,8 @@ const PASTE_CALLBACK_URL =
   "http://localhost:9999/auth/callback?code=code_123&state=state_123";
 
 async function runLogin(options: {
+  uiContext?: "prisma-plugin";
+  onVerificationUrl?: (url: string) => void;
   ttyInput: boolean;
   openUrl: (redirectUri: string) => Promise<unknown> | unknown;
   pasteLines?: string[];
@@ -475,6 +539,8 @@ async function runLogin(options: {
 
   await login({
     hostname: "127.0.0.1",
+    uiContext: options.uiContext,
+    onVerificationUrl: options.onVerificationUrl,
     tokenStorage,
     input,
     output,

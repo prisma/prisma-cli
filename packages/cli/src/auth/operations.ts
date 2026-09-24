@@ -11,7 +11,7 @@ import type {
 } from "@prisma/management-api-sdk";
 import type { AuthStateResult } from "../types/auth";
 import { authenticatedManagementApiClient } from "./guard";
-import { AuthError, login } from "./login";
+import { AuthError, type LoginOptions, login } from "./login";
 import { FileTokenStorage } from "./token-storage";
 
 const WORKSPACE_SUB_PREFIX = "workspace:";
@@ -91,7 +91,7 @@ class ThrowawayTokenStorage implements TokenStorage {
 export async function performLogin(
   env: NodeJS.ProcessEnv,
   signal?: AbortSignal,
-  options?: { onVerificationUrl?: (url: string) => void },
+  options?: Pick<LoginOptions, "onVerificationUrl" | "uiContext">,
 ): Promise<Credential> {
   const tokenStorage = new ThrowawayTokenStorage();
   await login({
@@ -99,6 +99,7 @@ export async function performLogin(
     env,
     signal,
     onVerificationUrl: options?.onVerificationUrl,
+    uiContext: options?.uiContext,
   });
 
   const tokens = tokenStorage.tokens;
