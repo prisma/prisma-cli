@@ -54,7 +54,7 @@
     "@prisma/composer-cli": "0.22.0",
     "@prisma/compute-sdk": "0.42.0",
     "@prisma/management-api-sdk": "1.69.0",
-    "@prisma/orm-toolchain": "8.0.0-rc.11",
+    "@prisma/orm-toolchain": "8.0.0-rc.12",
     "@vercel/detect-agent": "^1.2.3",
     "better-result": "^2.9.2",
     "cross-spawn": "^7.0.6",
