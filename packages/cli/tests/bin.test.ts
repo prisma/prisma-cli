@@ -1,5 +1,5 @@
 import { tmpdir } from "node:os";
-import { dirname, join, resolve } from "node:path";
+import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { Runtime, StreamEvent } from "@prisma/cli-engine";
 import type { Diagnostic } from "@prisma/cli-engine/protocol";
@@ -544,11 +544,13 @@ describe("buildCli", () => {
 
       expect(exitCode).toBe(2);
       expect(error.code).toBe("CONFIG.FILE_MISSING");
-      // resolve, not join: composer resolves the section's relative
-      // path against this cwd, and on Windows that puts a drive on it —
-      // written to stay right for the day this runs there again.
+      // Composer resolves the section's relative path against the
+      // prisma.config.ts that declared it, not against the cwd.
       expect(error.where?.path).toBe(
-        join(resolve("/tmp/bin-test-cwd"), "named-by-the-section.config.ts"),
+        join(
+          dirname(COMPOSER_SECTION_CONFIG_PATH),
+          "named-by-the-section.config.ts",
+        ),
       );
       expect(error.why).toContain("there is no walk to fall back on");
     },
