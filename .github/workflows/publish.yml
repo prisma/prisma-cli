@@ -96,13 +96,8 @@ jobs:
           pnpm test:scripts
           pnpm check:conformance
 
-      # The engine has no dev channel (ADR 0004: its line carries no
-      # pre-releases), so the dev stamp leaves its manifest alone and
-      # this run holds its committed version. Publishing it here, under
-      # `latest`, is the same rule the other packages follow — a merged
-      # version bump publishes that version under `latest` — applied at
-      # the engine's own bump, which is the first run to carry it. An
-      # already-published engine version is a no-op.
+      # Never a dev build of the engine: the families peer it at an exact
+      # release version, so a dev-stamped engine would satisfy none of them.
       - name: Publish the engine release
         if: ${{ github.event_name != 'workflow_dispatch' || github.event.inputs.dry-run != 'true' }}
         env:
