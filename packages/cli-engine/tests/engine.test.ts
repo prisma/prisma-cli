@@ -43,6 +43,7 @@ describe("main export", () => {
       "positional",
       "readActiveAccessToken",
       "realpathOr",
+      "reference",
       "resolveSectionOverChain",
       "resolveSectionPath",
       "telemetryCommandGroup",

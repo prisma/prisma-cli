@@ -5,12 +5,17 @@ import type { SectionValidation } from "./config-section";
 import type { Diagnostic } from "./protocol";
 
 /**
- * The provenance of the section being validated, published for the
- * duration of one synchronous schema run so the `path` keyword can
- * resolve each value against the file that declared its top-level key.
+ * The section being validated, published for the duration of one
+ * synchronous schema run: its provenance, so the `path` keyword can resolve
+ * each value against the file that declared its top-level key, and the
+ * values the schema declared references, so the clone keeps them.
  */
 let current:
-  | { readonly name: string; readonly provenance: SectionProvenance }
+  | {
+      readonly name: string;
+      readonly provenance: SectionProvenance;
+      readonly references: WeakSet<object>;
+    }
   | undefined;
 
 /** The file that declared the top-level key a value sits under, else the nearest file. */
@@ -60,7 +65,11 @@ const configScope = scope(
   },
   {
     clone: <original extends object>(original: original): original =>
-      copyPlainParts(original, new Map()) as original,
+      copyExceptReferences(
+        original,
+        current?.references,
+        new Map(),
+      ) as original,
   },
 );
 
@@ -109,20 +118,18 @@ function isPlainObject(value: unknown): value is Record<string, unknown> {
 
 /**
  * Before arktype applies a morph it clones the value, so resolving a path or
- * applying a default never writes into what the caller passed in. Its own
- * clone rebuilds every object it reaches. A config file's objects cannot
- * survive that: a codec table, a contract serializer, anything whose
- * behaviour lives in the instance rather than in its keys comes back as a
- * lookalike that no longer works.
- *
- * So the scope above clones through arktype's `clone` option instead, and
- * rebuilds only the plain objects and arrays a schema can write into.
- * Everything else a config file constructed reaches the command as the file
- * built it. `seen` carries the copies made so far, so a value that refers
- * back to itself is copied once rather than followed forever.
+ * applying a default never writes into what the caller passed in. The scope
+ * above supplies the clone through arktype's `clone` option: it copies every
+ * value except the ones the schema declared with {@link reference}, which
+ * reach the command as the config file built them. `seen` carries the copies
+ * made so far, so a value that refers back to itself is copied once.
  */
-function copyPlainParts(value: unknown, seen: Map<object, unknown>): unknown {
-  if (!Array.isArray(value) && !isPlainObject(value)) {
+function copyExceptReferences(
+  value: unknown,
+  references: WeakSet<object> | undefined,
+  seen: Map<object, unknown>,
+): unknown {
+  if (typeof value !== "object" || value === null || references?.has(value)) {
     return value;
   }
   const copied = seen.get(value);
@@ -133,19 +140,55 @@ function copyPlainParts(value: unknown, seen: Map<object, unknown>): unknown {
     const elements: unknown[] = [];
     seen.set(value, elements);
     for (const element of value) {
-      elements.push(copyPlainParts(element, seen));
+      elements.push(copyExceptReferences(element, references, seen));
     }
     return elements;
   }
-  const entries: Record<PropertyKey, unknown> = {};
-  seen.set(value, entries);
+  const copy: Record<PropertyKey, unknown> = Object.create(
+    Object.getPrototypeOf(value),
+  );
+  seen.set(value, copy);
   for (const key of Reflect.ownKeys(value)) {
-    entries[key] = copyPlainParts(
+    copy[key] = copyExceptReferences(
       (value as Record<PropertyKey, unknown>)[key],
+      references,
       seen,
     );
   }
-  return entries;
+  return copy;
+}
+
+/**
+ * Declares a value the config file constructs, such as a descriptor, a
+ * client or any class instance: validation checks it against `schema`, and
+ * the command receives the file's own object, never a copy. Every value not
+ * declared this way is copied before arktype writes into the section.
+ *
+ * ```ts
+ * const toySchema = configSchema({
+ *   target: reference(configSchema({ kind: "'target'", id: "string" })),
+ *   "out?": "path",
+ * });
+ * ```
+ *
+ * `schema` cannot contain a `path` or a default: resolving one would write
+ * into the config file's own object, so such a schema is refused here.
+ */
+export function reference<S extends ConfigSchema>(schema: S): S {
+  if (schema.in.expression !== schema.expression) {
+    throw new Error(
+      `@prisma/cli-engine: a reference cannot contain a path or a default, because resolving it would write into the config file's own object: ${schema.expression}`,
+    );
+  }
+  return schema.narrow((value) => {
+    if (
+      (typeof value === "object" && value !== null) ||
+      typeof value === "function"
+    ) {
+      current?.references.add(value);
+    }
+    return true;
+  }) as S;
 }
 
 function fieldDiagnostic(
@@ -195,7 +238,7 @@ export function validateSectionWithSchema<S extends ConfigSchema>(
     };
   }
   const previous = current;
-  current = { name, provenance };
+  current = { name, provenance, references: new WeakSet() };
   try {
     const out: unknown = schema(raw === undefined ? {} : raw);
     if (out instanceof type.errors) {

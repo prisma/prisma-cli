@@ -11,6 +11,7 @@ import {
   defineCommand,
   defineConfigSection,
   loadConfig,
+  reference,
   type SectionProvenance,
   validateSectionWithSchema,
 } from "@prisma/cli-engine";
@@ -168,17 +169,17 @@ describe("validateSectionWithSchema", () => {
     expect(dir).toBe("/app");
   });
 
-  test("what a config file constructed reaches the command working, frozen section or not", () => {
+  test("a value declared a reference is the config file's own object, frozen section or not", () => {
     class Serializer {
       deserialize(json: unknown): unknown {
         return json;
       }
     }
-    const checkedOnly = configSchema("object").narrow(() => true);
+    const constructed = reference(configSchema("object"));
     const schema = configSchema({
-      target: checkedOnly,
-      "contract?": { source: checkedOnly, "output?": "path" },
-      "extensions?": [checkedOnly, "[]"],
+      target: constructed,
+      "contract?": { source: constructed, "output?": "path" },
+      "extensions?": [constructed, "[]"],
       migrations: [
         { dir: ["path", "=", () => "./migrations"] },
         "=",
@@ -194,12 +195,10 @@ describe("validateSectionWithSchema", () => {
         return this.kind;
       },
     });
+    const source = Object.freeze({ load });
     const raw = Object.freeze({
       target,
-      contract: Object.freeze({
-        source: Object.freeze({ load }),
-        output: "./out.json",
-      }),
+      contract: Object.freeze({ source, output: "./out.json" }),
       extensions: Object.freeze([target]),
     });
 
@@ -212,10 +211,10 @@ describe("validateSectionWithSchema", () => {
       extensions: (typeof target)[];
       migrations: { dir: string };
     };
-    expect(value.target.serializer).toBe(serializer);
+    expect(value.target).toBe(target);
     expect(value.target.create()).toBe("target");
-    expect(value.contract.source.load).toBe(load);
-    expect(value.extensions[0].serializer).toBe(serializer);
+    expect(value.contract.source).toBe(source);
+    expect(value.extensions[0]).toBe(target);
     expect(value.contract.output).toBe("/app/out.json");
     expect(value.migrations.dir).toBe("/app/migrations");
   });
@@ -256,10 +255,9 @@ describe("validateSectionWithSchema", () => {
     expect(value.out).toBe("/app/o");
   });
 
-  test("a checked-only value survives a section whose root has a narrow and defaults", () => {
-    const checkedOnly = configSchema("object").narrow(() => true);
+  test("a reference survives a section whose root has a narrow and defaults", () => {
     const schema = configSchema({
-      family: checkedOnly,
+      family: reference(configSchema("object")),
       migrations: [
         { dir: ["path", "=", () => "./migrations"] },
         "=",
@@ -272,10 +270,7 @@ describe("validateSectionWithSchema", () => {
     const result = validateSectionWithSchema("toy", schema, { family }, single);
 
     if (!result.ok) throw new Error(JSON.stringify(result.diagnostics));
-    expect((result.value as { family: typeof family }).family).toEqual(family);
-    expect((result.value as { family: typeof family }).family.create).toBe(
-      create,
-    );
+    expect((result.value as { family: typeof family }).family).toBe(family);
     expect(
       (result.value as { migrations: { dir: string } }).migrations.dir,
     ).toBe("/app/migrations");
@@ -305,13 +300,12 @@ describe("validateSectionWithSchema", () => {
     expect(value.out).toBe("/app/o");
   });
 
-  test("a union resolves paths in the branch the value matches, keeping the rest", () => {
-    const checkedOnly = configSchema("object").narrow(() => true);
+  test("a union resolves paths in the branch the value matches, and keeps its references", () => {
     const schema = configSchema({
       either: [
         { kind: "'a'", "dir?": "path" },
         "|",
-        { kind: "'b'", inner: checkedOnly },
+        { kind: "'b'", inner: reference(configSchema("object")) },
       ],
     });
     const inner = { keep: () => 1 };
@@ -337,11 +331,11 @@ describe("validateSectionWithSchema", () => {
     ).toBe(inner);
   });
 
-  test("a tuple resolves paths by position, prefix and postfix alike", () => {
-    const checkedOnly = configSchema("object").narrow(() => true);
+  test("a tuple resolves paths and keeps references by position, prefix and postfix alike", () => {
+    const when = reference(configSchema("Date"));
     const schema = configSchema({
-      pair: ["path", checkedOnly],
-      tail: ["path", "...", "object[]", "path"],
+      pair: ["path", when],
+      tail: ["path", "...", [when, "[]"], "path"],
     });
     const second = new Date(1);
     const middle = new Date(2);
@@ -469,13 +463,34 @@ describe("validateSectionWithSchema", () => {
     expect("c" in deeper).toBe(false);
   });
 
-  test("a value that is not a plain object keeps its identity and data", () => {
-    const schema = configSchema({ when: "Date" });
-    const when = new Date(0);
+  test("a value not declared a reference is copied, even one the config file constructed", () => {
+    class Box {
+      constructor(readonly n: number) {}
+    }
+    const schema = configSchema({ box: "object", "out?": "path" });
+    const box = new Box(1);
 
-    const result = validateSectionWithSchema("toy", schema, { when }, single);
+    const result = validateSectionWithSchema(
+      "toy",
+      schema,
+      { box, out: "./o" },
+      single,
+    );
 
-    expect(result.ok && result.value.when).toBe(when);
+    if (!result.ok) throw new Error(JSON.stringify(result.diagnostics));
+    const value = result.value as { box: Box; out: string };
+    expect(value.box).not.toBe(box);
+    expect(value.box).toBeInstanceOf(Box);
+    expect(value.box.n).toBe(1);
+  });
+
+  test("a reference cannot contain a path or a default", () => {
+    expect(() => reference(configSchema({ dir: "path" }))).toThrow(
+      "a reference cannot contain a path or a default",
+    );
+    expect(() => reference(configSchema({ n: "number = 1" }))).toThrow(
+      "a reference cannot contain a path or a default",
+    );
   });
 
   test("a validation started by a morph inside another does not lose the outer context", () => {
