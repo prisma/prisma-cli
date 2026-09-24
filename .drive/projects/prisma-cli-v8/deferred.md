@@ -134,7 +134,12 @@ composer can use it.
 Running the shipped `prisma` binary against a scratch directory, rather than the ORM family through the test harness, turns up three things. The first is a defect a user hits on their first command.
 
 - **`prisma orm init` scaffolds a project the `prisma` binary cannot read.** It writes `prisma-next.config.ts` — the standalone `prisma-next` bin's config file — and then fails its own last step, `Emit the contract`, with exit 5 and `Config is not a defineConfig result`. Nine files are already on disk at that point. Running any ORM command afterwards fails again, differently: the mounted family reads its configuration from an `orm` section of `prisma.config.ts` (`ormConfigSection`, `packages/1-framework/3-tooling/cli/src/orm/config-section.ts` in prisma/prisma), so it reports `CLI.CONFIG_SECTION_INVALID` and `CONFIG.FILE_NOT_FOUND` — "The orm config section is absent, so prisma-next.config.ts was never evaluated." So `prisma orm init && prisma contract emit` cannot work, and the two config surfaces have different shapes: the section nests the whole config under `orm`, while the scaffolded file exports a `defineConfig` result. Which side moves is the ORM's call; that it is broken today is not in question.
+- **Loading a hand-written `prisma.config.ts` failed with `Cannot find package 'pathe'`**, imported by `c12` from `packages/cli-engine/node_modules/c12`. **Settled 2026-08-18: it does not reproduce from a packed tarball.** The conformance sandbox (`.conformance/cli/sandbox`, the packed `@prisma/cli` + engine tarballs installed with npm) evaluates a hand-written `prisma.config.ts` correctly: an unknown top-level key answers `CLI.CONFIG_UNKNOWN_SECTION` naming the key, and an `orm` section reaches that section's validator — both require c12 to have evaluated the file. So the pathe failure is what it looked like: a pnpm layout artifact of running the built binary from inside the monorepo, not a shipping defect. (Observed while checking: jiti evaluates a config whose relative import cannot resolve rather than failing — c12/jiti behavior, noted, not chased.)
 - **The e2e coverage convention excludes all 22 ORM commands on reasoning #171 disproved.** `tests/e2e-coverage.test.ts` excuses them with "Real e2e lives in prisma/prisma (R7); the shell proves composition in orm-mount.test.ts (R8)." prisma/prisma's suite passed throughout the presentations change while the assembled binary exited 2, and `orm-mount.test.ts` proves composition for exactly one command, `migration list`, not per family. The operator's ruling (2026-08-13) is that every mounted command needs a happy path in this repo, precisely because the product repos cannot reproduce the assembled CLI. The exclusion should become a backlog entry once the first item above is fixed and the commands can run at all.
+
+## The domain commands' branch default is a name no project has (found writing the e2e happy paths, verified against the API 2026-08-18)
+
+- **`service domain add` without `--branch` reports `SERVICE.SELECTION_INVALID` for a service that exists.** Root cause pinned: `resolveServiceDomainTarget` in `packages/cli/src/commands/service/target.ts` (the `?? "production"` default, still present after the command-grammar rework) defaults the branch to the literal name `"production"` and passes it as a filter to `listServices`; a project's production branch is actually named `main`, so the filtered listing is empty and the explicitly named service is judged missing. Verified against the real API on a fresh service: no `--branch` and `--branch production` both answer `SELECTION_INVALID` — "Selected service does not exist in the resolved project" — while `--branch main` proceeds to the genuine next refusal (`SERVICE.NO_DEPLOYMENTS` undeployed, the DNS check when deployed). The error also misreports the cause: the service exists, the branch doesn't. Same family as the name-vs-role bug below (`toBranchKind`); the fix is to resolve the production branch by role from the API's branch records rather than by literal name, which would repair both.
 
 ## A live bug carried out of the port (found closing PR #92, 2026-08-12)
 
@@ -385,21 +390,17 @@ CLI does not do, and each restarts as engine work if wanted:
   that later date, not deleted** — R-S8-5's "provided live streaming can
   be added at a later date" is still the standing commitment, and this
   slice is what it was traded against.
-- **The e2e suite should assert the real service-id prefix.** D2 wrote
-  `e2e/service.e2e.ts` without credentials to run it, so it asserts only
-  that `service create` reports a non-empty id. The sibling suites assert
-  real prefixes (`bkt_`, `db_`) because their authors could see one.
-  Whoever first runs this suite green should read the id the API actually
-  returns and tighten the assertion to match, as `bucket.e2e.ts` does.
-- **`service show` can have a real e2e now, and should.** It sat on the
-  `AWAITING_COVERAGE` backlog because the whole `service` family was
-  assumed to need a deployed service. `service create` falsified that:
-  `service show` works against a service that has never been promoted —
-  D1's own unit test asserts that case. Adding it to `e2e/service.e2e.ts`
-  alongside `create`/`list`/`remove` is a small job and removes the entry
-  rather than re-explaining it. The `service domain *` entries look like
-  the same case (they attach a domain to a service, not to a deployment)
-  and are worth checking at the same time.
+- **The e2e suite should assert the real service-id prefix.** DONE
+  (2026-08-18): the API returns `cps_`-prefixed ids, and
+  `e2e/service.e2e.ts` now asserts `/^cps_/` the way `bucket.e2e.ts`
+  asserts `bkt_`.
+- **`service show` can have a real e2e now, and should.** DONE: it runs
+  in `e2e/service.e2e.ts` alongside `create`/`list`/`remove` and is off
+  the `AWAITING_COVERAGE` backlog. The `service domain *` prediction in
+  this entry turned out wrong twice over: the domain commands DO need a
+  promoted deployment (`SERVICE.NO_DEPLOYMENTS` without one), and their
+  DNS check needs a hostname the test account controls, which is why
+  they remain on the backlog.
 
 ## Composer's public surface — ruled, closed
 
