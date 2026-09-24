@@ -25,6 +25,8 @@ export class AuthError extends Error {
 }
 
 export interface LoginOptions {
+  /** Presentation only, scoped to this invocation; never stored with tokens. */
+  uiContext?: "prisma-plugin";
   tokenStorage?: TokenStorage;
   clientId?: string;
   apiBaseUrl?: string;
@@ -115,7 +117,7 @@ export async function login(options: LoginOptions = {}): Promise<void> {
           // success page anyway so a late browser callback isn't left dangling.
           const workspaceName = await state.resolveWorkspaceName();
           res.setHeader("Content-Type", "text/html; charset=utf-8");
-          res.end(renderSuccessPage(workspaceName));
+          res.end(renderSuccessPage(workspaceName, options.uiContext));
           return;
         }
 
@@ -123,7 +125,7 @@ export async function login(options: LoginOptions = {}): Promise<void> {
           await completeOnce(url);
           const workspaceName = await state.resolveWorkspaceName();
           res.setHeader("Content-Type", "text/html; charset=utf-8");
-          res.end(renderSuccessPage(workspaceName));
+          res.end(renderSuccessPage(workspaceName, options.uiContext));
           settle(resolve);
         } catch (error) {
           res.statusCode = 400;
@@ -133,7 +135,11 @@ export async function login(options: LoginOptions = {}): Promise<void> {
           // process does not control. The operator still sees the real
           // error: it is what this promise rejects with.
           res.setHeader("Content-Type", "text/plain; charset=utf-8");
-          res.end("Sign-in could not be completed. Return to your terminal.");
+          res.end(
+            options.uiContext === "prisma-plugin"
+              ? "Sign-in couldn’t be completed. Return to your ChatGPT conversation to try again."
+              : "Sign-in could not be completed. Return to your terminal.",
+          );
           settle(() => reject(error));
           return;
         }
@@ -401,10 +407,16 @@ class LoginState {
   }
 }
 
-function renderSuccessPage(workspaceName: string | null): string {
-  const body = workspaceName
+function renderSuccessPage(
+  workspaceName: string | null,
+  uiContext?: LoginOptions["uiContext"],
+): string {
+  let body = workspaceName
     ? `Your terminal is now connected to your ${escapeHtml(workspaceName)} workspace. Head back to your terminal to continue.`
     : "Your terminal is now connected to your Prisma workspace. Head back to your terminal to continue.";
+  if (uiContext === "prisma-plugin") {
+    body = "You’re connected to Prisma. Return to your ChatGPT conversation.";
+  }
 
   return `<!doctype html>
 <html lang="en">
@@ -580,7 +592,10 @@ function renderSuccessPage(workspaceName: string | null): string {
   <main>
     <h1>You're all set.</h1>
     <p>${body}</p>
-    <section class="skills">
+    ${
+      uiContext === "prisma-plugin"
+        ? ""
+        : `<section class="skills">
       <div class="skills-lead">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9.937 15.5A2 2 0 0 0 8.5 14.063l-6.135-1.582a.5.5 0 0 1 0-.962L8.5 9.936A2 2 0 0 0 9.937 8.5l1.582-6.135a.5.5 0 0 1 .963 0L14.063 8.5A2 2 0 0 0 15.5 9.937l6.135 1.581a.5.5 0 0 1 0 .964L15.5 14.063a2 2 0 0 0-1.437 1.437l-1.582 6.135a.5.5 0 0 1-.963 0z"/><path d="M20 3v4"/><path d="M22 5h-4"/></svg>
         Using an AI coding agent? Add the Prisma skills:
@@ -593,9 +608,13 @@ function renderSuccessPage(workspaceName: string | null): string {
         </button>
       </div>
       <span class="visually-hidden skills-status" role="status"></span>
-    </section>
+    </section>`
+    }
   </main>
-  <script>
+  ${
+    uiContext === "prisma-plugin"
+      ? ""
+      : `<script>
     (() => {
       const command = "npx skills add prisma/skills";
       const button = document.querySelector(".copy");
@@ -624,7 +643,8 @@ function renderSuccessPage(workspaceName: string | null): string {
         }, 2000);
       });
     })();
-  </script>
+  </script>`
+  }
 </body>
 </html>`;
 }

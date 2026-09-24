@@ -1,6 +1,7 @@
 import {
   credentialWorkspaceId,
   defineCommand,
+  flag,
   type Presentations,
   type Session,
 } from "@prisma/cli-engine";
@@ -120,13 +121,22 @@ function presentationsFor(
 
 export const authLoginCommand = defineCommand({
   managesCredentials: true,
+  args: {
+    flags: {
+      uiContext: flag.enum({
+        values: ["prisma-plugin"],
+        brief:
+          "Show browser completion guidance for the Prisma plugin in ChatGPT (default: terminal guidance)",
+      }),
+    },
+  },
   help: {
     summary: "Log in to your Prisma platform account",
     description:
       "Opens a browser sign-in and stores a session for one workspace, the account-level container that holds your Projects. Run it again to add a session for another workspace; 'auth workspace use' switches between stored sessions. In CI or other non-interactive environments, skip login and set PRISMA_SERVICE_TOKEN instead.",
     examples: ["auth login"],
   },
-  handler: async (_args, ctx) => {
+  handler: async (args, ctx) => {
     // A blank service token is the single blank-token error, raised
     // before the browser opens rather than after a credential is minted.
     const environmentSession = environmentCredentialInForce(ctx.env);
@@ -134,6 +144,7 @@ export const authLoginCommand = defineCommand({
     let session: Session;
     try {
       const credential = await performLogin(ctx.env, ctx.signal, {
+        uiContext: args.flags.uiContext,
         onVerificationUrl: (url) =>
           ctx.report({ kind: "endpoint", name: "verification", url }),
       });

@@ -172,6 +172,50 @@ beforeEach(() => {
 });
 
 describe("auth login", () => {
+  it.each([
+    undefined,
+    "prisma-plugin",
+  ] as const)("passes the explicit UI context (%s) without storing it in the session", async (uiContext) => {
+    vi.mocked(performLogin).mockResolvedValue(credentialFor("plugin_test"));
+    const cli = makeCli();
+    const result = await cli.run([
+      "auth",
+      "login",
+      ...(uiContext ? ["--ui-context", uiContext] : []),
+      "--json",
+    ]);
+
+    expect(result.exitCode).toBe(0);
+    expect(performLogin).toHaveBeenCalledWith(
+      expect.any(Object),
+      expect.any(AbortSignal),
+      { uiContext, onVerificationUrl: expect.any(Function) },
+    );
+    expect(cli.credentialManager?.state().selectedWorkspaceId).toBe(
+      "plugin_test",
+    );
+    expect(JSON.stringify(cli.credentialManager?.state())).not.toContain(
+      "uiContext",
+    );
+    expect(JSON.stringify(resultOf(result))).not.toContain("uiContext");
+  });
+
+  it.each([
+    ["unknown"],
+    [],
+  ])("rejects an invalid or missing UI context value before starting login: %j", async (...values) => {
+    const result = await makeCli().run([
+      "auth",
+      "login",
+      "--json",
+      "--ui-context",
+      ...values,
+    ]);
+
+    expect(result.exitCode).not.toBe(0);
+    expect(performLogin).not.toHaveBeenCalled();
+  });
+
   it("creates the session for the workspace the credential names", async () => {
     const credential = credentialFor("ws_1");
     vi.mocked(performLogin).mockResolvedValue(credential);
