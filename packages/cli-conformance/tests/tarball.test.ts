@@ -145,6 +145,34 @@ describe("checkTarball", () => {
     expect(pins.every((f) => f.suppressedBy !== undefined)).toBe(true);
   });
 
+  test("an exception limited to the dev channel covers a dev publish and not a release", async () => {
+    const devOnly = {
+      familyPackage: "@prisma/composer",
+      familyPin: "0.0.9",
+      shellPin: "8.0.0-rc.1",
+      reason: "the dev channel installs the family's dev build",
+      removeWhen: "the family releases against the shell's engine",
+      channel: "dev" as const,
+    };
+    const pinsOf = (
+      findings: readonly { kind: string; suppressedBy?: unknown }[],
+    ) => findings.filter((f) => f.kind === "engine-pin-mismatch");
+
+    const dev = await checkTarball(
+      input({ channel: "dev", exceptions: [devOnly] }),
+      fakeIo(),
+    );
+    const release = await checkTarball(
+      input({ channel: "release", exceptions: [devOnly] }),
+      fakeIo(),
+    );
+
+    expect(pinsOf(dev).every((f) => f.suppressedBy !== undefined)).toBe(true);
+    expect(pinsOf(release).some((f) => f.suppressedBy === undefined)).toBe(
+      true,
+    );
+  });
+
   test("the exception does not cover the same family arriving at a third version", async () => {
     const findings = await checkTarball(
       input({

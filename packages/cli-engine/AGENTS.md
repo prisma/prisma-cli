@@ -8,13 +8,13 @@ Config section schemas (`configSchema`, the `path` keyword, `validateSectionWith
 
 Before you write code that walks a schema, copies values around validation, or repairs arktype's output afterwards, read the arktype docs at https://arktype.io/docs, in particular Configuration, Morphs and Scopes. arktype has documented options for most problems that look like they need bespoke code. Never read arktype's compiled node tree (`schema.internal`, `.structure`, `.branches`, `.in`): it is not a public API.
 
-This engine once shipped a copy-and-restore walk over that node tree, about 200 lines, to stop arktype rebuilding the objects a config file built. arktype's documented `clone` option replaced it with about twenty.
+This engine once shipped a copy-and-restore walk over that node tree, about 200 lines, to stop arktype rebuilding the objects a config file built. arktype's documented `clone` option, with references declared in the schema, replaced it.
 
 ### What a transformation does to its input
 
 - A morph is any transformation: `.pipe()`, `=>`, or a default value. When at least one morph applies anywhere in a value, arktype clones the whole input first and writes each result into the clone. Without morphs, validation returns the input itself.
 - The default clone keeps prototypes but rebuilds every plain object and class instance. Identity is lost, private `#fields` are lost, and `===` checks against shared objects fail. Functions, `Map` and `Set` are kept as they are.
-- The clone is the `clone` config option. `configScope` sets it to `copyPlainParts`, which copies only plain objects and arrays, so everything else a config file constructed reaches the command unchanged. Keep it: a family's config objects must not be rebuilt.
+- The clone is the `clone` config option. `configScope` sets it to `copyExceptReferences`, which copies every value except those the schema declared with `reference(schema)`. A section schema must declare as a reference every value the config file constructs (descriptors, clients, class instances); anything else is copied. `reference` records each value it validates in the current validation's set of references, and arktype runs those checks before it clones.
 - `clone: false` writes into the caller's input and throws on frozen input. `structuredClone` throws on functions and drops prototypes. Neither is a substitute.
 
 ### Other behaviour the config schemas rely on
@@ -23,3 +23,4 @@ This engine once shipped a copy-and-restore walk over that node tree, about 200 
 - In `.pipe((value, ctx) => ...)`, `ctx.path` is the key path of the value within the section. The `path` keyword uses its first key to find the config file that declared the value.
 - A path given to `ctx.error` or `ctx.reject` inside a `.narrow()` is taken from the root, not from the narrowed value. Prepend `ctx.path` to report under the narrowed value, or better, declare the fields so arktype reports each one itself.
 - Undeclared keys are kept by default, and missing keys are reported in alphabetical order.
+- A reference cannot contain a `path` or a default: `reference` compares `schema.in.expression` with `schema.expression`, which differ when the schema transforms, and throws when the schema is defined.

@@ -60,6 +60,7 @@ export {
   type ConfigSchema,
   type ConfigSchemaValue,
   configSchema,
+  reference,
   validateSectionWithSchema,
 } from "../config-schema";
 export {

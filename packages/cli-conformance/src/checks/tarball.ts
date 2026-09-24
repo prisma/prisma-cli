@@ -78,6 +78,8 @@ export interface PinException extends Suppression {
   readonly familyPackage: string;
   readonly familyPin: string;
   readonly shellPin: string;
+  /** Limits the exception to one channel, such as a family's dev build that only the dev channel installs. */
+  readonly channel?: PublishChannel;
 }
 
 export interface TarballInput {
@@ -187,7 +189,7 @@ export async function checkTarball(
     // biome-ignore lint/performance/noAwaitInLoops: sandboxes install one at a time so a failure names its package and concurrent npm installs cannot confound each other
     findings.push(...(await sandboxFindings(input, name, entry, packed, io)));
   }
-  return applyExceptions(findings, input.exceptions);
+  return applyExceptions(findings, input.exceptions, input.channel);
 }
 
 /**
@@ -498,16 +500,22 @@ async function installedPinFindings(
 /**
  * A mismatch covered by a recorded exception is suppressed but still
  * printed. Every pin finding in a run whose observed shell and family
- * pins match the exception's triple is covered; anything else fails.
+ * pins match the exception's triple is covered; anything else fails. An
+ * exception that names a channel covers only runs for that channel.
  */
 function applyExceptions(
   findings: readonly Finding[],
   exceptions: readonly PinException[],
+  channel: PublishChannel,
 ): readonly Finding[] {
-  if (exceptions.length === 0) return findings;
+  const applicable = exceptions.filter(
+    (exception) =>
+      exception.channel === undefined || exception.channel === channel,
+  );
+  if (applicable.length === 0) return findings;
   return findings.map((entry) => {
     if (entry.kind !== "engine-pin-mismatch") return entry;
-    const covering = exceptions.find(
+    const covering = applicable.find(
       (exception) =>
         entry.summary.includes(exception.familyPin) &&
         entry.summary.includes(exception.shellPin) &&
