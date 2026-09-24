@@ -101,8 +101,9 @@ export type ConfigSchema<T = unknown> = Type<T, typeof configScope.t>;
 /**
  * The validated value a schema produces: its output type plus `baseDir`,
  * the directory of the nearest file declaring the section, which the engine
- * adds to a plain-object value. `baseDir` is reserved: a schema may not
- * declare it and a config file may not write it.
+ * adds to a plain-object value that is not a {@link reference}. `baseDir`
+ * is reserved: a schema may not declare it and a config file may not write
+ * it.
  */
 export type ConfigSchemaValue<S extends ConfigSchema> = S["infer"] & {
   readonly baseDir?: string;
@@ -221,7 +222,9 @@ function fieldDiagnostic(
  * section is validated as an empty object, so a schema whose fields are
  * all optional accepts it and a required field is reported by name. A
  * plain-object value comes back frozen and carrying `baseDir`, the
- * directory of the nearest file declaring the section. Never throws for
+ * directory of the nearest file declaring the section, unless the whole
+ * section is a reference, which comes back as the file's own object. Never
+ * throws for
  * any input: arktype reports problems as errors, and a `path` value is
  * only ever resolved here.
  */
@@ -238,7 +241,8 @@ export function validateSectionWithSchema<S extends ConfigSchema>(
     };
   }
   const previous = current;
-  current = { name, provenance, references: new WeakSet() };
+  const references = new WeakSet<object>();
+  current = { name, provenance, references };
   try {
     const out: unknown = schema(raw === undefined ? {} : raw);
     if (out instanceof type.errors) {
@@ -251,7 +255,7 @@ export function validateSectionWithSchema<S extends ConfigSchema>(
     }
     const nearest = provenance.files[0];
     const value =
-      isPlainObject(out) && nearest !== undefined
+      isPlainObject(out) && nearest !== undefined && !references.has(out)
         ? Object.freeze({ ...out, baseDir: dirname(nearest) })
         : out;
     return { ok: true, value: value as ConfigSchemaValue<S>, diagnostics: [] };

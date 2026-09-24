@@ -484,6 +484,15 @@ describe("validateSectionWithSchema", () => {
     expect(value.box.n).toBe(1);
   });
 
+  test("a section whose whole value is a reference is the file's own object", () => {
+    const schema = reference(configSchema("object"));
+    const section = { client: { connect: () => 1 } };
+
+    const result = validateSectionWithSchema("toy", schema, section, single);
+
+    expect(result.ok && result.value).toBe(section);
+  });
+
   test("a reference cannot contain a path or a default", () => {
     expect(() => reference(configSchema({ dir: "path" }))).toThrow(
       "a reference cannot contain a path or a default",
