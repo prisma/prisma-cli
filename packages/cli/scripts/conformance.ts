@@ -133,6 +133,7 @@ async function tarball(): Promise<readonly Finding[]> {
             "the dev channel installs composer-cli's dev build, which peers engine 0.5.0; engine 0.6.1 must publish before composer-cli can peer it",
           removeWhen:
             "composer-cli releases peering 0.6.1 and the follow-up bump PR pins that release",
+          channel: "dev",
         },
         {
           familyPackage: "@prisma/orm-toolchain",
