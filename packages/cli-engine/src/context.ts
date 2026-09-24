@@ -219,10 +219,10 @@ export interface PromptSurface {
    * `token` is the natural noun of what is being consented to — an app
    * name, a hostname. Supplying one changes both halves of the prompt:
    * interactively the user must type the token exactly instead of
-   * answering yes/no, and non-interactively the consent is granted by
-   * `--confirm <token>` on the command line (one `--confirm` value per
-   * consent). Without a token there is no non-interactive way to
-   * consent at all.
+   * answering yes/no, and `--confirm <token>` on the command line grants
+   * the consent up front in any session, so no prompt is shown (one
+   * `--confirm` value per consent). Without a token there is no
+   * non-interactive way to consent at all.
    */
   readonly consent: (
     question: string,

@@ -99,6 +99,36 @@ describe("consent tokens", () => {
     expect(errorOf(result)?.summary).toContain("exactly prod-db");
   });
 
+  test("--confirm with the token grants the consent interactively without prompting", async () => {
+    const cli = createTestCli({
+      commands: { probe: promptProbe(dropDatabase) },
+      now: EPOCH,
+    });
+    const result = await cli.run(["probe", "--confirm", "prod-db"], {
+      ...INTERACTIVE,
+      stdin: "",
+    });
+
+    expect(result.exitCode).toBe(0);
+    expect(result.presented?.data).toEqual({ answer: true });
+    expect(result.stderr).not.toContain("type prod-db to confirm");
+  });
+
+  test("--confirm with a different value still prompts interactively", async () => {
+    const cli = createTestCli({
+      commands: { probe: promptProbe(dropDatabase) },
+      now: EPOCH,
+    });
+    const result = await cli.run(["probe", "--confirm", "staging-db"], {
+      ...INTERACTIVE,
+      stdin: "prod-db\n",
+    });
+
+    expect(result.exitCode).toBe(0);
+    expect(result.presented?.data).toEqual({ answer: true });
+    expect(result.stderr).toContain("type prod-db to confirm");
+  });
+
   test("--confirm with the token grants the consent non-interactively", async () => {
     const cli = createTestCli({
       commands: { probe: promptProbe(dropDatabase) },
