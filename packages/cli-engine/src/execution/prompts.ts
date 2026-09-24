@@ -5,10 +5,10 @@
  * default resolves to it without displaying; one without a default
  * HALTS the invocation with a structured error (the engine renders the
  * errored envelope, exit 2). consent is structurally undefaultable: --yes
- * never grants it, and outside an interactive terminal the only thing
- * that can is a matching `--confirm <token>` when the consent declares a
- * token. Cancellation (EOF at the prompt) is a distinct structured error
- * mapped to exit 3.
+ * never grants it. A matching `--confirm <token>` grants it in every
+ * session, interactive or not, before anything is rendered; outside an
+ * interactive terminal that is the only thing that can. Cancellation
+ * (EOF at the prompt) is a distinct structured error mapped to exit 3.
  *
  * Rendering is two-tier: real TTYs (isTty.stdin AND stdin.setRawMode
  * present, no scripted answers) render through @clack/prompts via
@@ -412,10 +412,10 @@ export function makePromptSurface(invocation: Invocation): PromptSurface {
     },
     consent: async (question, opts) => {
       const token = opts?.token;
+      if (token !== undefined && consumeConfirmValue(state, token)) {
+        return true;
+      }
       if (state.yes || !state.interactive) {
-        if (token !== undefined && consumeConfirmValue(state, token)) {
-          return true;
-        }
         throw consentUnavailable(question, state, token);
       }
       if (token !== undefined) {

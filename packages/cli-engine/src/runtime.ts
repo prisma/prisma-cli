@@ -177,6 +177,12 @@ export interface HostProcess {
   readonly stdin: {
     isTTY?: boolean;
     setRawMode?(enabled: boolean): unknown;
+    /** Whether a stdin still being read keeps the process alive. The
+     *  engine reads through the bin's adapter, which unrefs stdin once
+     *  a run has finished prompting so an idle process can exit, and
+     *  refs it again when the next run starts reading. */
+    ref?(): unknown;
+    unref?(): unknown;
     [Symbol.asyncIterator](): AsyncIterator<Uint8Array>;
   };
   on(event: "SIGINT" | "SIGTERM", listener: () => void): unknown;

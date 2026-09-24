@@ -154,8 +154,8 @@ export interface RunState {
   usageErrorText: string | undefined;
   internalErrorText: string | undefined;
   stricliStderr: string;
-  /** The stdin iterator a prompt opened, closed when the run settles so
-   *  a real process's stdin never keeps the event loop alive. */
+  /** The stdin iterator a prompt opened, returned when the run settles
+   *  so a real process's stdin never keeps the event loop alive. */
   stdinIterator: AsyncIterator<Uint8Array> | undefined;
   /** The run's raw argv — consulted only to derive which flag NAMES
    *  were explicitly passed for the settlement snapshot. */
@@ -225,6 +225,19 @@ export function buildEngine(
   },
 ): Engine {
   return new EngineImpl(spec, options?.now, options?.delay);
+}
+
+/** Returning the iterator is how the engine tells the host it has
+ *  stopped reading. On a real terminal the host's iterator may be
+ *  awaiting a keystroke that never comes, and its return cannot settle
+ *  before the host stops reading, so the run does not wait for it. */
+function releaseStdin(state: RunState): void {
+  const iterator = state.stdinIterator;
+  if (iterator === undefined) {
+    return;
+  }
+  state.stdinIterator = undefined;
+  void iterator.return?.()?.catch(() => {});
 }
 
 /** Resolves on the timer OR on the signal, whichever comes first — the
@@ -438,7 +451,7 @@ export class EngineImpl implements Engine {
       });
     } finally {
       unsubscribe();
-      await state.stdinIterator?.return?.();
+      releaseStdin(state);
     }
     const exitCode =
       state.settledExitCode !== undefined

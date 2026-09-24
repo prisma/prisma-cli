@@ -215,6 +215,32 @@ describe("assembleRuntime", () => {
     expect(proc.stderrText).toBe("err");
   });
 
+  it("unrefs stdin when the engine returns its iterator, and refs it for the next reader", async () => {
+    const calls: string[] = [];
+    const proc = makeProcess({ isTty: { stdin: true } });
+    Object.assign(proc.stdin, {
+      ref: () => calls.push("ref"),
+      unref: () => calls.push("unref"),
+      [Symbol.asyncIterator]: () => ({
+        next: () => new Promise<IteratorResult<Uint8Array>>(() => {}),
+        return: () => new Promise<IteratorResult<Uint8Array>>(() => {}),
+      }),
+    });
+    const runtime = await assembleRuntime(proc);
+
+    const iterator = runtime.stdin[Symbol.asyncIterator]();
+    void iterator.next();
+    const returned = await Promise.race([
+      iterator.return?.(),
+      new Promise<"hung">((resolve) => setTimeout(() => resolve("hung"), 200)),
+    ]);
+
+    expect(returned).toEqual({ done: true, value: undefined });
+    expect(calls).toEqual(["ref", "unref"]);
+    runtime.stdin[Symbol.asyncIterator]();
+    expect(calls).toEqual(["ref", "unref", "ref"]);
+  });
+
   /**
    * The engine reads stderr's width at render time so a terminal
    * resized mid-run reports its new size. That only holds if the bin
