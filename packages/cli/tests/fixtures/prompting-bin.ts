@@ -34,6 +34,6 @@ const cli = createCli({
   commands: { probe },
 });
 const runtime = await assembleRuntime(process);
-const exitCode = await cli.run(["probe"], runtime);
+const exitCode = await cli.run(["probe", "--interactive"], runtime);
 process.stderr.write(`[settled ${exitCode}]\n`);
 process.exitCode = exitCode;
