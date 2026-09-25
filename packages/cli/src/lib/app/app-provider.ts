@@ -131,6 +131,7 @@ export interface AppProvider {
   createProject(options: {
     name: string;
     region?: string;
+    logicalId?: string;
     signal?: AbortSignal;
   }): Promise<ProjectRecord>;
   resolveBranch(
@@ -272,20 +273,40 @@ export function createAppProvider(
   const sdk = new ComputeClient(client);
 
   return {
+    /** Posts directly because `ComputeClient.createProject` does not forward
+     *  `logicalId`. The signal is checked but not passed: aborting a create
+     *  mid-flight would leave its outcome unknown. */
     async createProject(options) {
-      const projectResult = await sdk.createProject({
-        name: options.name,
-        region: options.region,
-        signal: options.signal,
+      options.signal?.throwIfAborted();
+      const { data, error, response } = await client.POST("/v1/projects", {
+        body: {
+          name: options.name,
+          createDatabase: false,
+          ...(options.region !== undefined
+            ? { region: options.region as never }
+            : {}),
+          ...(options.logicalId !== undefined
+            ? { logicalId: options.logicalId }
+            : {}),
+        },
       });
-      if (projectResult.isErr()) {
-        throw new Error(projectResult.error.message);
+      if (error || !data) {
+        throw new ApiError({
+          statusCode: response.status,
+          statusText: response.statusText,
+          code: error?.error.code,
+          message:
+            error?.error.message ??
+            `Management API returned HTTP ${response.status}.`,
+          hint: error?.error.hint,
+          traceHeaders: {},
+        });
       }
 
       return {
-        id: projectResult.value.id,
-        name: projectResult.value.name,
-        defaultRegion: projectResult.value.defaultRegion,
+        id: data.data.id,
+        name: data.data.name,
+        defaultRegion: data.data.defaultRegion ?? undefined,
       };
     },
 

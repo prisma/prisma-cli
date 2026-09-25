@@ -11,6 +11,10 @@ import { resolveActiveWorkspace } from "../resources-shared/workspace";
 import { bindDirectoryToProject } from "./context";
 import { setupPresentations } from "./presentation";
 
+/** The Management API's format for a project `logicalId`. A name outside it
+ *  still creates the project, just without a declared identity. */
+const PROJECT_LOGICAL_ID = /^[a-z0-9][-_a-z0-9]*$/;
+
 export const projectCreateCommand = defineCommand({
   args: {
     positionals: {
@@ -46,6 +50,7 @@ export const projectCreateCommand = defineCommand({
       .createProject({
         name,
         region: args.flags.region,
+        ...(PROJECT_LOGICAL_ID.test(name) ? { logicalId: name } : {}),
         signal: ctx.signal,
       })
       .catch((error: unknown) => {

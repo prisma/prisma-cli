@@ -567,6 +567,80 @@ describe("prisma project create", () => {
     ]);
   });
 
+  it("declares the name as the project's logicalId when it fits the logicalId format", async () => {
+    const post = vi.fn(() => ({
+      data: { data: { id: "proj_new", name: "my-app_2" } },
+    }));
+    const result = await makeCli(fakeClient({ post })).run(
+      ["project", "create", "my-app_2", "--region", "eu-central-1", "--json"],
+      { cwd: await tempCwd() },
+    );
+
+    expect(result.exitCode).toBe(0);
+    expect(post).toHaveBeenCalledWith("/v1/projects", {
+      body: {
+        name: "my-app_2",
+        createDatabase: false,
+        region: "eu-central-1",
+        logicalId: "my-app_2",
+      },
+    });
+  });
+
+  it.each([
+    "My App",
+    "My-App",
+    "_app",
+    "app.v2",
+  ])("creates %j without a logicalId because the name does not fit the logicalId format", async (name) => {
+    const post = vi.fn(() => ({
+      data: { data: { id: "proj_new", name } },
+    }));
+    const result = await makeCli(fakeClient({ post })).run(
+      ["project", "create", name, "--json"],
+      { cwd: await tempCwd() },
+    );
+
+    expect(result.exitCode).toBe(0);
+    expect(post).toHaveBeenCalledWith("/v1/projects", {
+      body: { name, createDatabase: false },
+    });
+  });
+
+  it("maps a logicalId already taken in the workspace to PROJECT.CREATE_FAILED with the API's reason", async () => {
+    const result = await makeCli(
+      fakeClient({
+        post: () =>
+          apiFailure(409, {
+            error: {
+              code: "conflict",
+              message:
+                'A project with logicalId "my-app" already exists in this workspace',
+            },
+          }),
+      }),
+    ).run(["project", "create", "my-app", "--json"], { cwd: await tempCwd() });
+
+    expect(result.exitCode).toBe(2);
+    expect(resultFrame(result.json).envelope).toMatchObject({
+      ok: false,
+      error: {
+        code: "PROJECT.CREATE_FAILED",
+        summary: 'Could not create Project "my-app"',
+        why: 'A project with logicalId "my-app" already exists in this workspace',
+        nextActions: [
+          {
+            kind: "user-choice",
+            label:
+              "Retry the command, or choose an existing Project with prisma project link <id-or-name>.",
+          },
+          { kind: "run-command", command: "prisma project list" },
+          { kind: "run-command", command: "prisma project link <id-or-name>" },
+        ],
+      },
+    });
+  });
+
   it("rejects a whitespace-only name as a usage error", async () => {
     const result = await makeCli(fakeClient()).run(
       ["project", "create", "   ", "--json"],
@@ -794,7 +868,9 @@ describe("prisma project link", () => {
     });
 
     expect(result.exitCode).toBe(0);
-    expect(seen).toMatchObject([{ body: { name: path.basename(cwd) } }]);
+    expect(seen).toEqual([
+      { body: { name: path.basename(cwd), createDatabase: false } },
+    ]);
     expect(result.presented?.data).toMatchObject({
       project: { id: "proj_new" },
       action: "created",
