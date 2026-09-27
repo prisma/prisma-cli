@@ -177,8 +177,12 @@ function commandParameters(def: AnyCommand): Record<string, unknown> {
  *  written the same way and rendered by the same rule. */
 export function resolveExample(example: string, cliName: string): string {
   return example.includes("{bin}")
-    ? example.replaceAll("{bin}", cliName)
+    ? substituteBinName(example, cliName)
     : `${cliName} ${example}`;
+}
+
+export function substituteBinName(text: string, cliName: string): string {
+  return text.replaceAll("{bin}", cliName);
 }
 
 function commandDocs(

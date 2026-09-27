@@ -13,6 +13,7 @@ import {
 } from "../package-manager";
 import { CliStructuredError, type Diagnostic } from "../protocol";
 import type { LoadedConfig, LoadedConfigFile } from "../runtime";
+import { diagnosticWithBinName } from "./bin-name";
 import type { Invocation } from "./engine";
 import { renderWarningsMarkdown } from "./markdown";
 import { makePaint } from "./palette";
@@ -413,7 +414,9 @@ function writeSectionWarnings(
       (diagnostic) =>
         SEVERITY_RANK[diagnostic.severity] <= SEVERITY_RANK[state.logLevel],
     )
-    .map((diagnostic) => withDocsUrl(state, diagnostic));
+    .map((diagnostic) =>
+      withDocsUrl(state, diagnosticWithBinName(diagnostic, invocation.cliName)),
+    );
   if (state.format === "markdown") {
     renderWarningsMarkdown(invocation, shown);
     return;

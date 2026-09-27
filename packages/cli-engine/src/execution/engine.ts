@@ -198,6 +198,8 @@ export interface RunState {
 }
 
 export interface Invocation {
+  /** The name of the binary the user ran, substituted for `{bin}`. */
+  readonly cliName: string;
   readonly runtime: Runtime;
   readonly hooks: RunHooks;
   readonly now: () => Date;
@@ -376,6 +378,7 @@ export class EngineImpl implements Engine {
     };
     const unsubscribe = runtime.onSignal(deliverSignal);
     const invocation: Invocation = {
+      cliName: this.spec.name,
       runtime,
       hooks: { ...hooks },
       now: this.now,
