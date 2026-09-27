@@ -13,7 +13,7 @@ At each slice merge, go through `.drive/projects/<project>/deferred.md`. Every e
 
 The ledger holds only entries that are waiting on something named, such as a release or a ruling that has been requested.
 
-Why: the prisma-cli-v8 project closed on 2026-09-27 with an 81-entry ledger that nothing had revisited in six weeks. 40 entries were already done or moot. One ruling (remove the `npx skills add` copy button from the login page, made 2026-08-24) was never carried out, and another (split per-database agent skills by name) existed only in the ledger, so deleting the project would have deleted it.
+Why: the prisma-cli-v8 project closed on 2026-09-27 with a 79-entry ledger that nothing had revisited in six weeks. 40 entries were already done or moot. One ruling (remove the `npx skills add` copy button from the login page, made 2026-08-24) was never carried out, and another (split per-database agent skills by name) existed only in the ledger, so deleting the project would have deleted it.
 
 ## Re-read the acceptance criteria when the design changes
 
