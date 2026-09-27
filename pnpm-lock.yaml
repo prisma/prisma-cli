@@ -34,10 +34,10 @@ importers:
         version: 0.23.0(@prisma/cli-engine@packages+cli-engine)(@types/node@22.19.19)(@vercel/nft@1.10.2(rollup@4.62.2))(magicast@0.5.3)(mongodb@6.21.0(@aws-sdk/credential-providers@3.1107.0))(pg@8.23.0)(typescript@6.0.3)(vite@7.3.5(@types/node@22.19.19)(jiti@2.7.0)(tsx@4.22.4)(yaml@2.9.0))(vitest@4.1.8(@types/node@22.19.19)(vite@7.3.5(@types/node@22.19.19)(jiti@2.7.0)(tsx@4.22.4)(yaml@2.9.0)))(ws@8.21.0)
       '@prisma/compute-sdk':
         specifier: 0.43.0
-        version: 0.43.0(@prisma/management-api-sdk@1.69.0)(rollup@4.62.2)
+        version: 0.43.0(@prisma/management-api-sdk@1.79.0)(rollup@4.62.2)
       '@prisma/management-api-sdk':
-        specifier: 1.69.0
-        version: 1.69.0
+        specifier: 1.79.0
+        version: 1.79.0
       '@prisma/orm-toolchain':
         specifier: 8.0.0-rc.12
         version: 8.0.0-rc.12(@prisma/cli-engine@packages+cli-engine)(magicast@0.5.3)(typanion@3.14.0)(typescript@6.0.3)(vite@7.3.5(@types/node@22.19.19)(jiti@2.7.0)(tsx@4.22.4)(yaml@2.9.0))
@@ -140,8 +140,8 @@ importers:
         version: 8.2.1
     devDependencies:
       '@prisma/management-api-sdk':
-        specifier: 1.69.0
-        version: 1.69.0
+        specifier: 1.79.0
+        version: 1.79.0
       '@repo/cli-conformance':
         specifier: workspace:8.0.0-rc.17
         version: link:../cli-conformance
@@ -217,10 +217,10 @@ importers:
         version: 0.23.0(@prisma/cli-engine@packages+cli-engine)(@types/node@22.19.19)(@vercel/nft@1.10.2(rollup@4.62.2))(magicast@0.5.3)(mongodb@6.21.0(@aws-sdk/credential-providers@3.1107.0))(pg@8.23.0)(typescript@6.0.3)(vite@7.3.5(@types/node@22.19.19)(jiti@2.7.0)(tsx@4.22.4)(yaml@2.9.0))(vitest@4.1.8(@types/node@22.19.19)(vite@7.3.5(@types/node@22.19.19)(jiti@2.7.0)(tsx@4.22.4)(yaml@2.9.0)))(ws@8.21.0)
       '@prisma/compute-sdk':
         specifier: 0.43.0
-        version: 0.43.0(@prisma/management-api-sdk@1.69.0)(rollup@4.62.2)
+        version: 0.43.0(@prisma/management-api-sdk@1.79.0)(rollup@4.62.2)
       '@prisma/management-api-sdk':
-        specifier: 1.69.0
-        version: 1.69.0
+        specifier: 1.79.0
+        version: 1.79.0
       '@prisma/orm-toolchain':
         specifier: 8.0.0-rc.12
         version: 8.0.0-rc.12(@prisma/cli-engine@packages+cli-engine)(magicast@0.5.3)(typanion@3.14.0)(typescript@6.0.3)(vite@7.3.5(@types/node@22.19.19)(jiti@2.7.0)(tsx@4.22.4)(yaml@2.9.0))
@@ -1330,11 +1330,11 @@ packages:
   '@prisma/get-platform@7.2.0':
     resolution: {integrity: sha512-k1V0l0Td1732EHpAfi2eySTezyllok9dXb6UQanajkJQzPUGi3vO2z7jdkz67SypFTdmbnyGYxvEvYZdZsMAVA==}
 
-  '@prisma/management-api-sdk@1.69.0':
-    resolution: {integrity: sha512-z3zBWvOjFSWqUwkJcsdkBZzkUaUMEEcKy4QiMfo7n1GqNQvRYkzxzaNRTqmxTjw3thOjmdq+UegIqOU57i7jiA==}
-
   '@prisma/management-api-sdk@1.76.0':
     resolution: {integrity: sha512-3IFDhV33GLaFs7DIyp9T1cxfX6W0QtwJjj9AFFjUdR9GPTfNfubmzdhbTgFFQGX3QlZ1xQfxOTcyDnJECZ+Cdg==}
+
+  '@prisma/management-api-sdk@1.79.0':
+    resolution: {integrity: sha512-GkqNeovHk+dDoGVGCQbBg924CozWRpPw7/V8crJPuEGnXTf0Mh1pIa0yK1HZjP3QwqFk5hp9ZC3v3k5/tcKnDg==}
 
   '@prisma/orm-framework@8.0.0-rc.12':
     resolution: {integrity: sha512-+CEHlSwRh+79mRHCXER42Mz9unYeJczWbnYCMlK4X/0YDd+PdkkfRX/U+In5DlrangLn/F3csRLirG+wy/fUaA==}
@@ -4097,9 +4097,9 @@ snapshots:
       - vitest
       - ws
 
-  '@prisma/compute-sdk@0.43.0(@prisma/management-api-sdk@1.69.0)(rollup@4.62.2)':
+  '@prisma/compute-sdk@0.43.0(@prisma/management-api-sdk@1.79.0)(rollup@4.62.2)':
     dependencies:
-      '@prisma/management-api-sdk': 1.69.0
+      '@prisma/management-api-sdk': 1.79.0
       '@vercel/nft': 1.10.2(rollup@4.62.2)
       better-result: 2.9.2
       jiti: 2.7.0
@@ -4151,11 +4151,11 @@ snapshots:
     dependencies:
       '@prisma/debug': 7.2.0
 
-  '@prisma/management-api-sdk@1.69.0':
+  '@prisma/management-api-sdk@1.76.0':
     dependencies:
       openapi-fetch: 0.14.0
 
-  '@prisma/management-api-sdk@1.76.0':
+  '@prisma/management-api-sdk@1.79.0':
     dependencies:
       openapi-fetch: 0.14.0
 
