@@ -62,6 +62,8 @@ A step in the publish workflow, immediately after its publish step and keyed on 
 
 The payload is informational — this repository always re-reads the registry rather than trusting the event, so a malformed or replayed event cannot pin a version that does not exist.
 
+A workflow step that must run should fail when its secret or token is missing, not skip with exit 0. A step that skips silently when its secret is missing can stay broken indefinitely without anyone noticing: the ORM repository's notify step skipped on every release because it read a secret name that was never configured, and nothing reported it. Check that the secret is set before the step that uses it, and make that check fail the job.
+
 ## When it stops working
 
 | Symptom | Cause | Fix |
