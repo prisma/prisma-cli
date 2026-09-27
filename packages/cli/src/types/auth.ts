@@ -12,7 +12,7 @@ export interface AuthWorkspace {
 }
 
 export interface AuthCredential {
-  type: "oauth" | "service_token" | "management_token";
+  type: string;
   id: string | null;
   name: string | null;
 }
