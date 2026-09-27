@@ -1,6 +1,6 @@
 /**
- * Help under `--format markdown`, byte for byte, per the help shape in
- * docs/product/output-conventions.md (section "`--format markdown`"):
+ * Help under `--format markdown`, byte for byte, per the slice spec's
+ * help shape (.drive/projects/prisma-cli-v8/specs/markdown-format.md):
  * everything on stdout, stderr empty, colour off.
  */
 import { describe, expect, test } from "vitest";

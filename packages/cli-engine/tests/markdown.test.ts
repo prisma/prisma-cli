@@ -1,8 +1,8 @@
 /**
  * `--format markdown`: the same blocks a command describes for human,
  * rendered as plain Markdown on stdout for a reader that is a model.
- * Every byte here is pinned by docs/product/output-conventions.md
- * (section "`--format markdown`").
+ * Every byte here is pinned by the slice spec
+ * (.drive/projects/prisma-cli-v8/specs/markdown-format.md).
  */
 import {
   type Block,

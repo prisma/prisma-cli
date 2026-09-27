@@ -93,11 +93,11 @@ A process decides once, at its first `activeCredential()` call, and the decision
 2. Otherwise, if the file's `currentWorkspaceId` names a stored session, the process acts as that session.
 3. Otherwise the process acts as nothing. `activeCredential()` returns `null` when no sessions are stored and throws `CLI.CREDENTIALS_REQUIRED` with the "sessions held, none selected" wording when sessions exist but none is selected.
 
-Another process moving the selection or replacing records does not redirect a running process; a new process picks up the new selection. The process's own mutations do move it: `createSession` and `selectSession` make the process act as that session, and `endSession` of the session it acts as and `endAllSessions` make it act as nothing. Each of those discards the storage built for the previous decision, so a command that mutates and then reaches for `ctx.api` gets the credential it now acts as.
+Another process moving the selection or replacing records does not redirect a running process; a new process picks up the new selection. When no environment credential is in force, the process's own mutations do move it: `createSession` and `selectSession` make the process act as that session, and `endSession` of the session it acts as and `endAllSessions` make it act as nothing. Each of those discards the storage built for the previous decision, so a command that mutates and then reaches for `ctx.api` gets the credential it now acts as.
 
 What is pinned is the decision, not the material. Every read goes back to the file, so a session another process replaced still resolves, and a session another process ended fails at the next read with `CLI.CREDENTIALS_REQUIRED` in its "session ended" wording.
 
-While `PRISMA_SERVICE_TOKEN` is set, every mutation still succeeds: selecting or ending a stored session changes stored state while this process keeps authenticating as the environment credential. The commands print a one-line notice that the environment credential remains in force until the variable is unset.
+While `PRISMA_SERVICE_TOKEN` holds a non-blank value, every mutation still succeeds: selecting or ending a stored session changes stored state while this process keeps authenticating as the environment credential. The commands print a one-line notice that the environment credential remains in force until the variable is unset.
 
 ## How the engine authenticates a command
 
