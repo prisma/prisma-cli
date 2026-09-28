@@ -37,7 +37,10 @@ export function nextActionsWithBinName(
   actions: readonly NextAction[],
   cliName: string,
 ): readonly NextAction[] {
-  return actions.map((action) => ({
+  if (!Array.isArray(actions)) {
+    return actions;
+  }
+  return actions.map((action: NextAction) => ({
     ...action,
     label: substituteBinName(action.label, cliName),
     ...(action.reason === undefined
@@ -49,9 +52,11 @@ export function nextActionsWithBinName(
     ...(action.commands === undefined
       ? {}
       : {
-          commands: action.commands.map((command) =>
-            substituteBinName(command, cliName),
-          ),
+          commands: Array.isArray(action.commands)
+            ? action.commands.map((command: string) =>
+                substituteBinName(command, cliName),
+              )
+            : action.commands,
         }),
   }));
 }

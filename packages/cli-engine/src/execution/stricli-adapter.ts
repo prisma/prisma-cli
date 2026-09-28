@@ -181,8 +181,12 @@ export function resolveExample(example: string, cliName: string): string {
     : `${cliName} ${example}`;
 }
 
-export function substituteBinName(text: string, cliName: string): string {
-  return text.replaceAll("{bin}", cliName);
+/** Settlement hands this values nothing has validated, so anything that
+ *  is not a string is returned as it came. */
+export function substituteBinName<T>(text: T, cliName: string): T {
+  return typeof text === "string"
+    ? (text.replaceAll("{bin}", cliName) as T)
+    : text;
 }
 
 function commandDocs(
