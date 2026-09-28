@@ -8,6 +8,8 @@ Nothing here is tracked outside this file.
 
 - **Engine version transitions — CLOSED through 0.6.1 (2026-09-27).** The 0.3.0 transition (the Management API SDK became a peer of the engine, so an SDK bump no longer changes the engine) closed 2026-08-26. The transitions to 0.4.0, 0.5.0 and 0.6.1 followed the same order: engine publishes, both families release peering it, prisma-cli pins those releases and empties the `exceptions` list in `packages/cli/scripts/conformance.ts`. The 0.6.1 exceptions were deleted once `@prisma/composer-cli` 0.23.0 and `@prisma/orm-toolchain` 8.0.0-rc.12 shipped in `prisma` 8.0.0-rc.17.
 
+- **Engine 0.6.2 transition — IN FLIGHT (2026-09-28).** Engine 0.6.2 substitutes `{bin}` in next actions, diagnostics, errors, and summary and list blocks. `@prisma/composer-cli` and `@prisma/orm-toolchain` still peer 0.6.1, so `exceptions` in `packages/cli/scripts/conformance.ts` holds one entry for each. Delete both entries once both families release peering 0.6.2 and prisma-cli pins those releases.
+
 - **A stale product `dev` dist-tag can block a release publish.** The
   publish run checks the dev channel before the release leg, and the
   dev channel resolves each product's `dev` tag with no fallback — so
