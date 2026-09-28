@@ -61,6 +61,16 @@ const CASES: Record<string, () => CliStructuredError> = {
         },
       ] as unknown as Diagnostic[],
     }),
+  "a next action that is null": () =>
+    foreignError({ nextActions: [null, { kind: "done", label: "{bin}" }] }),
+  "a next action with fields of the wrong type": () =>
+    foreignError({
+      nextActions: [
+        { kind: "run-command", label: 42, reason: 42, command: 42 },
+        { kind: "run-command", label: "{bin}", commands: "{bin} status" },
+        { kind: "run-command", label: "{bin}", commands: [42, null] },
+      ],
+    }),
 };
 
 function cli(build: () => CliStructuredError) {
@@ -90,11 +100,13 @@ function errorOf(frames: readonly StreamEvent[]) {
   return last.envelope.error;
 }
 
-/** A list of next actions that is missing has never rendered in human
- *  or markdown output, so those cases are asserted in json alone. */
+/** A list of next actions that is missing, or holds a null entry, has
+ *  never rendered in human or markdown output, so those cases are
+ *  asserted in json alone. */
 const RENDERABLE = [
   "an error without nextActions",
   "an accompanying finding whose why is not a string",
+  "a next action with fields of the wrong type",
 ];
 
 describe.each(Object.entries(CASES))("%s", (name, build) => {

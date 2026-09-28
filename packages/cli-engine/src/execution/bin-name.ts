@@ -2,18 +2,25 @@ import {
   type Block,
   PRESENTED,
   type PresentedResult,
+  type Span,
   type Text,
 } from "../presentation";
 import type { Diagnostic, NextAction } from "../protocol";
 import { substituteBinName } from "./stricli-adapter";
 
+function isRecord(value: unknown): boolean {
+  return typeof value === "object" && value !== null;
+}
+
 function inText(text: Text, cliName: string): Text {
-  return typeof text === "string"
-    ? substituteBinName(text, cliName)
-    : text.map((span) => ({
-        ...span,
-        text: substituteBinName(span.text, cliName),
-      }));
+  if (!Array.isArray(text)) {
+    return substituteBinName(text, cliName);
+  }
+  return text.map((span: Span) =>
+    isRecord(span)
+      ? { ...span, text: substituteBinName(span.text, cliName) }
+      : span,
+  );
 }
 
 function inBlock(block: Block, cliName: string): Block {
@@ -33,14 +40,14 @@ function inBlock(block: Block, cliName: string): Block {
   }
 }
 
-export function nextActionsWithBinName(
-  actions: readonly NextAction[],
+function nextActionWithBinName(
+  action: NextAction,
   cliName: string,
-): readonly NextAction[] {
-  if (!Array.isArray(actions)) {
-    return actions;
+): NextAction {
+  if (!isRecord(action)) {
+    return action;
   }
-  return actions.map((action: NextAction) => ({
+  return {
     ...action,
     label: substituteBinName(action.label, cliName),
     ...(action.reason === undefined
@@ -49,22 +56,34 @@ export function nextActionsWithBinName(
     ...(action.command === undefined
       ? {}
       : { command: substituteBinName(action.command, cliName) }),
-    ...(action.commands === undefined
-      ? {}
-      : {
-          commands: Array.isArray(action.commands)
-            ? action.commands.map((command: string) =>
-                substituteBinName(command, cliName),
-              )
-            : action.commands,
-        }),
-  }));
+    ...(Array.isArray(action.commands)
+      ? {
+          commands: action.commands.map((command: string) =>
+            substituteBinName(command, cliName),
+          ),
+        }
+      : {}),
+  };
+}
+
+export function nextActionsWithBinName(
+  actions: readonly NextAction[],
+  cliName: string,
+): readonly NextAction[] {
+  return Array.isArray(actions)
+    ? actions.map((action: NextAction) =>
+        nextActionWithBinName(action, cliName),
+      )
+    : actions;
 }
 
 export function diagnosticWithBinName(
   diagnostic: Diagnostic,
   cliName: string,
 ): Diagnostic {
+  if (!isRecord(diagnostic)) {
+    return diagnostic;
+  }
   return {
     ...diagnostic,
     summary: substituteBinName(diagnostic.summary, cliName),
