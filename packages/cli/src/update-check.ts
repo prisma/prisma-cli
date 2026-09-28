@@ -5,7 +5,6 @@ import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 
-import { CLI_DOCS_URL } from "./cli-name";
 import { compareVersionStrings } from "./lib/semver-order";
 import { getCliName, getCliVersion } from "./lib/version";
 
@@ -18,9 +17,11 @@ export interface UpdateCheckRuntime {
 }
 
 const UPDATE_CHECK_FILE_NAME = "update-check.json";
-const FALLBACK_INSTALL_DOCS_URL = CLI_DOCS_URL;
+const PACKAGE_NAME = "prisma";
+const FALLBACK_INSTALL_DOCS_URL =
+  "https://www.prisma.io/docs/orm/release-status#what-you-get-when-you-install-today";
 const NOTIFICATION_INTERVAL_MS = 24 * 60 * 60 * 1000;
-const REGISTRY_URL = "https://registry.npmjs.org/@prisma%2fcli";
+const REGISTRY_URL = "https://registry.npmjs.org/prisma";
 const REGISTRY_TIMEOUT_MS = 3_000;
 
 export interface UpdateCheckState {
@@ -79,7 +80,8 @@ export async function maybeWriteCachedUpdateNotification(
   try {
     const cacheDir = resolveUpdateCheckCacheDir(runtime);
     const store = new UpdateCheckStore(cacheDir);
-    const state = await store.read();
+    const cached = await store.read();
+    const state = cached?.packageName === PACKAGE_NAME ? cached : null;
     const latestVersion = state?.latestVersion;
 
     if (
@@ -95,7 +97,7 @@ export async function maybeWriteCachedUpdateNotification(
       );
       await store.write({
         ...state,
-        packageName: "@prisma/cli",
+        packageName: PACKAGE_NAME,
         installedVersion: getCliVersion(),
         notifiedAt: new Date().toISOString(),
       });
@@ -124,10 +126,11 @@ export async function runUpdateDiscovery(options: {
     }
 
     const store = new UpdateCheckStore(options.cacheDir);
-    const previousState = await store.read();
+    const cached = await store.read();
+    const previousState = cached?.packageName === PACKAGE_NAME ? cached : null;
     await store.write({
       ...previousState,
-      packageName: "@prisma/cli",
+      packageName: PACKAGE_NAME,
       installedVersion: options.installedVersion,
       latestVersion,
       checkedAt: (options.now ?? new Date()).toISOString(),
@@ -216,7 +219,7 @@ async function scheduleRemoteDiscovery(
   const checkedAt = new Date().toISOString();
   await store.write({
     ...state,
-    packageName: "@prisma/cli",
+    packageName: PACKAGE_NAME,
     installedVersion: getCliVersion(),
     checkedAt,
   });
@@ -257,17 +260,17 @@ export function selectUpdateInstruction(
     return docsInstruction();
   }
 
-  if (entrypoint.includes("/node_modules/.bin/")) {
+  if (entrypoint.includes("/node_modules/")) {
     if (userAgent.startsWith("pnpm")) {
-      return commandInstruction("pnpm add -D @prisma/cli@latest");
+      return commandInstruction("pnpm add -D prisma@latest");
     }
 
     if (userAgent.startsWith("bun")) {
-      return commandInstruction("bun add -d @prisma/cli@latest");
+      return commandInstruction("bun add -d prisma@latest");
     }
 
     if (userAgent.startsWith("npm")) {
-      return commandInstruction("npm install --save-dev @prisma/cli@latest");
+      return commandInstruction("npm install --save-dev prisma@latest");
     }
   }
 
@@ -275,7 +278,7 @@ export function selectUpdateInstruction(
     env.npm_config_global === "true" ||
     isLikelyGlobalNpmEntrypoint(entrypoint)
   ) {
-    return commandInstruction("npm install --global @prisma/cli@latest");
+    return commandInstruction("npm install --global prisma@latest");
   }
 
   return docsInstruction();
@@ -297,7 +300,7 @@ function renderUpdateInstruction(instruction: UpdateInstruction): string {
     return `Run ${instruction.value} to update.`;
   }
 
-  return `See ${instruction.value} for update instructions.`;
+  return `See ${instruction.value} for installation commands.`;
 }
 
 function isEphemeralInvocation(entrypoint: string, lifecycle: string): boolean {
@@ -305,14 +308,14 @@ function isEphemeralInvocation(entrypoint: string, lifecycle: string): boolean {
     lifecycle === "npx" ||
     lifecycle === "pnpx" ||
     entrypoint.includes("/_npx/") ||
-    entrypoint.includes("/.bun/")
+    entrypoint.includes("/.bun/install/cache/")
   );
 }
 
 function isLikelyGlobalNpmEntrypoint(entrypoint: string): boolean {
   return (
-    /\/npm\/prisma-cli(\.cmd|\.exe)?$/.test(entrypoint) ||
-    /\/npm-global\/bin\/prisma-cli$/.test(entrypoint)
+    /\/npm\/prisma(\.cmd|\.exe)?$/.test(entrypoint) ||
+    /\/npm-global\/bin\/prisma$/.test(entrypoint)
   );
 }
 

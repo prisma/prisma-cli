@@ -74,7 +74,7 @@ function nextMajorVersion(): string {
 
 async function seedStaleUpdate(updateCheckDir: string): Promise<void> {
   await new UpdateCheckStore(updateCheckDir).write({
-    packageName: "@prisma/cli",
+    packageName: "prisma",
     installedVersion: getCliVersion(),
     latestVersion: nextMajorVersion(),
     checkedAt: new Date().toISOString(),
@@ -100,6 +100,9 @@ describe("main update-check wiring", () => {
     expect(exitCode).toBe(0);
     expect(proc.stderrText).toContain(
       `Update available: prisma ${getCliVersion()} -> ${nextMajorVersion()}`,
+    );
+    expect(proc.stderrText).toContain(
+      "See https://www.prisma.io/docs/orm/release-status#what-you-get-when-you-install-today for installation commands.",
     );
     expect(proc.stdoutText).toBe("");
   });
@@ -151,6 +154,26 @@ describe("main update-check wiring", () => {
 
     expect(first.stderrText).toContain("Update available");
     expect(second.stderrText).not.toContain("Update available");
+  });
+
+  it("discards cached versions from the old @prisma/cli package", async () => {
+    const updateCheckDir = await makeUpdateCheckDir();
+    await new UpdateCheckStore(updateCheckDir).write({
+      packageName: "@prisma/cli",
+      installedVersion: getCliVersion(),
+      latestVersion: nextMajorVersion(),
+      checkedAt: new Date().toISOString(),
+    });
+    const proc = makeProcess({ env: updateCheckEnv(updateCheckDir) });
+
+    await main(proc, stubCli);
+
+    expect(proc.stderrText).not.toContain("Update available");
+    expect(vi.mocked(spawn)).toHaveBeenCalledTimes(1);
+    const state = JSON.parse(
+      await readFile(path.join(updateCheckDir, "update-check.json"), "utf8"),
+    ) as Record<string, unknown>;
+    expect(state.packageName).toBe("prisma");
   });
 
   it("stays silent in json mode (legacy behavior, copied)", async () => {
@@ -219,7 +242,7 @@ describe("main update-check wiring", () => {
   it("skips the refresh spawn inside the 24-hour discovery interval", async () => {
     const updateCheckDir = await makeUpdateCheckDir();
     await new UpdateCheckStore(updateCheckDir).write({
-      packageName: "@prisma/cli",
+      packageName: "prisma",
       installedVersion: getCliVersion(),
       checkedAt: new Date().toISOString(),
     });

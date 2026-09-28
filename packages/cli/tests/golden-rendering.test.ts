@@ -101,14 +101,9 @@ describe("golden rendering", () => {
 
     expect(result.exitCode).toBe(0);
     expect(result.stderr).toBe(
-      "ℹ Clearing your stored workspace sessions.\n" +
-        "\n" +
-        "ended:  1\n" +
-        "\n" +
-        "✔ Ended 1 workspace session.\n" +
-        "→ Sign in: prisma auth login\n",
+      "✔ Ended 1 workspace session.\n" + "→ Sign in: prisma auth login\n",
     );
-    expect(result.stdout).toBe("ended: 1\n");
+    expect(result.stdout).toBe("");
   });
 
   it("table (representative: auth workspace list)", async () => {
