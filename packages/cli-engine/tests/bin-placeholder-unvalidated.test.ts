@@ -17,30 +17,26 @@ function foreignError(fields: Record<string, unknown>): CliStructuredError {
     name: "CliStructuredError",
     code: "FOREIGN.FAILED",
     message: "Run `{bin} status`.",
-    toEnvelope: () => ({
-      ok: false,
-      code: "FOREIGN.FAILED",
-      severity: "error",
-      summary: "Run `{bin} status`.",
-      nextActions: [],
-    }),
+    toEnvelope: () => envelope({ nextActions: fields.nextActions ?? [] }),
     ...fields,
   } as unknown as CliStructuredError;
+}
+
+function envelope(fields: Record<string, unknown>) {
+  return {
+    ok: false,
+    code: "FOREIGN.FAILED",
+    severity: "error",
+    summary: "Run `{bin} status`.",
+    ...fields,
+  };
 }
 
 const CASES: Record<string, () => CliStructuredError> = {
   "an error without nextActions": () =>
     foreignError({ nextActions: undefined }),
   "an envelope without nextActions": () =>
-    foreignError({
-      nextActions: [],
-      toEnvelope: () => ({
-        ok: false,
-        code: "FOREIGN.FAILED",
-        severity: "error",
-        summary: "Run `{bin} status`.",
-      }),
-    }),
+    foreignError({ nextActions: [], toEnvelope: () => envelope({}) }),
   "an accompanying finding without nextActions": () =>
     foreignError({
       nextActions: [],
@@ -100,16 +96,7 @@ function errorOf(frames: readonly StreamEvent[]) {
   return last.envelope.error;
 }
 
-/** A list of next actions that is missing, or holds a null entry, has
- *  never rendered in human or markdown output, so those cases are
- *  asserted in json alone. */
-const RENDERABLE = [
-  "an error without nextActions",
-  "an accompanying finding whose why is not a string",
-  "a next action with fields of the wrong type",
-];
-
-describe.each(Object.entries(CASES))("%s", (name, build) => {
+describe.each(Object.entries(CASES))("%s", (_name, build) => {
   describe.each(["thrown", "returned"])("%s by the handler", (command) => {
     test("json settles with the original error", async () => {
       const result = await cli(build).run([command, "--json"]);
@@ -121,30 +108,24 @@ describe.each(Object.entries(CASES))("%s", (name, build) => {
       });
     });
 
-    test.runIf(RENDERABLE.includes(name))(
-      "human settles with the original error",
-      async () => {
-        const result = await cli(build).run([command], {
-          isTty: { stdout: true },
-        });
+    test("human settles with the original error", async () => {
+      const result = await cli(build).run([command], {
+        isTty: { stdout: true },
+      });
 
-        expect(result.exitCode).toBe(2);
-        expect(result.stderr).toContain(
-          "[FOREIGN.FAILED] Run `prisma-test status`.",
-        );
-      },
-    );
+      expect(result.exitCode).toBe(2);
+      expect(result.stderr).toContain(
+        "[FOREIGN.FAILED] Run `prisma-test status`.",
+      );
+    });
 
-    test.runIf(RENDERABLE.includes(name))(
-      "markdown settles with the original error",
-      async () => {
-        const result = await cli(build).run([command, "--format", "markdown"]);
+    test("markdown settles with the original error", async () => {
+      const result = await cli(build).run([command, "--format", "markdown"]);
 
-        expect(result.exitCode).toBe(2);
-        expect(result.stdout).toContain(
-          "FOREIGN.FAILED: Run `prisma-test status`.",
-        );
-      },
-    );
+      expect(result.exitCode).toBe(2);
+      expect(result.stdout).toContain(
+        "FOREIGN.FAILED: Run `prisma-test status`.",
+      );
+    });
   });
 });
