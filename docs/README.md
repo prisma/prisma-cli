@@ -25,6 +25,7 @@ For local development, continue with:
 
 - [Architecture overview](architecture/overview.md)
 - [Package structure](architecture/package-structure.md)
+- [Credentials and sessions](architecture/credential-manager.md)
 - [Architecture decisions](architecture/adrs/README.md)
 
 ## Reference
