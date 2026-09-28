@@ -66,6 +66,12 @@ const plan = defineCommand({
               commands: ["{bin} db migrate --dry-run", "{bin} db migrate"],
             },
             { kind: "run-command", label: "No placeholder", command: "ls" },
+            {
+              kind: "open-url",
+              label: "Read about `{bin} db migrate`",
+              url: "https://example.com/{bin}",
+              reason: "`{bin} db migrate` changes the database.",
+            },
           ],
         },
       ),
@@ -124,6 +130,7 @@ describe("a completed command", () => {
         "→ Apply the migration: prisma-test db migrate\n" +
         "→ Or step by step\n" +
         "→ No placeholder: ls\n" +
+        "→ Read about `prisma-test db migrate`: https://example.com/{bin}\n" +
         "\n" +
         "⚠ [MIGRATION.DRIFT] Run `prisma-test migration status` to see the drift.\n" +
         "  why: `prisma-test db migrate` was interrupted.\n" +
@@ -157,6 +164,7 @@ describe("a completed command", () => {
         "  - `prisma-test db migrate --dry-run`\n" +
         "  - `prisma-test db migrate`\n" +
         "- No placeholder: `ls`\n" +
+        "- Read about `prisma-test db migrate`: https://example.com/{bin}\n" +
         "\n" +
         "### Diagnostics\n" +
         "[warn] MIGRATION.DRIFT: Run `prisma-test migration status` to see the drift.\n" +
@@ -181,6 +189,11 @@ describe("a completed command", () => {
           ],
         },
         { label: "No placeholder", command: "ls" },
+        {
+          label: "Read about `prisma-test db migrate`",
+          url: "https://example.com/{bin}",
+          reason: "`prisma-test db migrate` changes the database.",
+        },
       ],
       diagnostics: [
         {

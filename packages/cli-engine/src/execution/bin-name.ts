@@ -39,6 +39,10 @@ export function nextActionsWithBinName(
 ): readonly NextAction[] {
   return actions.map((action) => ({
     ...action,
+    label: substituteBinName(action.label, cliName),
+    ...(action.reason === undefined
+      ? {}
+      : { reason: substituteBinName(action.reason, cliName) }),
     ...(action.command === undefined
       ? {}
       : { command: substituteBinName(action.command, cliName) }),
