@@ -91,6 +91,7 @@ const EXPECTED_MOUNT_PATHS: readonly string[] = [
   "contract emit",
   "contract format",
   "contract infer",
+  "contract print",
   "db init",
   "db migrate",
   "db schema",
