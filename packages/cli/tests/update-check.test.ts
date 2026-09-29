@@ -99,6 +99,18 @@ describe("update discovery and instructions", () => {
       },
     },
     {
+      name: "global npm under node_modules",
+      env: {
+        npm_config_user_agent: "npm/10.9.0 node/v24.14.1 darwin arm64",
+        npm_config_global: "true",
+      },
+      argv: ["node", "/usr/local/lib/node_modules/prisma/dist/prisma.js"],
+      expected: {
+        type: "command",
+        value: "npm install --global prisma@latest",
+      },
+    },
+    {
       name: "local pnpm",
       env: {
         npm_config_user_agent: "pnpm/10.30.0 npm/? node/v24.14.1 darwin arm64",

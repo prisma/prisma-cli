@@ -260,6 +260,13 @@ export function selectUpdateInstruction(
     return docsInstruction();
   }
 
+  if (
+    env.npm_config_global === "true" ||
+    isLikelyGlobalNpmEntrypoint(entrypoint)
+  ) {
+    return commandInstruction("npm install --global prisma@latest");
+  }
+
   if (entrypoint.includes("/node_modules/")) {
     if (userAgent.startsWith("pnpm")) {
       return commandInstruction("pnpm add -D prisma@latest");
@@ -272,13 +279,6 @@ export function selectUpdateInstruction(
     if (userAgent.startsWith("npm")) {
       return commandInstruction("npm install --save-dev prisma@latest");
     }
-  }
-
-  if (
-    env.npm_config_global === "true" ||
-    isLikelyGlobalNpmEntrypoint(entrypoint)
-  ) {
-    return commandInstruction("npm install --global prisma@latest");
   }
 
   return docsInstruction();
