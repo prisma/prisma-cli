@@ -59,6 +59,7 @@ const EXCLUSIONS: Readonly<Record<string, string>> = {
   "db update": ORM_FAMILY_REASON,
   "db verify": ORM_FAMILY_REASON,
   "contract format": ORM_FAMILY_REASON,
+  "contract print": ORM_FAMILY_REASON,
   lsp: ORM_FAMILY_REASON,
   "db migrate": ORM_FAMILY_REASON,
   "migration check": ORM_FAMILY_REASON,
