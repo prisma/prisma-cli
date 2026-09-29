@@ -58,7 +58,7 @@
     "@prisma/management-api-sdk": "^1.55.0"
   },
   "devDependencies": {
-    "@prisma/management-api-sdk": "1.79.0",
+    "@prisma/management-api-sdk": "1.80.0",
     "@repo/cli-conformance": "workspace:8.0.0-rc.17",
     "@repo/tsconfig": "workspace:8.0.0-rc.17",
     "@types/node": "^22.19.19",
