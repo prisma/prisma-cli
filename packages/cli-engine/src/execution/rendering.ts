@@ -310,7 +310,7 @@ export function writeDiagnostic(
   if (diagnostic.why !== undefined) {
     stream.write(`  ${paint("muted", `why: ${diagnostic.why}`)}\n`);
   }
-  for (const action of diagnostic.nextActions) {
+  for (const action of renderableNextActions(diagnostic.nextActions)) {
     stream.write(`${renderNextAction(action, paint)}\n`);
   }
   if (diagnostic.docsUrl !== undefined) {
@@ -318,6 +318,20 @@ export function writeDiagnostic(
       `  ${paint("muted", "docs:")} ${paint("link", diagnostic.docsUrl)}\n`,
     );
   }
+}
+
+/** A diagnostic reaches the renderers unvalidated: a list that is
+ *  missing renders as no next actions, and an entry that is not an
+ *  object is skipped. */
+export function renderableNextActions(actions: unknown): NextAction[] {
+  return Array.isArray(actions)
+    ? actions.filter(
+        (action) =>
+          typeof action === "object" &&
+          action !== null &&
+          !Array.isArray(action),
+      )
+    : [];
 }
 
 /** `label` is required, so a mapper building an action out of a bare

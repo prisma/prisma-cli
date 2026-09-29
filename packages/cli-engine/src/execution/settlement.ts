@@ -12,6 +12,11 @@ import {
   type NextAction,
 } from "../protocol";
 import { type ChildStatusSettlement, childExitCode } from "../spawn";
+import {
+  diagnosticWithBinName,
+  nextActionsWithBinName,
+  presentedWithBinName,
+} from "./bin-name";
 import type { EngineSpec, Invocation } from "./engine";
 import {
   renderChildNextActionsMarkdown,
@@ -50,12 +55,12 @@ function undocumentedExitCode(
 export function settleCompleted(
   invocation: Invocation,
   def: AnyCommand,
-  presented: PresentedResult<unknown>,
+  returned: PresentedResult<unknown>,
 ): void {
   if (
-    typeof presented !== "object" ||
-    presented === null ||
-    (presented as unknown as Record<symbol, unknown>)[PRESENTED] !== true
+    typeof returned !== "object" ||
+    returned === null ||
+    (returned as unknown as Record<symbol, unknown>)[PRESENTED] !== true
   ) {
     settleBug(
       invocation,
@@ -65,11 +70,12 @@ export function settleCompleted(
     );
     return;
   }
-  const violation = undocumentedExitCode(def, presented.exitCode);
+  const violation = undocumentedExitCode(def, returned.exitCode);
   if (violation !== undefined) {
     settleBug(invocation, violation);
     return;
   }
+  const presented = presentedWithBinName(returned, invocation.cliName);
   const state = invocation.state;
   invocation.hooks.onPresented?.(presented);
   const exitCode = runExitCode(invocation, presented.exitCode);
@@ -127,9 +133,11 @@ export function settleErrored(
   emitErrored(invocation, {
     ok: false,
     commandId: state.commandId,
-    error: diagnosticOf(error),
-    diagnostics: accompanyingFindings(diagnostics),
-    nextActions: error.nextActions,
+    error: diagnosticWithBinName(diagnosticOf(error), invocation.cliName),
+    diagnostics: accompanyingFindings(diagnostics).map((diagnostic) =>
+      diagnosticWithBinName(diagnostic, invocation.cliName),
+    ),
+    nextActions: nextActionsWithBinName(error.nextActions, invocation.cliName),
   });
 }
 
@@ -244,12 +252,16 @@ export function settleChildStatus(
     );
   }
   const exitCode = childExitCode(child);
+  const nextActions = nextActionsWithBinName(
+    settlement.nextActions,
+    invocation.cliName,
+  );
   if (invocation.state.format === "json") {
-    settleStructuredChildStatus(invocation, settlement, child, exitCode);
+    settleStructuredChildStatus(invocation, nextActions, child, exitCode);
     return;
   }
   if (child.signal === null) {
-    renderChildNextActions(invocation, settlement.nextActions);
+    renderChildNextActions(invocation, nextActions);
   }
   settleVerbatimExitCode(invocation, exitCode);
 }
@@ -270,12 +282,12 @@ function renderChildNextActions(
 
 function settleStructuredChildStatus(
   invocation: Invocation,
-  settlement: ChildStatusSettlement,
+  actions: readonly NextAction[],
   child: { readonly exitCode: number | null; readonly signal: string | null },
   exitCode: number,
 ): void {
   settleVerbatimExitCode(invocation, exitCode);
-  const nextActions = child.signal === null ? settlement.nextActions : [];
+  const nextActions = child.signal === null ? actions : [];
   if (exitCode === 0) {
     const envelope: CompletedEnvelope = {
       ok: true,

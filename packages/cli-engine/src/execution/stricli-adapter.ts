@@ -177,8 +177,16 @@ function commandParameters(def: AnyCommand): Record<string, unknown> {
  *  written the same way and rendered by the same rule. */
 export function resolveExample(example: string, cliName: string): string {
   return example.includes("{bin}")
-    ? example.replaceAll("{bin}", cliName)
+    ? substituteBinName(example, cliName)
     : `${cliName} ${example}`;
+}
+
+/** Settlement hands this values nothing has validated, so anything that
+ *  is not a string is returned as it came. */
+export function substituteBinName<T>(text: T, cliName: string): T {
+  return typeof text === "string"
+    ? (text.replaceAll("{bin}", cliName) as T)
+    : text;
 }
 
 function commandDocs(

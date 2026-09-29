@@ -9,6 +9,7 @@ import {
   commentaryLine,
   MASK,
   PLACEHOLDER,
+  renderableNextActions,
   sentenceCase,
   withDocsUrl,
 } from "./rendering";
@@ -28,7 +29,8 @@ function longestBacktickRun(text: string): number {
 
 /** An inline code span whose delimiter is one backtick longer than any
  *  run inside it, padded when the content starts or ends with one. */
-export function codeSpan(text: string): string {
+export function codeSpan(value: string): string {
+  const text = String(value);
   const delimiter = "`".repeat(longestBacktickRun(text) + 1);
   const padded =
     text.startsWith("`") || text.endsWith("`") ? ` ${text} ` : text;
@@ -116,7 +118,7 @@ function renderTreeNode(node: TreeNode, depth: number): string[] {
 
 export function renderNextActionMarkdown(action: NextAction): string[] {
   const target = action.command ?? action.url;
-  if (target === undefined && action.commands !== undefined) {
+  if (target === undefined && Array.isArray(action.commands)) {
     return [
       `- ${action.label}`,
       ...action.commands.map((command) => `  - ${codeSpan(command)}`),
@@ -163,7 +165,7 @@ export function renderDiagnosticMarkdown(diagnostic: Diagnostic): string[] {
   if (where !== undefined) {
     lines.push(where);
   }
-  for (const action of diagnostic.nextActions) {
+  for (const action of renderableNextActions(diagnostic.nextActions)) {
     lines.push(...renderNextActionMarkdown(action));
   }
   if (diagnostic.docsUrl !== undefined) {
