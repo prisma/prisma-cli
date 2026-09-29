@@ -49,7 +49,9 @@ function nextActionWithBinName(
   }
   return {
     ...action,
-    label: substituteBinName(action.label, cliName),
+    ...(action.label === undefined
+      ? {}
+      : { label: substituteBinName(action.label, cliName) }),
     ...(action.reason === undefined
       ? {}
       : { reason: substituteBinName(action.reason, cliName) }),
@@ -86,11 +88,17 @@ export function diagnosticWithBinName(
   }
   return {
     ...diagnostic,
-    summary: substituteBinName(diagnostic.summary, cliName),
+    ...(diagnostic.summary === undefined
+      ? {}
+      : { summary: substituteBinName(diagnostic.summary, cliName) }),
     ...(diagnostic.why === undefined
       ? {}
       : { why: substituteBinName(diagnostic.why, cliName) }),
-    nextActions: nextActionsWithBinName(diagnostic.nextActions, cliName),
+    ...(diagnostic.nextActions === undefined
+      ? {}
+      : {
+          nextActions: nextActionsWithBinName(diagnostic.nextActions, cliName),
+        }),
   };
 }
 

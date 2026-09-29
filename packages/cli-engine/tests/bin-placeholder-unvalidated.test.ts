@@ -4,11 +4,7 @@
  * must never be the reason such a run fails.
  */
 import { defineCommand, type StreamEvent } from "@prisma/cli-engine";
-import {
-  type CliStructuredError,
-  type Diagnostic,
-  notOk,
-} from "@prisma/cli-engine/protocol";
+import { type CliStructuredError, notOk } from "@prisma/cli-engine/protocol";
 import { createTestCli } from "@prisma/cli-engine/testing";
 import { describe, expect, test } from "vitest";
 
@@ -32,41 +28,104 @@ function envelope(fields: Record<string, unknown>) {
   };
 }
 
-const CASES: Record<string, () => CliStructuredError> = {
-  "an error without nextActions": () =>
-    foreignError({ nextActions: undefined }),
-  "an envelope without nextActions": () =>
-    foreignError({ nextActions: [], toEnvelope: () => envelope({}) }),
-  "an accompanying finding without nextActions": () =>
-    foreignError({
+const FINDING = { code: "FOREIGN.FINDING", severity: "warn" };
+
+const NULL_ENTRY = [null, { kind: "done", label: "{bin}" }];
+
+const WRONG_TYPES = [
+  { kind: "run-command", label: 42, reason: 42, command: 42 },
+  { kind: "run-command", command: "{bin} status" },
+  { kind: "run-command", label: "{bin}", commands: "{bin} status" },
+  { kind: "run-command", label: "{bin}", commands: [42, null, "{bin}"] },
+];
+
+interface Case {
+  readonly build: () => CliStructuredError;
+  /** What the json envelope carries. */
+  readonly settled: {
+    readonly errorNextActions: unknown;
+    readonly diagnostics: unknown;
+    readonly nextActions: unknown;
+  };
+}
+
+const CASES: Record<string, Case> = {
+  "an error without nextActions": {
+    build: () => foreignError({ nextActions: undefined }),
+    settled: { errorNextActions: [], diagnostics: [], nextActions: undefined },
+  },
+  "an envelope without nextActions": {
+    build: () =>
+      foreignError({ nextActions: [], toEnvelope: () => envelope({}) }),
+    settled: { errorNextActions: undefined, diagnostics: [], nextActions: [] },
+  },
+  "an accompanying finding without nextActions": {
+    build: () =>
+      foreignError({
+        nextActions: [],
+        diagnostics: [{ ...FINDING, summary: "{bin}" }],
+      }),
+    settled: {
+      errorNextActions: [],
+      diagnostics: [{ ...FINDING, summary: "prisma-test" }],
       nextActions: [],
-      diagnostics: [
-        { code: "FOREIGN.FINDING", severity: "warn", summary: "{bin}" },
-      ] as unknown as Diagnostic[],
-    }),
-  "an accompanying finding whose why is not a string": () =>
-    foreignError({
-      nextActions: [],
+    },
+  },
+  "an accompanying finding whose why is not a string": {
+    build: () =>
+      foreignError({
+        nextActions: [],
+        diagnostics: [
+          { ...FINDING, summary: "{bin}", why: 42, nextActions: NULL_ENTRY },
+        ],
+      }),
+    settled: {
+      errorNextActions: [],
       diagnostics: [
         {
-          code: "FOREIGN.FINDING",
-          severity: "warn",
-          summary: "{bin}",
+          ...FINDING,
+          summary: "prisma-test",
           why: 42,
-          nextActions: [],
+          nextActions: [null, { kind: "done", label: "prisma-test" }],
         },
-      ] as unknown as Diagnostic[],
-    }),
-  "a next action that is null": () =>
-    foreignError({ nextActions: [null, { kind: "done", label: "{bin}" }] }),
-  "a next action with fields of the wrong type": () =>
-    foreignError({
-      nextActions: [
-        { kind: "run-command", label: 42, reason: 42, command: 42 },
-        { kind: "run-command", label: "{bin}", commands: "{bin} status" },
-        { kind: "run-command", label: "{bin}", commands: [42, null] },
       ],
-    }),
+      nextActions: [],
+    },
+  },
+  "a next action that is null": {
+    build: () => foreignError({ nextActions: NULL_ENTRY }),
+    settled: {
+      errorNextActions: [null, { kind: "done", label: "prisma-test" }],
+      diagnostics: [],
+      nextActions: [null, { kind: "done", label: "prisma-test" }],
+    },
+  },
+  "a next action with fields of the wrong type": {
+    build: () => foreignError({ nextActions: WRONG_TYPES }),
+    settled: {
+      errorNextActions: [
+        WRONG_TYPES[0],
+        { ...WRONG_TYPES[1], command: "prisma-test status" },
+        { ...WRONG_TYPES[2], label: "prisma-test" },
+        {
+          ...WRONG_TYPES[3],
+          label: "prisma-test",
+          commands: [42, null, "prisma-test"],
+        },
+      ],
+      diagnostics: [],
+      nextActions: [
+        WRONG_TYPES[0],
+        { ...WRONG_TYPES[1], command: "prisma-test status" },
+        { ...WRONG_TYPES[2], label: "prisma-test" },
+        {
+          ...WRONG_TYPES[3],
+          label: "prisma-test",
+          commands: [42, null, "prisma-test"],
+        },
+      ],
+    },
+  },
 };
 
 function cli(build: () => CliStructuredError) {
@@ -88,24 +147,35 @@ function cli(build: () => CliStructuredError) {
   });
 }
 
-function errorOf(frames: readonly StreamEvent[]) {
+function envelopeOf(frames: readonly StreamEvent[]) {
   const last = frames[frames.length - 1];
   if (last?.kind !== "result" || last.envelope.ok) {
     throw new Error("expected an errored result frame");
   }
-  return last.envelope.error;
+  return last.envelope;
 }
 
-describe.each(Object.entries(CASES))("%s", (_name, build) => {
+describe.each(Object.entries(CASES))("%s", (_name, { build, settled }) => {
   describe.each(["thrown", "returned"])("%s by the handler", (command) => {
     test("json settles with the original error", async () => {
       const result = await cli(build).run([command, "--json"]);
 
       expect(result.exitCode).toBe(2);
-      expect(errorOf(result.json)).toMatchObject({
+      expect(envelopeOf(result.json).error).toMatchObject({
         code: "FOREIGN.FAILED",
         summary: "Run `prisma-test status`.",
       });
+    });
+
+    test("json passes malformed values through and substitutes beside them", async () => {
+      const result = await cli(build).run([command, "--json"]);
+
+      const settledEnvelope = envelopeOf(result.json);
+      expect(settledEnvelope.error.nextActions).toStrictEqual(
+        settled.errorNextActions,
+      );
+      expect(settledEnvelope.diagnostics).toStrictEqual(settled.diagnostics);
+      expect(settledEnvelope.nextActions).toStrictEqual(settled.nextActions);
     });
 
     test("human settles with the original error", async () => {
