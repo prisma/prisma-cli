@@ -325,7 +325,12 @@ export function writeDiagnostic(
  *  object is skipped. */
 export function renderableNextActions(actions: unknown): NextAction[] {
   return Array.isArray(actions)
-    ? actions.filter((action) => typeof action === "object" && action !== null)
+    ? actions.filter(
+        (action) =>
+          typeof action === "object" &&
+          action !== null &&
+          !Array.isArray(action),
+      )
     : [];
 }
 

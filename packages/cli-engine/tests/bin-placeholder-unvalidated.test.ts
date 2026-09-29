@@ -32,6 +32,8 @@ const FINDING = { code: "FOREIGN.FINDING", severity: "warn" };
 
 const NULL_ENTRY = [null, { kind: "done", label: "{bin}" }];
 
+const ARRAY_ENTRY = [["{bin}"], { kind: "done", label: "{bin}" }];
+
 const WRONG_TYPES = [
   { kind: "run-command", label: 42, reason: 42, command: 42 },
   { kind: "run-command", command: "{bin} status" },
@@ -98,6 +100,14 @@ const CASES: Record<string, Case> = {
       errorNextActions: [null, { kind: "done", label: "prisma-test" }],
       diagnostics: [],
       nextActions: [null, { kind: "done", label: "prisma-test" }],
+    },
+  },
+  "a next action that is an array": {
+    build: () => foreignError({ nextActions: ARRAY_ENTRY }),
+    settled: {
+      errorNextActions: [["{bin}"], { kind: "done", label: "prisma-test" }],
+      diagnostics: [],
+      nextActions: [["{bin}"], { kind: "done", label: "prisma-test" }],
     },
   },
   "a next action with fields of the wrong type": {

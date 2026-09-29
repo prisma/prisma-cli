@@ -9,7 +9,7 @@ import type { Diagnostic, NextAction } from "../protocol";
 import { substituteBinName } from "./stricli-adapter";
 
 function isRecord(value: unknown): boolean {
-  return typeof value === "object" && value !== null;
+  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 function inText(text: Text, cliName: string): Text {
