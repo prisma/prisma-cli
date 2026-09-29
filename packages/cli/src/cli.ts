@@ -324,9 +324,9 @@ export const cliGroups: Readonly<
   },
   contract: {
     brief:
-      "Author your data contract: the PSL source of your data model. Emit, infer, format",
+      "Author your data contract: the PSL source of your data model. Emit, infer, format, print",
     description:
-      "A contract is the declarative description of your application's data model, authored in PSL (Prisma Schema Language). Migrations are planned from it, and live databases are verified and signed against it. Emit generates its artifacts, infer derives a contract from an existing database, and format normalizes the source.",
+      "A contract is the declarative description of your application's data model, authored in PSL (Prisma Schema Language). Migrations are planned from it, and live databases are verified and signed against it. Emit generates its artifacts, infer derives a contract from an existing database, format normalizes the source, and print writes the contract your config loads as PSL.",
   },
   db: {
     brief:
@@ -426,6 +426,7 @@ export const mountedCommands: Readonly<Record<string, AnyCommand>> = {
   "db verify": ormCommandFamily.commands["db verify"],
   "db migrate": ormCommandFamily.commands["db migrate"],
   "contract format": ormCommandFamily.commands["contract format"],
+  "contract print": ormCommandFamily.commands["contract print"],
   // `orm init` keeps this path: only the top-level `init` (the compute
   // config wizard) was removed, by the 2026-08-21 PM review.
   "orm init": ormCommandFamily.commands["orm init"],

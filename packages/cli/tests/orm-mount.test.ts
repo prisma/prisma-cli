@@ -147,6 +147,7 @@ describe("the ORM family answers from the assembled tree", () => {
 
   it.each([
     [["contract", "format"], "contract format"],
+    [["contract", "print"], "contract print"],
     [["db", "migrate"], "db migrate"],
     [["migration", "ref", "list"], "migration ref list"],
     [["migration", "ref", "set"], "migration ref set"],
