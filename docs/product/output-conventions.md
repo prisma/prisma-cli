@@ -73,7 +73,7 @@ when all of these are true:
 - `--quiet` is not active
 - CI is not detected
 - `NO_UPDATE_NOTIFIER` is not set
-- cached update-check state already shows a newer official `@prisma/cli`
+- cached update-check state already shows a newer official `prisma`
   version
 
 The notification is human-only stderr output. It must never be written to
@@ -87,12 +87,13 @@ Update available: prisma <current> -> <latest>
 Run <package-manager command> to update.
 ```
 
-When the CLI cannot confidently infer the install context, link to installation
-docs instead of guessing a package-manager command:
+The update command must name the published `prisma` package. When the CLI
+cannot confidently infer the install context, link directly to the Prisma CLI
+installation instructions instead of guessing a package-manager command:
 
 ```text
 Update available: prisma <current> -> <latest>
-See https://www.prisma.io/docs/orm/tools/prisma-cli for update instructions.
+See https://www.prisma.io/docs/orm/release-status#what-you-get-when-you-install-today for installation commands.
 ```
 
 ## Out-Of-Date Agent Skills
@@ -194,6 +195,10 @@ Current MVP commands map to patterns like this:
 | `bucket key delete` | `mutate` |
 
 No current MVP command uses `verify` or `inspect`, but new commands must still choose one existing pattern rather than inventing a new one casually.
+
+`auth logout` reports the number of ended workspace sessions in its success
+summary, not as a second `ended` field. The structured result retains
+`endedCount` and `workspaceIds` for automation.
 
 ### Workspace session identity
 

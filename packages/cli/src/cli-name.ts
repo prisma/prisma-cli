@@ -8,8 +8,7 @@
  */
 export const CLI_NAME = "prisma";
 
-/** The unified CLI's docs section (also the update-check fallback
- *  instruction URL). */
+/** The unified CLI's docs section. */
 export const CLI_DOCS_URL = "https://www.prisma.io/docs/cli";
 
 /**

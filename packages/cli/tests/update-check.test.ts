@@ -13,17 +13,21 @@ import { createTempCwd } from "./helpers";
 describe("update discovery and instructions", () => {
   it("persists successful remote discovery results from injected registry metadata", async () => {
     const { updateCheckDir } = await createUpdateCheckTestDirs();
+    let requestedUrl: string | undefined;
 
     await runUpdateDiscovery({
       cacheDir: updateCheckDir,
       installedVersion: getCliVersion(),
       now: new Date("2026-01-02T00:00:00.000Z"),
-      fetchImpl: async () =>
-        Response.json({ "dist-tags": { latest: "9.8.7" } }),
+      fetchImpl: async (url) => {
+        requestedUrl = String(url);
+        return Response.json({ "dist-tags": { latest: "9.8.7" } });
+      },
     });
 
+    expect(requestedUrl).toBe("https://registry.npmjs.org/prisma");
     expect(await readUpdateCheckState(updateCheckDir)).toMatchObject({
-      packageName: "@prisma/cli",
+      packageName: "prisma",
       installedVersion: getCliVersion(),
       latestVersion: "9.8.7",
       checkedAt: "2026-01-02T00:00:00.000Z",
@@ -33,7 +37,7 @@ describe("update discovery and instructions", () => {
   it("preserves notification throttling when remote discovery succeeds", async () => {
     const { updateCheckDir } = await createUpdateCheckTestDirs();
     await new UpdateCheckStore(updateCheckDir).write({
-      packageName: "@prisma/cli",
+      packageName: "prisma",
       installedVersion: getCliVersion(),
       latestVersion: "9.8.6",
       checkedAt: "2026-01-01T00:00:00.000Z",
@@ -76,10 +80,10 @@ describe("update discovery and instructions", () => {
     {
       name: "local npm",
       env: { npm_config_user_agent: "npm/10.9.0 node/v24.14.1 darwin arm64" },
-      argv: ["node", "/repo/node_modules/.bin/prisma-cli"],
+      argv: ["node", "/repo/node_modules/prisma/dist/prisma.js"],
       expected: {
         type: "command",
-        value: "npm install --save-dev @prisma/cli@latest",
+        value: "npm install --save-dev prisma@latest",
       },
     },
     {
@@ -88,10 +92,22 @@ describe("update discovery and instructions", () => {
         npm_config_user_agent: "npm/10.9.0 node/v24.14.1 darwin arm64",
         npm_config_global: "true",
       },
-      argv: ["node", "/usr/local/bin/prisma-cli"],
+      argv: ["node", "/usr/local/bin/prisma"],
       expected: {
         type: "command",
-        value: "npm install --global @prisma/cli@latest",
+        value: "npm install --global prisma@latest",
+      },
+    },
+    {
+      name: "global npm under node_modules",
+      env: {
+        npm_config_user_agent: "npm/10.9.0 node/v24.14.1 darwin arm64",
+        npm_config_global: "true",
+      },
+      argv: ["node", "/usr/local/lib/node_modules/prisma/dist/prisma.js"],
+      expected: {
+        type: "command",
+        value: "npm install --global prisma@latest",
       },
     },
     {
@@ -99,24 +115,31 @@ describe("update discovery and instructions", () => {
       env: {
         npm_config_user_agent: "pnpm/10.30.0 npm/? node/v24.14.1 darwin arm64",
       },
-      argv: ["node", "/repo/node_modules/.bin/prisma-cli"],
-      expected: { type: "command", value: "pnpm add -D @prisma/cli@latest" },
+      argv: [
+        "node",
+        "/repo/node_modules/.pnpm/prisma@8.0.0-rc.17/node_modules/prisma/dist/prisma.js",
+      ],
+      expected: { type: "command", value: "pnpm add -D prisma@latest" },
     },
     {
       name: "local bun",
       env: {
         npm_config_user_agent: "bun/1.3.0 npm/? node/v24.14.1 darwin arm64",
       },
-      argv: ["node", "/repo/node_modules/.bin/prisma-cli"],
-      expected: { type: "command", value: "bun add -d @prisma/cli@latest" },
+      argv: [
+        "node",
+        "/repo/node_modules/.bun/prisma@8.0.0-rc.17/node_modules/prisma/dist/prisma.js",
+      ],
+      expected: { type: "command", value: "bun add -d prisma@latest" },
     },
     {
       name: "npx",
       env: { npm_lifecycle_event: "npx" },
-      argv: ["node", "/Users/alice/.npm/_npx/123/node_modules/.bin/prisma-cli"],
+      argv: ["node", "/Users/alice/.npm/_npx/123/node_modules/.bin/prisma"],
       expected: {
         type: "docs",
-        value: "https://www.prisma.io/docs/cli",
+        value:
+          "https://www.prisma.io/docs/orm/release-status#what-you-get-when-you-install-today",
       },
     },
     {
@@ -125,28 +148,31 @@ describe("update discovery and instructions", () => {
         npm_lifecycle_event: "pnpx",
         npm_config_user_agent: "pnpm/10.30.0",
       },
-      argv: ["node", "/repo/node_modules/.bin/prisma-cli"],
+      argv: ["node", "/repo/node_modules/.bin/prisma"],
       expected: {
         type: "docs",
-        value: "https://www.prisma.io/docs/cli",
+        value:
+          "https://www.prisma.io/docs/orm/release-status#what-you-get-when-you-install-today",
       },
     },
     {
       name: "bunx",
       env: { npm_config_user_agent: "bun/1.3.0" },
-      argv: ["node", "/Users/alice/.bun/install/cache/@prisma/cli/prisma-cli"],
+      argv: ["node", "/Users/alice/.bun/install/cache/prisma/prisma"],
       expected: {
         type: "docs",
-        value: "https://www.prisma.io/docs/cli",
+        value:
+          "https://www.prisma.io/docs/orm/release-status#what-you-get-when-you-install-today",
       },
     },
     {
       name: "unknown",
       env: {},
-      argv: ["node", "/some/path/prisma-cli"],
+      argv: ["node", "/some/path/prisma"],
       expected: {
         type: "docs",
-        value: "https://www.prisma.io/docs/cli",
+        value:
+          "https://www.prisma.io/docs/orm/release-status#what-you-get-when-you-install-today",
       },
     },
   ])("selects update instructions for $name", ({ env, argv, expected }) => {

@@ -23,16 +23,9 @@ function presentationsFor(
     result.endedCount === 0
       ? "No workspace sessions to end."
       : `Ended ${result.endedCount} workspace ${result.endedCount === 1 ? "session" : "sessions"}.`;
-  const rows = [{ label: "ended", value: String(result.endedCount) }];
   return {
     json: () => result,
     human: () => [
-      {
-        kind: "summary",
-        status: "info",
-        text: "Clearing your stored workspace sessions.",
-      },
-      { kind: "fields", rows },
       { kind: "summary", status: "ok", text: summary },
       ...(environmentInForce
         ? [
@@ -44,7 +37,7 @@ function presentationsFor(
           ]
         : []),
     ],
-    stdout: () => rows.map((row) => `${row.label}: ${row.value}`),
+    stdout: () => [],
     next: () => [SIGN_IN],
   };
 }
