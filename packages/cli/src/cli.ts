@@ -10,6 +10,7 @@ import {
 import { createComposerFamily } from "@prisma/composer-cli/family";
 import { ormCommandFamily as ormToolchainFamily } from "@prisma/orm-toolchain/cli";
 import { CLI_DOCS_URL, CLI_NAME, DOCS_ERRORS_BASE_URL } from "./cli-name";
+import { agentInstallCommand } from "./commands/agent/install";
 import { authLoginCommand } from "./commands/auth/login";
 import { authLogoutCommand } from "./commands/auth/logout";
 import { authWhoamiCommand } from "./commands/auth/whoami";
@@ -160,6 +161,11 @@ export { skillsCommandFamily };
 /** The engine ships the three telemetry commands and the group help
  *  text that belongs to them; both halves are spread in below. */
 const telemetry = telemetryCommandGroup({ docsUrl: CLI_DOCS_URL });
+
+export const agentCommandFamily: CommandFamily = defineCommandFamily({
+  docsBaseUrl: DOCS_ERRORS_BASE_URL,
+  commands: { install: agentInstallCommand },
+});
 
 export const cliGroups: Readonly<
   Record<
@@ -346,6 +352,11 @@ export const cliGroups: Readonly<
       "A ref is a named pointer to a contract, letting commands target a contract by a stable name. Set, list, and delete refs here.",
   },
   orm: { brief: "Initialize a Prisma ORM project" },
+  agent: {
+    brief: "Connect an AI agent to Prisma",
+    description:
+      "Install the Prisma MCP connection and enrollment skill in this project. The agent client handles sign-in and secure credential storage.",
+  },
   skills: {
     brief:
       "Manage Prisma skills for AI coding agents. Sync and list the instruction files",
@@ -444,6 +455,7 @@ export const mountedCommands: Readonly<Record<string, AnyCommand>> = {
   "migration ref set": ormCommandFamily.commands["migration ref set"],
   // Local utilities: no owning package, no config section, no API.
   init: initCommand,
+  "agent install": agentInstallCommand,
   "skills sync": skillsCommandFamily.commands.sync,
   "skills list": skillsCommandFamily.commands.list,
   feedback: feedbackCommand,
@@ -460,6 +472,7 @@ export function buildCli(): Cli {
       composerCommandFamily,
       ormCommandFamily,
       skillsCommandFamily,
+      agentCommandFamily,
     ],
     groups: cliGroups,
     commands: mountedCommands,

@@ -59,7 +59,9 @@
     "cross-spawn": "^7.0.6",
     "dotenv": "^17.4.2",
     "execa": "^9.6.1",
-    "open": "^11.0.0"
+    "jsonc-parser": "^3.3.1",
+    "open": "^11.0.0",
+    "smol-toml": "^1.9.0"
   },
   "devDependencies": {
     "@prisma/composer": "0.25.0",
@@ -67,8 +69,8 @@
     "@repo/cli-conformance": "workspace:8.0.0-rc.19",
     "@repo/cli-telemetry": "workspace:8.0.0-rc.19",
     "@repo/tsconfig": "workspace:8.0.0-rc.19",
-    "@types/node": "^22.19.19",
     "@types/cross-spawn": "^6.0.6",
+    "@types/node": "^22.19.19",
     "tsdown": "^0.21.10",
     "tsx": "^4.22.4",
     "typescript": "^6.0.3",

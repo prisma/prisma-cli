@@ -1,3 +1,4 @@
+import { dirname, resolve } from "node:path";
 import { defineConfig } from "tsdown";
 
 export default defineConfig([
@@ -14,6 +15,17 @@ export default defineConfig([
     },
     format: ["esm"],
     clean: true,
+    inputOptions: { moduleTypes: { ".md": "text" } },
+    plugins: [
+      {
+        name: "markdown-text",
+        resolveId(source, importer) {
+          if (source.endsWith(`.md?raw`) && importer)
+            return resolve(dirname(importer), source.slice(0, -4));
+          return null;
+        },
+      },
+    ],
     shims: true,
     fixedExtension: false,
     deps: {

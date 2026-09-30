@@ -1,4 +1,4 @@
 {
   "extends": "@repo/tsconfig/base.json",
-  "include": ["src/**/*.ts"]
+  "include": ["src/**/*.ts", "../cli/src/markdown.d.ts"]
 }
