@@ -1,10 +1,12 @@
 // biome-ignore-all lint/performance/noAwaitInLoops: each assertion checks an installed client directory.
 import { execFile } from "node:child_process";
 import {
+  chmod,
   mkdir,
   mkdtemp,
   readFile,
   rm,
+  stat,
   symlink,
   writeFile,
 } from "node:fs/promises";
@@ -60,7 +62,7 @@ describe("agent install through the built binary", () => {
         prisma: { type: "http", url: "https://mcp.prisma.io/mcp" },
       },
     });
-    for (const dir of [".agents", ".claude", ".cursor"]) {
+    for (const dir of [".agents", ".claude", ".pi", ".cursor"]) {
       expect(
         await readFile(
           path.join(cwd, dir, "skills/prisma-agent-enrollment/SKILL.md"),
@@ -136,4 +138,53 @@ describe("agent install through the built binary", () => {
       readFile(path.join(other, "config.toml")),
     ).rejects.toMatchObject({ code: "ENOENT" });
   });
+});
+
+it("refuses an inline Codex MCP table without changing any file", async () => {
+  const cwd = await project();
+  await mkdir(path.join(cwd, `.codex`));
+  const content = `mcp_servers = { docs = { url = "https://example.com/mcp" } }\n`;
+  await writeFile(path.join(cwd, `.codex/config.toml`), content);
+  await expect(install(cwd)).rejects.toMatchObject({ code: 2 });
+  expect(await readFile(path.join(cwd, `.codex/config.toml`), `utf8`)).toBe(
+    content,
+  );
+  await expect(readFile(path.join(cwd, `.mcp.json`))).rejects.toMatchObject({
+    code: `ENOENT`,
+  });
+});
+
+it("installs Pi with a preview endpoint and preserves existing file permissions", async () => {
+  const cwd = await project();
+  await mkdir(path.join(cwd, `.pi`));
+  const target = path.join(cwd, `.pi/mcp.json`);
+  await writeFile(
+    target,
+    `{"mcpServers":{"docs":{"url":"https://example.com/mcp"}}}`,
+  );
+  await chmod(target, 0o600);
+  await install(cwd, [
+    `--client`,
+    `pi`,
+    `--url`,
+    `https://preview.example.com/mcp`,
+  ]);
+  expect(JSON.parse(await readFile(target, `utf8`))).toMatchObject({
+    mcpServers: {
+      prisma: { url: `https://preview.example.com/mcp` },
+      docs: { url: `https://example.com/mcp` },
+    },
+  });
+  expect((await stat(target)).mode & 0o777).toBe(0o600);
+  const skill = await readFile(
+    path.join(cwd, `.pi/skills/prisma-agent-enrollment/SKILL.md`),
+    `utf8`,
+  );
+  expect(skill).toContain(`configured Prisma MCP connection's OAuth sign-in`);
+  await install(cwd, [
+    `--client`,
+    `pi`,
+    `--url`,
+    `https://preview.example.com/mcp`,
+  ]);
 });

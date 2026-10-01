@@ -1,5 +1,6 @@
 // biome-ignore-all lint/performance/noAwaitInLoops: parent checks and file writes must finish in order.
-import { lstat, mkdir, readFile, writeFile } from "node:fs/promises";
+import { randomUUID } from "node:crypto";
+import { lstat, mkdir, open, readFile, rename, rm } from "node:fs/promises";
 import path from "node:path";
 import { defineCommand, flag } from "@prisma/cli-engine";
 import { CliStructuredError, notOk, ok } from "@prisma/cli-engine/protocol";
@@ -16,6 +17,7 @@ import { parseSkillStamp } from "../../lib/skills/frontmatter";
 const CLIENTS = {
   codex: { config: ".codex/config.toml", skills: ".agents/skills" },
   claude: { config: ".mcp.json", skills: ".claude/skills" },
+  pi: { config: ".pi/mcp.json", skills: ".pi/skills" },
   cursor: { config: ".cursor/mcp.json", skills: ".cursor/skills" },
 } as const;
 
@@ -122,24 +124,32 @@ async function prepareMcpConfiguration(
           `The Prisma connection in ${config} differs from this installation. Review it before rerunning agent install.`,
         ),
       );
-  } else {
-    const server = client === "claude" ? { type: "http", url } : { url };
-    const originalText = original.value ?? "{}\n";
-    const content =
-      client === "codex"
-        ? `${original.value ?? ""}\n[mcp_servers.prisma]\nurl = ${JSON.stringify(url)}\n`
-        : applyEdits(
-            originalText,
-            modify(originalText, [key, "prisma"], server, {
-              formattingOptions: {
-                insertSpaces: true,
-                tabSize: 2,
-                eol: "\n",
-              },
-            }),
-          );
-    changes.push({ file: config, content });
+    return Result.ok(changes);
   }
+  const server = client === "claude" ? { type: "http", url } : { url };
+  const originalText = original.value ?? "{}\n";
+  const content =
+    client === "codex"
+      ? `${original.value ?? ""}\n[mcp_servers.prisma]\nurl = ${JSON.stringify(url)}\n`
+      : applyEdits(
+          originalText,
+          modify(originalText, [key, "prisma"], server, {
+            formattingOptions: {
+              insertSpaces: true,
+              tabSize: 2,
+              eol: "\n",
+            },
+          }),
+        );
+  const proposed = parseMcpConfiguration(client, content, config);
+  if (proposed.isErr())
+    return Result.err(
+      new CliStructuredError(
+        `CLI.AGENT_INSTALL_CONFIG`,
+        `Could not extend ${config} safely. Convert inline MCP tables to normal TOML tables and rerun agent install.`,
+      ),
+    );
+  changes.push({ file: config, content });
   return Result.ok(changes);
 }
 
@@ -181,7 +191,7 @@ export const agentInstallCommand = defineCommand({
     flags: {
       client: flag.enum({
         brief: "Configure one MCP client, or all supported clients",
-        values: ["all", "codex", "claude", "cursor"],
+        values: ["all", "codex", "claude", "pi", "cursor"],
         default: "all",
       }),
       url: flag.string({
@@ -245,7 +255,23 @@ export const agentInstallCommand = defineCommand({
         for (const change of changes) {
           const target = path.join(ctx.cwd, change.file);
           await mkdir(path.dirname(target), { recursive: true });
-          await writeFile(target, change.content, "utf8");
+          const info = await lstat(target).catch(
+            (error: NodeJS.ErrnoException) => {
+              if (error.code === `ENOENT`) return null;
+              throw error;
+            },
+          );
+          const temporary = `${target}.${randomUUID()}.tmp`;
+          try {
+            await using file = await open(temporary, `wx`, info?.mode ?? 0o644);
+            await file.writeFile(change.content, `utf8`);
+            if (info) await file.chmod(info.mode);
+            await file.sync();
+            await file.close();
+            await rename(temporary, target);
+          } finally {
+            await rm(temporary, { force: true });
+          }
         }
       },
       catch: () =>

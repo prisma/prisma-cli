@@ -20,10 +20,12 @@ directly to bypass this connection's policy.
 ## Install and sign in
 
 1. If the Prisma MCP connection is missing, run `prisma agent install` in the
-   project. Use `--client codex`, `--client claude`, or `--client cursor` to
+   project. Use `--client codex`, `--client claude`, `--client pi`, or `--client cursor` to
    configure only that client. Restart the client if it does not reload MCP
    configuration automatically.
-2. Connect to `https://mcp.prisma.io/mcp` through the client's OAuth sign-in.
+2. Use the configured Prisma MCP connection's OAuth sign-in. The installer defaults
+   to `https://mcp.prisma.io/mcp`; `--url` can select a preview endpoint. Keep using
+   that configured endpoint for sign-in and cloud operations.
    Present the sign-in link when the client asks. The person signs in and
    authorizes the connection; the client stores and refreshes its credential.
 3. Call `get_agent_connection`. This confirms the enrolled agent identity,
