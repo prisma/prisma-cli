@@ -118,14 +118,6 @@ async function tarball(): Promise<readonly Finding[]> {
           removeWhen:
             "composer-cli releases peering 0.6.2 and the follow-up bump PR pins that release",
         },
-        {
-          familyPackage: "@prisma/orm-toolchain",
-          familyPin: "0.6.1",
-          shellPin: "0.6.2",
-          reason: "engine 0.6.2 must publish before orm-toolchain can peer it",
-          removeWhen:
-            "orm-toolchain releases peering 0.6.2 and the follow-up bump PR pins that release",
-        },
       ],
       channel: CHANNEL,
       sandboxDir: join(WORK_DIR, "sandbox"),
