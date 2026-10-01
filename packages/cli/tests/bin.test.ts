@@ -544,10 +544,14 @@ describe("buildCli", () => {
     );
 
     expect(exitCode).toBe(2);
-    expect(error.code).toBe("CLI.CONFIG_SECTION_INVALID");
+    expect(error).toMatchObject({
+      code: "CLI.CONFIG_SECTION_INVALID",
+      summary: `The 'composer' section of ${COMPOSER_CONFIG_PATH_CONFIG_PATH} is invalid.`,
+    });
     expect(diagnostics).toEqual([
       expect.objectContaining({
         code: "CONFIG.FIELD_RETIRED",
+        severity: "error",
         meta: { field: "configPath" },
         where: { path: COMPOSER_CONFIG_PATH_CONFIG_PATH },
       }),
@@ -557,7 +561,9 @@ describe("buildCli", () => {
   /**
    * `dev --help` never evaluates the config, so a valid section shows
    * only on a run that validates it: composer's validator accepts the
-   * section and the command reaches its own handler.
+   * section and the handler runs. Its first step imports the entry the
+   * host passed, which does not exist; on Windows the handler refuses
+   * the platform before that.
    */
   it("hands a valid composer section to composer's dev", async () => {
     const { exitCode, error } = await runComposerDev(
@@ -565,10 +571,13 @@ describe("buildCli", () => {
     );
 
     expect(exitCode).toBe(2);
-    expect(error.code).toBe(
+    expect(error).toMatchObject(
       process.platform === "win32"
-        ? "DEV.PLATFORM_UNSUPPORTED"
-        : "COMPOSE.ENTRY_UNLOADABLE",
+        ? { code: "DEV.PLATFORM_UNSUPPORTED" }
+        : {
+            code: "COMPOSE.ENTRY_UNLOADABLE",
+            summary: expect.stringContaining(join("src", "service.ts")),
+          },
     );
   });
 
