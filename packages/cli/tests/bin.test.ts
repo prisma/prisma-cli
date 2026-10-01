@@ -34,12 +34,20 @@ const MISSING_PRISMA_CONFIG_PATH = join(
   "missing-prisma.config.ts",
 );
 
-/** A prisma.config.ts whose only section is composer's. */
-const COMPOSER_SECTION_CONFIG_PATH = join(
+/** A composer section that still carries the retired `configPath`. */
+const COMPOSER_CONFIG_PATH_CONFIG_PATH = join(
   dirname(fileURLToPath(import.meta.url)),
   "fixtures",
   "config",
-  "composer-section.config.ts",
+  "composer-config-path.config.ts",
+);
+
+/** A composer section built with `@prisma/composer/config`. */
+const COMPOSER_VALID_CONFIG_PATH = join(
+  dirname(fileURLToPath(import.meta.url)),
+  "fixtures",
+  "config",
+  "composer-valid.config.ts",
 );
 
 const SEMVER_PREFIX = /^\d+\.\d+\.\d+/;
@@ -492,7 +500,10 @@ describe("buildCli", () => {
    *  stdout is not a TTY here, so the stream is JSON, and JSON escapes
    *  every separator in a Windows path — no path the CLI printed is a
    *  substring of the stream that carried it. */
-  function resultError(stdoutText: string): Diagnostic {
+  function resultFailure(stdoutText: string): {
+    readonly error: Diagnostic;
+    readonly diagnostics: readonly Diagnostic[];
+  } {
     const frames = stdoutText
       .split("\n")
       .filter((line) => line !== "")
@@ -501,81 +512,65 @@ describe("buildCli", () => {
     if (last?.kind !== "result" || last.envelope.ok) {
       throw new Error(`expected a failed result frame, got: ${stdoutText}`);
     }
-    return last.envelope.error;
+    return {
+      error: last.envelope.error,
+      diagnostics: last.envelope.diagnostics,
+    };
   }
 
-  /** Composer's `dev` through the real bin, against the fixture whose
-   *  composer section names a config file that is not there. */
-  async function runComposerDev(): Promise<{
+  /** Composer's `dev` through the real bin, reading the given config. */
+  async function runComposerDev(configPath: string): Promise<{
     readonly exitCode: number;
     readonly error: Diagnostic;
+    readonly diagnostics: readonly Diagnostic[];
   }> {
     const proc = makeProcess({
-      argv: [
-        "node",
-        "bin.js",
-        "dev",
-        "--config",
-        COMPOSER_SECTION_CONFIG_PATH,
-        "src/service.ts",
-      ],
+      argv: ["node", "bin.js", "dev", "--config", configPath, "src/service.ts"],
     });
 
     const exitCode = await main(proc);
-    return { exitCode, error: resultError(proc.stdoutText) };
+    return { exitCode, ...resultFailure(proc.stdoutText) };
   }
 
   /**
    * The mount's config wiring, end to end: the section name composer's
-   * family declares, read by the bin's real disk loader, reaching
-   * composer's own handler as the path it acts on.
-   *
-   * Every platform but Windows. `dev` is the only composer command
-   * that reaches config discovery without credentials — `deploy` stops
-   * at the credential check — and it refuses Windows before it reads
-   * the section it was handed, so no shipped command can show the
-   * section arriving there. The test after this one pins what Windows
-   * can still show.
+   * family declares, read by the bin's real disk loader and checked by
+   * composer's own validator before any handler runs, so every
+   * platform sees the same refusal.
    */
-  it.skipIf(process.platform === "win32")(
-    "hands the composer section of prisma.config.ts to the composer family",
-    async () => {
-      const { exitCode, error } = await runComposerDev();
+  it("refuses a composer section that still names a config file", async () => {
+    const { exitCode, error, diagnostics } = await runComposerDev(
+      COMPOSER_CONFIG_PATH_CONFIG_PATH,
+    );
 
-      expect(exitCode).toBe(2);
-      expect(error.code).toBe("CONFIG.FILE_MISSING");
-      // Composer resolves the section's relative path against the
-      // prisma.config.ts that declared it, not against the cwd.
-      expect(error.where?.path).toBe(
-        join(
-          dirname(COMPOSER_SECTION_CONFIG_PATH),
-          "named-by-the-section.config.ts",
-        ),
-      );
-      expect(error.why).toContain("there is no walk to fall back on");
-    },
-  );
+    expect(exitCode).toBe(2);
+    expect(error.code).toBe("CLI.CONFIG_SECTION_INVALID");
+    expect(diagnostics).toEqual([
+      expect.objectContaining({
+        code: "CONFIG.FIELD_RETIRED",
+        meta: { field: "configPath" },
+        where: { path: COMPOSER_CONFIG_PATH_CONFIG_PATH },
+      }),
+    ]);
+  });
 
   /**
-   * What Windows still shows: the bin evaluated the config file, the
-   * engine accepted its `composer` section, and the command reached
-   * composer's own operation — which then refuses the platform. A
-   * mis-wired section would fail here as a config diagnostic instead.
-   * What it does not show is the section's path reaching composer's
-   * config discovery, since the refusal comes first.
-   *
-   * When composer supports Windows this test fails, and the pair
-   * collapses back into the one above.
+   * `dev --help` never evaluates the config, so a valid section shows
+   * only on a run that validates it: composer's validator accepts the
+   * section and the command reaches its own handler.
    */
-  it.runIf(process.platform === "win32")(
-    "on Windows, composer's dev refuses the platform before it reads the section",
-    async () => {
-      const { exitCode, error } = await runComposerDev();
+  it("hands a valid composer section to composer's dev", async () => {
+    const { exitCode, error } = await runComposerDev(
+      COMPOSER_VALID_CONFIG_PATH,
+    );
 
-      expect(exitCode).toBe(2);
-      expect(error.code).toBe("DEV.PLATFORM_UNSUPPORTED");
-    },
-  );
+    expect(exitCode).toBe(2);
+    expect(error.code).toBe(
+      process.platform === "win32"
+        ? "DEV.PLATFORM_UNSUPPORTED"
+        : "COMPOSE.ENTRY_UNLOADABLE",
+    );
+  });
 
   it("runs --version through the real tree, printing the version with exit 0", async () => {
     const proc = makeProcess({
