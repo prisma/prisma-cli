@@ -39,3 +39,6 @@ minimumReleaseAgeExclude:
   - '@distilled.cloud/neon@1.0.0-rc.6'
   - '@distilled.cloud/planetscale@1.0.0-rc.6'
   - alchemy@2.0.0-beta.74
+
+# Composer 0.26.0 preview from pkg.pr.new: composer-cli depends on @prisma/composer by URL.
+blockExoticSubdeps: false
