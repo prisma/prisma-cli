@@ -71,26 +71,41 @@ packages (`prisma-composer-core-concepts` in `@prisma/composer`,
 `prisma-orm-core-concepts` in `@prisma/orm-postgres`), so they appear after
 this install plus `prisma skills sync`, not before.
 
-Two config files with different owners:
+One config file, `prisma.config.ts`, configures the CLI and every product
+it runs. Each top-level key is a section owned by one product, and this CLI
+recognises exactly three: `orm`, `composer`, and `skills`. The composed
+shape:
 
-1. `prisma.config.ts` configures the CLI. Each top-level key is a section
-   owned by one product, and this CLI recognises exactly three: `orm`,
-   `composer`, and `skills`. The composed shape:
+```ts
+import { definePrismaConfig } from "prisma/config";
+import { defineConfig as composer } from "@prisma/composer/config";
+import { nodeBuild } from "@prisma/composer/node/control";
+import {
+  prismaCloud,
+  prismaState,
+} from "@prisma/composer-prisma-cloud/control";
+import { defineConfig as orm } from "@prisma/orm-postgres/config";
 
-   ```ts
-   import { definePrismaConfig } from "prisma/config";
-   import { defineConfig } from "@prisma/orm-postgres/config";
+export default definePrismaConfig({
+  composer: composer({
+    extensions: [prismaCloud(), nodeBuild()],
+    state: prismaState(),
+  }),
+  orm: orm({ contract: "./src/prisma/contract.prisma" }),
+  skills: { agents: ["claude"] },
+});
+```
 
-   export default definePrismaConfig({
-     orm: defineConfig({ contract: "./src/prisma/contract.prisma" }),
-     skills: { agents: ["claude"] },
-   });
-   ```
-
-2. `prisma-composer.config.ts` configures Composer itself and is a separate,
-   mandatory file for `dev` and `deploy`: without it `dev` fails with
-   `CONFIG.FILE_MISSING`. Its contents belong to
-   `prisma-composer-core-concepts`.
+`dev` and `deploy` read the `composer` section and nothing else; what goes
+in it belongs to `prisma-composer-core-concepts`. A separate
+`prisma-composer.config.ts` is no longer read, and the old setup is refused,
+never silently ignored: `CONFIG.SECTION_MISSING` when no loaded
+`prisma.config.ts` declares a `composer` section, `CONFIG.FIELD_RETIRED`
+when the section still has `configPath`, and `CONFIG.FILE_RETIRED` when a
+`prisma-composer.config.*` sits next to the declaring `prisma.config.ts`.
+All three arrive under the CLI's `CLI.CONFIG_SECTION_INVALID`. The fix for
+all three is to move the old file's `extensions` and `state` into the
+section and delete the old file.
 
 ## The resource model
 
