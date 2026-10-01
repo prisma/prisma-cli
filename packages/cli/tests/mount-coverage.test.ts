@@ -20,6 +20,7 @@ import { defineCommand, telemetryCommandGroup } from "@prisma/cli-engine";
 import { ok } from "@prisma/cli-engine/protocol";
 import { describe, expect, it } from "vitest";
 import {
+  agentCommandFamily,
   cliGroups,
   composerCommandFamily,
   mountedCommands,
@@ -75,6 +76,7 @@ function unownedMountPaths(
  * adding its path here.
  */
 const EXPECTED_MOUNT_PATHS: readonly string[] = [
+  "agent install",
   "auth login",
   "auth logout",
   "auth whoami",
@@ -165,6 +167,7 @@ const EXPECTED_MOUNT_PATHS: readonly string[] = [
 ];
 
 const MOUNTED_FAMILIES = {
+  agent: agentCommandFamily,
   platform: platformCommandFamily,
   composer: composerCommandFamily,
   orm: ormCommandFamily,

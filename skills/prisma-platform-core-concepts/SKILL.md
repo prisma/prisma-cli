@@ -36,6 +36,15 @@ needs them. To learn a command surface, run `prisma --help`, or
 queries belong to the `prisma-orm-core-concepts` skill; declaring services
 and modules in code belongs to `prisma-composer-core-concepts`.
 
+## Agent connections
+
+When operating as an enrolled agent, read `prisma-agent-enrollment` and use
+Prisma MCP for cloud operations. Install it with `prisma agent install`.
+The MCP client handles OAuth and secure credential storage. Use its allowed
+workspace list and approval responses; do not use a person's CLI credentials
+or direct Management API calls as a fallback. Local builds and code changes
+can still use the CLI without a cloud credential.
+
 ## The stack
 
 One CLI, `prisma`, fronts a set of products designed to be used together:
