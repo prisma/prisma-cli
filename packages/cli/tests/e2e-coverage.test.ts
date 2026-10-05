@@ -51,6 +51,8 @@ const ORM_FAMILY_REASON =
   "ORM command: no management API involved. Real e2e lives in prisma/prisma (R7); the shell proves composition in orm-mount.test.ts (R8).";
 
 const EXCLUSIONS: Readonly<Record<string, string>> = {
+  "agent install":
+    "Writes project-local MCP configuration and a packaged enrollment skill. No management API is involved; e2e/agent-install.e2e.ts verifies the built binary without credentials.",
   "contract emit": ORM_FAMILY_REASON,
   "contract infer": ORM_FAMILY_REASON,
   "db init": ORM_FAMILY_REASON,

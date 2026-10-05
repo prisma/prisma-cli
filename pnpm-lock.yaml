@@ -56,9 +56,15 @@ importers:
       execa:
         specifier: ^9.6.1
         version: 9.6.1
+      jsonc-parser:
+        specifier: ^3.3.1
+        version: 3.3.1
       open:
         specifier: ^11.0.0
         version: 11.0.0
+      smol-toml:
+        specifier: ^1.9.0
+        version: 1.9.0
     devDependencies:
       '@prisma/composer':
         specifier: 0.25.0
@@ -239,9 +245,15 @@ importers:
       execa:
         specifier: ^9.6.1
         version: 9.6.1
+      jsonc-parser:
+        specifier: ^3.3.1
+        version: 3.3.1
       open:
         specifier: ^11.0.0
         version: 11.0.0
+      smol-toml:
+        specifier: ^1.9.0
+        version: 1.9.0
     devDependencies:
       '@prisma/cli':
         specifier: workspace:8.0.0-rc.19
@@ -2742,6 +2754,10 @@ packages:
 
   sisteransi@1.0.5:
     resolution: {integrity: sha512-bLGGlR1QxBcynn2d5YmDX4MGjlZvy2MRBDRNHLJ8VI6l6+9FUiyTFNJ0IveOSP0bcXgVDPRcfGqA0pjaqUpfVg==}
+
+  smol-toml@1.9.0:
+    resolution: {integrity: sha512-hpd+HLON7HdZXqYchMM/+LaTTbdK0AU3NngIJ4KVyWbY9bfQqdL9cD+4yf6dUoU2Ap4VsU0JkQi6FxAI1B2mXQ==}
+    engines: {node: '>= 18'}
 
   source-map-js@1.2.1:
     resolution: {integrity: sha512-UXWMKhLOwVKb728IUtQPXxfYU+usdybtUrK/8uGE8CQMvrhOpwvzDBwj0QhSL7MQc7vIsISBG8VQ8+IDQxpfQA==}
@@ -5414,6 +5430,8 @@ snapshots:
   signal-exit@4.1.0: {}
 
   sisteransi@1.0.5: {}
+
+  smol-toml@1.9.0: {}
 
   source-map-js@1.2.1: {}
 

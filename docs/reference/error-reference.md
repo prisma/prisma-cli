@@ -565,3 +565,20 @@ A warn diagnostic from the skills sync (`skills sync`, and the sync step of `ini
 ### SKILLS.VERSION_CONFLICT
 
 A warn diagnostic from the skills sync (`skills sync`, and the sync step of `init`): workspace members install different versions of the same skill-bearing Prisma package, so the skills for the highest version were installed and the members pinning a lower version get a skill describing a version they did not install. The nextAction is to pin one version of the package across the workspace. Meta: none.
+
+
+### CLI.AGENT_INSTALL_CONFIG
+
+The MCP configuration could not be parsed. Fix the named file and rerun
+`prisma agent install`.
+
+### CLI.AGENT_INSTALL_CONFLICT
+
+An existing Prisma MCP connection differs from the requested endpoint, a target
+is a symbolic link, or the enrollment skill belongs to the user. Review or move
+the named file before rerunning the installer. Other clients remain unchanged.
+
+### CLI.AGENT_INSTALL_IO
+
+The installer could not read or write a project file. Check file permissions
+and rerun `prisma agent install`.
