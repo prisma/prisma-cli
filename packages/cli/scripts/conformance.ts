@@ -111,14 +111,6 @@ async function tarball(): Promise<readonly Finding[]> {
       familyPackages: ["@prisma/composer-cli", "@prisma/orm-toolchain"],
       exceptions: [
         {
-          familyPackage: "@prisma/composer-cli",
-          familyPin: "0.6.1",
-          shellPin: "0.6.2",
-          reason: "engine 0.6.2 must publish before composer-cli can peer it",
-          removeWhen:
-            "composer-cli releases peering 0.6.2 and the follow-up bump PR pins that release",
-        },
-        {
           familyPackage: "@prisma/orm-toolchain",
           familyPin: "0.6.1",
           shellPin: "0.6.2",
