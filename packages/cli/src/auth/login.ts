@@ -213,8 +213,15 @@ async function readPastedCallbackUrl(
       signal: options.signal,
     });
   } catch (error) {
-    // The browser callback won the race and aborted us. Stop prompting.
-    if ((error as { name?: string } | null)?.name === "AbortError") return null;
+    if ((error as { name?: string } | null)?.name === "AbortError") {
+      // Our signal aborted: the login is over.
+      if (options.signal.aborted) return null;
+      // readline's own abort is the user's Ctrl-C (raw mode, no SIGINT).
+      throw new CliStructuredError(
+        "CLI.PROMPT_CANCELLED",
+        "Sign-in was cancelled before it completed.",
+      );
+    }
     throw error;
   }
 

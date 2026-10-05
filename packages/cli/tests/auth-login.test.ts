@@ -435,6 +435,28 @@ describe("auth login remote paste flow", () => {
     expect(result.handleCallbackCalls).toBe(2);
   });
 
+  it("reports Ctrl-C at the paste prompt as a cancelled prompt", async () => {
+    await expect(
+      runLogin({
+        ttyInput: true,
+        terminal: true,
+        openUrl: () => {},
+        pasteLines: [CTRL_C],
+      }),
+    ).rejects.toMatchObject({ code: "CLI.PROMPT_CANCELLED" });
+  });
+
+  it("completes through the browser callback while the paste prompt is still waiting", async () => {
+    const result = await runLogin({
+      ttyInput: true,
+      openUrl: async (redirectUri) => {
+        await fetch(`${redirectUri}?code=code_123&state=state_123`);
+      },
+    });
+
+    expect(result.handleCallbackCalls).toBe(1);
+  });
+
   it("surfaces a browser-launch failure when stdin is not a TTY", async () => {
     await expect(
       runLogin({
@@ -463,10 +485,14 @@ describe("auth login remote paste flow", () => {
 const PASTE_CALLBACK_URL =
   "http://localhost:9999/auth/callback?code=code_123&state=state_123";
 
+const CTRL_C = "\x03";
+
 async function runLogin(options: {
   uiContext?: "prisma-plugin";
   onVerificationUrl?: (url: string) => void;
   ttyInput: boolean;
+  /** readline only sees keypresses such as Ctrl-C when the output is a TTY. */
+  terminal?: boolean;
   openUrl: (redirectUri: string) => Promise<unknown> | unknown;
   pasteLines?: string[];
 }): Promise<{ handleCallbackCalls: number; output: string }> {
@@ -522,6 +548,9 @@ async function runLogin(options: {
   // line at once loses all but the first across re-prompts.
   const pasteLines = [...(options.pasteLines ?? [])];
   const output = new PassThrough();
+  if (options.terminal) {
+    (output as unknown as { isTTY: boolean }).isTTY = true;
+  }
   const chunks: string[] = [];
   output.on("data", (chunk) => {
     const text = chunk.toString();
@@ -531,7 +560,7 @@ async function runLogin(options: {
       pasteLines.length > 0
     ) {
       const line = pasteLines.shift() as string;
-      queueMicrotask(() => input.write(`${line}\n`));
+      queueMicrotask(() => input.write(line === CTRL_C ? line : `${line}\n`));
     }
   });
 

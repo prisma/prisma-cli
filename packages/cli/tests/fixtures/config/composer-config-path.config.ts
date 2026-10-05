@@ -4,6 +4,6 @@ import { definePrismaConfig } from "@prisma/cli-engine";
 // appearing in one of this repository's directories above these
 // fixtures can never join a test's chain.
 export default definePrismaConfig({
-  composer: { configPath: "./named-by-the-section.config.ts" },
+  composer: { configPath: "./prisma-composer.config.ts" },
   parent: false,
 });
