@@ -1,6 +1,6 @@
 # Prisma CLI
 
-Beta of the unified Prisma CLI.
+Release candidate of the unified Prisma CLI.
 
 This repository contains the unified Prisma command-line experience: one
 binary for the ORM, Composer, and the Prisma Developer Platform — projects,
@@ -8,12 +8,12 @@ branches, services, service versions, environment variables, and the Prisma ORM
 schema and migration workflow.
 
 The 8.0.0 release candidates publish as `prisma` (binary `prisma`) and
-`@prisma/cli` (binary `prisma-cli`) on the `next` dist-tag.
+`@prisma/cli` (binary `prisma-cli`) on the `latest` dist-tag.
 
 ## Install
 
 ```bash
-pnpm add -D @prisma/cli@next
+pnpm add -D @prisma/cli
 pnpm prisma-cli --help
 ```
 
@@ -74,9 +74,9 @@ The CLI groups commands by developer workflow:
 - `project`
 - `git`
 - `branch`
-- `database`
+- `postgres`
 - `bucket`
-- `app`
+- `service`
 
 The canonical command shape is:
 
@@ -106,7 +106,7 @@ The npm package README lives at `packages/cli/README.md`.
 
 ## Community
 
-Issues and feedback are welcome while the CLI is in public beta. Pull
+Issues and feedback are welcome while the CLI is a release candidate. Pull
 requests should be tied to an existing issue or maintainer agreement so product
 behavior, docs, and tests stay aligned.
 

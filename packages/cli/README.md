@@ -8,11 +8,11 @@
 [![license](https://img.shields.io/npm/l/@prisma/cli)](https://github.com/prisma/prisma-cli/blob/main/LICENSE)
 [![Node.js](https://img.shields.io/node/v/@prisma/cli)](https://www.npmjs.com/package/@prisma/cli)
 
-[Quickstart](#quickstart) • [Commands](#commands) • [Beta notes](#beta-notes) • [Documentation](#documentation) • [Support](#support)
+[Quickstart](#quickstart) • [Commands](#commands) • [Release candidate notes](#release-candidate-notes) • [Documentation](#documentation) • [Support](#support)
 
 ---
 
-`@prisma/cli` is the public beta of the new CLI for the
+`@prisma/cli` is the release candidate of the new CLI for the
 Prisma Developer Platform.
 
 It is one binary for the ORM, Composer, and the Prisma Developer
@@ -23,10 +23,10 @@ variables, and the Prisma ORM schema and migration workflow.
 
 ## Quickstart
 
-Install the beta package locally:
+Install the package locally:
 
 ```bash
-npm install --save-dev @prisma/cli@next
+npm install --save-dev @prisma/cli
 ```
 
 Run the binary exposed by this package:
@@ -43,7 +43,7 @@ Deployments start from pushing the connected repository, the Console, or `prisma
 With `pnpm`:
 
 ```bash
-pnpm add -D @prisma/cli@next
+pnpm add -D @prisma/cli
 pnpm prisma-cli auth login
 pnpm prisma-cli git connect
 ```
@@ -59,7 +59,7 @@ npx prisma-cli project env list
 npx prisma-cli project env list --role preview
 ```
 
-The beta package exposes `prisma-cli` so it can coexist with the existing
+This package exposes `prisma-cli` so it can coexist with the existing
 `prisma` executable.
 
 ---
@@ -100,11 +100,11 @@ npx prisma-cli service version promote VERSION_ID
 
 ---
 
-## Beta notes
+## Release candidate notes
 
 - Requires Node.js 22.18 or newer.
 - This is a release-candidate package and may change quickly.
-- The 8.0.0 release candidates publish as `@prisma/cli` on the `next` dist-tag.
+- The 8.0.0 release candidates publish as `@prisma/cli` on the `latest` dist-tag.
 - The package binary is `prisma-cli`; the sibling `prisma` package ships the same CLI under the `prisma` binary.
 - Local project context is cached in `.prisma/local.json`, which is gitignored and not a declarative repo config file.
 

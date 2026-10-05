@@ -8,11 +8,11 @@
 [![license](https://img.shields.io/npm/l/prisma)](https://github.com/prisma/prisma-cli/blob/main/LICENSE)
 [![Node.js](https://img.shields.io/node/v/prisma)](https://www.npmjs.com/package/prisma)
 
-[Quickstart](#quickstart) • [Commands](#commands) • [Beta notes](#beta-notes) • [Documentation](#documentation) • [Support](#support)
+[Quickstart](#quickstart) • [Commands](#commands) • [Release candidate notes](#release-candidate-notes) • [Documentation](#documentation) • [Support](#support)
 
 ---
 
-`prisma` is the public beta of the new CLI for the
+`prisma` is the release candidate of the new CLI for the
 Prisma Developer Platform.
 
 It is one binary for the ORM, Composer, and the Prisma Developer
@@ -23,10 +23,10 @@ variables, and the Prisma ORM schema and migration workflow.
 
 ## Quickstart
 
-Install the beta package locally:
+Install the package locally:
 
 ```bash
-npm install --save-dev prisma@next
+npm install --save-dev prisma
 ```
 
 Run the binary exposed by this package:
@@ -43,7 +43,7 @@ Deployments start from pushing the connected repository, the Console, or `prisma
 With `pnpm`:
 
 ```bash
-pnpm add -D prisma@next
+pnpm add -D prisma
 pnpm prisma auth login
 pnpm prisma git connect
 ```
@@ -97,11 +97,11 @@ npx prisma service version promote VERSION_ID
 
 ---
 
-## Beta notes
+## Release candidate notes
 
 - Requires Node.js 22.18 or newer.
 - This is a release-candidate package and may change quickly.
-- The 8.0.0 release candidates publish as `prisma` on the `next` dist-tag.
+- The 8.0.0 release candidates publish as `prisma` on the `latest` dist-tag.
 - The package binary is `prisma`.
 - Local project context is cached in `.prisma/local.json`, which is gitignored and not a declarative repo config file.
 
