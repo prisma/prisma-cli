@@ -89,7 +89,7 @@ If the publish needs to be re-run (transient registry failure, etc.), a maintain
 
 Dispatch `publish.yml` from the approved engine PR's branch with `engine-only=true` and `dry-run=true`. The workflow runs the engine's build, typecheck and tests, packs it with pnpm, installs the tarball into a clean npm project, and imports each public entrypoint. It does not stamp versions or publish a CLI.
 
-Once that passes, dispatch the same branch with `engine-only=true` and `dry-run=false`. The workflow checks that the PR is still approved and still points at the tested commit, then publishes the verified engine tarball through trusted publishing. It keeps the existing `publish.yml` identity and records the dispatched commit in npm provenance.
+Once that passes, dispatch the same branch with `engine-only=true` and `dry-run=false`. Both source checks require an approval for the exact dispatched commit, not an approval carried over from an older PR head. The workflow publishes the verified engine tarball through trusted publishing. It keeps the existing `publish.yml` identity and records the dispatched commit in npm provenance. An already-published version is a no-op, so a rerun can still reach registry verification.
 
 When the PR is checked again, the engine version guard compares its source with the commit recorded in that artifact's npm provenance. The published version is accepted only while the engine remains unchanged; further changes still require a new version.
 

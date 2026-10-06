@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
 
-# Usage: publish-packages.sh <dist-tag> <package>...
+# Usage: publish-packages.sh <dist-tag> <package-or-tarball>...
 #
-# `pnpm publish` for each package, treating an already-published version
+# `pnpm publish` for packages, or `npm publish` for already-packed tarballs.
+# Treat an already-published version
 # as done: a re-run of a partially failed workflow run must reach the
 # later steps. Every other failure fails the run.
 
@@ -12,7 +13,12 @@ tag="$1"
 shift
 
 for pkg in "$@"; do
-  if out=$(pnpm --filter "$pkg" publish --tag "$tag" --access public --no-git-checks 2>&1); then
+  if [[ "$pkg" == *.tgz ]]; then
+    publish_command=(npm publish "$pkg" --tag "$tag" --access public --ignore-scripts)
+  else
+    publish_command=(pnpm --filter "$pkg" publish --tag "$tag" --access public --no-git-checks)
+  fi
+  if out=$("${publish_command[@]}" 2>&1); then
     printf '%s\n' "$out"
   else
     printf '%s\n' "$out"

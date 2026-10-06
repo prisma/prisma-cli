@@ -59,8 +59,8 @@ jobs:
           fi
           if [ "$GITHUB_REF" != refs/heads/main ]; then
             pr=$(gh pr list --repo "$GITHUB_REPOSITORY" --state open --head "$GITHUB_REF_NAME" \
-              --json number,headRefOid,baseRefName,isCrossRepository,reviewDecision \
-              | jq -er --arg sha "$GITHUB_SHA" '.[] | select(.headRefOid == $sha and .baseRefName == "main" and .isCrossRepository == false and .reviewDecision == "APPROVED") | .number')
+              --json number,headRefOid,baseRefName,isCrossRepository,reviewDecision,reviews \
+              | jq -er --arg sha "$GITHUB_SHA" '.[] | select(.headRefOid == $sha and .baseRefName == "main" and .isCrossRepository == false and .reviewDecision == "APPROVED" and any(.reviews[]; .state == "APPROVED" and .commit.oid == $sha)) | .number')
             echo "pr=$pr" >> "$GITHUB_OUTPUT"
           fi
 
@@ -117,8 +117,8 @@ jobs:
         run: |
           if [ -n "$PR_NUMBER" ]; then
             gh pr view "$PR_NUMBER" --repo "$GITHUB_REPOSITORY" \
-              --json state,headRefOid,baseRefName,isCrossRepository,reviewDecision \
-              | jq -e --arg sha "$GITHUB_SHA" '.state == "OPEN" and .headRefOid == $sha and .baseRefName == "main" and .isCrossRepository == false and .reviewDecision == "APPROVED"'
+              --json state,headRefOid,baseRefName,isCrossRepository,reviewDecision,reviews \
+              | jq -e --arg sha "$GITHUB_SHA" '.state == "OPEN" and .headRefOid == $sha and .baseRefName == "main" and .isCrossRepository == false and .reviewDecision == "APPROVED" and any(.reviews[]; .state == "APPROVED" and .commit.oid == $sha)'
           else
             test "$(gh api "repos/$GITHUB_REPOSITORY/branches/main" --jq .commit.sha)" = "$GITHUB_SHA"
           fi
@@ -128,7 +128,7 @@ jobs:
         env:
           TARBALL: ${{ steps.engine.outputs.tarball }}
           NPM_CONFIG_PROVENANCE: "true"
-        run: npm publish "$TARBALL" --ignore-scripts --access public --tag latest
+        run: bash scripts/publish-packages.sh latest "$TARBALL"
 
       - name: Verify the published engine resolves
         if: ${{ !inputs.dry-run }}
