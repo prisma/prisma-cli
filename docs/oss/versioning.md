@@ -55,7 +55,7 @@ Publishing requires:
 
 - **Push access to `main`** — pushing to `main` or merging a release PR is restricted to maintainers.
 - **A green run of the [`Publish to npm`](../../.github/workflows/publish.yml) workflow.** The workflow uses npm OIDC trusted publishing — no long-lived `NPM_TOKEN` exists in repository secrets, so a leaked secret cannot be used to publish out-of-band. Each published tarball carries an [npm provenance attestation](https://docs.npmjs.com/generating-provenance-statements) tying it to this repository and the workflow run that produced it.
-- The workflow only publishes from `main`. Dry-runs are permitted from any branch (see "validate publish changes" below); every step that would mutate external state is independently guarded.
+- CLI packages publish only from `main`. An engine-only dispatch can also publish from the current head of an approved, same-repository pull request targeting `main`. This lets the engine publish before Composer and ORM can update their exact peers. Every publishing step is guarded; dry-runs never publish.
 
 ## Mechanism: how we deliver the contract
 
@@ -84,6 +84,14 @@ The release cadence is one PR per release (on the RC line: one PR per `rc.N`). A
 2. **Reviews and merges the PR.** This is the point where a human verifies the release is intended — merging the bump PR is the deliberate act that publishes. The resulting push to `main` carries the bumped root `version`, the publish workflow detects the change, publishes under `latest`, and creates a matching GitHub Release (marked pre-release on the RC line).
 
 If the publish needs to be re-run (transient registry failure, etc.), a maintainer can dispatch the [`Publish to npm`](../../.github/workflows/publish.yml) workflow from `main` with `dist-tag: latest` and `dry-run=false`; the workflow re-publishes the version currently committed at HEAD, and because the chosen tag matches the canonical one it also re-creates the GitHub Release if it is missing. This is the same path used to cut a hand-rolled `beta` (`dist-tag=beta`, no Release).
+
+## Procedure: release the engine before its consumers
+
+Dispatch `publish.yml` from the approved engine PR's branch with `engine-only=true` and `dry-run=true`. The workflow runs the engine's build, typecheck and tests, packs it with pnpm, installs the tarball into a clean npm project, and imports each public entrypoint. It does not stamp versions or publish a CLI.
+
+Once that passes, dispatch the same branch with `engine-only=true` and `dry-run=false`. The workflow checks that the PR is still approved and still points at the tested commit, then publishes the verified engine tarball through trusted publishing. It keeps the existing `publish.yml` identity and records the dispatched commit in npm provenance.
+
+Release Composer and ORM against that engine version, update both CLI consumers, and run full CLI conformance before merging the engine PR or cutting the CLI release. No conformance exceptions are needed.
 
 ## Procedure: validate publish changes
 

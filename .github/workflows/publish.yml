@@ -1,6 +1,6 @@
 name: Publish to npm
 
-# Every run publishes a dev build. A run also publishes a release when
+# Every normal run publishes a dev build. A run also publishes a release when
 # the push changed the root `version`, or a dispatch asked for one. The
 # two are not alternatives: when they were, the release commit never
 # reached the dev channel and `dev` sat on an older version than the
@@ -25,18 +25,123 @@ on:
         required: false
         default: true
         type: boolean
+      engine-only:
+        description: "Test and publish only the engine, before its Composer and ORM consumers can update."
+        required: false
+        default: false
+        type: boolean
 
 concurrency:
   group: npm-publish
   cancel-in-progress: false
 
 jobs:
+  publish-engine:
+    name: Publish engine only
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.engine-only }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      pull-requests: read
+      id-token: write
+
+    steps:
+      - name: Verify the release source
+        id: source
+        env:
+          GH_TOKEN: ${{ github.token }}
+          DIST_TAG: ${{ inputs.dist-tag }}
+        run: |
+          if [ -n "$DIST_TAG" ] && [ "$DIST_TAG" != latest ]; then
+            echo "Engine releases use the latest dist-tag."
+            exit 1
+          fi
+          if [ "$GITHUB_REF" != refs/heads/main ]; then
+            pr=$(gh pr list --repo "$GITHUB_REPOSITORY" --state open --head "$GITHUB_REF_NAME" \
+              --json number,headRefOid,baseRefName,isCrossRepository,reviewDecision \
+              | jq -er --arg sha "$GITHUB_SHA" '.[] | select(.headRefOid == $sha and .baseRefName == "main" and .isCrossRepository == false and .reviewDecision == "APPROVED") | .number')
+            echo "pr=$pr" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Checkout
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@0e279bb959325dab635dd2c09392533439d90093 # v6.0.8
+
+      - name: Set up Node.js
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
+        with:
+          node-version-file: .node-version
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Verify the engine version
+        run: node scripts/check-engine-version.mjs origin/main
+
+      - name: Test the engine
+        run: pnpm --filter @prisma/cli-engine test
+
+      - name: Verify the packed engine
+        id: engine
+        run: |
+          version=$(node -p "require('./packages/cli-engine/package.json').version")
+          pnpm --filter @prisma/cli-engine pack --pack-destination "$RUNNER_TEMP/engine"
+          tarball="$RUNNER_TEMP/engine/prisma-cli-engine-$version.tgz"
+          sandbox=$(mktemp -d)
+          cd "$sandbox"
+          npm init -y
+          npm install "$tarball" --ignore-scripts --no-audit --no-fund
+          node --input-type=module -e 'await import("@prisma/cli-engine"); await import("@prisma/cli-engine/protocol"); await import("@prisma/cli-engine/testing");'
+          npm publish "$tarball" --dry-run --ignore-scripts --access public --tag latest
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "tarball=$tarball" >> "$GITHUB_OUTPUT"
+
+      - name: Upload the verified engine
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: engine-tarball
+          path: ${{ steps.engine.outputs.tarball }}
+          if-no-files-found: error
+
+      - name: Verify the source has not changed
+        if: ${{ !inputs.dry-run }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ steps.source.outputs.pr }}
+        run: |
+          if [ -n "$PR_NUMBER" ]; then
+            gh pr view "$PR_NUMBER" --repo "$GITHUB_REPOSITORY" \
+              --json state,headRefOid,baseRefName,isCrossRepository,reviewDecision \
+              | jq -e --arg sha "$GITHUB_SHA" '.state == "OPEN" and .headRefOid == $sha and .baseRefName == "main" and .isCrossRepository == false and .reviewDecision == "APPROVED"'
+          else
+            test "$(gh api "repos/$GITHUB_REPOSITORY/branches/main" --jq .commit.sha)" = "$GITHUB_SHA"
+          fi
+
+      - name: Publish the verified engine
+        if: ${{ !inputs.dry-run }}
+        env:
+          TARBALL: ${{ steps.engine.outputs.tarball }}
+          NPM_CONFIG_PROVENANCE: "true"
+        run: npm publish "$TARBALL" --ignore-scripts --access public --tag latest
+
+      - name: Verify the published engine resolves
+        if: ${{ !inputs.dry-run }}
+        env:
+          ENGINE_VERSION: ${{ steps.engine.outputs.version }}
+        run: node scripts/verify-published.mjs "@prisma/cli-engine@$ENGINE_VERSION"
+
   publish:
     name: Publish packages to npm
     runs-on: ubuntu-latest
     # Only `main` publishes; a dry-run dispatch may validate the pipeline
     # from any branch.
-    if: ${{ github.ref == 'refs/heads/main' || (github.event_name == 'workflow_dispatch' && github.event.inputs.dry-run == 'true') }}
+    if: ${{ !inputs.engine-only && (github.ref == 'refs/heads/main' || (github.event_name == 'workflow_dispatch' && github.event.inputs.dry-run == 'true')) }}
     permissions:
       contents: write # Required to create the GitHub Release + tag for latest publishes
       id-token: write # Required for npm OIDC Trusted Publishing
