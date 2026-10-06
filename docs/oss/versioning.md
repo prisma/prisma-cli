@@ -91,6 +91,8 @@ Dispatch `publish.yml` from the approved engine PR's branch with `engine-only=tr
 
 Once that passes, dispatch the same branch with `engine-only=true` and `dry-run=false`. The workflow checks that the PR is still approved and still points at the tested commit, then publishes the verified engine tarball through trusted publishing. It keeps the existing `publish.yml` identity and records the dispatched commit in npm provenance.
 
+When the PR is checked again, the engine version guard compares its source with the commit recorded in that artifact's npm provenance. The published version is accepted only while the engine remains unchanged; further changes still require a new version.
+
 Release Composer and ORM against that engine version, update both CLI consumers, and run full CLI conformance before merging the engine PR or cutting the CLI release. No conformance exceptions are needed.
 
 ## Procedure: validate publish changes
