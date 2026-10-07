@@ -74,20 +74,38 @@ function subjectOf(value: string): string {
   return colon === -1 ? value : value.slice(0, colon);
 }
 
-/** The first unconsumed statement-flag value naming the subject, tried
- *  verb by verb; its first value is the one that names it. A value the
- *  command rejects fails the run: a wrong flag cannot be corrected by
- *  asking again. */
+/** The longest of `subjects` that `value` names: `A:B` names both `A`
+ *  and `A:B`, and belongs to `A:B`. */
+function longestSubjectNamed(
+  value: string,
+  subjects: Iterable<string>,
+): string | undefined {
+  let longest: string | undefined;
+  for (const subject of subjects) {
+    if (
+      namesSubject(value, subject) &&
+      (longest === undefined || subject.length > longest.length)
+    ) {
+      longest = subject;
+    }
+  }
+  return longest;
+}
+
+/** The first unconsumed statement-flag value whose first value `fits`
+ *  the question, tried verb by verb. A value the command rejects fails
+ *  the run: a wrong flag cannot be corrected by asking again. */
 function answerFromFlags<V extends string>(
   state: RunState,
   question: StatementQuestion<V>,
+  fits: (first: string) => boolean,
 ): StatementAnswer<V> | undefined {
   for (const verb of question.verbs) {
     const value = state.statementValues.find(
       (candidate) =>
         !candidate.consumed &&
         candidate.verb === verb &&
-        namesSubject(candidate.values[0], question.subject),
+        fits(candidate.values[0]),
     );
     if (value === undefined) {
       continue;
@@ -198,9 +216,7 @@ function askedSubjectOf(
   state: RunState,
   value: StatementFlagValue,
 ): string | undefined {
-  return [...state.askedSubjects].find((subject) =>
-    namesSubject(value.values[0], subject),
-  );
+  return longestSubjectNamed(value.values[0], state.askedSubjects);
 }
 
 function unusedSentence(state: RunState, value: StatementFlagValue): string {
@@ -656,8 +672,18 @@ export function makePromptSurface(invocation: Invocation): PromptSurface {
     for (const question of questions) {
       state.askedSubjects.add(question.subject);
     }
-    const fromFlags = questions.map((question) =>
-      answerFromFlags(state, question),
+    const subjects = questions.map((question) => question.subject);
+    const exact = questions.map((question) =>
+      answerFromFlags(state, question, (first) => first === question.subject),
+    );
+    const fromFlags = questions.map(
+      (question, index) =>
+        exact[index] ??
+        answerFromFlags(
+          state,
+          question,
+          (first) => longestSubjectNamed(first, subjects) === question.subject,
+        ),
     );
     const unanswered = questions.filter(
       (_question, index) => fromFlags[index] === undefined,

@@ -473,7 +473,7 @@ describe("a verb-flag value nothing consumed", () => {
     });
   });
 
-  test("a second verb for an answered subject is reported as already answered", async () => {
+  test("a value equal to the subject answers before one that only starts with it", async () => {
     const result = await cliWith(askLegacy).run([
       "probe",
       "--delete",
@@ -484,7 +484,7 @@ describe("a verb-flag value nothing consumed", () => {
     ]);
 
     expect(errorOf(result)?.summary).toBe(
-      "--delete Legacy was given, but the question about Legacy was already answered by another flag.",
+      "--rename Legacy:Archive was given, but the question about Legacy was already answered by another flag.",
     );
   });
 
