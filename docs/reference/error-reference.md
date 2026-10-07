@@ -156,6 +156,12 @@ The config file's `$prismaConfig` marker declares a version other than the one t
 
 A consent prompt was reached under `--yes` or in a non-interactive session. Consent has no default answer and `--yes` does not grant it, so there is nothing for the run to assume. When the consent declares a token, the message and next action say to pass `--confirm <token>`, and the token travels in meta; without a token, the only path is running the command interactively. Meta: `consentToken` (only when the consent declares a token).
 
+A statement prompt (`ctx.prompt.statement` or `ctx.prompt.statements`) raises the same code when no verb flag on the command line answers it. One error lists every question still unanswered: the summary names the subjects, `why` carries the questions, and the next actions give one flag to pass per verb, such as `--delete Legacy` or `--rename Legacy:<new name>`. Meta: `unanswered` (a list of `{ subject, verbs }`), plus `subject` and `verbs` when exactly one question is unanswered.
+
+### CLI.CONSENT_UNUSED
+
+A statement verb flag such as `--delete Legacy` was given, but no statement prompt in the run asked about that subject, so the value answered nothing. Raised when the run would otherwise have succeeded; a run that failed for another reason reports that reason only. The usual cause is a mistyped subject, or a flag given twice for one question. Exits 2. Meta: `unused` (a list of `{ verb, text }`).
+
 ### CLI.CREDENTIALS_LOCKED
 
 The advisory lock on the stored-credentials file was held by another prisma process for longer than the wait timeout, so this run's credential mutation gave up; the fix is to wait for the other command and retry. Raised by the auth state file's lock helper in `packages/cli`. Meta: none.
@@ -194,7 +200,7 @@ The user cancelled a prompt: EOF on stdin at a line-rendered prompt, a clack can
 
 ### CLI.PROMPT_INVALID
 
-An answer could not be interpreted: not a yes/no for a confirm, not one of a select's options with no default to fall back to, or a consent token typed wrong where re-prompting is impossible (scripted answers or piped stdin — the interactive clack renderer re-prompts instead). Meta: `consentToken` (token-mismatch raise only).
+An answer could not be interpreted: not a yes/no for a confirm, not one of a select's options with no default to fall back to, a consent token typed wrong where re-prompting is impossible (scripted answers or piped stdin — the interactive clack renderer re-prompts instead), or a statement answer the command rejected. A statement answer is rejected when a verb flag's value fails the command's check (re-prompting cannot correct a flag), or when a typed answer does not start with one of the verbs or fails the check where re-prompting is impossible; the summary carries the command's reason. Meta: `consentToken` (token-mismatch raise only).
 
 ### CLI.PROMPT_REQUIRED
 

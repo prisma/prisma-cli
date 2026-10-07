@@ -182,6 +182,7 @@ Shared global flags, defined by the engine in `SHARED_FLAG_PARAMETERS` (`package
 - `-q`, `--quiet` (shorthand for `--log-level error`)
 - `-y`, `--yes` (accept prompt defaults)
 - `--confirm <value>` (grant a consent prompt non-interactively; repeatable)
+- `--<verb> <subject>` for each statement verb a command family registers (answer a statement prompt; repeatable)
 - `--interactive`, `--no-interactive`
 - `--color`, `--no-color`
 - `--config <path>`
@@ -209,6 +210,15 @@ When a command needs confirmation and cannot prompt:
 - fail with a structured actionable error
 - explain what needs confirmation
 - suggest `-y` when it is a valid bypass
+
+### Consent
+
+Consent is a question `--yes` never answers and Enter never answers. It comes in two forms.
+
+- **A yes/no consent** (`ctx.prompt.consent`). With a token, the user types the token, or passes `--confirm <token>`. Without a token, only an interactive terminal can grant it.
+- **A statement** (`ctx.prompt.statement`). The user states what should happen to a subject with a verb: `delete`, or `rename Legacy:Archive`. The command family registers the verbs, and each verb is a flag, so `--delete Legacy` gives the same answer on the command line. A flag value answers the question only when it names the subject: it is the subject, or starts with `<subject>:`.
+
+Without an answer, a non-interactive run fails with `CLI.CONSENT_REQUIRED` and lists the flags that would answer every open question. A statement flag that no question used fails the run with `CLI.CONSENT_UNUSED`, because a mistyped subject must not pass silently.
 
 ## Loading Indicators
 
