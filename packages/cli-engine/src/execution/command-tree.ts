@@ -9,11 +9,8 @@ import type { AnyCommand } from "../commands";
 import { reservedConfigSectionName } from "../config-loader";
 import type { ConfigSection } from "../config-section";
 import type { EngineSpec } from "./engine";
-import {
-  RESERVED_ALIASES,
-  RESERVED_FLAG_NAMES,
-  registeredStatementVerbs,
-} from "./shared-flags";
+import { RESERVED_ALIASES, RESERVED_FLAG_NAMES } from "./shared-flags";
+import { declaredStatements } from "./statement-flags";
 
 export function constructionError(message: string): Error {
   return new Error(`@prisma/cli-engine: ${message}`);
@@ -22,30 +19,11 @@ export function constructionError(message: string): Error {
 const CAMEL_CASE = /^[a-z][a-zA-Z0-9]*$/;
 const INTEGER_LIKE = /^\d+$/;
 
-function validateStatementVerbs(statementVerbs: readonly string[]): void {
-  for (const verb of statementVerbs) {
-    if (!CAMEL_CASE.test(verb)) {
-      throw constructionError(
-        `statement verb '${verb}' must be camelCase (it transliterates to --kebab-case on the CLI)`,
-      );
-    }
-    if (RESERVED_FLAG_NAMES.has(verb)) {
-      throw constructionError(
-        `statement verb '${verb}' is already a shared flag`,
-      );
-    }
-  }
-}
-
-function validateFlags(
-  path: string,
-  def: AnyCommand,
-  statementVerbs: readonly string[],
-): void {
+function validateFlags(path: string, def: AnyCommand): void {
   const flags = def.args.flags;
   const seenAliases = new Set<string>();
   for (const [key, spec] of Object.entries(flags)) {
-    if (RESERVED_FLAG_NAMES.has(key) || statementVerbs.includes(key)) {
+    if (RESERVED_FLAG_NAMES.has(key)) {
       throw constructionError(
         `command '${path}' declares reserved flag '${key}' (the shared flag family is engine-injected)`,
       );
@@ -70,6 +48,34 @@ function validateFlags(
       );
     }
     seenAliases.add(alias);
+  }
+}
+
+function validateStatements(path: string, def: AnyCommand): void {
+  if (def.kind !== "result-command") {
+    return;
+  }
+  for (const [verb, spec] of Object.entries(def.statements)) {
+    if (!CAMEL_CASE.test(verb)) {
+      throw constructionError(
+        `command '${path}' statement '${verb}' must be camelCase (it transliterates to --kebab-case on the CLI)`,
+      );
+    }
+    if (RESERVED_FLAG_NAMES.has(verb)) {
+      throw constructionError(
+        `command '${path}' declares statement '${verb}', which is a shared flag`,
+      );
+    }
+    if (def.args.flags[verb] !== undefined) {
+      throw constructionError(
+        `command '${path}' declares both a flag and a statement named '${verb}'`,
+      );
+    }
+    if (spec.arity !== 1) {
+      throw constructionError(
+        `command '${path}' statement '${verb}' declares arity ${spec.arity}; only 1 is supported`,
+      );
+    }
   }
 }
 
@@ -249,12 +255,11 @@ export function buildCommandTree(spec: EngineSpec): CommandTreeNode {
   }
   validateDocsBaseUrls(spec);
   validateConfigSectionNames(spec);
-  const statementVerbs = registeredStatementVerbs(spec);
-  validateStatementVerbs(statementVerbs);
   const root = emptyNode();
   for (const path of paths) {
     const def = spec.commands[path];
-    validateFlags(path, def, statementVerbs);
+    validateFlags(path, def);
+    validateStatements(path, def);
     validatePositionals(path, def);
     validateExitCodes(path, def);
     validateSpawnDeclarations(path, def);
@@ -307,15 +312,14 @@ function mountedAs(
 
 /** Engine-injected shared flags count: a command answers them whether
  *  or not it declared them, so a redirect for one could never fire. */
-function acceptsFlag(spec: EngineSpec, def: AnyCommand, flag: string): boolean {
-  if (def.args.flags[flag] !== undefined) {
+function acceptsFlag(def: AnyCommand, flag: string): boolean {
+  if (
+    def.args.flags[flag] !== undefined ||
+    declaredStatements(def).includes(flag)
+  ) {
     return true;
   }
-  return (
-    def.kind !== "server-command" &&
-    (RESERVED_FLAG_NAMES.has(flag) ||
-      registeredStatementVerbs(spec).includes(flag))
-  );
+  return def.kind !== "server-command" && RESERVED_FLAG_NAMES.has(flag);
 }
 
 function addVerbRedirect(
@@ -352,7 +356,7 @@ function addFlagRedirect(
       `redirect for flag '${flag}' names '${redirect.from}', which is not a mounted command`,
     );
   }
-  if (acceptsFlag(spec, def, flag)) {
+  if (acceptsFlag(def, flag)) {
     throw constructionError(
       `redirect for flag '${flag}' on '${redirect.from}' names a flag that command still accepts`,
     );

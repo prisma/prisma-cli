@@ -266,8 +266,7 @@ export interface PromptSurface {
    * Without such a flag a non-interactive run, or one under `--yes`,
    * fails with `CLI.CONSENT_REQUIRED`; an interactive run asks, and the
    * user answers `<verb> <text>`, or `<verb>` alone to mean the subject.
-   * Each verb must be registered in a command family's
-   * `statementVerbs`.
+   * Each verb must be one the command declares in `statements`.
    */
   readonly statement: <V extends string>(
     question: string,

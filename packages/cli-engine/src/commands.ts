@@ -143,6 +143,18 @@ export interface SpawnDeclarations {
   readonly maySpawn?: boolean;
 }
 
+/**
+ * A statement the command may ask for with ctx.prompt.statement. Its
+ * key is the verb, and the command alone accepts `--<verb> <value>`
+ * (repeatable) to answer it; the handler never sees those values.
+ */
+export interface StatementSpec {
+  /** How many values follow the flag. Only 1 is supported. */
+  readonly arity: 1;
+  /** The flag's help brief. The engine writes a generic one when absent. */
+  readonly brief?: string;
+}
+
 function normalizeNeeds<TConfig>(
   spec: NeedsSpec<TConfig> | undefined,
 ): CommandNeeds<TConfig> {
@@ -199,6 +211,9 @@ export interface CommandDefinition<
    * user's project. Declaring it never fails a run.
    */
   readonly installsPackages: TInstallsPackages;
+
+  /** The statements ctx.prompt.statement may ask, by verb. */
+  readonly statements: Readonly<Record<string, StatementSpec>>;
 
   /**
    * The handler function, referenced directly — never a dynamic import
@@ -271,6 +286,7 @@ export function defineCommand<
     readonly exitCodes?: Readonly<Record<TCode, string>>;
     readonly managesCredentials?: TManagesCredentials;
     readonly installsPackages?: TInstallsPackages;
+    readonly statements?: Readonly<Record<string, StatementSpec>>;
     readonly handler: Handler<
       TFlags,
       TPositionals,
@@ -298,6 +314,7 @@ export function defineCommand<
       false) as TManagesCredentials,
     maySpawn: def.maySpawn ?? false,
     installsPackages: (def.installsPackages ?? false) as TInstallsPackages,
+    statements: Object.freeze({ ...def.statements }),
     handler: def.handler,
   });
 }

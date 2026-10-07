@@ -43,6 +43,7 @@ export {
   type ServerCommandDefinition,
   type SessionCommandDefinition,
   type SpawnDeclarations,
+  type StatementSpec,
   type WorkflowStep,
 } from "../commands";
 export {

@@ -8,7 +8,6 @@ import {
   type Block,
   createCli,
   defineCommand,
-  defineCommandFamily,
   type PromptSurface,
   type Runtime,
 } from "@prisma/cli-engine";
@@ -60,6 +59,7 @@ function keystrokeStdin(
 function promptCli(run: (prompt: PromptSurface) => Promise<unknown>) {
   const probe = defineCommand({
     help: { summary: "Prompt probe" },
+    statements: { rename: { arity: 1 }, delete: { arity: 1 } },
     handler: async (_args, ctx) => {
       const answer = await run(ctx.prompt);
       return ok(
@@ -84,12 +84,7 @@ function promptCli(run: (prompt: PromptSurface) => Promise<unknown>) {
   return createCli({
     name: "probe",
     version: "0.0.0",
-    commandFamilies: [
-      defineCommandFamily({
-        commands: { probe },
-        statementVerbs: ["rename", "delete"],
-      }),
-    ],
+    commandFamilies: [],
     groups: {},
     commands: { probe },
   });

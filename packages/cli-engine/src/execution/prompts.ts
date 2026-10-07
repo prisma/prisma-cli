@@ -41,7 +41,7 @@ import {
 import { constructionError } from "./command-tree";
 import type { Invocation, RunState } from "./engine";
 import { announceUrl } from "./open-url";
-import type { StatementFlagValue } from "./shared-flags";
+import type { StatementFlagValue } from "./statement-flags";
 
 const WHITESPACE = /\s/;
 
@@ -565,9 +565,9 @@ export function makePromptSurface(invocation: Invocation): PromptSurface {
         );
       }
       for (const verb of question.verbs) {
-        if (!invocation.statementVerbs.includes(verb)) {
+        if (!state.statementVerbs.includes(verb)) {
           throw constructionError(
-            `command '${state.commandId}' asked a statement with verb '${verb}', which no command family registers in statementVerbs`,
+            `command '${state.commandId}' asked a statement with verb '${verb}', which it does not declare in statements`,
           );
         }
       }

@@ -19,11 +19,8 @@ import type { EngineSpec } from "./engine";
 import { renderHelpMarkdown } from "./markdown";
 import { makePaint, type Paint, textWidth } from "./palette";
 import { formatFlagGiven, withoutFormatFlags } from "./pre-parse-argv";
-import {
-  registeredStatementVerbs,
-  SHARED_ALIASES,
-  sharedFlagParameters,
-} from "./shared-flags";
+import { SHARED_ALIASES, SHARED_FLAG_PARAMETERS } from "./shared-flags";
+import { statementFlagParameter } from "./statement-flags";
 import { resolveExample } from "./stricli-adapter";
 
 const RAIL = "│";
@@ -221,7 +218,7 @@ function nodeCard(
     ),
     arguments: [],
     options: [],
-    globalOptions: atRoot ? sharedFlagRows(spec) : [],
+    globalOptions: atRoot ? sharedFlagRows() : [],
     note: atRoot
       ? undefined
       : `Run '${spec.name} ${groupPath} <command> --help' for details on a command.`,
@@ -245,9 +242,7 @@ function leafCard(
   ]
     .filter((part) => part !== "")
     .join(" ");
-  const sharedNames = Object.keys(
-    sharedFlagParameters(registeredStatementVerbs(spec)),
-  )
+  const sharedNames = Object.keys(SHARED_FLAG_PARAMETERS)
     .map((key) => `--${kebabCase(key)}`)
     .join(", ");
   return {
@@ -497,14 +492,12 @@ function flagLabel(
   return `${alias} --${kebab}${negated}${placeholder}${repeat}`;
 }
 
-function sharedFlagRows(spec: EngineSpec): readonly HelpRow[] {
+function sharedFlagRows(): readonly HelpRow[] {
   const aliasByKey = new Map<string, string>(
     Object.entries(SHARED_ALIASES).map(([alias, key]) => [key, alias]),
   );
-  const rows = Object.entries(
-    sharedFlagParameters(registeredStatementVerbs(spec)),
-  ).map(([key, parameter]) => {
-    const record = parameter as {
+  const rows = Object.entries(SHARED_FLAG_PARAMETERS).map(([key, spec]) => {
+    const record = spec as {
       brief: string;
       kind: string;
       placeholder?: string;
@@ -525,7 +518,28 @@ function sharedFlagRows(spec: EngineSpec): readonly HelpRow[] {
   ];
 }
 
+function statementFlagRows(def: AnyCommand): readonly HelpRow[] {
+  if (def.kind !== "result-command") {
+    return [];
+  }
+  return Object.entries(def.statements).map(([verb, spec]) => {
+    const parameter = statementFlagParameter(verb, spec.brief);
+    return {
+      name: flagLabel(verb, {
+        placeholder: parameter.placeholder,
+        variadic: parameter.variadic,
+      }),
+      brief: parameter.brief,
+      suffix: undefined,
+    };
+  });
+}
+
 function declaredFlagRows(def: AnyCommand): readonly HelpRow[] {
+  return [...ownFlagRows(def), ...statementFlagRows(def)];
+}
+
+function ownFlagRows(def: AnyCommand): readonly HelpRow[] {
   return Object.entries(def.args.flags).map(([key, spec]) => {
     const runtime: FlagRuntimeSpec = flagRuntime(spec);
     return {

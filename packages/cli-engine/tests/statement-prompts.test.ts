@@ -8,8 +8,6 @@
 import {
   type Block,
   defineCommand,
-  defineCommandFamily,
-  flag,
   type PromptSurface,
 } from "@prisma/cli-engine";
 import { CliStructuredError, notOk, ok } from "@prisma/cli-engine/protocol";
@@ -22,6 +20,7 @@ const INTERACTIVE = { isTty: { stdin: true, stdout: true } };
 function probe(ask: (prompt: PromptSurface) => Promise<unknown>) {
   return defineCommand({
     help: { summary: "Statement probe" },
+    statements: { rename: { arity: 1 }, delete: { arity: 1 } },
     handler: async (_args, ctx) => {
       const answer = await ask(ctx.prompt);
       return ok(
@@ -46,17 +45,7 @@ function probe(ask: (prompt: PromptSurface) => Promise<unknown>) {
 }
 
 function cliWith(ask: (prompt: PromptSurface) => Promise<unknown>) {
-  const command = probe(ask);
-  return createTestCli({
-    commandFamilies: [
-      defineCommandFamily({
-        commands: { probe: command },
-        statementVerbs: ["rename", "delete"],
-      }),
-    ],
-    commands: { probe: command },
-    now: EPOCH,
-  });
+  return createTestCli({ commands: { probe: probe(ask) }, now: EPOCH });
 }
 
 const LEGACY_QUESTION =
@@ -464,94 +453,13 @@ describe("a verb-flag value nothing consumed", () => {
   test("a run that failed for another reason reports that reason only", async () => {
     const failing = defineCommand({
       help: { summary: "Failing probe" },
+      statements: { delete: { arity: 1 } },
       handler: async () =>
         notOk(new CliStructuredError("CLI.INVALID_ARGUMENTS", "Bad input.")),
     });
-    const cli = createTestCli({
-      commandFamilies: [
-        defineCommandFamily({
-          commands: { probe: failing },
-          statementVerbs: ["delete"],
-        }),
-      ],
-      commands: { probe: failing },
-    });
+    const cli = createTestCli({ commands: { probe: failing } });
     const result = await cli.run(["probe", "--delete", "Legacy", "--json"]);
 
     expect(errorOf(result)?.code).toBe("CLI.INVALID_ARGUMENTS");
-  });
-});
-
-describe("verb registration", () => {
-  test("a statement naming an unregistered verb is a construction error", async () => {
-    const unregistered = (prompt: PromptSurface) =>
-      prompt.statement("Archive it?", {
-        subject: "Legacy",
-        verbs: ["archive"],
-        validate: () => undefined,
-      });
-    const result = await cliWith(unregistered).run(["probe", "--json"]);
-
-    expect(result.exitCode).toBe(1);
-    expect(errorOf(result)?.summary).toContain(
-      "verb 'archive', which no command family registers in statementVerbs",
-    );
-  });
-
-  test("a command declaring a flag with a verb's name fails construction", () => {
-    const command = defineCommand({
-      args: { flags: { delete: flag.boolean({ brief: "Delete it" }) } },
-      help: { summary: "Clashing probe" },
-      handler: async () =>
-        notOk(new CliStructuredError("CLI.INVALID_ARGUMENTS", "Unused.")),
-    });
-
-    expect(() =>
-      createTestCli({
-        commandFamilies: [
-          defineCommandFamily({
-            commands: { probe: command },
-            statementVerbs: ["delete"],
-          }),
-        ],
-        commands: { probe: command },
-      }),
-    ).toThrow(
-      "command 'probe' declares reserved flag 'delete' (the shared flag family is engine-injected)",
-    );
-  });
-
-  test("a verb that is already a shared flag fails construction", () => {
-    const command = probe(async () => undefined);
-
-    expect(() =>
-      createTestCli({
-        commandFamilies: [
-          defineCommandFamily({
-            commands: { probe: command },
-            statementVerbs: ["confirm"],
-          }),
-        ],
-        commands: { probe: command },
-      }),
-    ).toThrow("statement verb 'confirm' is already a shared flag");
-  });
-
-  test("a verb that is not camelCase fails construction", () => {
-    const command = probe(async () => undefined);
-
-    expect(() =>
-      createTestCli({
-        commandFamilies: [
-          defineCommandFamily({
-            commands: { probe: command },
-            statementVerbs: ["drop-table"],
-          }),
-        ],
-        commands: { probe: command },
-      }),
-    ).toThrow(
-      "statement verb 'drop-table' must be camelCase (it transliterates to --kebab-case on the CLI)",
-    );
   });
 });

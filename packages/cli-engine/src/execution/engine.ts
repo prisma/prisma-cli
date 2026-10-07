@@ -65,17 +65,19 @@ import {
   applySharedFlags,
   configFlagGivenNoValueError,
   defaultInteractive,
-  registeredStatementVerbs,
   type SharedFlags,
-  type StatementFlagValue,
   sniffFormat,
-  statementFlagValues,
 } from "./shared-flags";
 import {
   type DelegatedTerminal,
   endAbandonedChild,
   recordSignalDuringSpawn,
 } from "./spawn";
+import {
+  declaredStatements,
+  type StatementFlagValue,
+  statementFlagValues,
+} from "./statement-flags";
 import {
   buildRoutes,
   capturingText,
@@ -150,8 +152,11 @@ export interface RunState {
    *  token removes the value it matched, so one `--confirm` grants one
    *  consent. */
   confirmValues: string[];
-  /** Every verb-flag value, in argv order. A statement prompt marks the
-   *  value it consumed; one left unconsumed fails a successful run. */
+  /** The statement verbs the mounted command declared. */
+  statementVerbs: readonly string[];
+  /** Every statement-flag value, in argv order. A statement prompt
+   *  marks the value it consumed; one left unconsumed fails a run that
+   *  otherwise succeeded. */
   statementValues: StatementFlagValue[];
   interactive: boolean;
   colorEnabled: boolean;
@@ -222,9 +227,6 @@ export interface Invocation {
   /** Every config section name the mounted command families declare —
    *  the closed set of top-level keys prisma.config.ts may contain. */
   readonly configSections: readonly string[];
-  /** Every verb the mounted command families registered for statement
-   *  prompts. */
-  readonly statementVerbs: readonly string[];
   /** The engine's whole signal policy, reachable so ctx.spawn can
    *  replay recorded signals through exactly the delivered path. */
   readonly deliverSignal: (signal: "SIGINT" | "SIGTERM") => void;
@@ -312,7 +314,6 @@ export class EngineImpl implements Engine {
   private readonly now: () => Date;
   private readonly delay: (ms: number, signal: AbortSignal) => Promise<void>;
   private readonly configSections: readonly string[];
-  private readonly statementVerbs: readonly string[];
 
   constructor(
     spec: EngineSpec,
@@ -323,7 +324,6 @@ export class EngineImpl implements Engine {
     this.now = now;
     this.delay = delay;
     this.configSections = declaredConfigSections(spec);
-    this.statementVerbs = registeredStatementVerbs(spec);
     this.tree = buildCommandTree(spec);
     this.root = buildRoutes(
       spec,
@@ -349,6 +349,7 @@ export class EngineImpl implements Engine {
       logLevel: "info",
       yes: false,
       confirmValues: [],
+      statementVerbs: [],
       statementValues: [],
       interactive: defaultInteractive(runtime),
       /** Pre-parse resolution so a run that never mounts a command — an
@@ -400,7 +401,6 @@ export class EngineImpl implements Engine {
       state,
       signal: controller.signal,
       configSections: this.configSections,
-      statementVerbs: this.statementVerbs,
       deliverSignal,
     };
     if (versionFlagGiven(argv)) {
@@ -654,7 +654,6 @@ export class EngineImpl implements Engine {
     state.snapshot = buildCommandSnapshot(
       entry.id,
       entry.def,
-      this.statementVerbs,
       state.argv,
       values,
     );
@@ -669,9 +668,10 @@ export class EngineImpl implements Engine {
     let needsOutcome: NeedsOutcome;
     try {
       applySharedFlags(state, rawFlags as SharedFlags, invocation.runtime);
+      state.statementVerbs = declaredStatements(entry.def);
       state.statementValues = statementFlagValues(
         state.argv,
-        this.statementVerbs,
+        state.statementVerbs,
         rawFlags,
       );
       needsOutcome = await checkNeeds(entry.def, invocation);

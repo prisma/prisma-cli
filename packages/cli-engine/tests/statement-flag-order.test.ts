@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest";
-import { statementFlagValues } from "../src/execution/shared-flags";
+import { statementFlagValues } from "../src/execution/statement-flags";
 
 const VERBS = ["rename", "delete", "dropColumn"];
 
