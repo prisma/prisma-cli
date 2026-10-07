@@ -439,22 +439,10 @@ export class EngineImpl implements Engine {
       );
       return 0;
     }
-    let stricliArgv = argv;
-    const routed = routedCommand(this.tree, argv);
-    if (routed !== undefined) {
-      state.statements = statementsOf(routed.def);
-      const extraction = extractStatementFlags(argv, state.statements);
-      if (!extraction.ok) {
-        unsubscribe();
-        state.commandId = routed.id;
-        state.docsBaseUrl = routed.docsBaseUrl;
-        state.snapshot = buildCommandSnapshot(routed.id, routed.def, argv, []);
-        settleErrored(invocation, extraction.error);
-        this.fireOnSettled(invocation, 2, startedAtMs);
-        return 2;
-      }
-      state.statementValues = extraction.values;
-      stricliArgv = extraction.argv;
+    const stricliArgv = this.takeStatementFlags(invocation, argv, startedAtMs);
+    if (stricliArgv === undefined) {
+      unsubscribe();
+      return 2;
     }
     const stricliProcess = {
       /** stricli writes only help text here. In json mode stdout carries
@@ -502,6 +490,33 @@ export class EngineImpl implements Engine {
       runtime.exit(state.pendingForceExit === "SIGTERM" ? 143 : 130);
     }
     return exitCode;
+  }
+
+  /** The routed command's statement flags come out of argv before the
+   *  parser sees it. Returns the argv left for the parser, or undefined
+   *  when a statement flag was malformed and the run has settled. */
+  private takeStatementFlags(
+    invocation: Invocation,
+    argv: readonly string[],
+    startedAtMs: number,
+  ): readonly string[] | undefined {
+    const state = invocation.state;
+    const routed = routedCommand(this.tree, argv);
+    if (routed === undefined) {
+      return argv;
+    }
+    state.statements = statementsOf(routed.def);
+    const extraction = extractStatementFlags(argv, state.statements);
+    if (!extraction.ok) {
+      state.commandId = routed.id;
+      state.docsBaseUrl = routed.docsBaseUrl;
+      state.snapshot = buildCommandSnapshot(routed.id, routed.def, argv, []);
+      settleErrored(invocation, extraction.error);
+      this.fireOnSettled(invocation, 2, startedAtMs);
+      return undefined;
+    }
+    state.statementValues = extraction.values;
+    return extraction.argv;
   }
 
   /** stricli routed or parsed nothing runnable. When the redirect table
