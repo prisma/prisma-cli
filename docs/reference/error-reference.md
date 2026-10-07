@@ -160,7 +160,7 @@ A statement prompt (`ctx.prompt.statement` or `ctx.prompt.statements`) raises th
 
 ### CLI.CONSENT_UNUSED
 
-A statement flag such as `--delete Legacy` was given but answered nothing. The summary says why for each flag: no statement prompt in the run asked about that subject (usually a mistyped subject), or the question about it was already answered by another flag (a flag given twice, or two verbs for one subject). Raised when the handler returns from a run that would otherwise have succeeded, so a run that failed for another reason reports that reason only; or earlier, as soon as `ctx.prompt.statements(questions, { last: true })` has answered its questions, before the command acts. Exits 2. Meta: `unused` (a list of `{ verb, values }`).
+A statement flag such as `--delete Legacy` was given but answered nothing. The summary says why for each flag: no statement prompt asked about that subject and no `ctx.statements.take` took it (usually a mistyped subject), or the question about it was already answered by another flag (a flag given twice, or two verbs for one subject). Raised when the handler returns from a run that would otherwise have succeeded, so a run that failed for another reason reports that reason only; or earlier, as soon as `ctx.prompt.statements(questions, { last: true })` has answered its questions, before the command acts. Exits 2. Meta: `unused` (a list of `{ verb, values }`).
 
 ### CLI.CREDENTIALS_LOCKED
 

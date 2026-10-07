@@ -51,13 +51,13 @@ Each occurrence of `--<verb>` takes exactly `arity` values, in argv order across
 
 The engine answers the question in this order:
 
-1. A verb flag whose first value names the subject: the value is the subject, or starts with `<subject>:`. `--delete Legacy` and `--rename Legacy:Archive` both name `Legacy`. A value `validate` rejects fails the run with `CLI.PROMPT_INVALID`.
+1. A verb flag whose first value names the subject: the value is the subject, or starts with `<subject>:`. `--delete Legacy` and `--rename Legacy:Archive` both name `Legacy`. Within one batch, a value equal to a subject answers that subject first, and any other value goes to the longest subject it names, so `--delete A:B` answers the question about `A:B`, not the one about `A`. Ask questions whose subjects are prefixes of one another in one batch. A value `validate` rejects fails the run with `CLI.PROMPT_INVALID`.
 2. With no such value, a non-interactive run, or one under `--yes`, fails with `CLI.CONSENT_REQUIRED`. Its next actions give one flag to pass per verb, and its `meta` carries `subject`, `verbs` and `unanswered`.
 3. Otherwise the user is asked, and answers `<verb> <text>`, or `<verb>` alone to mean the subject. A verb with an arity above 1 takes its values from the text, separated by whitespace, and `text` is them joined by one space, as for a flag. A rejected answer is asked again on a terminal; with scripted or piped input it fails with `CLI.PROMPT_INVALID`.
 
 `ctx.prompt.statements([...])` asks several questions at once and returns the answers in order. Flags answer what they can, a refusal lists every question still unanswered, and an interactive run asks the rest one after another.
 
-A statement is the command's own declared input, unlike a `--confirm` value, which a handler never sees. A command that needs some statements as input to its work, before it can know what to ask, takes them with `ctx.statements.take("rename")`: every unconsumed value of that verb, in argv order, as `{ verb, values, text }[]`. Taken values are consumed, and other verbs' values stay for the questions.
+A statement is the command's own declared input, unlike a `--confirm` value, which a handler never sees. A command that needs some statements as input to its work, before it can know what to ask, takes them with `ctx.statements.take("rename")`: every unconsumed value of that verb, in argv order, as `{ verb, values, text }[]`. Taken values are consumed, and other verbs' values stay for the questions. Do not list a verb you take in a later question's `verbs`, and take before any `last: true` batch, which reports every value still unconsumed.
 
 Each flag answers one question. A run that succeeds with a flag nothing consumed fails with `CLI.CONSENT_UNUSED`, so a mistyped subject or a second answer to one question is never ignored. That check runs when the handler returns, after the command has acted. A command that asks everything in one batch passes `statements(questions, { last: true })` to get the same failure right after the questions are answered, before it does anything with them.
 

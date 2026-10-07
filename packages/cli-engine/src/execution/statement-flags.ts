@@ -3,8 +3,9 @@
  * repeatable, accepted only by the command that declares the verb. The
  * engine takes them out of argv before the parser sees it, because the
  * parser gives a flag one value per occurrence and keeps no order
- * across flags. Handlers never see them; ctx.prompt.statement hands
- * them out.
+ * across flags. The values stay out of the handler's flags; the
+ * handler reads them through ctx.prompt.statement or
+ * ctx.statements.take.
  */
 import { camelCase } from "../args";
 import type { AnyCommand, StatementSpec } from "../commands";

@@ -197,7 +197,11 @@ export interface BrowserWaitRequest {
 export interface StatementOptions<V extends string> {
   /** What the answer is about, in the command's own vocabulary.
    *  Non-empty; an empty subject is a construction error. A flag value
-   *  names it when it equals the subject or starts with `<subject>:`. */
+   *  names it when it equals the subject or starts with `<subject>:`.
+   *  Within one batch a value equal to a subject answers that subject
+   *  first, and any other value goes to the longest subject it names,
+   *  so ask questions whose subjects are prefixes of one another (`A`
+   *  and `A:B`) in one `statements` call. */
   readonly subject: string;
   /** The verbs that may answer, in the order a refusal lists them. */
   readonly verbs: readonly V[];
@@ -230,7 +234,9 @@ export interface StatementSurface {
    * leftover check does not report them. For statements that are input
    * to the command's work rather than answers to a question; other
    * verbs' values stay for the questions. A verb the command did not
-   * declare is a construction error.
+   * declare is a construction error. Do not list a verb you take in a
+   * later question's `verbs`: the take consumes the flag that would
+   * answer it.
    */
   readonly take: <V extends string>(verb: V) => StatementAnswer<V>[];
 }
@@ -238,7 +244,9 @@ export interface StatementSurface {
 export interface StatementsOptions {
   /** This is the run's final ask: values still unconsumed once the
    *  questions are answered fail with CLI.CONSENT_UNUSED here, before
-   *  the command acts on the answers. */
+   *  the command acts on the answers. Take any verbs you take before
+   *  the `last` batch: after it, their values have already been
+   *  reported as unused. */
   readonly last?: boolean;
 }
 

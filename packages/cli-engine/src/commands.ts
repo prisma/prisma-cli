@@ -147,7 +147,8 @@ export interface SpawnDeclarations {
  * A statement the command may ask for with ctx.prompt.statement. Its
  * key is the verb, one lowercase word, and the command alone accepts
  * `--<verb>` followed by `arity` values, repeatable, to answer it. The
- * handler never sees those values.
+ * values stay out of the handler's flags; the handler reads them
+ * through ctx.prompt.statement or ctx.statements.take.
  */
 export interface StatementSpec {
   /** How many argv values each occurrence of the flag takes. Giving
