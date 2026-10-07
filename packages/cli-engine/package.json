@@ -1,6 +1,6 @@
 {
   "name": "@prisma/cli-engine",
-  "version": "0.6.2",
+  "version": "0.6.3",
   "description": "The execution engine of the unified Prisma CLI.",
   "type": "module",
   "exports": {
@@ -48,7 +48,7 @@
   "dependencies": {
     "@clack/prompts": "1.5.0",
     "@stricli/core": "1.3.0",
-    "arktype": "2.2.3",
+    "arktype": "^2.2.7",
     "c12": "3.3.4",
     "colorette": "^2.0.20",
     "package-manager-detector": "1.8.0",

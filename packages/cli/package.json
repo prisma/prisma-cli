@@ -49,7 +49,7 @@
   },
   "dependencies": {
     "@manypkg/tools": "^2.1.2",
-    "@prisma/cli-engine": "workspace:0.6.2",
+    "@prisma/cli-engine": "workspace:0.6.3",
     "@prisma/composer-cli": "0.26.0",
     "@prisma/compute-sdk": "0.43.0",
     "@prisma/management-api-sdk": "1.80.0",
