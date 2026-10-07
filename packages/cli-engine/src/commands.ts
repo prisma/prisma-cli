@@ -381,6 +381,11 @@ export function defineSessionCommand<
     >["handler"];
   } & SpawnDeclarations,
 ): SessionCommandDefinition<TFlags, TPositionals, TConfig> {
+  if (Object.hasOwn(def, "statements")) {
+    throw new Error(
+      "@prisma/cli-engine: a session command cannot declare statements (only a result command asks them)",
+    );
+  }
   return Object.freeze({
     kind: "session-command" as const,
     help: normalizeHelp(def.help),

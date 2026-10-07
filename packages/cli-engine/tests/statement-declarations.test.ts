@@ -7,6 +7,7 @@ import {
   defineCommand,
   defineCommandFamily,
   defineServerCommand,
+  defineSessionCommand,
   flag,
   type PromptSurface,
   type StatementSpec,
@@ -182,6 +183,18 @@ describe("declarations that fail construction", () => {
       createTestCli({ commandFamilies: [family], commands: { probe } }),
     ).toThrow(
       "redirect for flag 'delete' on 'probe' names a flag that command still accepts",
+    );
+  });
+
+  test("a session command declaring statements", () => {
+    const spec = {
+      help: { summary: "Session probe" },
+      statements: DELETE,
+      handler: async () => ok(undefined),
+    };
+
+    expect(() => defineSessionCommand(spec)).toThrow(
+      "a session command cannot declare statements",
     );
   });
 
