@@ -8,6 +8,7 @@ import {
   type Block,
   createCli,
   defineCommand,
+  defineCommandFamily,
   type PromptSurface,
   type Runtime,
 } from "@prisma/cli-engine";
@@ -83,7 +84,12 @@ function promptCli(run: (prompt: PromptSurface) => Promise<unknown>) {
   return createCli({
     name: "probe",
     version: "0.0.0",
-    commandFamilies: [],
+    commandFamilies: [
+      defineCommandFamily({
+        commands: { probe },
+        statementVerbs: ["rename", "delete"],
+      }),
+    ],
     groups: {},
     commands: { probe },
   });
@@ -276,6 +282,44 @@ describe("the clack tier resolves prompt values", () => {
     );
 
     expect(result.exitCode).toBe(3);
+  });
+
+  test("statement: a rejected answer shows the reason and re-prompts", async () => {
+    const result = await runInteractive(
+      (prompt) =>
+        prompt.statement("What happens to Legacy?", {
+          subject: "Legacy",
+          verbs: ["rename", "delete"],
+          validate: (verb, text) =>
+            verb === "rename" && !text.startsWith("Legacy:")
+              ? "Write the rename as Legacy:<new name>."
+              : undefined,
+        }),
+      [
+        ..."drop",
+        ENTER,
+        BACKSPACE,
+        BACKSPACE,
+        BACKSPACE,
+        BACKSPACE,
+        ..."rename Archive",
+        ENTER,
+        ...Array.from({ length: "Archive".length }, () => BACKSPACE),
+        ..."Legacy:Archive",
+        ENTER,
+      ],
+    );
+
+    expect(result.exitCode).toBe(0);
+    expect(answerIn(result.plainStderr)).toBe(
+      '{"verb":"rename","text":"Legacy:Archive"}',
+    );
+    expect(result.plainStderr).toContain(
+      "Start the answer with rename or delete.",
+    );
+    expect(result.plainStderr).toContain(
+      "Write the rename as Legacy:<new name>.",
+    );
   });
 
   test("a multi-step wizard reuses the one renderer and stdin iterator", async () => {

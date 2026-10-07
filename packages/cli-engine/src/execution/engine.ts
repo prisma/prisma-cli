@@ -21,6 +21,7 @@ import type { InputStream, Runtime } from "../runtime";
 import {
   type ChildResult,
   type ChildStatusSettlement,
+  childExitCode,
   isChildStatusSettlement,
 } from "../spawn";
 import {
@@ -46,6 +47,7 @@ import {
 } from "./help";
 import { checkNeeds, type NeedsOutcome } from "./needs";
 import { configFlagGivenNoValue, versionFlagGiven } from "./pre-parse-argv";
+import { unusedStatementValuesError } from "./prompts";
 import {
   commandSegments,
   settleBug,
@@ -602,8 +604,11 @@ export class EngineImpl implements Engine {
         return;
       }
       state.resolved = true;
+      const unused = unusedStatementValuesError(state);
       if (!result.ok) {
         settleErrored(invocation, result.failure, result.failure.diagnostics);
+      } else if (unused !== undefined && succeeded(state, result.value)) {
+        settleErrored(invocation, unused);
       } else if (isChildStatusSettlement(result.value)) {
         settleChildStatus(invocation, entry.def, result.value);
       } else {
@@ -795,6 +800,13 @@ export class EngineImpl implements Engine {
       settleThrown(invocation, cause);
     }
   }
+}
+
+function succeeded(state: RunState, value: unknown): boolean {
+  if (!isChildStatusSettlement(value)) {
+    return true;
+  }
+  return state.lastChild !== undefined && childExitCode(state.lastChild) === 0;
 }
 
 /** The path the user typed, for argv that routed to no command: the

@@ -74,6 +74,9 @@ export type {
   OpenUrlOutcome,
   OpenUrlRequest,
   PromptSurface,
+  StatementAnswer,
+  StatementOptions,
+  StatementQuestion,
 } from "../context";
 export {
   authServiceError,

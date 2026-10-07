@@ -10,6 +10,11 @@
  * interactive terminal that is the only thing that can. Cancellation
  * (EOF at the prompt) is a distinct structured error mapped to exit 3.
  *
+ * A statement is the second consent form: answered with a verb and free
+ * text. A `--<verb>` flag whose value names the subject answers it in
+ * every session; each value answers one statement, and a value nothing
+ * consumed fails an otherwise successful run.
+ *
  * Rendering is two-tier: real TTYs (isTty.stdin AND stdin.setRawMode
  * present, no scripted answers) render through @clack/prompts via
  * clack-renderer.ts; everything else uses the plain line renderer
@@ -20,7 +25,12 @@
  * re-prompts, the line renderer fails structurally, because a scripted
  * or piped answer cannot be corrected.
  */
-import type { PromptSurface } from "../context";
+import { kebabCase } from "../args";
+import type {
+  PromptSurface,
+  StatementAnswer,
+  StatementQuestion,
+} from "../context";
 import { CliStructuredError } from "../protocol";
 import type { InputStream } from "../runtime";
 import {
@@ -31,6 +41,9 @@ import {
 import { constructionError } from "./command-tree";
 import type { Invocation, RunState } from "./engine";
 import { announceUrl } from "./open-url";
+import type { StatementFlagValue } from "./shared-flags";
+
+const WHITESPACE = /\s/;
 
 /** How often browserWait asks whether the user has finished. */
 const BROWSER_WAIT_POLL_INTERVAL_MS = 1000;
@@ -44,6 +57,133 @@ function consumeConfirmValue(state: RunState, token: string): boolean {
   }
   state.confirmValues.splice(index, 1);
   return true;
+}
+
+function flagForm(verb: string, text: string): string {
+  return `--${kebabCase(verb)} ${text}`;
+}
+
+function namesSubject(text: string, subject: string): boolean {
+  return text === subject || text.startsWith(`${subject}:`);
+}
+
+function subjectOf(text: string): string {
+  const colon = text.indexOf(":");
+  return colon === -1 ? text : text.slice(0, colon);
+}
+
+/** The first unconsumed verb-flag value naming the subject, tried verb
+ *  by verb. A value the command rejects fails the run: a wrong flag
+ *  cannot be corrected by asking again. */
+function answerFromFlags<V extends string>(
+  state: RunState,
+  question: StatementQuestion<V>,
+): StatementAnswer<V> | undefined {
+  for (const verb of question.verbs) {
+    const value = state.statementValues.find(
+      (candidate) =>
+        !candidate.consumed &&
+        candidate.verb === verb &&
+        namesSubject(candidate.text, question.subject),
+    );
+    if (value === undefined) {
+      continue;
+    }
+    const rejection = question.validate(verb, value.text);
+    if (rejection !== undefined) {
+      throw new CliStructuredError(
+        "CLI.PROMPT_INVALID",
+        `${flagForm(verb, value.text)} does not answer "${question.question}": ${rejection}`,
+      );
+    }
+    value.consumed = true;
+    return { verb, text: value.text };
+  }
+  return undefined;
+}
+
+function statementUnavailable<V extends string>(
+  unanswered: readonly StatementQuestion<V>[],
+  state: RunState,
+): CliStructuredError {
+  const subjects = unanswered.map((question) => `"${question.subject}"`);
+  const situation = state.yes
+    ? "which --yes cannot give"
+    : "and the session is not interactive";
+  const summary =
+    unanswered.length === 1
+      ? `${subjects[0]} needs a statement, ${situation}.`
+      : `${unanswered.length} subjects need a statement, ${situation}: ${subjects.join(", ")}.`;
+  const listed = unanswered.map(({ subject, verbs }) => ({ subject, verbs }));
+  return new CliStructuredError("CLI.CONSENT_REQUIRED", summary, {
+    why: unanswered.map((question) => question.question).join("\n"),
+    nextActions: unanswered.flatMap((question) =>
+      question.verbs.map((verb) => ({
+        kind: "user-choice" as const,
+        label: `Pass ${flagForm(verb, question.forms?.[verb] ?? question.subject)}`,
+      })),
+    ),
+    meta:
+      listed.length === 1
+        ? { ...listed[0], unanswered: listed }
+        : { unanswered: listed },
+  });
+}
+
+type ParsedStatement<V extends string> =
+  | { readonly answer: StatementAnswer<V> }
+  | { readonly problem: string };
+
+/** An interactive answer: `<verb> <text>`, or `<verb>` alone to mean
+ *  the subject. */
+function parseStatement<V extends string>(
+  raw: string,
+  question: StatementQuestion<V>,
+): ParsedStatement<V> {
+  const trimmed = raw.trim();
+  const space = trimmed.search(WHITESPACE);
+  const typedVerb = space === -1 ? trimmed : trimmed.slice(0, space);
+  const rest = space === -1 ? "" : trimmed.slice(space).trim();
+  const verb = question.verbs.find((candidate) => candidate === typedVerb);
+  if (verb === undefined) {
+    return {
+      problem: `Start the answer with ${question.verbs.join(" or ")}.`,
+    };
+  }
+  const text = rest === "" ? question.subject : rest;
+  const rejection = question.validate(verb, text);
+  return rejection === undefined
+    ? { answer: { verb, text } }
+    : { problem: rejection };
+}
+
+/** Fails a run that otherwise succeeded when a verb flag answered
+ *  nothing: a mistyped subject must not pass silently. */
+export function unusedStatementValuesError(
+  state: RunState,
+): CliStructuredError | undefined {
+  const unused: readonly StatementFlagValue[] = state.statementValues.filter(
+    (value) => !value.consumed,
+  );
+  if (unused.length === 0) {
+    return undefined;
+  }
+  const given = unused.map((value) => flagForm(value.verb, value.text));
+  const subjects = [...new Set(unused.map((value) => subjectOf(value.text)))];
+  const summary =
+    unused.length === 1
+      ? `${given[0]} was given but nothing in this run asked about ${subjects[0]}.`
+      : `${given.join(", ")} were given but nothing in this run asked about ${subjects.join(", ")}.`;
+  return new CliStructuredError("CLI.CONSENT_UNUSED", summary, {
+    nextActions: [
+      {
+        kind: "user-choice",
+        label:
+          "Remove the flag, or spell the subject the way the command names it.",
+      },
+    ],
+    meta: { unused: unused.map(({ verb, text }) => ({ verb, text })) },
+  });
 }
 
 function makeLineReader(
@@ -382,6 +522,83 @@ export function makePromptSurface(invocation: Invocation): PromptSurface {
     return raw;
   };
 
+  const askStatement = async <V extends string>(
+    question: StatementQuestion<V>,
+  ): Promise<StatementAnswer<V>> => {
+    if (useClack()) {
+      const raw = await renderWithClack<string>(question.question, (r) =>
+        r.statement(question.question, question.verbs.join(" or "), (value) => {
+          const parsed = parseStatement(value, question);
+          return "problem" in parsed ? parsed.problem : undefined;
+        }),
+      );
+      const parsed = parseStatement(raw, question);
+      if ("problem" in parsed) {
+        throw promptInvalid(question.question, raw);
+      }
+      return parsed.answer;
+    }
+    const raw = await ask(
+      question.question,
+      `? ${question.question} (${question.verbs.join("/")}) `,
+    );
+    if (typeof raw !== "string") {
+      throw promptInvalid(question.question, String(raw));
+    }
+    const parsed = parseStatement(raw, question);
+    if ("problem" in parsed) {
+      throw new CliStructuredError(
+        "CLI.PROMPT_INVALID",
+        `"${raw}" is not a valid answer to "${question.question}": ${parsed.problem}`,
+      );
+    }
+    return parsed.answer;
+  };
+
+  const requireRegisteredVerbs = <V extends string>(
+    questions: readonly StatementQuestion<V>[],
+  ): void => {
+    for (const question of questions) {
+      if (question.verbs.length === 0) {
+        throw constructionError(
+          `command '${state.commandId}' asked a statement about '${question.subject}' with no verbs`,
+        );
+      }
+      for (const verb of question.verbs) {
+        if (!invocation.statementVerbs.includes(verb)) {
+          throw constructionError(
+            `command '${state.commandId}' asked a statement with verb '${verb}', which no command family registers in statementVerbs`,
+          );
+        }
+      }
+    }
+  };
+
+  /** Flags answer first, so a refusal can name every question still
+   *  unanswered at once; the rest are asked one after another. */
+  const statements = async <V extends string>(
+    questions: readonly StatementQuestion<V>[],
+  ): Promise<StatementAnswer<V>[]> => {
+    requireRegisteredVerbs(questions);
+    const fromFlags = questions.map((question) =>
+      answerFromFlags(state, question),
+    );
+    const unanswered = questions.filter(
+      (_question, index) => fromFlags[index] === undefined,
+    );
+    if (unanswered.length > 0 && (state.yes || !state.interactive)) {
+      throw statementUnavailable(unanswered, state);
+    }
+    const answerFrom = async (index: number): Promise<StatementAnswer<V>[]> => {
+      if (index === questions.length) {
+        return [];
+      }
+      const answer = fromFlags[index] ?? (await askStatement(questions[index]));
+      return [answer, ...(await answerFrom(index + 1))];
+    };
+    return answerFrom(0);
+  };
+
   /** A prompt writes to stderr and reads the engine's stdin — the same
    *  terminal a live child inherited. Like ctx.present, prompting while
    *  a child owns the terminal is a construction error. */
@@ -392,7 +609,7 @@ export function makePromptSurface(invocation: Invocation): PromptSurface {
       );
     }
   };
-  const surface: PromptSurface = {
+  const surface: Omit<PromptSurface, "statement" | "statements"> = {
     confirm: async (question, opts) => {
       const fallback = opts?.default;
       if (state.yes || !state.interactive) {
@@ -500,6 +717,13 @@ export function makePromptSurface(invocation: Invocation): PromptSurface {
       opts?: { readonly default?: T },
     ) => claimTerminal(() => surface.select(question, options, opts)),
     text: (question, opts) => claimTerminal(() => surface.text(question, opts)),
+    statement: async (question, opts) => {
+      const [answer] = await claimTerminal(() =>
+        statements([{ question, ...opts }]),
+      );
+      return answer;
+    },
+    statements: (questions) => claimTerminal(() => statements(questions)),
     browserWait: (request) => claimTerminal(() => surface.browserWait(request)),
   };
 }

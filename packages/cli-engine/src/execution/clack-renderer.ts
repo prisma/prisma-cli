@@ -55,6 +55,14 @@ export interface ClackRenderer {
   /** Type-to-confirm: anything but the token re-prompts, so the only
    *  ways out are the exact token and cancelling. */
   confirmToken(question: string, token: string): Promise<string | symbol>;
+  /** Free text checked by `check`: a rejected answer shows its message
+   *  and re-prompts, so the only ways out are an accepted answer and
+   *  cancelling. */
+  statement(
+    question: string,
+    placeholder: string,
+    check: (value: string) => string | undefined,
+  ): Promise<string | symbol>;
   select<T extends string>(
     question: string,
     options: ReadonlyArray<{ value: T; label: string }>,
@@ -101,6 +109,14 @@ export async function makeClackRenderer(
           value === token
             ? undefined
             : `Type ${token} exactly, or press Ctrl-C.`,
+      }),
+    statement: (question, placeholder, check) =>
+      clack.text({
+        input,
+        output,
+        message: question,
+        placeholder,
+        validate: (value) => check(value ?? ""),
       }),
     select: <T extends string>(
       question: string,

@@ -206,6 +206,32 @@ export interface BrowserWaitRequest {
  * writes to stderr, so an interactive json run prompts without touching
  * the stdout stream.
  */
+export interface StatementOptions<V extends string> {
+  /** What the answer is about, in the command's own vocabulary. It
+   *  should not contain `:`, which separates it from the rest of a flag
+   *  value. */
+  readonly subject: string;
+  /** The verbs that may answer, in the order a refusal lists them. */
+  readonly verbs: readonly V[];
+  /** How a refusal writes a verb's flag value, such as
+   *  `Legacy:<new name>`. A verb without one is written with the
+   *  subject. */
+  readonly forms?: Partial<Record<V, string>>;
+  /** Returns undefined to accept the answer, or a message saying why it
+   *  is rejected. The engine never interprets the text. */
+  readonly validate: (verb: V, text: string) => string | undefined;
+}
+
+export interface StatementQuestion<V extends string>
+  extends StatementOptions<V> {
+  readonly question: string;
+}
+
+export interface StatementAnswer<V extends string> {
+  readonly verb: V;
+  readonly text: string;
+}
+
 export interface PromptSurface {
   readonly confirm: (
     question: string,
@@ -228,6 +254,34 @@ export interface PromptSurface {
     question: string,
     opts?: { readonly token?: string },
   ) => Promise<boolean>;
+  /**
+   * A consent answered with a verb and free text: what the user means
+   * should happen to `subject`. Like `consent`, `--yes` and Enter never
+   * answer it.
+   *
+   * A `--<verb>` flag whose value names the subject answers it first,
+   * in any session, without rendering anything: the value names the
+   * subject when it is the subject or starts with `<subject>:`. A
+   * value `validate` rejects fails the run with `CLI.PROMPT_INVALID`.
+   * Without such a flag a non-interactive run, or one under `--yes`,
+   * fails with `CLI.CONSENT_REQUIRED`; an interactive run asks, and the
+   * user answers `<verb> <text>`, or `<verb>` alone to mean the subject.
+   * Each verb must be registered in a command family's
+   * `statementVerbs`.
+   */
+  readonly statement: <V extends string>(
+    question: string,
+    opts: StatementOptions<V>,
+  ) => Promise<StatementAnswer<V>>;
+  /**
+   * Several statements asked together, answered in order. Flags answer
+   * what they can; a refusal names every question still unanswered at
+   * once, and an interactive run asks them one after another.
+   * `statement(question, opts)` is `statements([{ question, ...opts }])`.
+   */
+  readonly statements: <V extends string>(
+    questions: readonly StatementQuestion<V>[],
+  ) => Promise<StatementAnswer<V>[]>;
   readonly select: <T extends string>(
     question: string,
     options: ReadonlyArray<{ value: T; label: string }>,
