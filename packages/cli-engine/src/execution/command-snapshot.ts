@@ -9,14 +9,17 @@
 import { camelCase, flagRuntime, kebabCase } from "../args";
 import type { AnyCommand } from "../commands";
 import type { EngineCommandSnapshot } from "../run-summary";
-import { SHARED_ALIASES, SHARED_FLAG_PARAMETERS } from "./shared-flags";
+import { SHARED_ALIASES, sharedFlagParameters } from "./shared-flags";
 
-function declaredFlagKeys(def: AnyCommand): readonly string[] {
+function declaredFlagKeys(
+  def: AnyCommand,
+  statementVerbs: readonly string[],
+): readonly string[] {
   const own = Object.keys(def.args.flags);
   if (def.kind === "server-command") {
     return own;
   }
-  return [...Object.keys(SHARED_FLAG_PARAMETERS), ...own];
+  return [...Object.keys(sharedFlagParameters(statementVerbs)), ...own];
 }
 
 function aliasMap(def: AnyCommand): ReadonlyMap<string, string> {
@@ -115,10 +118,11 @@ function explicitFlagKeys(
 export function buildCommandSnapshot(
   entryId: string,
   def: AnyCommand,
+  statementVerbs: readonly string[],
   argv: readonly string[],
   positionalValues: readonly (string | undefined)[],
 ): EngineCommandSnapshot {
-  const declared = declaredFlagKeys(def);
+  const declared = declaredFlagKeys(def, statementVerbs);
   const explicit = explicitFlagKeys(def, declared, argv);
   return {
     commandPath: entryId.split("."),

@@ -56,6 +56,11 @@ export interface CommandFamily {
   readonly docsBaseUrl: string | undefined;
   /** The invocations this family retired. */
   readonly redirects: readonly CommandRedirect[];
+  /** The verbs this family's commands answer statement prompts with.
+   *  Each becomes a reserved, repeatable shared flag (`--<verb>`) on
+   *  every mounted command. Optional because a family built by an
+   *  older engine has none. */
+  readonly statementVerbs?: readonly string[];
 }
 
 /** A path is segments separated by whitespace, so the separator's shape
@@ -78,12 +83,14 @@ export function defineCommandFamily(spec: {
   readonly commands: Readonly<Record<string, AnyCommand>>;
   readonly docsBaseUrl?: string;
   readonly redirects?: readonly RedirectSpec[];
+  readonly statementVerbs?: readonly string[];
 }): CommandFamily {
   return Object.freeze({
     configSection: spec.configSection,
     commands: spec.commands,
     docsBaseUrl: spec.docsBaseUrl,
     redirects: (spec.redirects ?? []).map(normalizeRedirect),
+    statementVerbs: [...(spec.statementVerbs ?? [])],
   });
 }
 

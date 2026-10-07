@@ -25,7 +25,11 @@ import {
 import type { AnyCommand } from "../commands";
 import type { CommandTreeEntry, CommandTreeNode } from "./command-tree";
 import type { EngineSpec, Invocation, RunState } from "./engine";
-import { SHARED_ALIASES, SHARED_FLAG_PARAMETERS } from "./shared-flags";
+import {
+  registeredStatementVerbs,
+  SHARED_ALIASES,
+  sharedFlagParameters,
+} from "./shared-flags";
 
 export interface EngineRunContext extends StricliBaseContext {
   readonly invocation: Invocation;
@@ -147,7 +151,10 @@ function stricliPositional(
   };
 }
 
-function commandParameters(def: AnyCommand): Record<string, unknown> {
+function commandParameters(
+  def: AnyCommand,
+  sharedFlags: Readonly<Record<string, unknown>>,
+): Record<string, unknown> {
   const declaredFlags: Record<string, unknown> = {};
   const aliases: Record<string, string> = {};
   for (const [key, spec] of Object.entries(def.args.flags)) {
@@ -163,9 +170,7 @@ function commandParameters(def: AnyCommand): Record<string, unknown> {
   ).map(([key, spec]) => [key, positionalRuntime(spec)] as const);
   const positional = stricliPositional(positionalEntries);
   return {
-    flags: injectShared
-      ? { ...SHARED_FLAG_PARAMETERS, ...declaredFlags }
-      : declaredFlags,
+    flags: injectShared ? { ...sharedFlags, ...declaredFlags } : declaredFlags,
     aliases: injectShared ? { ...SHARED_ALIASES, ...aliases } : aliases,
     ...(positional === undefined ? {} : { positional }),
   };
@@ -213,10 +218,12 @@ function commandDocs(
 function toStricliCommand(
   entry: CommandTreeEntry,
   cliName: string,
+  sharedFlags: Readonly<Record<string, unknown>>,
   runEntry: RunEntry,
 ): EngineRoutingTarget {
   const parameters = commandParameters(
     entry.def,
+    sharedFlags,
   ) as unknown as TypedCommandParameters<
     Record<string, unknown>,
     readonly (string | undefined)[],
@@ -246,8 +253,9 @@ export function buildRoutes(
   runEntry: RunEntry,
 ): StricliRouteMap<EngineRunContext> {
   const routes: Record<string, EngineRoutingTarget> = {};
+  const sharedFlags = sharedFlagParameters(registeredStatementVerbs(spec));
   for (const [name, entry] of node.commands) {
-    routes[name] = toStricliCommand(entry, spec.name, runEntry);
+    routes[name] = toStricliCommand(entry, spec.name, sharedFlags, runEntry);
   }
   for (const [name, child] of node.children) {
     const childPath = groupPath === "" ? name : `${groupPath} ${name}`;

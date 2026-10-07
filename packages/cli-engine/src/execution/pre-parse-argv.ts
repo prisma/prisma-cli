@@ -11,7 +11,7 @@
  */
 import type { Format } from "../presentation";
 
-function flagTokens(argv: readonly string[]): readonly string[] {
+export function flagTokens(argv: readonly string[]): readonly string[] {
   const terminator = argv.indexOf("--");
   return terminator === -1 ? argv : argv.slice(0, terminator);
 }

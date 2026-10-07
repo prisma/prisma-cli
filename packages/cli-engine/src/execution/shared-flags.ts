@@ -1,10 +1,11 @@
+import { camelCase } from "../args";
 import { resolveIsCI } from "../ci";
 import type { Severity } from "../events";
 import type { Format } from "../presentation";
 import { CliStructuredError } from "../protocol";
 import type { Runtime } from "../runtime";
-import type { RunState } from "./engine";
-import { formatFlagGiven } from "./pre-parse-argv";
+import type { EngineSpec, RunState } from "./engine";
+import { flagTokens, formatFlagGiven } from "./pre-parse-argv";
 
 /** The engine-injected shared flag family. Commands cannot declare
  *  these names or aliases; handlers never see their values. */
@@ -120,6 +121,103 @@ export function configFlagGivenNoValueError(): CliStructuredError {
       ],
     },
   );
+}
+
+/** A verb flag answers statement prompts. The verbs come from the
+ *  mounted command families, so these flags join the shared family per
+ *  CLI rather than in SHARED_FLAG_PARAMETERS. */
+function statementVerbParameter(verb: string) {
+  return {
+    kind: "parsed",
+    parse: (input: string) => input,
+    placeholder: "subject",
+    variadic: true,
+    optional: true,
+    brief: `Answer the question about <subject> with ${verb} (repeatable)`,
+  } as const;
+}
+
+type SharedFlagParameter =
+  | (typeof SHARED_FLAG_PARAMETERS)[keyof typeof SHARED_FLAG_PARAMETERS]
+  | ReturnType<typeof statementVerbParameter>;
+
+export function registeredStatementVerbs(spec: EngineSpec): readonly string[] {
+  return [
+    ...new Set(
+      spec.commandFamilies.flatMap(
+        (commandFamily) => commandFamily.statementVerbs ?? [],
+      ),
+    ),
+  ];
+}
+
+export function sharedFlagParameters(
+  statementVerbs: readonly string[],
+): Readonly<Record<string, SharedFlagParameter>> {
+  return {
+    ...SHARED_FLAG_PARAMETERS,
+    ...Object.fromEntries(
+      statementVerbs.map((verb) => [verb, statementVerbParameter(verb)]),
+    ),
+  };
+}
+
+export interface StatementFlagValue {
+  readonly verb: string;
+  readonly text: string;
+  consumed: boolean;
+}
+
+function verbFlagIn(
+  token: string,
+  statementVerbs: readonly string[],
+): string | undefined {
+  if (!token.startsWith("--")) {
+    return undefined;
+  }
+  const equals = token.indexOf("=");
+  if (equals === token.length - 1) {
+    return undefined;
+  }
+  const name = camelCase(token.slice(2, equals === -1 ? undefined : equals));
+  return statementVerbs.includes(name) ? name : undefined;
+}
+
+function parsedValues(value: unknown): string[] {
+  return Array.isArray(value)
+    ? value.filter((item): item is string => typeof item === "string")
+    : [];
+}
+
+/**
+ * Every verb-flag value, in the order argv gave them. The parser
+ * groups values by flag, so argv decides only which verb comes next;
+ * the values themselves are the parser's. A parsed value argv could
+ * not place is appended rather than dropped, so it is still reported
+ * if nothing consumes it.
+ */
+export function statementFlagValues(
+  argv: readonly string[],
+  statementVerbs: readonly string[],
+  parsedFlags: Readonly<Record<string, unknown>>,
+): StatementFlagValue[] {
+  const remaining = new Map(
+    statementVerbs.map((verb) => [verb, parsedValues(parsedFlags[verb])]),
+  );
+  const ordered: StatementFlagValue[] = [];
+  for (const token of flagTokens(argv)) {
+    const verb = verbFlagIn(token, statementVerbs);
+    const text = verb === undefined ? undefined : remaining.get(verb)?.shift();
+    if (verb !== undefined && text !== undefined) {
+      ordered.push({ verb, text, consumed: false });
+    }
+  }
+  for (const [verb, texts] of remaining) {
+    for (const text of texts) {
+      ordered.push({ verb, text, consumed: false });
+    }
+  }
+  return ordered;
 }
 
 export const SHARED_ALIASES = { v: "verbose", q: "quiet", y: "yes" } as const;

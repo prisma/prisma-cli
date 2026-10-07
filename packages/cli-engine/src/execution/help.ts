@@ -19,7 +19,11 @@ import type { EngineSpec } from "./engine";
 import { renderHelpMarkdown } from "./markdown";
 import { makePaint, type Paint, textWidth } from "./palette";
 import { formatFlagGiven, withoutFormatFlags } from "./pre-parse-argv";
-import { SHARED_ALIASES, SHARED_FLAG_PARAMETERS } from "./shared-flags";
+import {
+  registeredStatementVerbs,
+  SHARED_ALIASES,
+  sharedFlagParameters,
+} from "./shared-flags";
 import { resolveExample } from "./stricli-adapter";
 
 const RAIL = "│";
@@ -217,7 +221,7 @@ function nodeCard(
     ),
     arguments: [],
     options: [],
-    globalOptions: atRoot ? sharedFlagRows() : [],
+    globalOptions: atRoot ? sharedFlagRows(spec) : [],
     note: atRoot
       ? undefined
       : `Run '${spec.name} ${groupPath} <command> --help' for details on a command.`,
@@ -241,7 +245,9 @@ function leafCard(
   ]
     .filter((part) => part !== "")
     .join(" ");
-  const sharedNames = Object.keys(SHARED_FLAG_PARAMETERS)
+  const sharedNames = Object.keys(
+    sharedFlagParameters(registeredStatementVerbs(spec)),
+  )
     .map((key) => `--${kebabCase(key)}`)
     .join(", ");
   return {
@@ -491,12 +497,14 @@ function flagLabel(
   return `${alias} --${kebab}${negated}${placeholder}${repeat}`;
 }
 
-function sharedFlagRows(): readonly HelpRow[] {
+function sharedFlagRows(spec: EngineSpec): readonly HelpRow[] {
   const aliasByKey = new Map<string, string>(
     Object.entries(SHARED_ALIASES).map(([alias, key]) => [key, alias]),
   );
-  const rows = Object.entries(SHARED_FLAG_PARAMETERS).map(([key, spec]) => {
-    const record = spec as {
+  const rows = Object.entries(
+    sharedFlagParameters(registeredStatementVerbs(spec)),
+  ).map(([key, parameter]) => {
+    const record = parameter as {
       brief: string;
       kind: string;
       placeholder?: string;
