@@ -21,7 +21,7 @@ defineCommand({
 })
 ```
 
-The engine knows no verbs. For that command only, it parses `--<verb>` followed by `arity` values, repeatable, before the rest of argv reaches the argument parser, keeps the values in argv order, and never shows them to the handler. No other command accepts the flag, and a verb may not share a name with any flag of the command or of the engine.
+The engine knows no verbs. For that command only, it parses `--<verb>` followed by `arity` values, repeatable, before the rest of argv reaches the argument parser, keeps the values in argv order, and keeps them out of the handler's flags. No other command accepts the flag, and a verb may not share a name with any flag of the command or of the engine.
 
 The command asks with `ctx.prompt.statement(question, { subject, verbs, validate })`, or several questions at once with `ctx.prompt.statements([...], { last })`. Each question names a subject in the command's own vocabulary and the verbs that may answer it, and `validate` decides whether an answer is acceptable; the engine never interprets the answer's text. A question is answered in this order:
 
@@ -29,7 +29,9 @@ The command asks with `ctx.prompt.statement(question, { subject, verbs, validate
 2. Outside an interactive terminal, or under `--yes`, by nobody: the run fails with one `CLI.CONSENT_REQUIRED` that lists every unanswered question with the flag that would answer it.
 3. Interactively, by the user typing `<verb> <value>` (or `<verb>` alone for the subject itself), validated the same way and asked again when rejected.
 
-A value nothing asked about is an error, `CLI.CONSENT_UNUSED`, at the end of a run that otherwise succeeded, or at once when the command marks its final batch with `last: true`. A statement is a consent: it has no default and `--yes` never answers it.
+A statement is the command's own declared input, unlike a `--confirm` value, which a handler never sees: a command whose work depends on some statements, as the ORM plans with its renames before it knows what still loses data, takes a verb's values in argv order with `ctx.statements.take(verb)`, which consumes them.
+
+A value nothing asked about or took is an error, `CLI.CONSENT_UNUSED`, at the end of a run that otherwise succeeded, or at once when the command marks its final batch with `last: true`. A statement is a consent: it has no default and `--yes` never answers it.
 
 `consent(question, { token })` and `--confirm` stay for commands with one thing at stake.
 

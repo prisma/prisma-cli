@@ -78,6 +78,7 @@ export type {
   StatementAnswer,
   StatementOptions,
   StatementQuestion,
+  StatementSurface,
   StatementsOptions,
 } from "../context";
 export {

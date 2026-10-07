@@ -101,6 +101,9 @@ export interface CommandContext<
   /** Interactive input. */
   readonly prompt: PromptSurface;
 
+  /** The command's declared statement flags, read as its own input. */
+  readonly statements: StatementSurface;
+
   /**
    * Shows the user a URL and, in an interactive session, opens it in
    * their browser. Always announces the URL on the commentary channel
@@ -193,8 +196,8 @@ export interface BrowserWaitRequest {
 
 export interface StatementOptions<V extends string> {
   /** What the answer is about, in the command's own vocabulary.
-   *  Non-empty and without `:`, which separates it from the rest of a
-   *  flag value; anything else is a construction error. */
+   *  Non-empty; an empty subject is a construction error. A flag value
+   *  names it when it equals the subject or starts with `<subject>:`. */
   readonly subject: string;
   /** The verbs that may answer, in the order a refusal lists them. */
   readonly verbs: readonly V[];
@@ -219,6 +222,17 @@ export interface StatementAnswer<V extends string> {
   /** The verb's `arity` values: from the flag, or split from the
    *  typed answer on whitespace. */
   readonly values: readonly string[];
+}
+
+export interface StatementSurface {
+  /**
+   * Every unconsumed value of `verb`, in argv order, consumed so the
+   * leftover check does not report them. For statements that are input
+   * to the command's work rather than answers to a question; other
+   * verbs' values stay for the questions. A verb the command did not
+   * declare is a construction error.
+   */
+  readonly take: <V extends string>(verb: V) => StatementAnswer<V>[];
 }
 
 export interface StatementsOptions {

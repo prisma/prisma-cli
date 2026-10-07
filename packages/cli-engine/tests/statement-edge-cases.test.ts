@@ -144,16 +144,7 @@ describe("a malformed question is a construction error", () => {
       { ...legacy(), verbs: ["delete", "delete"] },
       "asked a statement about 'Legacy' listing a verb twice",
     ],
-    [
-      "a subject containing ':'",
-      legacy("Legacy:Archive"),
-      "a subject must be non-empty and contain no ':'",
-    ],
-    [
-      "an empty subject",
-      legacy(""),
-      "a subject must be non-empty and contain no ':'",
-    ],
+    ["an empty subject", legacy(""), "a subject must be non-empty"],
   ])("%s", async (_case, question, message) => {
     const result = await cliWith((prompt) => prompt.statements([question])).run(
       ["probe", "--json"],

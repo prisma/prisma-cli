@@ -29,6 +29,7 @@ import type {
   PromptSurface,
   StatementAnswer,
   StatementQuestion,
+  StatementSurface,
   StatementsOptions,
 } from "../context";
 import { CliStructuredError } from "../protocol";
@@ -175,8 +176,8 @@ function malformation<V extends string>(
   declared: DeclaredStatements,
 ): string | undefined {
   const about = `about '${question.subject}'`;
-  if (question.subject === "" || question.subject.includes(":")) {
-    return `${about}: a subject must be non-empty and contain no ':'`;
+  if (question.subject === "") {
+    return `${about}: a subject must be non-empty`;
   }
   if (question.verbs.length === 0) {
     return `${about} with no verbs`;
@@ -192,12 +193,22 @@ function malformation<V extends string>(
     : `with verb '${undeclared}', which it does not declare in statements`;
 }
 
+/** The asked subject a value names, if any. */
+function askedSubjectOf(
+  state: RunState,
+  value: StatementFlagValue,
+): string | undefined {
+  return [...state.askedSubjects].find((subject) =>
+    namesSubject(value.values[0], subject),
+  );
+}
+
 function unusedSentence(state: RunState, value: StatementFlagValue): string {
   const given = flagForm(value.verb, value.values);
-  const subject = subjectOf(value.values[0]);
-  return state.askedSubjects.has(subject)
-    ? `${given} was given, but the question about ${subject} was already answered by another flag.`
-    : `${given} was given but nothing in this run asked about ${subject}.`;
+  const asked = askedSubjectOf(state, value);
+  return asked === undefined
+    ? `${given} was given but nothing in this run asked about ${subjectOf(value.values[0])}.`
+    : `${given} was given, but the question about ${asked} was already answered by another flag.`;
 }
 
 /** Fails a run when a statement flag answered nothing: a mistyped
@@ -210,8 +221,8 @@ export function unusedStatementValuesError(
   if (unused.length === 0) {
     return undefined;
   }
-  const allAsked = unused.every((value) =>
-    state.askedSubjects.has(subjectOf(value.values[0])),
+  const allAsked = unused.every(
+    (value) => askedSubjectOf(state, value) !== undefined,
   );
   return new CliStructuredError(
     "CLI.CONSENT_UNUSED",
@@ -443,6 +454,27 @@ function parseBooleanAnswer(
     return false;
   }
   throw promptInvalid(question, raw);
+}
+
+/** ctx.statements: a verb's values taken as the command's own input,
+ *  consumed so the leftover check does not report them. */
+export function makeStatementSurface(invocation: Invocation): StatementSurface {
+  const { state } = invocation;
+  return {
+    take: <V extends string>(verb: V): StatementAnswer<V>[] => {
+      if (!Object.hasOwn(state.statements, verb)) {
+        throw constructionError(
+          `command '${state.commandId}' took verb '${verb}', which it does not declare in statements`,
+        );
+      }
+      return state.statementValues
+        .filter((value) => !value.consumed && value.verb === verb)
+        .map((value) => {
+          value.consumed = true;
+          return { verb, text: value.values.join(" "), values: value.values };
+        });
+    },
+  };
 }
 
 export function makePromptSurface(invocation: Invocation): PromptSurface {

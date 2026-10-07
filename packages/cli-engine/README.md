@@ -26,7 +26,7 @@ defineCommand({
 });
 ```
 
-Only that command accepts `--rename` and `--delete`; on any other command they are unknown flags. The handler never sees their values, and help lists them on the command's own card. A verb is one lowercase word, and may not be a shared flag or one of the command's own flags. Asking with a verb the command did not declare is a construction error, and so is a question with an empty subject, a subject containing `:`, or a verb listed twice.
+Only that command accepts `--rename` and `--delete`; on any other command they are unknown flags. Their values stay out of the handler's flags, and help lists them on the command's own card. A verb is one lowercase word, and may not be a shared flag or one of the command's own flags. Asking with a verb the command did not declare is a construction error, and so is a question with an empty subject or a verb listed twice.
 
 Then, in the handler:
 
@@ -56,6 +56,8 @@ The engine answers the question in this order:
 3. Otherwise the user is asked, and answers `<verb> <text>`, or `<verb>` alone to mean the subject. A verb with an arity above 1 takes its values from the text, separated by whitespace, and `text` is them joined by one space, as for a flag. A rejected answer is asked again on a terminal; with scripted or piped input it fails with `CLI.PROMPT_INVALID`.
 
 `ctx.prompt.statements([...])` asks several questions at once and returns the answers in order. Flags answer what they can, a refusal lists every question still unanswered, and an interactive run asks the rest one after another.
+
+A statement is the command's own declared input, unlike a `--confirm` value, which a handler never sees. A command that needs some statements as input to its work, before it can know what to ask, takes them with `ctx.statements.take("rename")`: every unconsumed value of that verb, in argv order, as `{ verb, values, text }[]`. Taken values are consumed, and other verbs' values stay for the questions.
 
 Each flag answers one question. A run that succeeds with a flag nothing consumed fails with `CLI.CONSENT_UNUSED`, so a mistyped subject or a second answer to one question is never ignored. That check runs when the handler returns, after the command has acted. A command that asks everything in one batch passes `statements(questions, { last: true })` to get the same failure right after the questions are answered, before it does anything with them.
 
