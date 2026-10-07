@@ -156,11 +156,11 @@ The config file's `$prismaConfig` marker declares a version other than the one t
 
 A consent prompt was reached under `--yes` or in a non-interactive session. Consent has no default answer and `--yes` does not grant it, so there is nothing for the run to assume. When the consent declares a token, the message and next action say to pass `--confirm <token>`, and the token travels in meta; without a token, the only path is running the command interactively. Meta: `consentToken` (only when the consent declares a token).
 
-A statement prompt (`ctx.prompt.statement` or `ctx.prompt.statements`) raises the same code when no verb flag on the command line answers it. One error lists every question still unanswered: the summary names the subjects, `why` carries the questions, and the next actions give one flag to pass per verb, such as `--delete Legacy` or `--rename Legacy:<new name>`. Meta: `unanswered` (a list of `{ subject, verbs }`), plus `subject` and `verbs` when exactly one question is unanswered.
+A statement prompt (`ctx.prompt.statement` or `ctx.prompt.statements`) raises the same code when no statement flag on the command line answers it. One error lists every question still unanswered: the summary names the subjects, `why` carries the questions, and the next actions give one flag to pass per verb, such as `--delete Legacy` or `--rename Legacy:<new name>`. Meta: `unanswered` (a list of `{ subject, verbs }`), plus `subject` and `verbs` when exactly one question is unanswered.
 
 ### CLI.CONSENT_UNUSED
 
-A statement verb flag such as `--delete Legacy` was given, but no statement prompt in the run asked about that subject, so the value answered nothing. Raised when the run would otherwise have succeeded; a run that failed for another reason reports that reason only. The usual cause is a mistyped subject, or a flag given twice for one question. Exits 2. Meta: `unused` (a list of `{ verb, text }`).
+A statement flag such as `--delete Legacy` was given but answered nothing. The summary says why for each flag: no statement prompt in the run asked about that subject (usually a mistyped subject), or the question about it was already answered by another flag (a flag given twice, or two verbs for one subject). Raised when the handler returns from a run that would otherwise have succeeded, so a run that failed for another reason reports that reason only; or earlier, as soon as `ctx.prompt.statements(questions, { last: true })` has answered its questions, before the command acts. Exits 2. Meta: `unused` (a list of `{ verb, values }`).
 
 ### CLI.CREDENTIALS_LOCKED
 
@@ -184,7 +184,7 @@ A bug, not a user error: a non-structured throw from a handler, an engine invari
 
 ### CLI.INVALID_ARGUMENTS
 
-The invocation's arguments did not parse or contradict each other. Raise sites: stricli's argument-parse failure mapped at the adapter boundary (its usage text becomes summary and `why`), `--config=` given an empty value, `prisma init --skills` given `none` combined with agent names or an unknown agent name, and `prisma skills sync` given both `--disable` and `--enable`. Exits 2 as a usage error. Meta: none.
+The invocation's arguments did not parse or contradict each other. Raise sites: stricli's argument-parse failure mapped at the adapter boundary (its usage text becomes summary and `why`), `--config=` given an empty value, a statement flag (such as `--delete`) given the wrong number of values for its declared arity or an empty value, `prisma init --skills` given `none` combined with agent names or an unknown agent name, and `prisma skills sync` given both `--disable` and `--enable`. Exits 2 as a usage error. Meta: none.
 
 ### CLI.MISSING_DEPENDENCY
 
