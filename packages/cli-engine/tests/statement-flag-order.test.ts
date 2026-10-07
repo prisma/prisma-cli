@@ -1,60 +1,75 @@
 import { describe, expect, test } from "vitest";
-import { statementFlagValues } from "../src/execution/statement-flags";
+import { extractStatementFlags } from "../src/execution/statement-flags";
 
-const VERBS = ["rename", "delete", "dropColumn"];
+const STATEMENTS = {
+  rename: { arity: 1 },
+  delete: { arity: 1 },
+  move: { arity: 2 },
+};
 
-function ordered(argv: readonly string[], parsed: Record<string, unknown>) {
-  return statementFlagValues(argv, VERBS, parsed).map(
-    ({ verb, text }) => `${verb} ${text}`,
-  );
+function extracted(argv: readonly string[]) {
+  const result = extractStatementFlags(argv, STATEMENTS);
+  return result.ok
+    ? {
+        argv: result.argv,
+        values: result.values.map(
+          ({ verb, values }) => `${verb} ${values.join(" ")}`,
+        ),
+      }
+    : { error: result.error.message };
 }
 
-describe("verb-flag values keep their argv order across flags", () => {
+describe("statement flags come out of argv in the order given", () => {
   test("values of different verbs interleave as written", () => {
     expect(
-      ordered(
-        [
-          "migration",
-          "plan",
-          "--rename",
-          "A:B",
-          "--delete",
-          "C",
-          "--rename=D:E",
-        ],
-        { rename: ["A:B", "D:E"], delete: ["C"] },
-      ),
-    ).toEqual(["rename A:B", "delete C", "rename D:E"]);
+      extracted([
+        "migration",
+        "plan",
+        "--rename",
+        "A:B",
+        "--delete",
+        "C",
+        "--rename=D:E",
+        "--json",
+      ]),
+    ).toEqual({
+      argv: ["migration", "plan", "--json"],
+      values: ["rename A:B", "delete C", "rename D:E"],
+    });
   });
 
-  test("kebab-case spellings of a camelCase verb count", () => {
-    expect(
-      ordered(["--drop-column", "User.name", "--delete", "Legacy"], {
-        dropColumn: ["User.name"],
-        delete: ["Legacy"],
-      }),
-    ).toEqual(["dropColumn User.name", "delete Legacy"]);
+  test("a verb takes its arity in values per occurrence", () => {
+    expect(extracted(["--move", "A", "B", "positional"])).toEqual({
+      argv: ["positional"],
+      values: ["move A B"],
+    });
   });
 
   test("nothing after a bare -- is a flag", () => {
-    expect(
-      ordered(["--delete", "Legacy", "--", "--rename", "X:Y"], {
-        delete: ["Legacy"],
-      }),
-    ).toEqual(["delete Legacy"]);
+    expect(extracted(["--delete", "Legacy", "--", "--rename", "X:Y"])).toEqual({
+      argv: ["--", "--rename", "X:Y"],
+      values: ["delete Legacy"],
+    });
   });
 
-  test("every parsed value is kept even when argv cannot place it", () => {
-    expect(
-      ordered(["--delete=Legacy"], { delete: ["Legacy", "Other"] }),
-    ).toEqual(["delete Legacy", "delete Other"]);
+  test("an undeclared flag is left for the parser", () => {
+    expect(extracted(["--drop", "Legacy"])).toEqual({
+      argv: ["--drop", "Legacy"],
+      values: [],
+    });
   });
+});
 
-  test("every value starts unconsumed", () => {
-    expect(
-      statementFlagValues(["--delete", "Legacy"], VERBS, {
-        delete: ["Legacy"],
-      }),
-    ).toEqual([{ verb: "delete", text: "Legacy", consumed: false }]);
+describe("a wrong value count is an argument error", () => {
+  test.each([
+    [["--delete"], "--delete needs a value, and was given 0."],
+    [["--delete", "--json"], "--delete needs a value, and was given 0."],
+    [["--move", "A"], "--move needs 2 values, and was given 1."],
+    [["--move", "A", "--json"], "--move needs 2 values, and was given 1."],
+    [["--delete", ""], "--delete was given an empty value."],
+    [["--delete", "  "], "--delete was given an empty value."],
+    [["--delete="], "--delete was given an empty value."],
+  ])("%j", (argv, error) => {
+    expect(extracted(argv)).toEqual({ error });
   });
 });

@@ -145,13 +145,15 @@ export interface SpawnDeclarations {
 
 /**
  * A statement the command may ask for with ctx.prompt.statement. Its
- * key is the verb, and the command alone accepts `--<verb> <value>`
- * (repeatable) to answer it; the handler never sees those values.
+ * key is the verb, one lowercase word, and the command alone accepts
+ * `--<verb>` followed by `arity` values, repeatable, to answer it. The
+ * handler never sees those values.
  */
 export interface StatementSpec {
-  /** How many values follow the flag. Only 1 is supported. */
-  readonly arity: 1;
-  /** The flag's help brief. The engine writes a generic one when absent. */
+  /** How many argv values each occurrence of the flag takes. Giving
+   *  another number is CLI.INVALID_ARGUMENTS. */
+  readonly arity: number;
+  /** The flag's help brief, held to the help standard like any flag's. */
   readonly brief?: string;
 }
 
@@ -212,8 +214,9 @@ export interface CommandDefinition<
    */
   readonly installsPackages: TInstallsPackages;
 
-  /** The statements ctx.prompt.statement may ask, by verb. */
-  readonly statements: Readonly<Record<string, StatementSpec>>;
+  /** The statements ctx.prompt.statement may ask, by verb. Optional
+   *  because a command built by an older engine has none. */
+  readonly statements?: Readonly<Record<string, StatementSpec>>;
 
   /**
    * The handler function, referenced directly — never a dynamic import
@@ -434,6 +437,11 @@ export function defineServerCommand<
   readonly needs?: NeedsSpec<TConfig>;
   readonly handler: ServerCommandDefinition<TFlags, TConfig>["handler"];
 }): ServerCommandDefinition<TFlags, TConfig> {
+  if (Object.hasOwn(def, "statements")) {
+    throw new Error(
+      "@prisma/cli-engine: a server command cannot declare statements (it never prompts)",
+    );
+  }
   return Object.freeze({
     kind: "server-command" as const,
     help: normalizeHelp(def.help),

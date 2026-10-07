@@ -10,13 +10,14 @@ import { reservedConfigSectionName } from "../config-loader";
 import type { ConfigSection } from "../config-section";
 import type { EngineSpec } from "./engine";
 import { RESERVED_ALIASES, RESERVED_FLAG_NAMES } from "./shared-flags";
-import { declaredStatements } from "./statement-flags";
+import { declaredStatements, statementsOf } from "./statement-flags";
 
 export function constructionError(message: string): Error {
   return new Error(`@prisma/cli-engine: ${message}`);
 }
 
 const CAMEL_CASE = /^[a-z][a-zA-Z0-9]*$/;
+const ONE_LOWERCASE_WORD = /^[a-z]+$/;
 const INTEGER_LIKE = /^\d+$/;
 
 function validateFlags(path: string, def: AnyCommand): void {
@@ -52,13 +53,10 @@ function validateFlags(path: string, def: AnyCommand): void {
 }
 
 function validateStatements(path: string, def: AnyCommand): void {
-  if (def.kind !== "result-command") {
-    return;
-  }
-  for (const [verb, spec] of Object.entries(def.statements)) {
-    if (!CAMEL_CASE.test(verb)) {
+  for (const [verb, spec] of Object.entries(statementsOf(def))) {
+    if (!ONE_LOWERCASE_WORD.test(verb)) {
       throw constructionError(
-        `command '${path}' statement '${verb}' must be camelCase (it transliterates to --kebab-case on the CLI)`,
+        `command '${path}' statement '${verb}' must be one lowercase word (it is both the flag and the word typed at the prompt)`,
       );
     }
     if (RESERVED_FLAG_NAMES.has(verb)) {
@@ -71,9 +69,9 @@ function validateStatements(path: string, def: AnyCommand): void {
         `command '${path}' declares both a flag and a statement named '${verb}'`,
       );
     }
-    if (spec.arity !== 1) {
+    if (!Number.isInteger(spec.arity) || spec.arity < 1) {
       throw constructionError(
-        `command '${path}' statement '${verb}' declares arity ${spec.arity}; only 1 is supported`,
+        `command '${path}' statement '${verb}' declares arity ${spec.arity}; arity is a whole number of values, at least 1`,
       );
     }
   }

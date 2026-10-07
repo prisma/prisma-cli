@@ -26,7 +26,6 @@ import type { AnyCommand } from "../commands";
 import type { CommandTreeEntry, CommandTreeNode } from "./command-tree";
 import type { EngineSpec, Invocation, RunState } from "./engine";
 import { SHARED_ALIASES, SHARED_FLAG_PARAMETERS } from "./shared-flags";
-import { statementFlagParameter } from "./statement-flags";
 
 export interface EngineRunContext extends StricliBaseContext {
   readonly invocation: Invocation;
@@ -156,11 +155,6 @@ function commandParameters(def: AnyCommand): Record<string, unknown> {
     declaredFlags[key] = stricliFlagParameter(runtime);
     if (runtime.alias !== undefined) {
       aliases[runtime.alias] = key;
-    }
-  }
-  if (def.kind === "result-command") {
-    for (const [verb, spec] of Object.entries(def.statements)) {
-      declaredFlags[verb] = statementFlagParameter(verb, spec.brief);
     }
   }
   const injectShared = def.kind !== "server-command";

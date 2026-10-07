@@ -307,7 +307,7 @@ describe("the clack tier resolves prompt values", () => {
 
     expect(result.exitCode).toBe(0);
     expect(answerIn(result.plainStderr)).toBe(
-      '{"verb":"rename","text":"Legacy:Archive"}',
+      '{"verb":"rename","text":"Legacy:Archive","values":["Legacy:Archive"]}',
     );
     expect(result.plainStderr).toContain(
       "Start the answer with rename or delete.",

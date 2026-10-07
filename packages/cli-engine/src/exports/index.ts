@@ -78,6 +78,7 @@ export type {
   StatementAnswer,
   StatementOptions,
   StatementQuestion,
+  StatementsOptions,
 } from "../context";
 export {
   authServiceError,

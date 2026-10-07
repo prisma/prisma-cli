@@ -5,6 +5,8 @@
  */
 import {
   defineCommand,
+  defineCommandFamily,
+  defineServerCommand,
   flag,
   type PromptSurface,
   type StatementSpec,
@@ -73,7 +75,7 @@ describe("a statement flag belongs to the command that declares it", () => {
     expect(result.exitCode).toBe(0);
     expect(result.presented?.data).toEqual({
       flags: { name: undefined },
-      answer: { verb: "delete", text: "Legacy" },
+      answer: { verb: "delete", text: "Legacy", values: ["Legacy"] },
     });
   });
 
@@ -89,9 +91,21 @@ describe("a statement flag belongs to the command that declares it", () => {
     const declaring = await cli.run(["probe", "--help", "--format", "human"]);
     const other = await cli.run(["other", "--help", "--format", "human"]);
 
+    const root = await cli.run(["--help", "--format", "human"]);
+
     expect(declaring.stdout).toContain("--delete <subject>...");
     expect(declaring.stdout).toContain("Drop the table and its rows");
     expect(other.stdout).not.toContain("--delete");
+    expect(root.stdout).not.toContain("--delete");
+  });
+
+  test("help shows each further value of a verb with a larger arity", async () => {
+    const cli = createTestCli({
+      commands: { probe: command({ move: { arity: 2 } }) },
+    });
+    const result = await cli.run(["probe", "--help", "--format", "human"]);
+
+    expect(result.stdout).toContain("--move <subject> <value>...");
   });
 
   test("a statement naming a verb the command did not declare is a construction error", async () => {
@@ -128,9 +142,24 @@ describe("declarations that fail construction", () => {
       "command 'probe' declares statement 'confirm', which is a shared flag",
     ],
     [
-      "a name that is not camelCase",
+      "a kebab-case name",
       { "drop-table": { arity: 1 } },
-      "command 'probe' statement 'drop-table' must be camelCase (it transliterates to --kebab-case on the CLI)",
+      "command 'probe' statement 'drop-table' must be one lowercase word",
+    ],
+    [
+      "a camelCase name",
+      { dropTable: { arity: 1 } },
+      "command 'probe' statement 'dropTable' must be one lowercase word",
+    ],
+    [
+      "an arity of 0",
+      { rename: { arity: 0 } },
+      "command 'probe' statement 'rename' declares arity 0; arity is a whole number of values, at least 1",
+    ],
+    [
+      "a fractional arity",
+      { rename: { arity: 1.5 } },
+      "command 'probe' statement 'rename' declares arity 1.5",
     ],
   ];
 
@@ -140,13 +169,31 @@ describe("declarations that fail construction", () => {
     ).toThrow(message);
   });
 
-  test("an arity other than 1", () => {
-    const pair = { arity: 2 } as unknown as StatementSpec;
+  test("a flag redirect naming a statement the command still accepts", () => {
+    const probe = command(DELETE);
+    const family = defineCommandFamily({
+      commands: { probe },
+      redirects: [
+        { from: "probe", flag: "delete", replacement: "probe --drop" },
+      ],
+    });
 
     expect(() =>
-      createTestCli({ commands: { probe: command({ rename: pair }) } }),
+      createTestCli({ commandFamilies: [family], commands: { probe } }),
     ).toThrow(
-      "command 'probe' statement 'rename' declares arity 2; only 1 is supported",
+      "redirect for flag 'delete' on 'probe' names a flag that command still accepts",
+    );
+  });
+
+  test("a server command declaring statements", () => {
+    const spec = {
+      help: { summary: "Server probe" },
+      statements: DELETE,
+      handler: async () => 0,
+    };
+
+    expect(() => defineServerCommand(spec)).toThrow(
+      "a server command cannot declare statements",
     );
   });
 });

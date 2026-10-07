@@ -1,81 +1,167 @@
-import { camelCase } from "../args";
-import type { AnyCommand } from "../commands";
-import { flagTokens } from "./pre-parse-argv";
+/**
+ * Statement flags: `--<verb>` followed by the verb's `arity` values,
+ * repeatable, accepted only by the command that declares the verb. The
+ * engine takes them out of argv before the parser sees it, because the
+ * parser gives a flag one value per occurrence and keeps no order
+ * across flags. Handlers never see them; ctx.prompt.statement hands
+ * them out.
+ */
+import type { AnyCommand, StatementSpec } from "../commands";
+import { CliStructuredError } from "../protocol";
+import type { CommandTreeEntry, CommandTreeNode } from "./command-tree";
 
-/** The statement verbs a command declared; only result commands can. */
-export function declaredStatements(def: AnyCommand): readonly string[] {
-  return def.kind === "result-command" ? Object.keys(def.statements) : [];
+export type DeclaredStatements = Readonly<Record<string, StatementSpec>>;
+
+export function statementsOf(def: AnyCommand): DeclaredStatements {
+  return def.kind === "result-command" ? (def.statements ?? {}) : {};
 }
 
-/** The parser's view of a statement flag: repeatable, one value each,
- *  never required. */
-export function statementFlagParameter(verb: string, brief?: string) {
-  return {
-    kind: "parsed",
-    parse: (input: string) => input,
-    placeholder: "subject",
-    variadic: true,
-    optional: true,
-    brief:
-      brief ??
-      `Say what happens to <subject>: ${verb}, instead of being asked (repeatable)`,
-  } as const;
+export function declaredStatements(def: AnyCommand): readonly string[] {
+  return Object.keys(statementsOf(def));
+}
+
+/** How help shows the flag: `<subject>` for the first value, `<value>`
+ *  for each further one. */
+export function statementPlaceholders(spec: StatementSpec): string {
+  return [
+    "<subject>",
+    ...Array.from({ length: spec.arity - 1 }, () => "<value>"),
+  ].join(" ");
+}
+
+export function statementBrief(verb: string, spec: StatementSpec): string {
+  return (
+    spec.brief ??
+    `Say what happens to <subject>: ${verb}, instead of being asked (repeatable)`
+  );
 }
 
 export interface StatementFlagValue {
   readonly verb: string;
-  readonly text: string;
+  /** The `arity` values the flag was given, in order. */
+  readonly values: readonly string[];
   consumed: boolean;
 }
 
-function verbFlagIn(
+/** The command argv routes to, found the way the parser routes: the
+ *  leading words, group by group, until one names a command. */
+export function routedCommand(
+  tree: CommandTreeNode,
+  argv: readonly string[],
+): CommandTreeEntry | undefined {
+  let node = tree;
+  for (const token of argv) {
+    const entry = node.commands.get(token);
+    if (entry !== undefined) {
+      return entry;
+    }
+    const child = node.children.get(token);
+    if (child === undefined) {
+      return undefined;
+    }
+    node = child;
+  }
+  return undefined;
+}
+
+function statementFlagIn(
   token: string,
-  verbs: readonly string[],
-): string | undefined {
+  statements: DeclaredStatements,
+): { readonly verb: string; readonly inline: string | undefined } | undefined {
   if (!token.startsWith("--")) {
     return undefined;
   }
   const equals = token.indexOf("=");
-  if (equals === token.length - 1) {
+  const verb = token.slice(2, equals === -1 ? undefined : equals);
+  if (!Object.hasOwn(statements, verb)) {
     return undefined;
   }
-  const name = camelCase(token.slice(2, equals === -1 ? undefined : equals));
-  return verbs.includes(name) ? name : undefined;
+  return { verb, inline: equals === -1 ? undefined : token.slice(equals + 1) };
 }
 
-function parsedValues(value: unknown): string[] {
-  return Array.isArray(value)
-    ? value.filter((item): item is string => typeof item === "string")
-    : [];
+function wrongValueCount(
+  verb: string,
+  arity: number,
+  given: number,
+): CliStructuredError {
+  const wanted = arity === 1 ? "a value" : `${arity} values`;
+  return new CliStructuredError(
+    "CLI.INVALID_ARGUMENTS",
+    `--${verb} needs ${wanted}, and was given ${given}.`,
+    {
+      nextActions: [
+        {
+          kind: "user-choice",
+          label: `Pass --${verb} followed by ${wanted}.`,
+        },
+      ],
+    },
+  );
 }
+
+function emptyValue(verb: string): CliStructuredError {
+  return new CliStructuredError(
+    "CLI.INVALID_ARGUMENTS",
+    `--${verb} was given an empty value.`,
+    {
+      nextActions: [
+        { kind: "user-choice", label: `Name what --${verb} is about.` },
+      ],
+    },
+  );
+}
+
+export type StatementExtraction =
+  | {
+      readonly ok: true;
+      readonly argv: readonly string[];
+      readonly values: StatementFlagValue[];
+    }
+  | { readonly ok: false; readonly error: CliStructuredError };
 
 /**
- * Every statement-flag value, in the order argv gave them. The parser
- * groups values by flag, so argv decides only which verb comes next;
- * the values themselves are the parser's. A parsed value argv could
- * not place is appended rather than dropped, so it is still reported
- * if nothing consumes it.
+ * Takes the command's statement flags out of argv, keeping their
+ * values in the order argv gave them. A value is any following token
+ * that is not a flag; nothing after a bare `--` is a flag.
  */
-export function statementFlagValues(
+export function extractStatementFlags(
   argv: readonly string[],
-  verbs: readonly string[],
-  parsedFlags: Readonly<Record<string, unknown>>,
-): StatementFlagValue[] {
-  const remaining = new Map(
-    verbs.map((verb) => [verb, parsedValues(parsedFlags[verb])]),
-  );
-  const ordered: StatementFlagValue[] = [];
-  for (const token of flagTokens(argv)) {
-    const verb = verbFlagIn(token, verbs);
-    const text = verb === undefined ? undefined : remaining.get(verb)?.shift();
-    if (verb !== undefined && text !== undefined) {
-      ordered.push({ verb, text, consumed: false });
+  statements: DeclaredStatements,
+): StatementExtraction {
+  const terminator = argv.indexOf("--");
+  const tokens = terminator === -1 ? argv : argv.slice(0, terminator);
+  const rest = terminator === -1 ? [] : argv.slice(terminator);
+  const kept: string[] = [];
+  const values: StatementFlagValue[] = [];
+  let index = 0;
+  while (index < tokens.length) {
+    const token = tokens[index];
+    index += 1;
+    const flag = statementFlagIn(token, statements);
+    if (flag === undefined) {
+      kept.push(token);
+      continue;
     }
-  }
-  for (const [verb, texts] of remaining) {
-    for (const text of texts) {
-      ordered.push({ verb, text, consumed: false });
+    const { arity } = statements[flag.verb];
+    const given = flag.inline === undefined ? [] : [flag.inline];
+    while (
+      given.length < arity &&
+      index < tokens.length &&
+      !tokens[index].startsWith("-")
+    ) {
+      given.push(tokens[index]);
+      index += 1;
     }
+    if (given.length !== arity) {
+      return {
+        ok: false,
+        error: wrongValueCount(flag.verb, arity, given.length),
+      };
+    }
+    if (given.some((value) => value.trim() === "")) {
+      return { ok: false, error: emptyValue(flag.verb) };
+    }
+    values.push({ verb: flag.verb, values: given, consumed: false });
   }
-  return ordered;
+  return { ok: true, argv: [...kept, ...rest], values };
 }

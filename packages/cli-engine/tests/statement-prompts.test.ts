@@ -101,9 +101,11 @@ describe("a verb flag answers the statement", () => {
 
     expect(result.exitCode).toBe(0);
     expect(result.presented?.data).toEqual({
-      answer: { verb: "delete", text: "Legacy" },
+      answer: { verb: "delete", text: "Legacy", values: ["Legacy"] },
     });
-    expect(result.stderr).toBe('✔ answer={"verb":"delete","text":"Legacy"}\n');
+    expect(result.stderr).toBe(
+      '✔ answer={"verb":"delete","text":"Legacy","values":["Legacy"]}\n',
+    );
   });
 
   test("a value that starts with the subject and a colon names it", async () => {
@@ -114,7 +116,11 @@ describe("a verb flag answers the statement", () => {
 
     expect(result.exitCode).toBe(0);
     expect(result.presented?.data).toEqual({
-      answer: { verb: "rename", text: "Legacy:Archive" },
+      answer: {
+        verb: "rename",
+        text: "Legacy:Archive",
+        values: ["Legacy:Archive"],
+      },
     });
   });
 
@@ -126,7 +132,7 @@ describe("a verb flag answers the statement", () => {
 
     expect(result.exitCode).toBe(0);
     expect(result.presented?.data).toEqual({
-      answer: { verb: "delete", text: "Legacy" },
+      answer: { verb: "delete", text: "Legacy", values: ["Legacy"] },
     });
     expect(result.stderr).toBe("");
   });
@@ -226,7 +232,7 @@ describe("an interactive run asks", () => {
 
     expect(result.exitCode).toBe(0);
     expect(result.presented?.data).toEqual({
-      answer: { verb: "delete", text: "Legacy" },
+      answer: { verb: "delete", text: "Legacy", values: ["Legacy"] },
     });
   });
 
@@ -238,7 +244,11 @@ describe("an interactive run asks", () => {
 
     expect(result.exitCode).toBe(0);
     expect(result.presented?.data).toEqual({
-      answer: { verb: "rename", text: "Legacy:Archive" },
+      answer: {
+        verb: "rename",
+        text: "Legacy:Archive",
+        values: ["Legacy:Archive"],
+      },
     });
   });
 
@@ -339,8 +349,8 @@ describe("prompt.statements asks several questions together", () => {
     expect(result.exitCode).toBe(0);
     expect(result.presented?.data).toEqual({
       answer: [
-        { verb: "rename", text: "Legacy:Archive" },
-        { verb: "delete", text: "User.name" },
+        { verb: "rename", text: "Legacy:Archive", values: ["Legacy:Archive"] },
+        { verb: "delete", text: "User.name", values: ["User.name"] },
       ],
     });
   });
@@ -354,8 +364,8 @@ describe("prompt.statements asks several questions together", () => {
     expect(result.exitCode).toBe(0);
     expect(result.presented?.data).toEqual({
       answer: [
-        { verb: "rename", text: "Legacy:Archive" },
-        { verb: "delete", text: "User.name" },
+        { verb: "rename", text: "Legacy:Archive", values: ["Legacy:Archive"] },
+        { verb: "delete", text: "User.name", values: ["User.name"] },
       ],
     });
     expect(result.stderr.indexOf(LEGACY_QUESTION)).toBeLessThan(
@@ -372,8 +382,12 @@ describe("prompt.statements asks several questions together", () => {
     expect(result.exitCode).toBe(0);
     expect(result.presented?.data).toEqual({
       answer: [
-        { verb: "delete", text: "Legacy" },
-        { verb: "rename", text: "User.name:fullName" },
+        { verb: "delete", text: "Legacy", values: ["Legacy"] },
+        {
+          verb: "rename",
+          text: "User.name:fullName",
+          values: ["User.name:fullName"],
+        },
       ],
     });
     expect(result.stderr).not.toContain(LEGACY_QUESTION);
@@ -418,7 +432,9 @@ describe("a verb-flag value nothing consumed", () => {
             "Remove the flag, or spell the subject the way the command names it.",
         },
       ],
-      meta: { unused: [{ verb: "delete", text: "Lagacy" }] },
+      meta: {
+        unused: [{ verb: "delete", values: ["Lagacy"] }],
+      },
     });
   });
 
@@ -447,7 +463,29 @@ describe("a verb-flag value nothing consumed", () => {
       "--json",
     ]);
 
-    expect(errorOf(result)?.code).toBe("CLI.CONSENT_UNUSED");
+    expect(errorOf(result)).toMatchObject({
+      code: "CLI.CONSENT_UNUSED",
+      summary:
+        "--delete Legacy was given, but the question about Legacy was already answered by another flag.",
+      nextActions: [
+        { kind: "user-choice", label: "Give one flag per question." },
+      ],
+    });
+  });
+
+  test("a second verb for an answered subject is reported as already answered", async () => {
+    const result = await cliWith(askLegacy).run([
+      "probe",
+      "--delete",
+      "Legacy",
+      "--rename",
+      "Legacy:Archive",
+      "--json",
+    ]);
+
+    expect(errorOf(result)?.summary).toBe(
+      "--delete Legacy was given, but the question about Legacy was already answered by another flag.",
+    );
   });
 
   test("a run that failed for another reason reports that reason only", async () => {

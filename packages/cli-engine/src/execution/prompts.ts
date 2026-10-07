@@ -25,11 +25,11 @@
  * re-prompts, the line renderer fails structurally, because a scripted
  * or piped answer cannot be corrected.
  */
-import { kebabCase } from "../args";
 import type {
   PromptSurface,
   StatementAnswer,
   StatementQuestion,
+  StatementsOptions,
 } from "../context";
 import { CliStructuredError } from "../protocol";
 import type { InputStream } from "../runtime";
@@ -41,9 +41,10 @@ import {
 import { constructionError } from "./command-tree";
 import type { Invocation, RunState } from "./engine";
 import { announceUrl } from "./open-url";
-import type { StatementFlagValue } from "./statement-flags";
+import type { DeclaredStatements, StatementFlagValue } from "./statement-flags";
 
 const WHITESPACE = /\s/;
+const WHITESPACES = /\s+/;
 
 /** How often browserWait asks whether the user has finished. */
 const BROWSER_WAIT_POLL_INTERVAL_MS = 1000;
@@ -59,22 +60,23 @@ function consumeConfirmValue(state: RunState, token: string): boolean {
   return true;
 }
 
-function flagForm(verb: string, text: string): string {
-  return `--${kebabCase(verb)} ${text}`;
+function flagForm(verb: string, values: readonly string[]): string {
+  return `--${verb} ${values.join(" ")}`;
 }
 
-function namesSubject(text: string, subject: string): boolean {
-  return text === subject || text.startsWith(`${subject}:`);
+function namesSubject(value: string, subject: string): boolean {
+  return value === subject || value.startsWith(`${subject}:`);
 }
 
-function subjectOf(text: string): string {
-  const colon = text.indexOf(":");
-  return colon === -1 ? text : text.slice(0, colon);
+function subjectOf(value: string): string {
+  const colon = value.indexOf(":");
+  return colon === -1 ? value : value.slice(0, colon);
 }
 
-/** The first unconsumed verb-flag value naming the subject, tried verb
- *  by verb. A value the command rejects fails the run: a wrong flag
- *  cannot be corrected by asking again. */
+/** The first unconsumed statement-flag value naming the subject, tried
+ *  verb by verb; its first value is the one that names it. A value the
+ *  command rejects fails the run: a wrong flag cannot be corrected by
+ *  asking again. */
 function answerFromFlags<V extends string>(
   state: RunState,
   question: StatementQuestion<V>,
@@ -84,20 +86,21 @@ function answerFromFlags<V extends string>(
       (candidate) =>
         !candidate.consumed &&
         candidate.verb === verb &&
-        namesSubject(candidate.text, question.subject),
+        namesSubject(candidate.values[0], question.subject),
     );
     if (value === undefined) {
       continue;
     }
-    const rejection = question.validate(verb, value.text);
+    const text = value.values.join(" ");
+    const rejection = question.validate(verb, text);
     if (rejection !== undefined) {
       throw new CliStructuredError(
         "CLI.PROMPT_INVALID",
-        `${flagForm(verb, value.text)} does not answer "${question.question}": ${rejection}`,
+        `${flagForm(verb, value.values)} does not answer "${question.question}": ${rejection}`,
       );
     }
     value.consumed = true;
-    return { verb, text: value.text };
+    return { verb, text, values: value.values };
   }
   return undefined;
 }
@@ -120,7 +123,7 @@ function statementUnavailable<V extends string>(
     nextActions: unanswered.flatMap((question) =>
       question.verbs.map((verb) => ({
         kind: "user-choice" as const,
-        label: `Pass ${flagForm(verb, question.forms?.[verb] ?? question.subject)}`,
+        label: `Pass ${flagForm(verb, [question.forms?.[verb] ?? question.subject])}`,
       })),
     ),
     meta:
@@ -135,10 +138,12 @@ type ParsedStatement<V extends string> =
   | { readonly problem: string };
 
 /** An interactive answer: `<verb> <text>`, or `<verb>` alone to mean
- *  the subject. */
+ *  the subject. A verb taking several values reads them from the text,
+ *  separated by whitespace. */
 function parseStatement<V extends string>(
   raw: string,
   question: StatementQuestion<V>,
+  state: RunState,
 ): ParsedStatement<V> {
   const trimmed = raw.trim();
   const space = trimmed.search(WHITESPACE);
@@ -151,39 +156,79 @@ function parseStatement<V extends string>(
     };
   }
   const text = rest === "" ? question.subject : rest;
+  const { arity } = state.statements[verb];
+  const values = arity === 1 ? [text] : text.split(WHITESPACES);
+  if (values.length !== arity) {
+    return { problem: `Give ${arity} values after ${verb}.` };
+  }
   const rejection = question.validate(verb, text);
   return rejection === undefined
-    ? { answer: { verb, text } }
+    ? { answer: { verb, text, values } }
     : { problem: rejection };
 }
 
-/** Fails a run that otherwise succeeded when a verb flag answered
- *  nothing: a mistyped subject must not pass silently. */
+/** What makes a question one the command could never have meant to
+ *  ask, if anything. */
+function malformation<V extends string>(
+  question: StatementQuestion<V>,
+  declared: DeclaredStatements,
+): string | undefined {
+  const about = `about '${question.subject}'`;
+  if (question.subject === "" || question.subject.includes(":")) {
+    return `${about}: a subject must be non-empty and contain no ':'`;
+  }
+  if (question.verbs.length === 0) {
+    return `${about} with no verbs`;
+  }
+  if (new Set(question.verbs).size !== question.verbs.length) {
+    return `${about} listing a verb twice`;
+  }
+  const undeclared = question.verbs.find(
+    (verb) => !Object.hasOwn(declared, verb),
+  );
+  return undeclared === undefined
+    ? undefined
+    : `with verb '${undeclared}', which it does not declare in statements`;
+}
+
+function unusedSentence(state: RunState, value: StatementFlagValue): string {
+  const given = flagForm(value.verb, value.values);
+  const subject = subjectOf(value.values[0]);
+  return state.askedSubjects.has(subject)
+    ? `${given} was given, but the question about ${subject} was already answered by another flag.`
+    : `${given} was given but nothing in this run asked about ${subject}.`;
+}
+
+/** Fails a run when a statement flag answered nothing: a mistyped
+ *  subject, or a second answer to one question, must not pass
+ *  silently. */
 export function unusedStatementValuesError(
   state: RunState,
 ): CliStructuredError | undefined {
-  const unused: readonly StatementFlagValue[] = state.statementValues.filter(
-    (value) => !value.consumed,
-  );
+  const unused = state.statementValues.filter((value) => !value.consumed);
   if (unused.length === 0) {
     return undefined;
   }
-  const given = unused.map((value) => flagForm(value.verb, value.text));
-  const subjects = [...new Set(unused.map((value) => subjectOf(value.text)))];
-  const summary =
-    unused.length === 1
-      ? `${given[0]} was given but nothing in this run asked about ${subjects[0]}.`
-      : `${given.join(", ")} were given but nothing in this run asked about ${subjects.join(", ")}.`;
-  return new CliStructuredError("CLI.CONSENT_UNUSED", summary, {
-    nextActions: [
-      {
-        kind: "user-choice",
-        label:
-          "Remove the flag, or spell the subject the way the command names it.",
+  const allAsked = unused.every((value) =>
+    state.askedSubjects.has(subjectOf(value.values[0])),
+  );
+  return new CliStructuredError(
+    "CLI.CONSENT_UNUSED",
+    unused.map((value) => unusedSentence(state, value)).join(" "),
+    {
+      nextActions: [
+        {
+          kind: "user-choice",
+          label: allAsked
+            ? "Give one flag per question."
+            : "Remove the flag, or spell the subject the way the command names it.",
+        },
+      ],
+      meta: {
+        unused: unused.map(({ verb, values }) => ({ verb, values })),
       },
-    ],
-    meta: { unused: unused.map(({ verb, text }) => ({ verb, text })) },
-  });
+    },
+  );
 }
 
 function makeLineReader(
@@ -528,11 +573,11 @@ export function makePromptSurface(invocation: Invocation): PromptSurface {
     if (useClack()) {
       const raw = await renderWithClack<string>(question.question, (r) =>
         r.statement(question.question, question.verbs.join(" or "), (value) => {
-          const parsed = parseStatement(value, question);
+          const parsed = parseStatement(value, question, state);
           return "problem" in parsed ? parsed.problem : undefined;
         }),
       );
-      const parsed = parseStatement(raw, question);
+      const parsed = parseStatement(raw, question, state);
       if ("problem" in parsed) {
         throw promptInvalid(question.question, raw);
       }
@@ -545,7 +590,7 @@ export function makePromptSurface(invocation: Invocation): PromptSurface {
     if (typeof raw !== "string") {
       throw promptInvalid(question.question, String(raw));
     }
-    const parsed = parseStatement(raw, question);
+    const parsed = parseStatement(raw, question, state);
     if ("problem" in parsed) {
       throw new CliStructuredError(
         "CLI.PROMPT_INVALID",
@@ -555,21 +600,15 @@ export function makePromptSurface(invocation: Invocation): PromptSurface {
     return parsed.answer;
   };
 
-  const requireRegisteredVerbs = <V extends string>(
+  const requireWellFormed = <V extends string>(
     questions: readonly StatementQuestion<V>[],
   ): void => {
     for (const question of questions) {
-      if (question.verbs.length === 0) {
+      const problem = malformation(question, state.statements);
+      if (problem !== undefined) {
         throw constructionError(
-          `command '${state.commandId}' asked a statement about '${question.subject}' with no verbs`,
+          `command '${state.commandId}' asked a statement ${problem}`,
         );
-      }
-      for (const verb of question.verbs) {
-        if (!state.statementVerbs.includes(verb)) {
-          throw constructionError(
-            `command '${state.commandId}' asked a statement with verb '${verb}', which it does not declare in statements`,
-          );
-        }
       }
     }
   };
@@ -578,8 +617,12 @@ export function makePromptSurface(invocation: Invocation): PromptSurface {
    *  unanswered at once; the rest are asked one after another. */
   const statements = async <V extends string>(
     questions: readonly StatementQuestion<V>[],
+    opts: StatementsOptions | undefined,
   ): Promise<StatementAnswer<V>[]> => {
-    requireRegisteredVerbs(questions);
+    requireWellFormed(questions);
+    for (const question of questions) {
+      state.askedSubjects.add(question.subject);
+    }
     const fromFlags = questions.map((question) =>
       answerFromFlags(state, question),
     );
@@ -596,7 +639,13 @@ export function makePromptSurface(invocation: Invocation): PromptSurface {
       const answer = fromFlags[index] ?? (await askStatement(questions[index]));
       return [answer, ...(await answerFrom(index + 1))];
     };
-    return answerFrom(0);
+    const answers = await answerFrom(0);
+    const unused =
+      opts?.last === true ? unusedStatementValuesError(state) : undefined;
+    if (unused !== undefined) {
+      throw unused;
+    }
+    return answers;
   };
 
   /** A prompt writes to stderr and reads the engine's stdin — the same
@@ -719,11 +768,12 @@ export function makePromptSurface(invocation: Invocation): PromptSurface {
     text: (question, opts) => claimTerminal(() => surface.text(question, opts)),
     statement: async (question, opts) => {
       const [answer] = await claimTerminal(() =>
-        statements([{ question, ...opts }]),
+        statements([{ question, ...opts }], undefined),
       );
       return answer;
     },
-    statements: (questions) => claimTerminal(() => statements(questions)),
+    statements: (questions, opts) =>
+      claimTerminal(() => statements(questions, opts)),
     browserWait: (request) => claimTerminal(() => surface.browserWait(request)),
   };
 }

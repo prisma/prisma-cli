@@ -191,25 +191,10 @@ export interface BrowserWaitRequest {
   readonly interval?: number;
 }
 
-/**
- * Prompts. Every prompt resolves to its answered value directly.
- * Failures THROW engine-internal structured errors the engine catches
- * and settles: cancellation exits 3; a prompt that cannot be operated
- * (no default under --yes or non-interactive, an invalid answer) exits
- * 2. A handler that does not catch simply propagates; one that catches
- * cannot swallow the settlement — rethrow or return notOk.
- *
- * Every prompt except `consent` may carry a declared `default`. Under
- * --yes and in non-interactive contexts (no TTY stdin, CI,
- * --no-interactive — format never decides interactivity) a prompt with
- * a default resolves to it; one without a default throws. The prompt UI
- * writes to stderr, so an interactive json run prompts without touching
- * the stdout stream.
- */
 export interface StatementOptions<V extends string> {
-  /** What the answer is about, in the command's own vocabulary. It
-   *  should not contain `:`, which separates it from the rest of a flag
-   *  value. */
+  /** What the answer is about, in the command's own vocabulary.
+   *  Non-empty and without `:`, which separates it from the rest of a
+   *  flag value; anything else is a construction error. */
   readonly subject: string;
   /** The verbs that may answer, in the order a refusal lists them. */
   readonly verbs: readonly V[];
@@ -229,9 +214,35 @@ export interface StatementQuestion<V extends string>
 
 export interface StatementAnswer<V extends string> {
   readonly verb: V;
+  /** The values joined by one space. */
   readonly text: string;
+  /** The verb's `arity` values: from the flag, or split from the
+   *  typed answer on whitespace. */
+  readonly values: readonly string[];
 }
 
+export interface StatementsOptions {
+  /** This is the run's final ask: values still unconsumed once the
+   *  questions are answered fail with CLI.CONSENT_UNUSED here, before
+   *  the command acts on the answers. */
+  readonly last?: boolean;
+}
+
+/**
+ * Prompts. Every prompt resolves to its answered value directly.
+ * Failures THROW engine-internal structured errors the engine catches
+ * and settles: cancellation exits 3; a prompt that cannot be operated
+ * (no default under --yes or non-interactive, an invalid answer) exits
+ * 2. A handler that does not catch simply propagates; one that catches
+ * cannot swallow the settlement — rethrow or return notOk.
+ *
+ * Every prompt except `consent` and `statement` may carry a declared `default`. Under
+ * --yes and in non-interactive contexts (no TTY stdin, CI,
+ * --no-interactive — format never decides interactivity) a prompt with
+ * a default resolves to it; one without a default throws. The prompt UI
+ * writes to stderr, so an interactive json run prompts without touching
+ * the stdout stream.
+ */
 export interface PromptSurface {
   readonly confirm: (
     question: string,
@@ -266,7 +277,8 @@ export interface PromptSurface {
    * Without such a flag a non-interactive run, or one under `--yes`,
    * fails with `CLI.CONSENT_REQUIRED`; an interactive run asks, and the
    * user answers `<verb> <text>`, or `<verb>` alone to mean the subject.
-   * Each verb must be one the command declares in `statements`.
+   * Each verb must be one the command declares in `statements`; the
+   * flag takes that declaration's `arity` values per occurrence.
    */
   readonly statement: <V extends string>(
     question: string,
@@ -280,6 +292,7 @@ export interface PromptSurface {
    */
   readonly statements: <V extends string>(
     questions: readonly StatementQuestion<V>[],
+    opts?: StatementsOptions,
   ) => Promise<StatementAnswer<V>[]>;
   readonly select: <T extends string>(
     question: string,

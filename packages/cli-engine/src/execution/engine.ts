@@ -74,9 +74,11 @@ import {
   recordSignalDuringSpawn,
 } from "./spawn";
 import {
-  declaredStatements,
+  type DeclaredStatements,
+  extractStatementFlags,
+  routedCommand,
   type StatementFlagValue,
-  statementFlagValues,
+  statementsOf,
 } from "./statement-flags";
 import {
   buildRoutes,
@@ -152,8 +154,10 @@ export interface RunState {
    *  token removes the value it matched, so one `--confirm` grants one
    *  consent. */
   confirmValues: string[];
-  /** The statement verbs the mounted command declared. */
-  statementVerbs: readonly string[];
+  /** The statements the command argv routes to declares. */
+  statements: DeclaredStatements;
+  /** Every subject a statement prompt asked about, answered or not. */
+  askedSubjects: Set<string>;
   /** Every statement-flag value, in argv order. A statement prompt
    *  marks the value it consumed; one left unconsumed fails a run that
    *  otherwise succeeded. */
@@ -349,7 +353,8 @@ export class EngineImpl implements Engine {
       logLevel: "info",
       yes: false,
       confirmValues: [],
-      statementVerbs: [],
+      statements: {},
+      askedSubjects: new Set(),
       statementValues: [],
       interactive: defaultInteractive(runtime),
       /** Pre-parse resolution so a run that never mounts a command — an
@@ -434,6 +439,15 @@ export class EngineImpl implements Engine {
       );
       return 0;
     }
+    const routed = routedCommand(this.tree, argv);
+    state.statements = routed === undefined ? {} : statementsOf(routed.def);
+    const extraction = extractStatementFlags(argv, state.statements);
+    if (!extraction.ok) {
+      unsubscribe();
+      settleErrored(invocation, extraction.error);
+      return 2;
+    }
+    state.statementValues = extraction.values;
     const stricliProcess = {
       /** stricli writes only help text here. In json mode stdout carries
        *  exactly the frame stream, so help prose goes to stderr instead. */
@@ -460,7 +474,7 @@ export class EngineImpl implements Engine {
       localization: { text: capturingText(state) },
     });
     try {
-      await runStricli(app, [...argv], {
+      await runStricli(app, [...extraction.argv], {
         process: stricliProcess,
         forCommand: (info) => {
           state.prefix = info.prefix;
@@ -668,12 +682,6 @@ export class EngineImpl implements Engine {
     let needsOutcome: NeedsOutcome;
     try {
       applySharedFlags(state, rawFlags as SharedFlags, invocation.runtime);
-      state.statementVerbs = declaredStatements(entry.def);
-      state.statementValues = statementFlagValues(
-        state.argv,
-        state.statementVerbs,
-        rawFlags,
-      );
       needsOutcome = await checkNeeds(entry.def, invocation);
     } catch (cause) {
       // The child preflight can be awaiting the token endpoint when the
