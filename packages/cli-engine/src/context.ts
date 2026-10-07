@@ -234,9 +234,9 @@ export interface StatementSurface {
    * leftover check does not report them. For statements that are input
    * to the command's work rather than answers to a question; other
    * verbs' values stay for the questions. A verb the command did not
-   * declare is a construction error. Do not list a verb you take in a
-   * later question's `verbs`: the take consumes the flag that would
-   * answer it.
+   * declare is a construction error. A later question may still list a
+   * taken verb: no flag value of it is left to answer the question, so
+   * the verb serves the refusal's flag form and the typed answer.
    */
   readonly take: <V extends string>(verb: V) => StatementAnswer<V>[];
 }

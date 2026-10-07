@@ -120,6 +120,58 @@ describe("ctx.statements.take", () => {
   });
 });
 
+describe("a question listing a verb the command took", () => {
+  const takeThenAsk = async (ctx: CommandContext<undefined, never>) => {
+    const renames = ctx.statements.take("rename");
+    const [legacy] = await ctx.prompt.statements([
+      {
+        question: "What happens to Legacy?",
+        subject: "Legacy",
+        verbs: ["rename", "delete"],
+        forms: { rename: "Legacy:<new name>" },
+        validate: () => undefined,
+      },
+    ]);
+    return { renames, legacy };
+  };
+
+  test("is answered by a typed answer with that verb", async () => {
+    const result = await cliWith(takeThenAsk).run(
+      ["probe", "--rename", "Other:New"],
+      { isTty: { stdin: true }, answers: ["rename Legacy:Archive"] },
+    );
+
+    expect(result.exitCode).toBe(0);
+    expect(result.presented?.data).toEqual({
+      answer: {
+        renames: [{ verb: "rename", text: "Other:New", values: ["Other:New"] }],
+        legacy: {
+          verb: "rename",
+          text: "Legacy:Archive",
+          values: ["Legacy:Archive"],
+        },
+      },
+    });
+  });
+
+  test("is refused non-interactively with that verb's flag form, never answered by a taken value", async () => {
+    const result = await cliWith(takeThenAsk).run([
+      "probe",
+      "--rename",
+      "Legacy:Archive",
+      "--json",
+    ]);
+
+    expect(errorOf(result)).toMatchObject({
+      code: "CLI.CONSENT_REQUIRED",
+      nextActions: [
+        { kind: "user-choice", label: "Pass --rename Legacy:<new name>" },
+        { kind: "user-choice", label: "Pass --delete Legacy" },
+      ],
+    });
+  });
+});
+
 describe("a subject containing ':'", () => {
   test("is answered by a value equal to it", async () => {
     const result = await cliWith(async (ctx) =>
