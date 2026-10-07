@@ -16,6 +16,7 @@ long-term architecture boundaries.
 | [0003](0003-structured-output-and-errors.md) | Accepted | Treat structured output and stable error codes as public contracts. |
 | [0004](0004-engine-version-pinning.md) | Accepted | One engine per install: product CLI packages declare the engine as an exact peer, product libraries carry no engine relationship. |
 | [0005](0005-config-sections-declare-their-shape.md) | Accepted | A command family declares its config section once as a schema with `path` fields; the engine derives validation, diagnostics, and path resolution from it. |
+| [0006](0006-consent-as-a-statement.md) | Accepted | A command declares the statements it may ask for; the engine parses their flags for that command only and asks for them as consents a human answers by typing the statement. |
 
 ## ADR Template
 
