@@ -155,12 +155,13 @@ function parseStatement<V extends string>(
       problem: `Start the answer with ${question.verbs.join(" or ")}.`,
     };
   }
-  const text = rest === "" ? question.subject : rest;
+  const typed = rest === "" ? question.subject : rest;
   const { arity } = state.statements[verb];
-  const values = arity === 1 ? [text] : text.split(WHITESPACES);
+  const values = arity === 1 ? [typed] : typed.split(WHITESPACES);
   if (values.length !== arity) {
     return { problem: `Give ${arity} values after ${verb}.` };
   }
+  const text = values.join(" ");
   const rejection = question.validate(verb, text);
   return rejection === undefined
     ? { answer: { verb, text, values } }

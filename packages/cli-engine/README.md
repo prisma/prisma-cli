@@ -47,13 +47,13 @@ const answer = await ctx.prompt.statement(
 // or { verb: "rename", text: "Legacy:Archive", values: ["Legacy:Archive"] }
 ```
 
-Each occurrence of `--<verb>` takes exactly `arity` values, in argv order across all the verbs. A wrong count or an empty value is `CLI.INVALID_ARGUMENTS`. `values` holds them; `text` is them joined by one space.
+Each occurrence of `--<verb>` takes exactly `arity` values, in argv order across all the verbs. A wrong count or an empty value is `CLI.INVALID_ARGUMENTS`. A token that starts with `-` reads as a flag, so a first value that starts with `-` must be written `--<verb>=<value>`. `values` holds them; `text` is them joined by one space.
 
 The engine answers the question in this order:
 
 1. A verb flag whose first value names the subject: the value is the subject, or starts with `<subject>:`. `--delete Legacy` and `--rename Legacy:Archive` both name `Legacy`. A value `validate` rejects fails the run with `CLI.PROMPT_INVALID`.
 2. With no such value, a non-interactive run, or one under `--yes`, fails with `CLI.CONSENT_REQUIRED`. Its next actions give one flag to pass per verb, and its `meta` carries `subject`, `verbs` and `unanswered`.
-3. Otherwise the user is asked, and answers `<verb> <text>`, or `<verb>` alone to mean the subject. A verb with an arity above 1 takes its values from the text, separated by whitespace. A rejected answer is asked again on a terminal; with scripted or piped input it fails with `CLI.PROMPT_INVALID`.
+3. Otherwise the user is asked, and answers `<verb> <text>`, or `<verb>` alone to mean the subject. A verb with an arity above 1 takes its values from the text, separated by whitespace, and `text` is them joined by one space, as for a flag. A rejected answer is asked again on a terminal; with scripted or piped input it fails with `CLI.PROMPT_INVALID`.
 
 `ctx.prompt.statements([...])` asks several questions at once and returns the answers in order. Flags answer what they can, a refusal lists every question still unanswered, and an interactive run asks the rest one after another.
 

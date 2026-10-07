@@ -52,6 +52,13 @@ describe("statement flags come out of argv in the order given", () => {
     });
   });
 
+  test("a value starting with '-' can be written after '='", () => {
+    expect(extracted(["--rename=-x"])).toEqual({
+      argv: [],
+      values: ["rename -x"],
+    });
+  });
+
   test("an undeclared flag is left for the parser", () => {
     expect(extracted(["--drop", "Legacy"])).toEqual({
       argv: ["--drop", "Legacy"],
@@ -63,12 +70,19 @@ describe("statement flags come out of argv in the order given", () => {
 describe("a wrong value count is an argument error", () => {
   test.each([
     [["--delete"], "--delete needs a value, and was given 0."],
-    [["--delete", "--json"], "--delete needs a value, and was given 0."],
+    [
+      ["--delete", "--json"],
+      "--delete needs a value, and was given 0. A value that starts with '-' must be written --delete=<value>.",
+    ],
     [["--move", "A"], "--move needs 2 values, and was given 1."],
     [["--move", "A", "--json"], "--move needs 2 values, and was given 1."],
     [["--delete", ""], "--delete was given an empty value."],
     [["--delete", "  "], "--delete was given an empty value."],
     [["--delete="], "--delete was given an empty value."],
+    [
+      ["--delete", "-1"],
+      "--delete needs a value, and was given 0. A value that starts with '-' must be written --delete=<value>.",
+    ],
   ])("%j", (argv, error) => {
     expect(extracted(argv)).toEqual({ error });
   });

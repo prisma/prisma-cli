@@ -439,15 +439,23 @@ export class EngineImpl implements Engine {
       );
       return 0;
     }
+    let stricliArgv = argv;
     const routed = routedCommand(this.tree, argv);
-    state.statements = routed === undefined ? {} : statementsOf(routed.def);
-    const extraction = extractStatementFlags(argv, state.statements);
-    if (!extraction.ok) {
-      unsubscribe();
-      settleErrored(invocation, extraction.error);
-      return 2;
+    if (routed !== undefined) {
+      state.statements = statementsOf(routed.def);
+      const extraction = extractStatementFlags(argv, state.statements);
+      if (!extraction.ok) {
+        unsubscribe();
+        state.commandId = routed.id;
+        state.docsBaseUrl = routed.docsBaseUrl;
+        state.snapshot = buildCommandSnapshot(routed.id, routed.def, argv, []);
+        settleErrored(invocation, extraction.error);
+        this.fireOnSettled(invocation, 2, startedAtMs);
+        return 2;
+      }
+      state.statementValues = extraction.values;
+      stricliArgv = extraction.argv;
     }
-    state.statementValues = extraction.values;
     const stricliProcess = {
       /** stricli writes only help text here. In json mode stdout carries
        *  exactly the frame stream, so help prose goes to stderr instead. */
@@ -474,7 +482,7 @@ export class EngineImpl implements Engine {
       localization: { text: capturingText(state) },
     });
     try {
-      await runStricli(app, [...extraction.argv], {
+      await runStricli(app, [...stricliArgv], {
         process: stricliProcess,
         forCommand: (info) => {
           state.prefix = info.prefix;

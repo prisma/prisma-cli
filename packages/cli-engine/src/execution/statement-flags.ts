@@ -6,6 +6,7 @@
  * across flags. Handlers never see them; ctx.prompt.statement hands
  * them out.
  */
+import { camelCase } from "../args";
 import type { AnyCommand, StatementSpec } from "../commands";
 import { CliStructuredError } from "../protocol";
 import type { CommandTreeEntry, CommandTreeNode } from "./command-tree";
@@ -44,18 +45,21 @@ export interface StatementFlagValue {
 }
 
 /** The command argv routes to, found the way the parser routes: the
- *  leading words, group by group, until one names a command. */
+ *  leading words, group by group, until one names a command. Like the
+ *  parser, a kebab-case word matches a camelCase name. */
 export function routedCommand(
   tree: CommandTreeNode,
   argv: readonly string[],
 ): CommandTreeEntry | undefined {
   let node = tree;
   for (const token of argv) {
-    const entry = node.commands.get(token);
+    const entry =
+      node.commands.get(token) ?? node.commands.get(camelCase(token));
     if (entry !== undefined) {
       return entry;
     }
-    const child = node.children.get(token);
+    const child =
+      node.children.get(token) ?? node.children.get(camelCase(token));
     if (child === undefined) {
       return undefined;
     }
@@ -79,24 +83,32 @@ function statementFlagIn(
   return { verb, inline: equals === -1 ? undefined : token.slice(equals + 1) };
 }
 
+/** A first value that starts with `-` reads as a flag, so it can only
+ *  be given inline; the error says so when that is what happened. */
 function wrongValueCount(
   verb: string,
   arity: number,
   given: number,
+  next: string | undefined,
 ): CliStructuredError {
   const wanted = arity === 1 ? "a value" : `${arity} values`;
-  return new CliStructuredError(
-    "CLI.INVALID_ARGUMENTS",
-    `--${verb} needs ${wanted}, and was given ${given}.`,
-    {
-      nextActions: [
-        {
-          kind: "user-choice",
-          label: `Pass --${verb} followed by ${wanted}.`,
-        },
-      ],
-    },
-  );
+  const summary = `--${verb} needs ${wanted}, and was given ${given}.`;
+  if (given === 0 && next?.startsWith("-") === true) {
+    return new CliStructuredError(
+      "CLI.INVALID_ARGUMENTS",
+      `${summary} A value that starts with '-' must be written --${verb}=<value>.`,
+      {
+        nextActions: [
+          { kind: "user-choice", label: `Write --${verb}=<value>.` },
+        ],
+      },
+    );
+  }
+  return new CliStructuredError("CLI.INVALID_ARGUMENTS", summary, {
+    nextActions: [
+      { kind: "user-choice", label: `Pass --${verb} followed by ${wanted}.` },
+    ],
+  });
 }
 
 function emptyValue(verb: string): CliStructuredError {
@@ -155,7 +167,7 @@ export function extractStatementFlags(
     if (given.length !== arity) {
       return {
         ok: false,
-        error: wrongValueCount(flag.verb, arity, given.length),
+        error: wrongValueCount(flag.verb, arity, given.length, tokens[index]),
       };
     }
     if (given.some((value) => value.trim() === "")) {

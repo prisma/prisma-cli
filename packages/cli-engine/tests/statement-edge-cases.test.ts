@@ -221,6 +221,32 @@ describe("a verb with several values", () => {
     });
   });
 
+  test("an interactive answer's text is its values joined by one space", async () => {
+    const seen: string[] = [];
+    const askMoveRecording = (prompt: PromptSurface) =>
+      prompt.statement("Where does Legacy go?", {
+        subject: "Legacy",
+        verbs: ["move"],
+        validate: (_verb, text) => {
+          seen.push(text);
+          return undefined;
+        },
+      });
+    const result = await cliWith(askMoveRecording, MOVE).run(["probe"], {
+      isTty: { stdin: true },
+      answers: ["move Legacy    archive"],
+    });
+
+    expect(seen).toEqual(["Legacy archive"]);
+    expect(result.presented?.data).toEqual({
+      answer: {
+        verb: "move",
+        text: "Legacy archive",
+        values: ["Legacy", "archive"],
+      },
+    });
+  });
+
   test("an interactive answer with the wrong count fails the line renderer", async () => {
     const result = await cliWith(askMove, MOVE).run(["probe", "--json"], {
       isTty: { stdin: true },
@@ -249,6 +275,59 @@ describe("what each channel sees", () => {
     expect(errorOf(result)).toMatchObject({
       code: "CLI.INVALID_ARGUMENTS",
       summary: "--delete was given an empty value.",
+    });
+  });
+
+  test("an argument error names the command and fires the run summary", async () => {
+    const summaries: RunSummary[] = [];
+    const result = await cliWith(askLegacy).run(
+      ["probe", "--delete", "", "--json"],
+      { onSettled: (summary) => summaries.push(summary) },
+    );
+
+    const last = result.json[result.json.length - 1];
+    expect(last.kind === "result" && last.envelope.commandId).toBe("probe");
+    expect(summaries).toMatchObject([{ commandId: "probe", exitCode: 2 }]);
+  });
+
+  test("a value starting with '-' must be written with '='", async () => {
+    const result = await cliWith(askLegacy).run([
+      "probe",
+      "--delete",
+      "-1",
+      "--json",
+    ]);
+
+    expect(errorOf(result)).toMatchObject({
+      code: "CLI.INVALID_ARGUMENTS",
+      summary:
+        "--delete needs a value, and was given 0. A value that starts with '-' must be written --delete=<value>.",
+      nextActions: [{ kind: "user-choice", label: "Write --delete=<value>." }],
+    });
+  });
+
+  test("a value starting with '-' written with '=' answers", async () => {
+    const result = await cliWith((prompt) =>
+      prompt.statements([legacy("-x")]),
+    ).run(["probe", "--rename=-x"]);
+
+    expect(result.exitCode).toBe(0);
+    expect(result.presented?.data).toEqual({
+      answer: [{ verb: "rename", text: "-x", values: ["-x"] }],
+    });
+  });
+
+  test("a kebab-case spelling of a camelCase command still takes its statements", async () => {
+    const cli = createTestCli({
+      commands: {
+        fooBar: probe((prompt) => prompt.statements([legacy()])),
+      },
+    });
+    const result = await cli.run(["foo-bar", "--delete", "Legacy"]);
+
+    expect(result.exitCode).toBe(0);
+    expect(result.presented?.data).toEqual({
+      answer: [{ verb: "delete", text: "Legacy", values: ["Legacy"] }],
     });
   });
 
