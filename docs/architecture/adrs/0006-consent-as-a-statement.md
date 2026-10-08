@@ -27,7 +27,7 @@ The command asks with `ctx.prompt.statement(question, { subject, verbs, validate
 
 1. From the command line, by a value of one of its verbs that names the subject. A value `validate` rejects fails the run with `CLI.PROMPT_INVALID`, since a wrong flag cannot be corrected by asking again.
 2. Outside an interactive terminal, or under `--yes`, by nobody: the run fails with one `CLI.CONSENT_REQUIRED` that lists every unanswered question with the flag that would answer it.
-3. Interactively, by the user typing `<verb> <value>` (or `<verb>` alone for the subject itself), validated the same way and asked again when rejected.
+3. Interactively, by the user typing `<verb> <value>` (or `<verb>` alone for the subject itself), validated the same way. A rejected answer is asked again on a terminal; scripted or piped input cannot be corrected, so it fails with `CLI.PROMPT_INVALID`.
 
 A statement is the command's own declared input, unlike a `--confirm` value, which a handler never sees: a command whose work depends on some statements, as the ORM plans with its renames before it knows what still loses data, takes a verb's values in argv order with `ctx.statements.take(verb)`, which consumes them.
 

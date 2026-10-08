@@ -94,6 +94,8 @@ Human-readable errors should follow this shape:
 5. where when relevant
 6. hint for `--log-level verbose` when helpful
 
+A `why` that runs over several lines is indented on every line, each continuation line aligned under the text after `why: `.
+
 Example:
 
 ```text

@@ -55,6 +55,11 @@ describe("printed flag forms", () => {
     ],
     ["a subject with a single quote", "it's", `Pass --delete 'it'\\''s'`],
     ["a subject starting with '-'", "-rf", "Pass --delete=-rf"],
+    ["a subject starting with '='", "=eq", "Pass --delete '=eq'"],
+    ["a subject with a newline", "a\nb", "Pass --delete 'a\nb'"],
+    ["a subject with a backslash", "a\\b", "Pass --delete 'a\\b'"],
+    ["a subject with '$'", "$HOME", "Pass --delete '$HOME'"],
+    ["a subject with a backtick", "`id`", "Pass --delete '`id`'"],
     [
       "a subject starting with '-' that needs quoting",
       "-r f",

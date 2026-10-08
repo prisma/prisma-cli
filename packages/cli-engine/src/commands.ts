@@ -152,7 +152,9 @@ export interface SpawnDeclarations {
  */
 export interface StatementSpec {
   /** How many argv values each occurrence of the flag takes. Giving
-   *  another number is CLI.INVALID_ARGUMENTS. */
+   *  another number is CLI.INVALID_ARGUMENTS. Only the first value can
+   *  be written `--<verb>=<value>`, so with an arity above 1 a later
+   *  value starting with `-` cannot be passed. */
   readonly arity: number;
   /** The flag's help brief, held to the help standard like any flag's. */
   readonly brief?: string;

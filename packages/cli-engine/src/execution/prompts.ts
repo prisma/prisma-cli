@@ -45,7 +45,7 @@ import { announceUrl } from "./open-url";
 import type { DeclaredStatements, StatementFlagValue } from "./statement-flags";
 
 const WHITESPACE = /\s/;
-const SHELL_PLAIN = /^[A-Za-z0-9_.:@%+/,=-]+$/;
+const SHELL_PLAIN = /^[A-Za-z0-9_.:@%+/,-][A-Za-z0-9_.:@%+/,=-]*$/;
 const WHITESPACES = /\s+/;
 
 /** How often browserWait asks whether the user has finished. */
