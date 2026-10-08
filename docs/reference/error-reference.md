@@ -156,11 +156,11 @@ The config file's `$prismaConfig` marker declares a version other than the one t
 
 A consent prompt was reached under `--yes` or in a non-interactive session. Consent has no default answer and `--yes` does not grant it, so there is nothing for the run to assume. When the consent declares a token, the message and next action say to pass `--confirm <token>`, and the token travels in meta; without a token, the only path is running the command interactively. Meta: `consentToken` (only when the consent declares a token).
 
-A statement prompt (`ctx.prompt.statement` or `ctx.prompt.statements`) raises the same code when no statement flag on the command line answers it. One error lists every question still unanswered: the summary names the subjects, `why` carries the questions, and the next actions give one flag to pass per verb, such as `--delete Legacy` or `--rename Legacy:<new name>`. Meta: `unanswered` (a list of `{ subject, verbs }`), plus `subject` and `verbs` when exactly one question is unanswered.
+A statement prompt (`ctx.prompt.statement` or `ctx.prompt.statements`) raises the same code when no statement flag on the command line answers it. One error lists every question still unanswered: the summary names the subjects, `why` carries the questions, and the next actions give one flag to pass per verb, such as `--delete Legacy` or `--rename 'Legacy:<new name>'`. `why` also lists every given statement flag that names none of the questions' subjects, and any `--confirm` token, which answers no statement, so a misspelled flag is reported before anyone answers a prompt. Meta: `unanswered` (a list of `{ subject, verbs }`), plus `subject` and `verbs` when exactly one question is unanswered; `unmatched` (a list of `{ verb, values }`) and `confirm` (the tokens) when any.
 
 ### CLI.CONSENT_UNUSED
 
-A statement flag such as `--delete Legacy` was given but answered nothing. The summary says why for each flag: no statement prompt asked about that subject and no `ctx.statements.take` took it (usually a mistyped subject), or the question about it was already answered by another flag (a flag given twice, or two verbs for one subject). Raised when the handler returns from a run that would otherwise have succeeded, so a run that failed for another reason reports that reason only; or earlier, as soon as `ctx.prompt.statements(questions, { last: true })` has answered its questions, before the command acts. Exits 2. Meta: `unused` (a list of `{ verb, values }`).
+A consent flag was given but answered nothing: a statement flag such as `--delete Legacy`, or a `--confirm` token. The summary says why for each flag: no statement prompt asked about that subject and no `ctx.statements.take` took it (usually a mistyped subject), the question about it was already answered by another flag (a flag given twice, or two verbs for one subject), or no consent in the run asked for that `--confirm` token. The `--confirm` case applies to every command, deliberately: a token that matched nothing is the same mistake as a misspelled statement. `why` lists the subjects the run asked about. Raised when the handler returns from a run that would otherwise have succeeded, so a run that failed for another reason reports that reason only; or earlier, as soon as `ctx.prompt.statements(questions, { last: true })` has answered its questions, before the command acts. Exits 2. Meta: `unused` (a list of `{ verb, values }`), `confirm` (the unused `--confirm` tokens, when any), `asked` (the subjects asked about, when any).
 
 ### CLI.CREDENTIALS_LOCKED
 
@@ -196,7 +196,7 @@ A `ctx.packages` operation (an install, or running a package through the manager
 
 ### CLI.PROMPT_CANCELLED
 
-The user cancelled a prompt: EOF on stdin at a line-rendered prompt, a clack cancel (Ctrl-C at the prompt UI), an abort during a browserWait poll, Ctrl-C at the `prisma auth login` paste prompt, or — via the service commands' `userCancelledError` — consent declined interactively. Settles with exit 3, the cancellation code, instead of 2. Meta: none.
+The user cancelled a prompt: EOF on stdin at a line-rendered prompt, a clack cancel (Ctrl-C at the prompt UI), a SIGINT or SIGTERM delivered while a prompt waits for input, an abort during a browserWait poll, Ctrl-C at the `prisma auth login` paste prompt, or — via the service commands' `userCancelledError` — consent declined interactively. Settles with exit 3, the cancellation code, instead of 2. Meta: none.
 
 ### CLI.PROMPT_INVALID
 

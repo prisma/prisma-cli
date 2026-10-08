@@ -190,8 +190,14 @@ describe("without a flag, a non-interactive run refuses", () => {
         '"Legacy" needs a statement, and the session is not interactive.',
       why: LEGACY_QUESTION,
       nextActions: [
-        { kind: "user-choice", label: "Pass --rename 'Legacy:<new name>'" },
-        { kind: "user-choice", label: "Pass --delete Legacy" },
+        {
+          kind: "user-choice",
+          label: "Run the command again with --rename 'Legacy:<new name>'",
+        },
+        {
+          kind: "user-choice",
+          label: "Run the command again with --delete Legacy",
+        },
       ],
       meta: {
         subject: "Legacy",
@@ -218,8 +224,12 @@ describe("without a flag, a non-interactive run refuses", () => {
 
     expect(result.exitCode).toBe(2);
     expect(result.stderr).toContain("[CLI.CONSENT_REQUIRED]");
-    expect(result.stderr).toContain("Pass --rename 'Legacy:<new name>'");
-    expect(result.stderr).toContain("Pass --delete Legacy");
+    expect(result.stderr).toContain(
+      "Run the command again with --rename 'Legacy:<new name>'",
+    );
+    expect(result.stderr).toContain(
+      "Run the command again with --delete Legacy",
+    );
   });
 });
 
@@ -305,8 +315,14 @@ describe("prompt.statements asks several questions together", () => {
       summary:
         '"User.name" needs a statement, and the session is not interactive.',
       nextActions: [
-        { kind: "user-choice", label: "Pass --rename 'User.name:<new name>'" },
-        { kind: "user-choice", label: "Pass --delete User.name" },
+        {
+          kind: "user-choice",
+          label: "Run the command again with --rename 'User.name:<new name>'",
+        },
+        {
+          kind: "user-choice",
+          label: "Run the command again with --delete User.name",
+        },
       ],
       meta: {
         unanswered: [{ subject: "User.name", verbs: ["rename", "delete"] }],
@@ -325,10 +341,22 @@ describe("prompt.statements asks several questions together", () => {
         '2 subjects need a statement, and the session is not interactive: "Legacy", "User.name".',
       why: `${LEGACY_QUESTION}\n${USER_NAME_QUESTION}`,
       nextActions: [
-        { kind: "user-choice", label: "Pass --rename 'Legacy:<new name>'" },
-        { kind: "user-choice", label: "Pass --delete Legacy" },
-        { kind: "user-choice", label: "Pass --rename 'User.name:<new name>'" },
-        { kind: "user-choice", label: "Pass --delete User.name" },
+        {
+          kind: "user-choice",
+          label: "Run the command again with --rename 'Legacy:<new name>'",
+        },
+        {
+          kind: "user-choice",
+          label: "Run the command again with --delete Legacy",
+        },
+        {
+          kind: "user-choice",
+          label: "Run the command again with --rename 'User.name:<new name>'",
+        },
+        {
+          kind: "user-choice",
+          label: "Run the command again with --delete User.name",
+        },
       ],
       meta: {
         unanswered: [
@@ -427,6 +455,7 @@ describe("a verb-flag value nothing consumed", () => {
       severity: "error",
       summary:
         "--delete Lagacy was given but nothing in this run asked about Lagacy.",
+      why: "The run asked about Legacy.",
       nextActions: [
         {
           kind: "user-choice",
@@ -436,6 +465,7 @@ describe("a verb-flag value nothing consumed", () => {
       ],
       meta: {
         unused: [{ verb: "delete", values: ["Lagacy"] }],
+        asked: ["Legacy"],
       },
     });
   });

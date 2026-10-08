@@ -32,7 +32,7 @@ import type {
   StatementSurface,
   StatementsOptions,
 } from "../context";
-import { CliStructuredError } from "../protocol";
+import { CliStructuredError, type NextAction } from "../protocol";
 import type { InputStream } from "../runtime";
 import {
   type ClackRenderer,
@@ -152,31 +152,70 @@ function answerFromFlags<V extends string>(
   return undefined;
 }
 
+/** Why a refusal could not be answered from the command line: the
+ *  statement values that name none of the batch's subjects, and any
+ *  `--confirm` value, which answers no statement. */
+function strayFlagLines(
+  state: RunState,
+  subjects: readonly string[],
+): readonly string[] {
+  const unmatched = state.statementValues.filter(
+    (value) =>
+      !value.consumed &&
+      longestSubjectNamed(value.values[0], subjects) === undefined,
+  );
+  return [
+    ...unmatched.map(
+      (value) =>
+        `${flagForm(value.verb, value.values)} answers no question; the questions are about ${subjects.join(", ")}.`,
+    ),
+    ...state.confirmValues.map(
+      (token) =>
+        `${flagForm("confirm", [token])} answers no consent in this run; a statement flag is what answers these questions.`,
+    ),
+  ];
+}
+
 function statementUnavailable<V extends string>(
   unanswered: readonly StatementQuestion<V>[],
+  subjects: readonly string[],
   state: RunState,
 ): CliStructuredError {
-  const subjects = unanswered.map((question) => `"${question.subject}"`);
+  const quoted = unanswered.map((question) => `"${question.subject}"`);
   const situation = state.yes
     ? "which --yes cannot give"
     : "and the session is not interactive";
   const summary =
     unanswered.length === 1
-      ? `${subjects[0]} needs a statement, ${situation}.`
-      : `${unanswered.length} subjects need a statement, ${situation}: ${subjects.join(", ")}.`;
+      ? `${quoted[0]} needs a statement, ${situation}.`
+      : `${unanswered.length} subjects need a statement, ${situation}: ${quoted.join(", ")}.`;
   const listed = unanswered.map(({ subject, verbs }) => ({ subject, verbs }));
+  const unmatched = state.statementValues
+    .filter(
+      (value) =>
+        !value.consumed &&
+        longestSubjectNamed(value.values[0], subjects) === undefined,
+    )
+    .map(({ verb, values }) => ({ verb, values }));
   return new CliStructuredError("CLI.CONSENT_REQUIRED", summary, {
-    why: unanswered.map((question) => question.question).join("\n"),
+    why: [
+      ...unanswered.map((question) => question.question),
+      ...strayFlagLines(state, subjects),
+    ].join("\n"),
     nextActions: unanswered.flatMap((question) =>
       question.verbs.map((verb) => ({
         kind: "user-choice" as const,
-        label: `Pass ${flagForm(verb, [question.forms?.[verb] ?? question.subject])}`,
+        label: `Run the command again with ${flagForm(verb, [question.forms?.[verb] ?? question.subject])}`,
       })),
     ),
-    meta:
-      listed.length === 1
-        ? { ...listed[0], unanswered: listed }
-        : { unanswered: listed },
+    meta: {
+      ...(listed.length === 1 ? listed[0] : {}),
+      unanswered: listed,
+      ...(unmatched.length === 0 ? {} : { unmatched }),
+      ...(state.confirmValues.length === 0
+        ? {}
+        : { confirm: [...state.confirmValues] }),
+    },
   });
 }
 
@@ -255,36 +294,61 @@ function unusedSentence(state: RunState, value: StatementFlagValue): string {
     : `${given} was given, but the question about ${asked} was already answered by another flag.`;
 }
 
-/** Fails a run when a statement flag answered nothing: a mistyped
- *  subject, or a second answer to one question, must not pass
- *  silently. */
-export function unusedStatementValuesError(
+function unusedActions(
+  unused: readonly StatementFlagValue[],
+  state: RunState,
+): NextAction[] {
+  const actions: NextAction[] = [];
+  if (unused.some((value) => askedSubjectOf(state, value) === undefined)) {
+    actions.push({
+      kind: "user-choice",
+      label:
+        "Remove the flag, or spell the subject the way the command names it.",
+    });
+  }
+  if (unused.some((value) => askedSubjectOf(state, value) !== undefined)) {
+    actions.push({ kind: "user-choice", label: "Give one flag per question." });
+  }
+  if (state.confirmValues.length > 0) {
+    actions.push({
+      kind: "user-choice",
+      label: "Remove the --confirm flag: nothing in this run asks for it.",
+    });
+  }
+  return actions;
+}
+
+/** Fails a run when a consent flag answered nothing: a mistyped
+ *  subject or token, or a second answer to one question, must not
+ *  pass silently. Covers statement values and `--confirm` tokens. */
+export function unusedConsentError(
   state: RunState,
 ): CliStructuredError | undefined {
   const unused = state.statementValues.filter((value) => !value.consumed);
-  if (unused.length === 0) {
+  if (unused.length === 0 && state.confirmValues.length === 0) {
     return undefined;
   }
-  const allAsked = unused.every(
-    (value) => askedSubjectOf(state, value) !== undefined,
-  );
-  return new CliStructuredError(
-    "CLI.CONSENT_UNUSED",
-    unused.map((value) => unusedSentence(state, value)).join(" "),
-    {
-      nextActions: [
-        {
-          kind: "user-choice",
-          label: allAsked
-            ? "Give one flag per question."
-            : "Remove the flag, or spell the subject the way the command names it.",
-        },
-      ],
-      meta: {
-        unused: unused.map(({ verb, values }) => ({ verb, values })),
-      },
+  const sentences = [
+    ...unused.map((value) => unusedSentence(state, value)),
+    ...state.confirmValues.map(
+      (token) =>
+        `${flagForm("confirm", [token])} answers no consent in this run.`,
+    ),
+  ];
+  const asked = [...state.askedSubjects];
+  return new CliStructuredError("CLI.CONSENT_UNUSED", sentences.join(" "), {
+    ...(asked.length === 0
+      ? {}
+      : { why: `The run asked about ${asked.join(", ")}.` }),
+    nextActions: unusedActions(unused, state),
+    meta: {
+      unused: unused.map(({ verb, values }) => ({ verb, values })),
+      ...(state.confirmValues.length === 0
+        ? {}
+        : { confirm: [...state.confirmValues] }),
+      ...(asked.length === 0 ? {} : { asked }),
     },
-  );
+  });
 }
 
 function makeLineReader(
@@ -539,6 +603,35 @@ export function makePromptSurface(invocation: Invocation): PromptSurface {
   const useClack = (): boolean =>
     hooks.answers === undefined && clackCapable(runtime);
 
+  /** Marks the prompt as waiting for input, so a signal cancels it. */
+  const reading = async <T>(wait: () => Promise<T>): Promise<T> => {
+    state.readingPrompt = true;
+    try {
+      return await wait();
+    } finally {
+      state.readingPrompt = false;
+    }
+  };
+
+  /** A line read that a signal cancels: resolves undefined, which the
+   *  caller reports as a cancelled prompt. */
+  const untilCancelled = (
+    line: Promise<string | undefined>,
+  ): Promise<string | undefined> => {
+    const signal = state.promptCancel.signal;
+    if (signal.aborted) {
+      return Promise.resolve(undefined);
+    }
+    return Promise.race([
+      line,
+      new Promise<undefined>((resolve) =>
+        signal.addEventListener("abort", () => resolve(undefined), {
+          once: true,
+        }),
+      ),
+    ]);
+  };
+
   const renderWithClack = async <T>(
     question: string,
     run: (r: ClackRenderer) => Promise<T | symbol>,
@@ -550,10 +643,14 @@ export function makePromptSurface(invocation: Invocation): PromptSurface {
         [Symbol.asyncIterator]: () => iterator,
         setRawMode: (enabled) => runtime.stdin.setRawMode?.(enabled),
       };
-      return makeClackRenderer(stdin, runtime.stderr);
+      return makeClackRenderer(
+        stdin,
+        runtime.stderr,
+        state.promptCancel.signal,
+      );
     })();
     const r = await renderer;
-    const value = await run(r);
+    const value = await reading(() => run(r));
     if (r.isCancel(value)) {
       throw promptCancelled(question);
     }
@@ -577,7 +674,8 @@ export function makePromptSurface(invocation: Invocation): PromptSurface {
     }
     runtime.stderr.write(rendered);
     readLine ??= makeLineReader(runtime.stdin, invocation);
-    const line = await readLine();
+    const readNext = readLine;
+    const line = await reading(() => untilCancelled(readNext()));
     if (line === undefined) {
       throw promptCancelled(question);
     }
@@ -726,7 +824,11 @@ export function makePromptSurface(invocation: Invocation): PromptSurface {
       (_question, index) => fromFlags[index] === undefined,
     );
     if (unanswered.length > 0 && (state.yes || !state.interactive)) {
-      throw statementUnavailable(unanswered, state);
+      throw statementUnavailable(
+        unanswered,
+        questions.map((question) => question.subject),
+        state,
+      );
     }
     const answerFrom = async (index: number): Promise<StatementAnswer<V>[]> => {
       if (index === questions.length) {
@@ -736,8 +838,7 @@ export function makePromptSurface(invocation: Invocation): PromptSurface {
       return [answer, ...(await answerFrom(index + 1))];
     };
     const answers = await answerFrom(0);
-    const unused =
-      opts?.last === true ? unusedStatementValuesError(state) : undefined;
+    const unused = opts?.last === true ? unusedConsentError(state) : undefined;
     if (unused !== undefined) {
       throw unused;
     }

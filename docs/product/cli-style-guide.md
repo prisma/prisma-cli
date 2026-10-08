@@ -217,7 +217,7 @@ Consent is a question `--yes` never answers and Enter never answers. It comes in
 - **A yes/no consent** (`ctx.prompt.consent`). With a token, the user types the token, or passes `--confirm <token>`. Without a token, only an interactive terminal can grant it.
 - **A statement** (`ctx.prompt.statement`). The user states what should happen to a subject with a verb: `delete`, or `rename Legacy:Archive`. The command declares its verbs, and each verb is a flag on that command only, so `--delete Legacy` gives the same answer on the command line. A flag value answers the question only when it names the subject: it is the subject, or starts with `<subject>:`.
 
-Without an answer, a non-interactive run fails with `CLI.CONSENT_REQUIRED` and lists the flags that would answer every open question. A statement flag that no question used fails the run with `CLI.CONSENT_UNUSED`, because a mistyped subject must not pass silently.
+Without an answer, a non-interactive run fails with `CLI.CONSENT_REQUIRED` and lists the flags that would answer every open question. A statement flag that no question used, or a `--confirm` token that no consent asked for, fails the run with `CLI.CONSENT_UNUSED`, because a mistyped subject or token must not pass silently.
 
 ## Loading Indicators
 

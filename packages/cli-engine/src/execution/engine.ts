@@ -47,7 +47,7 @@ import {
 } from "./help";
 import { checkNeeds, type NeedsOutcome } from "./needs";
 import { configFlagGivenNoValue, versionFlagGiven } from "./pre-parse-argv";
-import { unusedStatementValuesError } from "./prompts";
+import { unusedConsentError } from "./prompts";
 import {
   commandSegments,
   settleBug,
@@ -195,6 +195,11 @@ export interface RunState {
    *  prompt's first await, so an unawaited prompt still blocks
    *  ctx.spawn from handing the same terminal to a child. */
   activePrompts: number;
+  /** True while a prompt waits for the user's keystrokes or line. A
+   *  signal then cancels the prompt (promptCancel) instead of ending
+   *  the run, as Ctrl-C at the prompt does. */
+  readingPrompt: boolean;
+  promptCancel: AbortController;
   /** Set while a ctx.packages operation is in flight. It serializes the
    *  operations against each other, and blocks ctx.spawn: a child
    *  writing the terminal directly while the manager's output is being
@@ -374,6 +379,8 @@ export class EngineImpl implements Engine {
       delegatedTerminal: undefined,
       lastChild: undefined,
       activePrompts: 0,
+      readingPrompt: false,
+      promptCancel: new AbortController(),
       packageOperationRunning: false,
       deliveredSignal: undefined,
       pendingForceExit: undefined,
@@ -391,6 +398,10 @@ export class EngineImpl implements Engine {
       }
       if (state.deliveredSignal !== undefined) {
         runtime.exit(signal === "SIGTERM" ? 143 : 130);
+        return;
+      }
+      if (state.readingPrompt) {
+        state.promptCancel.abort(signal);
         return;
       }
       state.deliveredSignal = signal;
@@ -641,7 +652,7 @@ export class EngineImpl implements Engine {
         return;
       }
       state.resolved = true;
-      const unused = unusedStatementValuesError(state);
+      const unused = unusedConsentError(state);
       if (!result.ok) {
         settleErrored(invocation, result.failure, result.failure.diagnostics);
       } else if (unused !== undefined && succeeded(state, result.value)) {

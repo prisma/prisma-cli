@@ -46,24 +46,56 @@ function errorOf(result: Awaited<ReturnType<TestCli["run"]>>) {
 
 describe("printed flag forms", () => {
   test.each([
-    ["a plain subject", "Legacy", "Pass --delete Legacy"],
-    ["a subject with ':' and '.'", "User.name:x", "Pass --delete User.name:x"],
+    ["a plain subject", "Legacy", "Run the command again with --delete Legacy"],
+    [
+      "a subject with ':' and '.'",
+      "User.name:x",
+      "Run the command again with --delete User.name:x",
+    ],
     [
       "a subject a shell would run part of",
       'a b:c"d--$é; DROP TABLE Profile',
-      `Pass --delete 'a b:c"d--$é; DROP TABLE Profile'`,
+      `Run the command again with --delete 'a b:c"d--$é; DROP TABLE Profile'`,
     ],
-    ["a subject with a single quote", "it's", `Pass --delete 'it'\\''s'`],
-    ["a subject starting with '-'", "-rf", "Pass --delete=-rf"],
-    ["a subject starting with '='", "=eq", "Pass --delete '=eq'"],
-    ["a subject with a newline", "a\nb", "Pass --delete 'a\nb'"],
-    ["a subject with a backslash", "a\\b", "Pass --delete 'a\\b'"],
-    ["a subject with '$'", "$HOME", "Pass --delete '$HOME'"],
-    ["a subject with a backtick", "`id`", "Pass --delete '`id`'"],
+    [
+      "a subject with a single quote",
+      "it's",
+      `Run the command again with --delete 'it'\\''s'`,
+    ],
+    [
+      "a subject starting with '-'",
+      "-rf",
+      "Run the command again with --delete=-rf",
+    ],
+    [
+      "a subject starting with '='",
+      "=eq",
+      "Run the command again with --delete '=eq'",
+    ],
+    [
+      "a subject with a newline",
+      "a\nb",
+      "Run the command again with --delete 'a\nb'",
+    ],
+    [
+      "a subject with a backslash",
+      "a\\b",
+      "Run the command again with --delete 'a\\b'",
+    ],
+    [
+      "a subject with '$'",
+      "$HOME",
+      "Run the command again with --delete '$HOME'",
+    ],
+    [
+      "a subject with a backtick",
+      "`id`",
+      "Run the command again with --delete '`id`'",
+    ],
     [
       "a subject starting with '-' that needs quoting",
       "-r f",
-      "Pass --delete='-r f'",
+      "Run the command again with --delete='-r f'",
     ],
   ])("%s", async (_case, subject, label) => {
     const result = await cliAsking(subject).run(["probe", "--json"]);

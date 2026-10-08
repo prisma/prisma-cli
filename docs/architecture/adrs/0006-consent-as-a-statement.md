@@ -43,6 +43,8 @@ These came from the ORM's first use and the reviews of this change, all in engin
 - **`ctx.statements.values()`** lists every unconsumed value in argv order without consuming any, so a command can show what it was given without spending it.
 - **Longest subject first.** Within one `statements` batch, a value equal to a subject answers that subject first, and any other value goes to the question with the longest subject it names. So `A:B` answers the question about `A:B`, not the one about `A`. Questions whose subjects are prefixes of one another belong in one batch, because separate calls cannot be resolved this way.
 - **`:` in a subject is allowed**, with the matching rule unchanged.
+- **Unused `--confirm` tokens fail the run** with `CLI.CONSENT_UNUSED`, in every command, deliberately: a token that matched no consent is the same mistake as a misspelled statement. A statement refusal also names any `--confirm` token and any statement flag that names none of its subjects, so the user learns of the mistake before answering a prompt.
+- **A signal while a prompt waits cancels the prompt**, as Ctrl-C at the prompt does: `CLI.PROMPT_CANCELLED`, exit 3.
 - **`last: true`** marks a batch as the run's final ask: values still unconsumed fail with `CLI.CONSENT_UNUSED` as soon as it is answered, before the command acts on the answers.
 
 ## Consequences
