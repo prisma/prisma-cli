@@ -472,11 +472,20 @@ function parseBooleanAnswer(
   throw promptInvalid(question, raw);
 }
 
-/** ctx.statements: a verb's values taken as the command's own input,
- *  consumed so the leftover check does not report them. */
+/** ctx.statements: the command's statement values read as its own
+ *  input. `values` only reads them; `take` consumes a verb's values so
+ *  the leftover check does not report them. */
 export function makeStatementSurface(invocation: Invocation): StatementSurface {
   const { state } = invocation;
   return {
+    values: () =>
+      state.statementValues
+        .filter((value) => !value.consumed)
+        .map((value) => ({
+          verb: value.verb,
+          text: value.values.join(" "),
+          values: value.values,
+        })),
     take: <V extends string>(verb: V): StatementAnswer<V>[] => {
       if (!Object.hasOwn(state.statements, verb)) {
         throw constructionError(

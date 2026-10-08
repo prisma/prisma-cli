@@ -23,7 +23,7 @@ defineCommand({
 
 The engine knows no verbs. For that command only, it parses `--<verb>` followed by `arity` values, repeatable, before the rest of argv reaches the argument parser, keeps the values in argv order, and keeps them out of the handler's flags. No other command accepts the flag, and a verb may not share a name with any flag of the command or of the engine.
 
-The command asks with `ctx.prompt.statement(question, { subject, verbs, validate })`, or several questions at once with `ctx.prompt.statements([...], { last })`. Each question names a subject in the command's own vocabulary and the verbs that may answer it, and `validate` decides whether an answer is acceptable; the engine never interprets the answer's text. A question is answered in this order:
+The command asks with `ctx.prompt.statement(question, { subject, verbs, validate })`, or several questions at once with `ctx.prompt.statements([...], { last })`. Each question names a subject in the command's own vocabulary and the verbs that may answer it, and `validate` decides whether an answer is acceptable. The engine interprets one thing in a value: whether it names the subject, which it does when it equals the subject or starts with the subject followed by `:`. The separator is `:` because that is the subject grammar of the first consumer, the ORM, whose renames read `Old:New`; a product whose values use another separator picks subjects that no value can name by accident. Beyond that, the engine never interprets the answer's text. A question is answered in this order:
 
 1. From the command line, by a value of one of its verbs that names the subject. A value `validate` rejects fails the run with `CLI.PROMPT_INVALID`, since a wrong flag cannot be corrected by asking again.
 2. Outside an interactive terminal, or under `--yes`, by nobody: the run fails with one `CLI.CONSENT_REQUIRED` that lists every unanswered question with the flag that would answer it.
@@ -35,10 +35,20 @@ A value nothing asked about or took is an error, `CLI.CONSENT_UNUSED`, at the en
 
 `consent(question, { token })` and `--confirm` stay for commands with one thing at stake.
 
+### Rules added after acceptance
+
+These came from the ORM's first use and the reviews of this change, all in engine 0.7.0:
+
+- **`ctx.statements.take(verb)`** returns a verb's values in argv order and consumes them, for statements that are input to the command's work. A question may still list a taken verb; no value of it is left to answer the question, so the verb serves the refusal's flag form and the typed answer. Take before any `last: true` batch.
+- **`ctx.statements.values()`** lists every unconsumed value in argv order without consuming any, so a command can show what it was given without spending it.
+- **Longest subject first.** Within one `statements` batch, a value equal to a subject answers that subject first, and any other value goes to the question with the longest subject it names. So `A:B` answers the question about `A:B`, not the one about `A`. Questions whose subjects are prefixes of one another belong in one batch, because separate calls cannot be resolved this way.
+- **`:` in a subject is allowed**, with the matching rule unchanged.
+- **`last: true`** marks a batch as the run's final ask: values still unconsumed fail with `CLI.CONSENT_UNUSED` as soon as it is answered, before the command acts on the answers.
+
 ## Consequences
 
 - A product adds a consent vocabulary by declaring it on the command that uses it, and its help text with it. The engine stays free of product words.
-- The interactive form and the scripted form are one mechanism, so they cannot drift: whatever the prompt accepts, the flag accepts, and the refusal names the flag.
+- The interactive form and the scripted form share one validation (`validate`) and one refusal text, which names the flag. They differ in how a value is matched to a question: a flag value must name the subject, while a typed answer is given to the question being asked.
 - Statement flags are removed from argv before the argument parser sees it, because that parser gives a flag one value per occurrence and a statement may take more. The engine routes the leading words to the command itself to know which verbs apply; that routing is tested against the parser's own.
 - A typed answer or a flag value is validated by the command, so an unknown subject is the command's error, with the command's message.
 - This is a minor engine release (0.7.0): a new prompt surface member, new error codes, and a new optional field on `defineCommand`. Commands built against 0.6 load unchanged.

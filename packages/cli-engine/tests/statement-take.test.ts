@@ -120,6 +120,57 @@ describe("ctx.statements.take", () => {
   });
 });
 
+describe("ctx.statements.values", () => {
+  test("lists every unconsumed value in argv order without consuming any", async () => {
+    const result = await cliWith(async (ctx) => {
+      const listed = ctx.statements.values();
+      const [legacy] = await ctx.prompt.statements([
+        {
+          question: "What happens to Legacy?",
+          subject: "Legacy",
+          verbs: ["rename", "delete"],
+          validate: () => undefined,
+        },
+      ]);
+      return { listed, legacy, renames: ctx.statements.take("rename") };
+    }).run(["probe", "--rename", "A:B", "--delete", "Legacy"]);
+
+    expect(result.exitCode).toBe(0);
+    expect(result.presented?.data).toEqual({
+      answer: {
+        listed: [
+          { verb: "rename", text: "A:B", values: ["A:B"] },
+          { verb: "delete", text: "Legacy", values: ["Legacy"] },
+        ],
+        legacy: { verb: "delete", text: "Legacy", values: ["Legacy"] },
+        renames: [{ verb: "rename", text: "A:B", values: ["A:B"] }],
+      },
+    });
+  });
+
+  test("after a take lists only what is left, and leaves it for the leftover check", async () => {
+    const seen: unknown[] = [];
+    const result = await cliWith(async (ctx) => {
+      ctx.statements.take("rename");
+      seen.push(ctx.statements.values());
+    }).run([
+      "probe",
+      "--rename",
+      "A:B",
+      "--delete",
+      "Legacy",
+      "--rename",
+      "C:D",
+      "--json",
+    ]);
+
+    expect(seen).toEqual([
+      [{ verb: "delete", text: "Legacy", values: ["Legacy"] }],
+    ]);
+    expect(errorOf(result)?.code).toBe("CLI.CONSENT_UNUSED");
+  });
+});
+
 describe("a question listing a verb the command took", () => {
   const takeThenAsk = async (ctx: CommandContext<undefined, never>) => {
     const renames = ctx.statements.take("rename");

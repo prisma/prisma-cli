@@ -239,6 +239,12 @@ export interface StatementSurface {
    * the verb serves the refusal's flag form and the typed answer.
    */
   readonly take: <V extends string>(verb: V) => StatementAnswer<V>[];
+  /**
+   * Every unconsumed value of every verb, in argv order, without
+   * consuming any: for showing the statements a run was given, such as
+   * in a line that repeats the command.
+   */
+  readonly values: () => StatementAnswer<string>[];
 }
 
 export interface StatementsOptions {
