@@ -250,9 +250,9 @@ export interface StatementSurface {
 export interface StatementsOptions {
   /** This is the run's final ask: values still unconsumed once the
    *  questions are answered fail with CLI.CONSENT_UNUSED here, before
-   *  the command acts on the answers. Take any verbs you take before
-   *  the `last` batch: after it, their values have already been
-   *  reported as unused. */
+   *  the command acts on the answers. Take any verbs you take, and ask
+   *  any consent with a token, before the `last` batch: it reports
+   *  their flags as unused at once. */
   readonly last?: boolean;
 }
 

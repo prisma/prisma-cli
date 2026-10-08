@@ -143,3 +143,55 @@ describe("a statement value that matches no question", () => {
     });
   });
 });
+
+describe("--confirm alongside statements", () => {
+  test("a token a consent consumed fails nothing on a statement command", async () => {
+    const result = await cliWith((prompt) =>
+      prompt.consent("Drop the database?", { token: "mydb" }),
+    ).run(["probe", "--confirm", "mydb"]);
+
+    expect(result.exitCode).toBe(0);
+  });
+
+  test("an unused token fails at a last batch, before the command acts", async () => {
+    const acted: string[] = [];
+    const result = await cliWith(async (prompt) => {
+      await prompt.statements([question("Legacy")], { last: true });
+      acted.push("applied");
+    }).run(["probe", "--delete", "Legacy", "--confirm", "mydb", "--json"]);
+
+    expect(errorOf(result)?.summary).toBe(
+      "--confirm mydb answers no consent in this run.",
+    );
+    expect(acted).toEqual([]);
+  });
+
+  test("on a command without statements, a mistyped token then the right one typed succeeds", async () => {
+    const plain = defineCommand({
+      help: { summary: "Plain probe" },
+      handler: async (_args, ctx) => {
+        const answer = await ctx.prompt.consent("Drop the database?", {
+          token: "prod-db",
+        });
+        return ok(
+          ctx.present(
+            { data: { answer } },
+            {
+              human: () => [],
+              stdout: () => [],
+              json: () => ({ answer }),
+              next: () => [],
+            },
+          ),
+        );
+      },
+    });
+    const result = await createTestCli({ commands: { plain } }).run(
+      ["plain", "--confirm", "prdo-db"],
+      { isTty: { stdin: true, stdout: true }, stdin: "prod-db\n" },
+    );
+
+    expect(result.exitCode).toBe(0);
+    expect(result.presented?.data).toEqual({ answer: true });
+  });
+});
