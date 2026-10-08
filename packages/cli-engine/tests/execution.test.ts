@@ -1067,7 +1067,7 @@ describe("parse and route failures", () => {
     expect(result.stderr).toBe(
       "✘ [CLI.INVALID_ARGUMENTS] Expected argument for name\n" +
         '  why: Expected "z" to be one of (a|b), did you mean "a" or "b"?\n' +
-        "Failed to parse \"q\" for count: expected a number, received 'q'\n",
+        "       Failed to parse \"q\" for count: expected a number, received 'q'\n",
     );
   });
 

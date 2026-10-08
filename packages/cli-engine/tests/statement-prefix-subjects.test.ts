@@ -115,7 +115,7 @@ describe("subjects that prefix one another, in one batch", () => {
     );
 
     expect(result.exitCode).toBe(0);
-    expect(result.stderr).toBe("? What happens to A? (rename/delete) ");
+    expect(result.stderr).toBe("? What happens to A? (rename or delete) ");
     expect(result.presented?.data).toEqual({
       answer: [
         { verb: "rename", text: "A:C", values: ["A:C"] },

@@ -190,7 +190,7 @@ describe("without a flag, a non-interactive run refuses", () => {
         '"Legacy" needs a statement, and the session is not interactive.',
       why: LEGACY_QUESTION,
       nextActions: [
-        { kind: "user-choice", label: "Pass --rename Legacy:<new name>" },
+        { kind: "user-choice", label: "Pass --rename 'Legacy:<new name>'" },
         { kind: "user-choice", label: "Pass --delete Legacy" },
       ],
       meta: {
@@ -218,7 +218,7 @@ describe("without a flag, a non-interactive run refuses", () => {
 
     expect(result.exitCode).toBe(2);
     expect(result.stderr).toContain("[CLI.CONSENT_REQUIRED]");
-    expect(result.stderr).toContain("Pass --rename Legacy:<new name>");
+    expect(result.stderr).toContain("Pass --rename 'Legacy:<new name>'");
     expect(result.stderr).toContain("Pass --delete Legacy");
   });
 });
@@ -259,7 +259,9 @@ describe("an interactive run asks", () => {
     });
 
     expect(result.exitCode).toBe(0);
-    expect(result.stderr).toContain(`? ${LEGACY_QUESTION} (rename/delete) `);
+    expect(result.stderr).toContain(
+      `? ${LEGACY_QUESTION} (rename Legacy:<new name> or delete) `,
+    );
   });
 
   test("an unknown verb fails the line renderer", async () => {
@@ -303,7 +305,7 @@ describe("prompt.statements asks several questions together", () => {
       summary:
         '"User.name" needs a statement, and the session is not interactive.',
       nextActions: [
-        { kind: "user-choice", label: "Pass --rename User.name:<new name>" },
+        { kind: "user-choice", label: "Pass --rename 'User.name:<new name>'" },
         { kind: "user-choice", label: "Pass --delete User.name" },
       ],
       meta: {
@@ -323,9 +325,9 @@ describe("prompt.statements asks several questions together", () => {
         '2 subjects need a statement, and the session is not interactive: "Legacy", "User.name".',
       why: `${LEGACY_QUESTION}\n${USER_NAME_QUESTION}`,
       nextActions: [
-        { kind: "user-choice", label: "Pass --rename Legacy:<new name>" },
+        { kind: "user-choice", label: "Pass --rename 'Legacy:<new name>'" },
         { kind: "user-choice", label: "Pass --delete Legacy" },
-        { kind: "user-choice", label: "Pass --rename User.name:<new name>" },
+        { kind: "user-choice", label: "Pass --rename 'User.name:<new name>'" },
         { kind: "user-choice", label: "Pass --delete User.name" },
       ],
       meta: {

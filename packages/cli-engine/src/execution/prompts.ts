@@ -45,6 +45,7 @@ import { announceUrl } from "./open-url";
 import type { DeclaredStatements, StatementFlagValue } from "./statement-flags";
 
 const WHITESPACE = /\s/;
+const SHELL_PLAIN = /^[A-Za-z0-9_.:@%+/,=-]+$/;
 const WHITESPACES = /\s+/;
 
 /** How often browserWait asks whether the user has finished. */
@@ -61,8 +62,35 @@ function consumeConfirmValue(state: RunState, token: string): boolean {
   return true;
 }
 
+/** A value as a POSIX shell reads it back: plain values as they are,
+ *  anything else in single quotes, an embedded quote written `'\''`. */
+function shellQuote(value: string): string {
+  return SHELL_PLAIN.test(value)
+    ? value
+    : `'${value.replaceAll("'", "'\\''")}'`;
+}
+
+/** The flag as a user would paste it. A first value starting with `-`
+ *  would read as a flag, so it is joined with `=`. */
 function flagForm(verb: string, values: readonly string[]): string {
-  return `--${verb} ${values.join(" ")}`;
+  const [first, ...rest] = values.map(shellQuote);
+  const head = values[0].startsWith("-")
+    ? `--${verb}=${first}`
+    : `--${verb} ${first}`;
+  return [head, ...rest].join(" ");
+}
+
+/** What a question accepts, as the prompt shows it: each verb with its
+ *  form when it has one. */
+function statementHint<V extends string>(
+  question: StatementQuestion<V>,
+): string {
+  return question.verbs
+    .map((verb) => {
+      const form = question.forms?.[verb];
+      return form === undefined ? verb : `${verb} ${form}`;
+    })
+    .join(" or ");
 }
 
 function namesSubject(value: string, subject: string): boolean {
@@ -628,23 +656,23 @@ export function makePromptSurface(invocation: Invocation): PromptSurface {
   const askStatement = async <V extends string>(
     question: StatementQuestion<V>,
   ): Promise<StatementAnswer<V>> => {
+    const asked = `${question.question} (${statementHint(question)})`;
     if (useClack()) {
-      const raw = await renderWithClack<string>(question.question, (r) =>
-        r.statement(question.question, question.verbs.join(" or "), (value) => {
-          const parsed = parseStatement(value, question, state);
-          return "problem" in parsed ? parsed.problem : undefined;
-        }),
-      );
-      const parsed = parseStatement(raw, question, state);
-      if ("problem" in parsed) {
-        throw promptInvalid(question.question, raw);
-      }
-      return parsed.answer;
+      const askWithClack = async (
+        problem: string | undefined,
+      ): Promise<StatementAnswer<V>> => {
+        const message = problem === undefined ? asked : `${problem}\n${asked}`;
+        const raw = await renderWithClack<string>(question.question, (r) =>
+          r.statement(message),
+        );
+        const parsed = parseStatement(raw, question, state);
+        return "problem" in parsed
+          ? askWithClack(parsed.problem)
+          : parsed.answer;
+      };
+      return askWithClack(undefined);
     }
-    const raw = await ask(
-      question.question,
-      `? ${question.question} (${question.verbs.join("/")}) `,
-    );
+    const raw = await ask(question.question, `? ${asked} `);
     if (typeof raw !== "string") {
       throw promptInvalid(question.question, String(raw));
     }

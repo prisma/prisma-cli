@@ -279,12 +279,13 @@ describe("the clack tier resolves prompt values", () => {
     expect(result.exitCode).toBe(3);
   });
 
-  test("statement: a rejected answer shows the reason and re-prompts", async () => {
+  test("statement: a rejected answer shows the reason and asks again with an empty field", async () => {
     const result = await runInteractive(
       (prompt) =>
         prompt.statement("What happens to Legacy?", {
           subject: "Legacy",
           verbs: ["rename", "delete"],
+          forms: { rename: "Legacy:<new name>" },
           validate: (verb, text) =>
             verb === "rename" && !text.startsWith("Legacy:")
               ? "Write the rename as Legacy:<new name>."
@@ -293,14 +294,9 @@ describe("the clack tier resolves prompt values", () => {
       [
         ..."drop",
         ENTER,
-        BACKSPACE,
-        BACKSPACE,
-        BACKSPACE,
-        BACKSPACE,
         ..."rename Archive",
         ENTER,
-        ...Array.from({ length: "Archive".length }, () => BACKSPACE),
-        ..."Legacy:Archive",
+        ..."rename Legacy:Archive",
         ENTER,
       ],
     );
@@ -309,6 +305,7 @@ describe("the clack tier resolves prompt values", () => {
     expect(answerIn(result.plainStderr)).toBe(
       '{"verb":"rename","text":"Legacy:Archive","values":["Legacy:Archive"]}',
     );
+    expect(result.plainStderr).toContain("rename Legacy:<new name> or delete");
     expect(result.plainStderr).toContain(
       "Start the answer with rename or delete.",
     );

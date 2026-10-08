@@ -216,7 +216,7 @@ describe("a question listing a verb the command took", () => {
     expect(errorOf(result)).toMatchObject({
       code: "CLI.CONSENT_REQUIRED",
       nextActions: [
-        { kind: "user-choice", label: "Pass --rename Legacy:<new name>" },
+        { kind: "user-choice", label: "Pass --rename 'Legacy:<new name>'" },
         { kind: "user-choice", label: "Pass --delete Legacy" },
       ],
     });

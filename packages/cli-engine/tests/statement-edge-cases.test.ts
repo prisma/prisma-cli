@@ -329,7 +329,7 @@ describe("what each channel sees", () => {
     });
 
     expect(result.exitCode).toBe(0);
-    expect(result.stderr).toBe("? What happens to Legacy? (rename/delete) ");
+    expect(result.stderr).toBe("? What happens to Legacy? (rename or delete) ");
     for (const line of result.stdout.trim().split("\n")) {
       expect(() => JSON.parse(line)).not.toThrow();
     }
