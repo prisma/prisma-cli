@@ -59,6 +59,7 @@ function keystrokeStdin(
 function promptCli(run: (prompt: PromptSurface) => Promise<unknown>) {
   const probe = defineCommand({
     help: { summary: "Prompt probe" },
+    statements: { rename: { arity: 1 }, delete: { arity: 1 } },
     handler: async (_args, ctx) => {
       const answer = await run(ctx.prompt);
       return ok(
@@ -276,6 +277,41 @@ describe("the clack tier resolves prompt values", () => {
     );
 
     expect(result.exitCode).toBe(3);
+  });
+
+  test("statement: a rejected answer shows the reason and asks again with an empty field", async () => {
+    const result = await runInteractive(
+      (prompt) =>
+        prompt.statement("What happens to Legacy?", {
+          subject: "Legacy",
+          verbs: ["rename", "delete"],
+          forms: { rename: "Legacy:<new name>" },
+          validate: (verb, text) =>
+            verb === "rename" && !text.startsWith("Legacy:")
+              ? "Write the rename as Legacy:<new name>."
+              : undefined,
+        }),
+      [
+        ..."drop",
+        ENTER,
+        ..."rename Archive",
+        ENTER,
+        ..."rename Legacy:Archive",
+        ENTER,
+      ],
+    );
+
+    expect(result.exitCode).toBe(0);
+    expect(answerIn(result.plainStderr)).toBe(
+      '{"verb":"rename","text":"Legacy:Archive","values":["Legacy:Archive"]}',
+    );
+    expect(result.plainStderr).toContain("rename Legacy:<new name> or delete");
+    expect(result.plainStderr).toContain(
+      "Start the answer with rename or delete.",
+    );
+    expect(result.plainStderr).toContain(
+      "Write the rename as Legacy:<new name>.",
+    );
   });
 
   test("a multi-step wizard reuses the one renderer and stdin iterator", async () => {

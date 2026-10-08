@@ -143,6 +143,23 @@ export interface SpawnDeclarations {
   readonly maySpawn?: boolean;
 }
 
+/**
+ * A statement the command may ask for with ctx.prompt.statement. Its
+ * key is the verb, one lowercase word, and the command alone accepts
+ * `--<verb>` followed by `arity` values, repeatable, to answer it. The
+ * values stay out of the handler's flags; the handler reads them
+ * through ctx.prompt.statement or ctx.statements.take.
+ */
+export interface StatementSpec {
+  /** How many argv values each occurrence of the flag takes. Giving
+   *  another number is CLI.INVALID_ARGUMENTS. Only the first value can
+   *  be written `--<verb>=<value>`, so with an arity above 1 a later
+   *  value starting with `-` cannot be passed. */
+  readonly arity: number;
+  /** The flag's help brief, held to the help standard like any flag's. */
+  readonly brief?: string;
+}
+
 function normalizeNeeds<TConfig>(
   spec: NeedsSpec<TConfig> | undefined,
 ): CommandNeeds<TConfig> {
@@ -199,6 +216,10 @@ export interface CommandDefinition<
    * user's project. Declaring it never fails a run.
    */
   readonly installsPackages: TInstallsPackages;
+
+  /** The statements ctx.prompt.statement may ask, by verb. Optional
+   *  because a command built by an older engine has none. */
+  readonly statements?: Readonly<Record<string, StatementSpec>>;
 
   /**
    * The handler function, referenced directly — never a dynamic import
@@ -271,6 +292,7 @@ export function defineCommand<
     readonly exitCodes?: Readonly<Record<TCode, string>>;
     readonly managesCredentials?: TManagesCredentials;
     readonly installsPackages?: TInstallsPackages;
+    readonly statements?: Readonly<Record<string, StatementSpec>>;
     readonly handler: Handler<
       TFlags,
       TPositionals,
@@ -298,6 +320,7 @@ export function defineCommand<
       false) as TManagesCredentials,
     maySpawn: def.maySpawn ?? false,
     installsPackages: (def.installsPackages ?? false) as TInstallsPackages,
+    statements: Object.freeze({ ...def.statements }),
     handler: def.handler,
   });
 }
@@ -361,6 +384,11 @@ export function defineSessionCommand<
     >["handler"];
   } & SpawnDeclarations,
 ): SessionCommandDefinition<TFlags, TPositionals, TConfig> {
+  if (Object.hasOwn(def, "statements")) {
+    throw new Error(
+      "@prisma/cli-engine: a session command cannot declare statements (only a result command asks them)",
+    );
+  }
   return Object.freeze({
     kind: "session-command" as const,
     help: normalizeHelp(def.help),
@@ -417,6 +445,11 @@ export function defineServerCommand<
   readonly needs?: NeedsSpec<TConfig>;
   readonly handler: ServerCommandDefinition<TFlags, TConfig>["handler"];
 }): ServerCommandDefinition<TFlags, TConfig> {
+  if (Object.hasOwn(def, "statements")) {
+    throw new Error(
+      "@prisma/cli-engine: a server command cannot declare statements (it never prompts)",
+    );
+  }
   return Object.freeze({
     kind: "server-command" as const,
     help: normalizeHelp(def.help),

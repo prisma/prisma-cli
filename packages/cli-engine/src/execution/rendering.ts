@@ -308,7 +308,11 @@ export function writeDiagnostic(
   const code = paint("muted", `[${diagnostic.code}]`);
   stream.write(`${glyph} ${code} ${diagnostic.summary}\n`);
   if (diagnostic.why !== undefined) {
-    stream.write(`  ${paint("muted", `why: ${diagnostic.why}`)}\n`);
+    const [first, ...rest] = String(diagnostic.why).split("\n");
+    stream.write(`  ${paint("muted", `why: ${first}`)}\n`);
+    for (const line of rest) {
+      stream.write(`       ${paint("muted", line)}\n`);
+    }
   }
   for (const action of renderableNextActions(diagnostic.nextActions)) {
     stream.write(`${renderNextAction(action, paint)}\n`);

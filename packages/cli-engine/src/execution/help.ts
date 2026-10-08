@@ -20,6 +20,11 @@ import { renderHelpMarkdown } from "./markdown";
 import { makePaint, type Paint, textWidth } from "./palette";
 import { formatFlagGiven, withoutFormatFlags } from "./pre-parse-argv";
 import { SHARED_ALIASES, SHARED_FLAG_PARAMETERS } from "./shared-flags";
+import {
+  statementBrief,
+  statementPlaceholders,
+  statementsOf,
+} from "./statement-flags";
 import { resolveExample } from "./stricli-adapter";
 
 const RAIL = "│";
@@ -517,7 +522,18 @@ function sharedFlagRows(): readonly HelpRow[] {
   ];
 }
 
+function statementFlagRows(def: AnyCommand): readonly HelpRow[] {
+  return Object.entries(statementsOf(def)).map(([verb, spec]) => ({
+    name: `    --${verb} ${statementPlaceholders(spec)}...`,
+    brief: statementBrief(verb, spec),
+  }));
+}
+
 function declaredFlagRows(def: AnyCommand): readonly HelpRow[] {
+  return [...ownFlagRows(def), ...statementFlagRows(def)];
+}
+
+function ownFlagRows(def: AnyCommand): readonly HelpRow[] {
   return Object.entries(def.args.flags).map(([key, spec]) => {
     const runtime: FlagRuntimeSpec = flagRuntime(spec);
     return {

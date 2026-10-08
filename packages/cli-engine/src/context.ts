@@ -101,6 +101,9 @@ export interface CommandContext<
   /** Interactive input. */
   readonly prompt: PromptSurface;
 
+  /** The command's declared statement flags, read as its own input. */
+  readonly statements: StatementSurface;
+
   /**
    * Shows the user a URL and, in an interactive session, opens it in
    * their browser. Always announces the URL on the commentary channel
@@ -191,6 +194,68 @@ export interface BrowserWaitRequest {
   readonly interval?: number;
 }
 
+export interface StatementOptions<V extends string> {
+  /** What the answer is about, in the command's own vocabulary.
+   *  Non-empty; an empty subject is a construction error. A flag value
+   *  names it when it equals the subject or starts with `<subject>:`.
+   *  Within one batch a value equal to a subject answers that subject
+   *  first, and any other value goes to the longest subject it names,
+   *  so ask questions whose subjects are prefixes of one another (`A`
+   *  and `A:B`) in one `statements` call. */
+  readonly subject: string;
+  /** The verbs that may answer, in the order a refusal lists them. */
+  readonly verbs: readonly V[];
+  /** How a refusal writes a verb's flag value, such as
+   *  `Legacy:<new name>`. A verb without one is written with the
+   *  subject. */
+  readonly forms?: Partial<Record<V, string>>;
+  /** Returns undefined to accept the answer, or a message saying why it
+   *  is rejected. The engine never interprets the text. */
+  readonly validate: (verb: V, text: string) => string | undefined;
+}
+
+export interface StatementQuestion<V extends string>
+  extends StatementOptions<V> {
+  readonly question: string;
+}
+
+export interface StatementAnswer<V extends string> {
+  readonly verb: V;
+  /** The values joined by one space. */
+  readonly text: string;
+  /** The verb's `arity` values: from the flag, or split from the
+   *  typed answer on whitespace. */
+  readonly values: readonly string[];
+}
+
+export interface StatementSurface {
+  /**
+   * Every unconsumed value of `verb`, in argv order, consumed so the
+   * leftover check does not report them. For statements that are input
+   * to the command's work rather than answers to a question; other
+   * verbs' values stay for the questions. A verb the command did not
+   * declare is a construction error. A later question may still list a
+   * taken verb: no flag value of it is left to answer the question, so
+   * the verb serves the refusal's flag form and the typed answer.
+   */
+  readonly take: <V extends string>(verb: V) => StatementAnswer<V>[];
+  /**
+   * Every unconsumed value of every verb, in argv order, without
+   * consuming any: for showing the statements a run was given, such as
+   * in a line that repeats the command.
+   */
+  readonly values: () => StatementAnswer<string>[];
+}
+
+export interface StatementsOptions {
+  /** This is the run's final ask: values still unconsumed once the
+   *  questions are answered fail with CLI.CONSENT_UNUSED here, before
+   *  the command acts on the answers. Take any verbs you take, and ask
+   *  any consent with a token, before the `last` batch: it reports
+   *  their flags as unused at once. */
+  readonly last?: boolean;
+}
+
 /**
  * Prompts. Every prompt resolves to its answered value directly.
  * Failures THROW engine-internal structured errors the engine catches
@@ -199,12 +264,17 @@ export interface BrowserWaitRequest {
  * 2. A handler that does not catch simply propagates; one that catches
  * cannot swallow the settlement — rethrow or return notOk.
  *
- * Every prompt except `consent` may carry a declared `default`. Under
+ * Every prompt except `consent` and `statement` may carry a declared `default`. Under
  * --yes and in non-interactive contexts (no TTY stdin, CI,
  * --no-interactive — format never decides interactivity) a prompt with
  * a default resolves to it; one without a default throws. The prompt UI
  * writes to stderr, so an interactive json run prompts without touching
  * the stdout stream.
+ *
+ * A SIGINT or SIGTERM delivered while a prompt waits cancels it with
+ * CLI.PROMPT_CANCELLED (exit 3 for SIGINT, 143 for SIGTERM). The
+ * cancellation holds for the rest of the run: every later prompt is
+ * cancelled at once, and a further signal force-exits.
  */
 export interface PromptSurface {
   readonly confirm: (
@@ -228,6 +298,35 @@ export interface PromptSurface {
     question: string,
     opts?: { readonly token?: string },
   ) => Promise<boolean>;
+  /**
+   * A consent answered with a verb and free text: what the user means
+   * should happen to `subject`. Like `consent`, `--yes` and Enter never
+   * answer it.
+   *
+   * A `--<verb>` flag whose value names the subject answers it first,
+   * in any session, without rendering anything: the value names the
+   * subject when it is the subject or starts with `<subject>:`. A
+   * value `validate` rejects fails the run with `CLI.PROMPT_INVALID`.
+   * Without such a flag a non-interactive run, or one under `--yes`,
+   * fails with `CLI.CONSENT_REQUIRED`; an interactive run asks, and the
+   * user answers `<verb> <text>`, or `<verb>` alone to mean the subject.
+   * Each verb must be one the command declares in `statements`; the
+   * flag takes that declaration's `arity` values per occurrence.
+   */
+  readonly statement: <V extends string>(
+    question: string,
+    opts: StatementOptions<V>,
+  ) => Promise<StatementAnswer<V>>;
+  /**
+   * Several statements asked together, answered in order. Flags answer
+   * what they can; a refusal names every question still unanswered at
+   * once, and an interactive run asks them one after another.
+   * `statement(question, opts)` is `statements([{ question, ...opts }])`.
+   */
+  readonly statements: <V extends string>(
+    questions: readonly StatementQuestion<V>[],
+    opts?: StatementsOptions,
+  ) => Promise<StatementAnswer<V>[]>;
   readonly select: <T extends string>(
     question: string,
     options: ReadonlyArray<{ value: T; label: string }>,

@@ -43,7 +43,9 @@ function toWritable(out: OutputStream): Writable {
 
 /**
  * Cancellation surfaces as clack's cancel symbol (isCancel), which
- * covers the \x03 byte path; prompts.ts maps it to CLI.PROMPT_CANCELLED.
+ * covers the \x03 byte path and an aborted `signal` (a SIGINT or
+ * SIGTERM delivered while the prompt waits); prompts.ts maps it to
+ * CLI.PROMPT_CANCELLED.
  */
 export interface ClackRenderer {
   confirm(
@@ -55,6 +57,10 @@ export interface ClackRenderer {
   /** Type-to-confirm: anything but the token re-prompts, so the only
    *  ways out are the exact token and cancelling. */
   confirmToken(question: string, token: string): Promise<string | symbol>;
+  /** Free text in an empty field. The caller checks the answer and asks
+   *  again with the reason in the message, so a rejected answer never
+   *  stays in the field to be appended to. */
+  statement(message: string): Promise<string | symbol>;
   select<T extends string>(
     question: string,
     options: ReadonlyArray<{ value: T; label: string }>,
@@ -71,6 +77,7 @@ export interface ClackRenderer {
 export async function makeClackRenderer(
   stdin: InputStream,
   stderr: OutputStream,
+  signal: AbortSignal,
 ): Promise<ClackRenderer> {
   const clack = await import("@clack/prompts");
   const input = toReadable(stdin);
@@ -81,6 +88,7 @@ export async function makeClackRenderer(
       clack.confirm({
         input,
         output,
+        signal,
         message: question,
         initialValue: initial ?? false,
       }),
@@ -88,6 +96,7 @@ export async function makeClackRenderer(
       clack.confirm({
         input,
         output,
+        signal,
         message: question,
         initialValue: false,
       }),
@@ -95,6 +104,7 @@ export async function makeClackRenderer(
       clack.text({
         input,
         output,
+        signal,
         message: `${question} Type ${token} to confirm.`,
         placeholder: token,
         validate: (value) =>
@@ -102,6 +112,7 @@ export async function makeClackRenderer(
             ? undefined
             : `Type ${token} exactly, or press Ctrl-C.`,
       }),
+    statement: (message) => clack.text({ input, output, signal, message }),
     select: <T extends string>(
       question: string,
       options: ReadonlyArray<{ value: T; label: string }>,
@@ -110,6 +121,7 @@ export async function makeClackRenderer(
       clack.select<T>({
         input,
         output,
+        signal,
         message: question,
         options: options.map((option) => ({
           value: option.value,
@@ -121,6 +133,7 @@ export async function makeClackRenderer(
       clack.text({
         input,
         output,
+        signal,
         message: question,
         placeholder,
         defaultValue: fallback,

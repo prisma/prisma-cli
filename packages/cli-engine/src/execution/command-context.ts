@@ -22,7 +22,7 @@ import { dependencyResolvable, missingDependencyError } from "./needs";
 import { announceUrl } from "./open-url";
 import { makePackageOperations } from "./package-operations";
 import { makePaint } from "./palette";
-import { makePromptSurface } from "./prompts";
+import { makePromptSurface, makeStatementSurface } from "./prompts";
 import { reportEvent } from "./reporting";
 import { makeSpawn } from "./spawn";
 
@@ -181,6 +181,7 @@ export function makeContext(
     lastChild: () => state.lastChild,
     report: (event) => reportEvent(invocation, event),
     prompt: makePromptSurface(invocation),
+    statements: makeStatementSurface(invocation),
     openUrl: (request) => announceUrl(invocation, request),
     signal: invocation.signal,
     cwd: invocation.runtime.cwd,

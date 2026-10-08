@@ -43,6 +43,7 @@ export {
   type ServerCommandDefinition,
   type SessionCommandDefinition,
   type SpawnDeclarations,
+  type StatementSpec,
   type WorkflowStep,
 } from "../commands";
 export {
@@ -74,6 +75,11 @@ export type {
   OpenUrlOutcome,
   OpenUrlRequest,
   PromptSurface,
+  StatementAnswer,
+  StatementOptions,
+  StatementQuestion,
+  StatementSurface,
+  StatementsOptions,
 } from "../context";
 export {
   authServiceError,

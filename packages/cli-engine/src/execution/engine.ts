@@ -21,6 +21,7 @@ import type { InputStream, Runtime } from "../runtime";
 import {
   type ChildResult,
   type ChildStatusSettlement,
+  childExitCode,
   isChildStatusSettlement,
 } from "../spawn";
 import {
@@ -46,6 +47,7 @@ import {
 } from "./help";
 import { checkNeeds, type NeedsOutcome } from "./needs";
 import { configFlagGivenNoValue, versionFlagGiven } from "./pre-parse-argv";
+import { unusedConsentError } from "./prompts";
 import {
   commandSegments,
   settleBug,
@@ -71,6 +73,13 @@ import {
   endAbandonedChild,
   recordSignalDuringSpawn,
 } from "./spawn";
+import {
+  type DeclaredStatements,
+  extractStatementFlags,
+  routedCommand,
+  type StatementFlagValue,
+  statementsOf,
+} from "./statement-flags";
 import {
   buildRoutes,
   capturingText,
@@ -145,6 +154,14 @@ export interface RunState {
    *  token removes the value it matched, so one `--confirm` grants one
    *  consent. */
   confirmValues: string[];
+  /** The statements the command argv routes to declares. */
+  statements: DeclaredStatements;
+  /** Every subject a statement prompt asked about, answered or not. */
+  askedSubjects: Set<string>;
+  /** Every statement-flag value, in argv order. A statement prompt
+   *  marks the value it consumed; one left unconsumed fails a run that
+   *  otherwise succeeded. */
+  statementValues: StatementFlagValue[];
   interactive: boolean;
   colorEnabled: boolean;
   /** The file `--config` named, if the run named one. */
@@ -178,6 +195,13 @@ export interface RunState {
    *  prompt's first await, so an unawaited prompt still blocks
    *  ctx.spawn from handing the same terminal to a child. */
   activePrompts: number;
+  /** True while a prompt waits for the user's keystrokes or line. A
+   *  signal then cancels the prompt (promptCancel). A SIGINT is the
+   *  user declining, as Ctrl-C at the prompt is, and settles 3; a
+   *  SIGTERM also ends the run as a delivered signal, 143. Once
+   *  promptCancel has fired, the next signal force-exits. */
+  readingPrompt: boolean;
+  promptCancel: AbortController;
   /** Set while a ctx.packages operation is in flight. It serializes the
    *  operations against each other, and blocks ctx.spawn: a child
    *  writing the terminal directly while the manager's output is being
@@ -336,6 +360,9 @@ export class EngineImpl implements Engine {
       logLevel: "info",
       yes: false,
       confirmValues: [],
+      statements: {},
+      askedSubjects: new Set(),
+      statementValues: [],
       interactive: defaultInteractive(runtime),
       /** Pre-parse resolution so a run that never mounts a command — an
        *  unknown command, a parse failure — still colours its
@@ -354,6 +381,8 @@ export class EngineImpl implements Engine {
       delegatedTerminal: undefined,
       lastChild: undefined,
       activePrompts: 0,
+      readingPrompt: false,
+      promptCancel: new AbortController(),
       packageOperationRunning: false,
       deliveredSignal: undefined,
       pendingForceExit: undefined,
@@ -369,9 +398,18 @@ export class EngineImpl implements Engine {
         recordSignalDuringSpawn(state.delegatedTerminal, signal);
         return;
       }
-      if (state.deliveredSignal !== undefined) {
+      if (
+        state.deliveredSignal !== undefined ||
+        state.promptCancel.signal.aborted
+      ) {
         runtime.exit(signal === "SIGTERM" ? 143 : 130);
         return;
+      }
+      if (state.readingPrompt) {
+        state.promptCancel.abort(signal);
+        if (signal === "SIGINT") {
+          return;
+        }
       }
       state.deliveredSignal = signal;
       controller.abort(signal);
@@ -419,6 +457,11 @@ export class EngineImpl implements Engine {
       );
       return 0;
     }
+    const stricliArgv = this.takeStatementFlags(invocation, argv, startedAtMs);
+    if (stricliArgv === undefined) {
+      unsubscribe();
+      return 2;
+    }
     const stricliProcess = {
       /** stricli writes only help text here. In json mode stdout carries
        *  exactly the frame stream, so help prose goes to stderr instead. */
@@ -445,7 +488,7 @@ export class EngineImpl implements Engine {
       localization: { text: capturingText(state) },
     });
     try {
-      await runStricli(app, [...argv], {
+      await runStricli(app, [...stricliArgv], {
         process: stricliProcess,
         forCommand: (info) => {
           state.prefix = info.prefix;
@@ -465,6 +508,33 @@ export class EngineImpl implements Engine {
       runtime.exit(state.pendingForceExit === "SIGTERM" ? 143 : 130);
     }
     return exitCode;
+  }
+
+  /** The routed command's statement flags come out of argv before the
+   *  parser sees it. Returns the argv left for the parser, or undefined
+   *  when a statement flag was malformed and the run has settled. */
+  private takeStatementFlags(
+    invocation: Invocation,
+    argv: readonly string[],
+    startedAtMs: number,
+  ): readonly string[] | undefined {
+    const state = invocation.state;
+    const routed = routedCommand(this.tree, argv);
+    if (routed === undefined) {
+      return argv;
+    }
+    state.statements = statementsOf(routed.def);
+    const extraction = extractStatementFlags(argv, state.statements);
+    if (!extraction.ok) {
+      state.commandId = routed.id;
+      state.docsBaseUrl = routed.docsBaseUrl;
+      state.snapshot = buildCommandSnapshot(routed.id, routed.def, argv, []);
+      settleErrored(invocation, extraction.error);
+      this.fireOnSettled(invocation, 2, startedAtMs);
+      return undefined;
+    }
+    state.statementValues = extraction.values;
+    return extraction.argv;
   }
 
   /** stricli routed or parsed nothing runnable. When the redirect table
@@ -589,8 +659,11 @@ export class EngineImpl implements Engine {
         return;
       }
       state.resolved = true;
+      const unused = unusedConsentError(state);
       if (!result.ok) {
         settleErrored(invocation, result.failure, result.failure.diagnostics);
+      } else if (unused !== undefined && succeeded(state, result.value)) {
+        settleErrored(invocation, unused);
       } else if (isChildStatusSettlement(result.value)) {
         settleChildStatus(invocation, entry.def, result.value);
       } else {
@@ -776,6 +849,13 @@ export class EngineImpl implements Engine {
       settleThrown(invocation, cause);
     }
   }
+}
+
+function succeeded(state: RunState, value: unknown): boolean {
+  if (!isChildStatusSettlement(value)) {
+    return true;
+  }
+  return state.lastChild !== undefined && childExitCode(state.lastChild) === 0;
 }
 
 /** The path the user typed, for argv that routed to no command: the

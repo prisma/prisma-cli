@@ -10,9 +10,10 @@ import { camelCase, flagRuntime, kebabCase } from "../args";
 import type { AnyCommand } from "../commands";
 import type { EngineCommandSnapshot } from "../run-summary";
 import { SHARED_ALIASES, SHARED_FLAG_PARAMETERS } from "./shared-flags";
+import { declaredStatements } from "./statement-flags";
 
 function declaredFlagKeys(def: AnyCommand): readonly string[] {
-  const own = Object.keys(def.args.flags);
+  const own = [...Object.keys(def.args.flags), ...declaredStatements(def)];
   if (def.kind === "server-command") {
     return own;
   }

@@ -129,7 +129,8 @@ export function settleErrored(
   diagnostics: readonly Diagnostic[] = [],
 ): void {
   const state = invocation.state;
-  state.settledExitCode = error.code === "CLI.PROMPT_CANCELLED" ? 3 : 2;
+  state.settledExitCode =
+    error.code === "CLI.PROMPT_CANCELLED" ? cancelledExitCode(state) : 2;
   emitErrored(invocation, {
     ok: false,
     commandId: state.commandId,
@@ -139,6 +140,15 @@ export function settleErrored(
     ),
     nextActions: nextActionsWithBinName(error.nextActions, invocation.cliName),
   });
+}
+
+/** A cancelled prompt exits 3, the user declining, unless a SIGTERM
+ *  cancelled it while it waited for input: that ends the run as the
+ *  signal it is. */
+function cancelledExitCode(state: Invocation["state"]): number {
+  return state.promptCancel.signal.reason === "SIGTERM"
+    ? signalExitCode("SIGTERM")
+    : 3;
 }
 
 /** The conventional code for a delivered signal: 128 + its number, so
