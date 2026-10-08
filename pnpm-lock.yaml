@@ -39,8 +39,8 @@ importers:
         specifier: 1.80.0
         version: 1.80.0
       '@prisma/orm-toolchain':
-        specifier: 8.0.0-rc.16
-        version: 8.0.0-rc.16(@prisma/cli-engine@packages+cli-engine)(magicast@0.5.3)(typanion@3.14.0)(typescript@6.0.3)(vite@7.3.5(@types/node@22.19.19)(jiti@2.7.0)(tsx@4.22.4)(yaml@2.9.0))
+        specifier: 8.0.0-rc.17
+        version: 8.0.0-rc.17(@prisma/cli-engine@packages+cli-engine)(magicast@0.5.3)(typanion@3.14.0)(typescript@6.0.3)(vite@7.3.5(@types/node@22.19.19)(jiti@2.7.0)(tsx@4.22.4)(yaml@2.9.0))
       '@vercel/detect-agent':
         specifier: ^1.2.3
         version: 1.2.4
@@ -222,8 +222,8 @@ importers:
         specifier: 1.80.0
         version: 1.80.0
       '@prisma/orm-toolchain':
-        specifier: 8.0.0-rc.16
-        version: 8.0.0-rc.16(@prisma/cli-engine@packages+cli-engine)(magicast@0.5.3)(typanion@3.14.0)(typescript@6.0.3)(vite@7.3.5(@types/node@22.19.19)(jiti@2.7.0)(tsx@4.22.4)(yaml@2.9.0))
+        specifier: 8.0.0-rc.17
+        version: 8.0.0-rc.17(@prisma/cli-engine@packages+cli-engine)(magicast@0.5.3)(typanion@3.14.0)(typescript@6.0.3)(vite@7.3.5(@types/node@22.19.19)(jiti@2.7.0)(tsx@4.22.4)(yaml@2.9.0))
       '@vercel/detect-agent':
         specifier: ^1.2.3
         version: 1.2.4
@@ -1332,18 +1332,18 @@ packages:
   '@prisma/management-api-sdk@1.80.0':
     resolution: {integrity: sha512-pQN6hBqR2pgaF3S5sMCe3iZIlThIOgUXoDcinB6/AxXO3qM6oWnirSUAJlhFQ/Hr5A2PmdxScOuCB1dJYHZ4KQ==}
 
-  '@prisma/orm-framework@8.0.0-rc.16':
-    resolution: {integrity: sha512-KCW4a9SeRSPcrclytwn/8yHaYTXQXGqjPIvDryaDuEHKgY5sTxA+3pk8QA89Nph4TJV0jbNIg3JoQotcBiwdKQ==}
+  '@prisma/orm-framework@8.0.0-rc.17':
+    resolution: {integrity: sha512-KfircGILFXGoBPPg6I4caNF/tpVe+2UF6kMO+PF/KfOwMsFh11mR5nEijiSqy+5l7oVWGsT0GNz2inysbg+UWg==}
     peerDependencies:
       typescript: '>=5.9'
     peerDependenciesMeta:
       typescript:
         optional: true
 
-  '@prisma/orm-toolchain@8.0.0-rc.16':
-    resolution: {integrity: sha512-uZzmq9wBKngkZhLU87liza1rHOhUD6wpwC9vKEOO4GQUbQivedMKZ7SsJHNR5AXK5zn1D7ESvhJTfxLQ9FqKKw==}
+  '@prisma/orm-toolchain@8.0.0-rc.17':
+    resolution: {integrity: sha512-iG1knDO9Hg1/b5NOj74T7Bx5d2imJVq+qSrKDD94nwjOyvIZ5ygKSzVq2hb0KoAjae8PONgznSOBRMA8Kh+p4Q==}
     peerDependencies:
-      '@prisma/cli-engine': 0.6.3
+      '@prisma/cli-engine': 0.7.0
       typescript: '>=5.9'
       vite: ^7.0.0 || ^8.0.0
     peerDependenciesMeta:
@@ -4138,7 +4138,7 @@ snapshots:
     dependencies:
       openapi-fetch: 0.14.0
 
-  '@prisma/orm-framework@8.0.0-rc.16(typescript@6.0.3)':
+  '@prisma/orm-framework@8.0.0-rc.17(typescript@6.0.3)':
     dependencies:
       '@standard-schema/spec': 1.1.0
       arktype: 2.2.7
@@ -4148,10 +4148,10 @@ snapshots:
     optionalDependencies:
       typescript: 6.0.3
 
-  '@prisma/orm-toolchain@8.0.0-rc.16(@prisma/cli-engine@packages+cli-engine)(magicast@0.5.3)(typanion@3.14.0)(typescript@6.0.3)(vite@7.3.5(@types/node@22.19.19)(jiti@2.7.0)(tsx@4.22.4)(yaml@2.9.0))':
+  '@prisma/orm-toolchain@8.0.0-rc.17(@prisma/cli-engine@packages+cli-engine)(magicast@0.5.3)(typanion@3.14.0)(typescript@6.0.3)(vite@7.3.5(@types/node@22.19.19)(jiti@2.7.0)(tsx@4.22.4)(yaml@2.9.0))':
     dependencies:
       '@prisma/cli-engine': link:packages/cli-engine
-      '@prisma/orm-framework': 8.0.0-rc.16(typescript@6.0.3)
+      '@prisma/orm-framework': 8.0.0-rc.17(typescript@6.0.3)
       '@vercel/detect-agent': 1.2.4
       arktype: 2.2.7
       c12: 3.3.4(magicast@0.5.3)
