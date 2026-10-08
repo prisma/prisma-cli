@@ -51,7 +51,32 @@ const askBoth = (prompt: PromptSurface) =>
   prompt.statements([question("Legacy"), question("User.nickname")]);
 
 describe("an unconsumed --confirm token", () => {
-  test("fails a run that otherwise succeeded", async () => {
+  test("is ignored on a command that declares no statements", async () => {
+    const plain = defineCommand({
+      help: { summary: "Plain probe" },
+      handler: async (_args, ctx) =>
+        ok(
+          ctx.present(
+            { data: {} },
+            {
+              human: () => [],
+              stdout: () => [],
+              json: () => ({}),
+              next: () => [],
+            },
+          ),
+        ),
+    });
+    const result = await createTestCli({ commands: { plain } }).run([
+      "plain",
+      "--confirm",
+      "mydb",
+    ]);
+
+    expect(result.exitCode).toBe(0);
+  });
+
+  test("fails a run that otherwise succeeded on a command that declares statements", async () => {
     const result = await cliWith(async () => "nothing asked").run([
       "probe",
       "--confirm",

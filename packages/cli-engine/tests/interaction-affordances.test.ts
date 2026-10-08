@@ -114,7 +114,7 @@ describe("consent tokens", () => {
     expect(result.stderr).not.toContain("type prod-db to confirm");
   });
 
-  test("--confirm with a different value still prompts interactively, then fails the run as unused", async () => {
+  test("--confirm with a different value still prompts interactively", async () => {
     const cli = createTestCli({
       commands: { probe: promptProbe(dropDatabase) },
       now: EPOCH,
@@ -124,11 +124,9 @@ describe("consent tokens", () => {
       stdin: "prod-db\n",
     });
 
+    expect(result.exitCode).toBe(0);
+    expect(result.presented?.data).toEqual({ answer: true });
     expect(result.stderr).toContain("type prod-db to confirm");
-    expect(result.exitCode).toBe(2);
-    expect(result.stderr).toContain(
-      "[CLI.CONSENT_UNUSED] --confirm staging-db answers no consent in this run.",
-    );
   });
 
   test("--confirm with the token grants the consent non-interactively", async () => {

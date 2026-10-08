@@ -294,6 +294,14 @@ function unusedSentence(state: RunState, value: StatementFlagValue): string {
     : `${given} was given, but the question about ${asked} was already answered by another flag.`;
 }
 
+/** `--confirm` tokens no consent consumed, reported only on a command
+ *  that declares statements, where one is certainly a mistake. Other
+ *  commands still take `--confirm` on paths that ask nothing; making
+ *  their leftovers an error waits on prisma/prisma-cli#339. */
+function leftoverConfirmTokens(state: RunState): readonly string[] {
+  return Object.keys(state.statements).length === 0 ? [] : state.confirmValues;
+}
+
 function unusedActions(
   unused: readonly StatementFlagValue[],
   state: RunState,
@@ -309,7 +317,7 @@ function unusedActions(
   if (unused.some((value) => askedSubjectOf(state, value) !== undefined)) {
     actions.push({ kind: "user-choice", label: "Give one flag per question." });
   }
-  if (state.confirmValues.length > 0) {
+  if (leftoverConfirmTokens(state).length > 0) {
     actions.push({
       kind: "user-choice",
       label: "Remove the --confirm flag: nothing in this run asks for it.",
@@ -325,12 +333,12 @@ export function unusedConsentError(
   state: RunState,
 ): CliStructuredError | undefined {
   const unused = state.statementValues.filter((value) => !value.consumed);
-  if (unused.length === 0 && state.confirmValues.length === 0) {
+  if (unused.length === 0 && leftoverConfirmTokens(state).length === 0) {
     return undefined;
   }
   const sentences = [
     ...unused.map((value) => unusedSentence(state, value)),
-    ...state.confirmValues.map(
+    ...leftoverConfirmTokens(state).map(
       (token) =>
         `${flagForm("confirm", [token])} answers no consent in this run.`,
     ),
@@ -343,9 +351,9 @@ export function unusedConsentError(
     nextActions: unusedActions(unused, state),
     meta: {
       unused: unused.map(({ verb, values }) => ({ verb, values })),
-      ...(state.confirmValues.length === 0
+      ...(leftoverConfirmTokens(state).length === 0
         ? {}
-        : { confirm: [...state.confirmValues] }),
+        : { confirm: [...leftoverConfirmTokens(state)] }),
       ...(asked.length === 0 ? {} : { asked }),
     },
   });
@@ -622,14 +630,14 @@ export function makePromptSurface(invocation: Invocation): PromptSurface {
     if (signal.aborted) {
       return Promise.resolve(undefined);
     }
-    return Promise.race([
-      line,
-      new Promise<undefined>((resolve) =>
-        signal.addEventListener("abort", () => resolve(undefined), {
-          once: true,
-        }),
-      ),
-    ]);
+    let onAbort = (): void => {};
+    const aborted = new Promise<undefined>((resolve) => {
+      onAbort = () => resolve(undefined);
+      signal.addEventListener("abort", onAbort, { once: true });
+    });
+    return Promise.race([line, aborted]).finally(() =>
+      signal.removeEventListener("abort", onAbort),
+    );
   };
 
   const renderWithClack = async <T>(

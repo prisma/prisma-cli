@@ -270,6 +270,11 @@ export interface StatementsOptions {
  * a default resolves to it; one without a default throws. The prompt UI
  * writes to stderr, so an interactive json run prompts without touching
  * the stdout stream.
+ *
+ * A SIGINT or SIGTERM delivered while a prompt waits cancels it with
+ * CLI.PROMPT_CANCELLED (exit 3 for SIGINT, 143 for SIGTERM). The
+ * cancellation holds for the rest of the run: every later prompt is
+ * cancelled at once, and a further signal force-exits.
  */
 export interface PromptSurface {
   readonly confirm: (

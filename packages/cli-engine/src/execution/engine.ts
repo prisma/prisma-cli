@@ -196,8 +196,10 @@ export interface RunState {
    *  ctx.spawn from handing the same terminal to a child. */
   activePrompts: number;
   /** True while a prompt waits for the user's keystrokes or line. A
-   *  signal then cancels the prompt (promptCancel) instead of ending
-   *  the run, as Ctrl-C at the prompt does. */
+   *  signal then cancels the prompt (promptCancel). A SIGINT is the
+   *  user declining, as Ctrl-C at the prompt is, and settles 3; a
+   *  SIGTERM also ends the run as a delivered signal, 143. Once
+   *  promptCancel has fired, the next signal force-exits. */
   readingPrompt: boolean;
   promptCancel: AbortController;
   /** Set while a ctx.packages operation is in flight. It serializes the
@@ -396,13 +398,18 @@ export class EngineImpl implements Engine {
         recordSignalDuringSpawn(state.delegatedTerminal, signal);
         return;
       }
-      if (state.deliveredSignal !== undefined) {
+      if (
+        state.deliveredSignal !== undefined ||
+        state.promptCancel.signal.aborted
+      ) {
         runtime.exit(signal === "SIGTERM" ? 143 : 130);
         return;
       }
       if (state.readingPrompt) {
         state.promptCancel.abort(signal);
-        return;
+        if (signal === "SIGINT") {
+          return;
+        }
       }
       state.deliveredSignal = signal;
       controller.abort(signal);
