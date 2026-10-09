@@ -4,7 +4,7 @@ This guide gets a local checkout ready for CLI development.
 
 ## Requirements
 
-- Node.js 24 or newer
+- Node.js 24.11 or newer on the 24 line, or 26 or newer
 - pnpm 10
 
 ## Install
