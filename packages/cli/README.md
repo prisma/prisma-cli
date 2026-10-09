@@ -102,7 +102,7 @@ npx prisma-cli service version promote VERSION_ID
 
 ## Beta notes
 
-- Requires Node.js 22.18 or newer.
+- Requires Node.js 22.18 or newer on the 22 line, 24.11 or newer on the 24 line, or 26 or newer.
 - This is a release-candidate package and may change quickly.
 - The 8.0.0 release candidates publish as `@prisma/cli` on the `next` dist-tag.
 - The package binary is `prisma-cli`; the sibling `prisma` package ships the same CLI under the `prisma` binary.

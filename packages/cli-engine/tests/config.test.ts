@@ -1123,7 +1123,7 @@ export default definePrismaConfig({
 `,
       [],
     );
-    // Which error a Node in our supported range (>=22.12.0) reports for
+    // Which error a Node in our supported range reports for
     // TypeScript it cannot strip varies by version, so this asserts only
     // that the direct import failed. What the test is for is the pair:
     // the direct import fails where loadConfig, below, succeeds.
