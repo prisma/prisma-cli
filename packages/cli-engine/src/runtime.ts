@@ -40,11 +40,15 @@ export interface Runtime {
    * human blocks and the machine stdout mirror would draw on one screen
    * as visible duplication. Consulted only when both streams are TTYs:
    * `false` there means two separate terminals, so the mirror is kept
-   * for whatever is reading stdout. Absent means the host cannot tell,
-   * which is treated as "same" — the overwhelmingly common case for two
-   * TTYs is one terminal.
+   * for whatever is reading stdout.
+   *
+   * Required, and deliberately so. It decides whether a command's stdout
+   * payload is written at all, so a host that says nothing is choosing to
+   * drop that payload — a choice that belongs at the call site, in the open,
+   * not in a default the host never sees. A bin that cannot tell answers
+   * `true`: two TTYs are one terminal far more often than not.
    */
-  readonly outputStreamsShareDevice?: boolean;
+  readonly outputStreamsShareDevice: boolean;
   /**
    * Forces the answer to "is this CI", where telemetry never reports.
    * Absent — the normal case — means the engine detects CI from `env`
