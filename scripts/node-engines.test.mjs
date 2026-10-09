@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { readdirSync, readFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, it } from "node:test";
 
@@ -14,11 +14,9 @@ const packagesDir = join(import.meta.dirname, "..", "packages");
 
 const runtimePackages = readdirSync(packagesDir, { withFileTypes: true })
   .filter((entry) => entry.isDirectory())
-  .map((entry) =>
-    JSON.parse(
-      readFileSync(join(packagesDir, entry.name, "package.json"), "utf8"),
-    ),
-  )
+  .map((entry) => join(packagesDir, entry.name, "package.json"))
+  .filter((manifestPath) => existsSync(manifestPath))
+  .map((manifestPath) => JSON.parse(readFileSync(manifestPath, "utf8")))
   .filter((manifest) => manifest.engines !== undefined);
 
 describe("engines.node", () => {
