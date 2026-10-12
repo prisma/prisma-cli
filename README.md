@@ -33,7 +33,7 @@ Deployments start from pushing the connected repository, the Console, or `prisma
 
 Requirements:
 
-- Node.js 24 or newer
+- Node.js 24.11 or newer on the 24 line, or 26 or newer
 - pnpm 10+
 
 Install dependencies:

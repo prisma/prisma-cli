@@ -10,13 +10,10 @@ is unclear, update the relevant product doc before changing the command surface.
 
 Requirements:
 
-- Node.js 24 or newer
+- Node.js 24.11 or newer on the 24 line, or 26 or newer
 - pnpm 10
 
-Published `@prisma/cli` declares a lower floor (Node 22.18, matching
-`@prisma/composer`), and composer runs fine there. The repo develops and tests
-on 24 because the startup-isolation probe cannot run on Node 22; the reason is
-recorded in `packages/cli/tests/composer-isolation.test.ts`.
+Published packages support Node.js 22.18 or newer on the 22 line, 24.11 or newer on the 24 line, or 26 or newer (`engines.node` is `^22.18.0 || ^24.11.0 || >=26.0.0`, the same range as create-prisma and the projects it generates). The exception is `@prisma/cli-engine`, which keeps its own wider range until its next version; users never install it on its own. The repo develops and tests on 24 because the startup-isolation probe cannot run on Node 22; the reason is recorded in `packages/cli/tests/composer-isolation.test.ts`.
 
 Install dependencies:
 
