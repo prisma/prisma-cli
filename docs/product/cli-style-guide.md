@@ -168,7 +168,7 @@ A group card may declare a workflow: the ordered commands of that group's common
 
 A path can be a command and a group at once: `prisma dev <entry>` runs the app, and `prisma dev url` and `prisma dev stop` are commands beneath it. `prisma dev --help` shows the `dev` command's card, with the commands beneath it in a `Commands` section after its description. The group's brief is still its row on the parent card. The group's description and workflow do not appear on that card, so the command's description defines any term the rows beneath it rely on.
 
-When the word after the path names a command beneath it, that command runs, so `prisma dev url` never runs `dev` with an entry named `url`. Give the command a positional whose values cannot be spelled like those commands' names, such as a file path.
+When the word after the path names a command beneath it, that command runs, so `prisma dev url` never runs `dev` with an entry named `url`; `prisma dev -- url` does. Give the command a positional whose values cannot be spelled like those commands' names, such as a file path.
 
 ## Flags
 

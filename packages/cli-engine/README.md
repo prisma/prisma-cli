@@ -22,7 +22,7 @@ createCli({
 });
 ```
 
-`dev module.ts` runs `dev` with the positional `module.ts`, and `dev url gateway` runs `dev url`. When the word after `dev` names a command beneath it, that command runs, so `dev url` never reaches `dev` as a positional. `dev --help` shows the `dev` command's help and lists `url` and `stop`.
+`dev module.ts` runs `dev` with the positional `module.ts`, and `dev url gateway` runs `dev url`. When the word after `dev` names a command beneath it, that command runs, so `dev url` never reaches `dev` as a positional. To pass such a word as the positional, put `--` before it: `dev -- url` runs `dev` with `url`. A retired path declared as a redirect, such as `dev up`, wins over the positional the same way. `dev --help` shows the `dev` command's help and lists `url` and `stop`.
 
 ## Statement prompts
 
