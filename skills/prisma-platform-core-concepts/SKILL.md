@@ -268,15 +268,16 @@ inside a service; sleeping makes them silently unreliable.
 To your application, a Prisma Postgres database is a regular PostgreSQL
 database behind a connection string: any client works, including Prisma ORM,
 psql, Kysely, and Drizzle. On top of plain PostgreSQL each database has
-built-in connection pooling (no PgBouncer to run), optional query caching,
-and automated backups.
+built-in connection pooling (no PgBouncer to run) and, on paid plans,
+automated backups: a snapshot each day the database has activity.
 
 Databases usually come from deploying a module that declares one. They can
 also be created directly, in which case the connection URL prints exactly
 once. Additional connection strings can be minted and rotated per database;
 every secret is shown exactly once at creation, and no later read reveals
-it. Backups are automated, listable, and restorable, and per-database usage
-metrics are queryable; the `postgres` group covers all of it.
+it. On paid plans, backups are automated, listable, and restorable.
+Per-database usage metrics are queryable; the `postgres` group covers all of
+it.
 
 ## Object storage
 
