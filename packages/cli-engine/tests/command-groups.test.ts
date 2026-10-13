@@ -225,7 +225,10 @@ describe("routing", () => {
 
 describe("help", () => {
   test("--help on the path shows its command's usage and lists the children", async () => {
-    const result = await devCli().run(["dev", "--help", "--no-color"], TERMINAL);
+    const result = await devCli().run(
+      ["dev", "--help", "--no-color"],
+      TERMINAL,
+    );
 
     expect(result.exitCode).toBe(0);
     expect(result.stdout).toBe(
@@ -234,29 +237,37 @@ describe("help", () => {
   });
 
   test("--help after a positional shows the path's own help", async () => {
-    const withPositional = await devCli().run([
-      "dev",
-      "module.ts",
-      "--help",
-      "--no-color",
-    ], TERMINAL);
+    const withPositional = await devCli().run(
+      ["dev", "module.ts", "--help", "--no-color"],
+      TERMINAL,
+    );
     const bare = await devCli().run(["dev", "--help", "--no-color"], TERMINAL);
 
     expect(withPositional.stdout).toBe(bare.stdout);
   });
 
   test("--help on a child shows the child's help", async () => {
-    const result = await devCli().run(["dev", "url", "--help", "--no-color"], TERMINAL);
+    const result = await devCli().run(
+      ["dev", "url", "--help", "--no-color"],
+      TERMINAL,
+    );
 
     expect(result.exitCode).toBe(0);
     expect(result.stdout).toContain(
       "prisma-test dev url → Print the local URL of a running service",
     );
-    expect(result.stdout).toContain("$ prisma-test dev url [options] [service]");
+    expect(result.stdout).toContain(
+      "$ prisma-test dev url [options] [service]",
+    );
   });
 
   test("Markdown help lists the children under the usage", async () => {
-    const result = await devCli().run(["dev", "--help", "--format", "markdown"]);
+    const result = await devCli().run([
+      "dev",
+      "--help",
+      "--format",
+      "markdown",
+    ]);
 
     expect(result.stdout).toContain(
       "## Usage\n\n```bash\nprisma-test dev [options] [entry]\n```",
