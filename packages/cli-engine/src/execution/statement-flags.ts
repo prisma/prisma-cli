@@ -63,11 +63,11 @@ export function routedCommand(
     const child =
       node.children.get(token) ?? node.children.get(camelCase(token));
     if (child === undefined) {
-      return node.command;
+      return node.ownCommand;
     }
     node = child;
   }
-  return node.command;
+  return node.ownCommand;
 }
 
 function statementFlagIn(

@@ -134,13 +134,13 @@ export interface CommandTreeEntry {
 export interface CommandTreeNode {
   /** The command mounted at this group's own path, such as `dev` beside
    *  `dev url`. It runs when the next argument names no child. */
-  command: CommandTreeEntry | undefined;
+  ownCommand: CommandTreeEntry | undefined;
   readonly commands: Map<string, CommandTreeEntry>;
   readonly children: Map<string, CommandTreeNode>;
 }
 
 function emptyNode(): CommandTreeNode {
-  return { command: undefined, commands: new Map(), children: new Map() };
+  return { ownCommand: undefined, commands: new Map(), children: new Map() };
 }
 
 function childNode(node: CommandTreeNode, segment: string): CommandTreeNode {
@@ -184,7 +184,7 @@ function insertCommand(
     .reduce((node, segment) => childNode(node, segment), root);
   const leaf = segments[segments.length - 1];
   if (isGroup) {
-    childNode(parent, leaf).command = entry;
+    childNode(parent, leaf).ownCommand = entry;
   } else {
     parent.commands.set(leaf, entry);
   }

@@ -241,8 +241,9 @@ function toStricliCommand(
 
 /** The route a group's own command sits under, hidden from listings.
  *  A child's name is one path segment and never contains a space, so no
- *  child can take this name. */
-const OWN_COMMAND_ROUTE = "<own command>";
+ *  child can take this name. A user can still type it, so it is dropped
+ *  from the path the parser reports. */
+export const OWN_COMMAND_ROUTE = "<own command>";
 
 export function buildRoutes(
   spec: EngineSpec,
@@ -251,9 +252,9 @@ export function buildRoutes(
   runEntry: RunEntry,
 ): StricliRouteMap<EngineRunContext> {
   const routes: Record<string, EngineRoutingTarget> = {};
-  if (node.command !== undefined) {
+  if (node.ownCommand !== undefined) {
     routes[OWN_COMMAND_ROUTE] = toStricliCommand(
-      node.command,
+      node.ownCommand,
       spec.name,
       runEntry,
     );
@@ -272,7 +273,7 @@ export function buildRoutes(
           brief: spec.groups[groupPath].brief,
           fullDescription: spec.groups[groupPath].description,
         };
-  if (node.command === undefined) {
+  if (node.ownCommand === undefined) {
     return buildRouteMap({ routes, docs });
   }
   return buildRouteMap({

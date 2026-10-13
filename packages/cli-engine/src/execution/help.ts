@@ -87,10 +87,10 @@ function helpPath(argv: readonly string[]): readonly string[] {
 type HelpTarget =
   | { readonly kind: "node"; readonly node: CommandTreeNode }
   | {
-      readonly kind: "leaf";
+      readonly kind: "command";
       readonly entry: CommandTreeEntry;
       /** Set when the command's path is also a group. */
-      readonly children: CommandTreeNode | undefined;
+      readonly subcommands: CommandTreeNode | undefined;
     };
 
 /** Walks as far as the segments stay recognized; help for `project
@@ -106,7 +106,7 @@ function resolveTarget(
     const entry = node.commands.get(segment);
     if (entry !== undefined) {
       return {
-        target: { kind: "leaf", entry, children: undefined },
+        target: { kind: "command", entry, subcommands: undefined },
         path: [...path, segment],
       };
     }
@@ -117,9 +117,9 @@ function resolveTarget(
     node = child;
     path.push(segment);
   }
-  if (node.command !== undefined) {
+  if (node.ownCommand !== undefined) {
     return {
-      target: { kind: "leaf", entry: node.command, children: node },
+      target: { kind: "command", entry: node.ownCommand, subcommands: node },
       path,
     };
   }
@@ -212,8 +212,8 @@ export function helpCard(
   argv: readonly string[],
 ): HelpCard {
   const { target, path } = resolveTarget(root, helpPath(argv));
-  return target.kind === "leaf"
-    ? leafCard(spec, target.entry, target.children, path)
+  return target.kind === "command"
+    ? leafCard(spec, target.entry, target.subcommands, path)
     : nodeCard(spec, target.node, path);
 }
 
@@ -250,7 +250,7 @@ function nodeCard(
 function leafCard(
   spec: EngineSpec,
   entry: CommandTreeEntry,
-  children: CommandTreeNode | undefined,
+  subcommands: CommandTreeNode | undefined,
   path: readonly string[],
 ): HelpCard {
   const def = entry.def;
@@ -272,7 +272,8 @@ function leafCard(
     tagline: def.help.summary,
     usage,
     description: def.help.description,
-    commands: children === undefined ? [] : nodeRows(spec, children, path),
+    commands:
+      subcommands === undefined ? [] : nodeRows(spec, subcommands, path),
     workflow: [],
     arguments: Object.values<PositionalSpec<unknown>>(def.args.positionals)
       .map((spec) => positionalRuntime(spec))

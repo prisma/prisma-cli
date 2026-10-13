@@ -33,7 +33,11 @@ import {
   writeSections,
 } from "./rendering";
 import { emitFrame } from "./reporting";
-import { resolveExample, usageErrorCode } from "./stricli-adapter";
+import {
+  OWN_COMMAND_ROUTE,
+  resolveExample,
+  usageErrorCode,
+} from "./stricli-adapter";
 
 function undocumentedExitCode(
   def: AnyCommand,
@@ -491,7 +495,8 @@ export function commandSegments(
   spec: EngineSpec,
   prefix: readonly string[],
 ): readonly string[] {
-  return prefix[0] === spec.name ? prefix.slice(1) : prefix;
+  const path = prefix[0] === spec.name ? prefix.slice(1) : prefix;
+  return path.filter((segment) => segment !== OWN_COMMAND_ROUTE);
 }
 
 /** Maps stricli's own settlement (parse/route failures, framework bugs)

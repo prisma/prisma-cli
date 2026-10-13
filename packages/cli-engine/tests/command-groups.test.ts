@@ -221,6 +221,41 @@ describe("routing", () => {
     const envelope = lastEnvelope(result);
     expect(!envelope.ok && envelope.error.code).toBe("CLI.COMMAND_MOVED");
   });
+
+  test("a retired child's name wins over the positional, as a live child's does", async () => {
+    const cli = devCli(undefined, [{ from: "dev up", replacement: "dev" }]);
+
+    const retired = await cli.run(["dev", "up", "--json"]);
+    expect(retired.exitCode).toBe(2);
+    const envelope = lastEnvelope(retired);
+    expect(envelope.commandId).toBe("dev.up");
+    expect(!envelope.ok && envelope.error.code).toBe("CLI.COMMAND_MOVED");
+
+    const live = await cli.run(["dev", "module.ts", "--json"]);
+    expect(live.presented?.data).toMatchObject({
+      ran: "dev",
+      entry: "module.ts",
+    });
+  });
+
+  test("-- passes a word spelled like a child to the path's own command", async () => {
+    const result = await devCli().run(["dev", "--json", "--", "url"]);
+
+    expect(result.exitCode).toBe(0);
+    expect(result.presented?.data).toMatchObject({ ran: "dev", entry: "url" });
+  });
+
+  test("the route the own command sits under never appears in the command id", async () => {
+    const result = await devCli().run([
+      "dev",
+      "<own command>",
+      "--frobnicate",
+      "--json",
+    ]);
+
+    expect(result.exitCode).toBe(2);
+    expect(lastEnvelope(result).commandId).toBe("dev");
+  });
 });
 
 describe("help", () => {
