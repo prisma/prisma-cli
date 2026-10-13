@@ -118,6 +118,8 @@ function devCli(
   });
 }
 
+const TERMINAL = { isTty: { stdout: true } };
+
 function lastEnvelope(result: Awaited<ReturnType<TestCli["run"]>>) {
   const last = result.json[result.json.length - 1];
   if (last.kind !== "result") {
@@ -223,11 +225,11 @@ describe("routing", () => {
 
 describe("help", () => {
   test("--help on the path shows its command's usage and lists the children", async () => {
-    const result = await devCli().run(["dev", "--help", "--no-color"]);
+    const result = await devCli().run(["dev", "--help", "--no-color"], TERMINAL);
 
     expect(result.exitCode).toBe(0);
     expect(result.stdout).toBe(
-      "prisma-test dev → Run the app locally\n\n│  Usage\n│    $ prisma-test dev [options] [entry]\n│\n│  Starts the entry module and watches it for changes.\n│\n│  Commands\n│  url [service]  Print the local URL of a running service\n│  stop           Stop the running app\n│\n│  Arguments\n│  entry  The module to run (optional)\n│\n│  Options\n│      --port <value>       Port to listen on\n│      --delete <value>...  Delete a resource: --delete X\n│\n│  Global options also apply: --format, --json, --log-level, --verbose,\n│  --quiet, --yes, --confirm, --interactive, --color, --config. Run\n│  'prisma-test --help' for details.\n│\n│  Examples\n│    $ prisma-test dev module.ts\n\n",
+      "prisma-test dev → Run the app locally\n\n│  Usage\n│    $ prisma-test dev [options] [entry]\n│\n│  Starts the entry module and watches it for changes.\n│\n│  Commands\n│  url [service]  Print the local URL of a running service\n│  stop           Stop the running app\n│\n│  Arguments\n│  entry  The module to run (optional)\n│\n│  Options\n│      --port <value>         Port to listen on\n│      --delete <subject>...  Delete a resource: --delete X\n│\n│  Global options also apply: --format, --json, --log-level, --verbose,\n│  --quiet, --yes, --confirm, --interactive, --color, --config. Run\n│  'prisma-test --help' for details.\n│\n│  Examples\n│    $ prisma-test dev module.ts\n\n",
     );
   });
 
@@ -237,14 +239,14 @@ describe("help", () => {
       "module.ts",
       "--help",
       "--no-color",
-    ]);
-    const bare = await devCli().run(["dev", "--help", "--no-color"]);
+    ], TERMINAL);
+    const bare = await devCli().run(["dev", "--help", "--no-color"], TERMINAL);
 
     expect(withPositional.stdout).toBe(bare.stdout);
   });
 
   test("--help on a child shows the child's help", async () => {
-    const result = await devCli().run(["dev", "url", "--help", "--no-color"]);
+    const result = await devCli().run(["dev", "url", "--help", "--no-color"], TERMINAL);
 
     expect(result.exitCode).toBe(0);
     expect(result.stdout).toContain(
@@ -265,7 +267,7 @@ describe("help", () => {
   });
 
   test("the parent card lists the path once, with its group brief", async () => {
-    const result = await devCli().run(["--help", "--no-color"]);
+    const result = await devCli().run(["--help", "--no-color"], TERMINAL);
 
     expect(result.stdout).toContain(
       "│  dev  Run the app locally. Start it, print URLs, stop it\n",

@@ -207,15 +207,6 @@ describe("construction validation", () => {
     ).toThrow("unknown group 'auth'");
   });
 
-  test("a command mount colliding with a group prefix fails construction", () => {
-    expect(() =>
-      createTestCli({
-        commands: { auth: command, "auth whoami": command },
-        groups: { auth: { brief: "Authentication" } },
-      }),
-    ).toThrow("collides");
-  });
-
   test("reserved shared-family flag names fail construction", () => {
     const offender = defineCommand({
       help: { summary: "Offender" },

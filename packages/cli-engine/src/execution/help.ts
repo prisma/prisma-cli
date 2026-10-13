@@ -86,10 +86,16 @@ function helpPath(argv: readonly string[]): readonly string[] {
 
 type HelpTarget =
   | { readonly kind: "node"; readonly node: CommandTreeNode }
-  | { readonly kind: "leaf"; readonly entry: CommandTreeEntry };
+  | {
+      readonly kind: "leaf";
+      readonly entry: CommandTreeEntry;
+      /** Set when the command's path is also a group. */
+      readonly children: CommandTreeNode | undefined;
+    };
 
 /** Walks as far as the segments stay recognized; help for `project
- *  frobnicate` is project's help, not a dead end. */
+ *  frobnicate` is project's help, not a dead end. A group with its own
+ *  command answers with that command's help. */
 function resolveTarget(
   root: CommandTreeNode,
   segments: readonly string[],
@@ -99,7 +105,10 @@ function resolveTarget(
   for (const segment of segments) {
     const entry = node.commands.get(segment);
     if (entry !== undefined) {
-      return { target: { kind: "leaf", entry }, path: [...path, segment] };
+      return {
+        target: { kind: "leaf", entry, children: undefined },
+        path: [...path, segment],
+      };
     }
     const child = node.children.get(segment);
     if (child === undefined) {
@@ -108,14 +117,21 @@ function resolveTarget(
     node = child;
     path.push(segment);
   }
+  if (node.command !== undefined) {
+    return {
+      target: { kind: "leaf", entry: node.command, children: node },
+      path,
+    };
+  }
   return { target: { kind: "node", node }, path };
 }
 
 /** A BARE group invocation (`prisma-cli project`, or no argv at all)
  *  is a help request; anything carrying flags or extra tokens is not —
  *  `cli --unknown` and `cli project --frobnicate` must reach routing
- *  and usage validation, not exit 0 with a help card. A bare leaf is a
- *  command run and is left alone. The format-selection flags do not
+ *  and usage validation, not exit 0 with a help card. A bare leaf, or
+ *  a bare group with its own command, is a command run and is left
+ *  alone. The format-selection flags do not
  *  count: `cli project --format markdown` asks for the group's help in
  *  Markdown. */
 export function bareGroupInvocation(
@@ -197,7 +213,7 @@ export function helpCard(
 ): HelpCard {
   const { target, path } = resolveTarget(root, helpPath(argv));
   return target.kind === "leaf"
-    ? leafCard(spec, target.entry, path)
+    ? leafCard(spec, target.entry, target.children, path)
     : nodeCard(spec, target.node, path);
 }
 
@@ -234,6 +250,7 @@ function nodeCard(
 function leafCard(
   spec: EngineSpec,
   entry: CommandTreeEntry,
+  children: CommandTreeNode | undefined,
   path: readonly string[],
 ): HelpCard {
   const def = entry.def;
@@ -255,7 +272,7 @@ function leafCard(
     tagline: def.help.summary,
     usage,
     description: def.help.description,
-    commands: [],
+    commands: children === undefined ? [] : nodeRows(spec, children, path),
     workflow: [],
     arguments: Object.values<PositionalSpec<unknown>>(def.args.positionals)
       .map((spec) => positionalRuntime(spec))
@@ -310,6 +327,9 @@ function renderHelpTerminal(card: HelpCard, paint: Paint): string {
   if (card.description !== undefined) {
     lines.push(rail(paint));
     proseLines(card.description, paint, lines);
+  }
+  if (card.kind === "leaf") {
+    rowSection("Commands", card.commands, paint, lines);
   }
   workflowLines(card.workflow, paint, lines);
   rowSection("Arguments", card.arguments, paint, lines);
