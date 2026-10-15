@@ -504,7 +504,10 @@ describe("auth workspace list", () => {
     });
 
     expect(result.exitCode).toBe(0);
-    expect(result.stdout).toBe("Acme Inc  ws_1\nws_2  ws_2  current\n");
+    expect(result.stdout).toBe(
+      "Acme Inc\tbob@example.com\tws_1\t\n" +
+        "ws_2\tbob@example.com\tws_2\tcurrent\n",
+    );
   });
 
   it("serializes the sessions and the current marker for json", async () => {

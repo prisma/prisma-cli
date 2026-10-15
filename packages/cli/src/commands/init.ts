@@ -1,5 +1,6 @@
 import { readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
+import { noDataLines } from "@prisma/cli-engine";
 import type {
   Block,
   LoadedConfigFile,
@@ -18,7 +19,6 @@ import {
 import { readSkillsStatus } from "../lib/skills/status";
 import { syncSkills } from "../lib/skills/sync";
 import { getCliVersion } from "../lib/version";
-import { noDataLines } from "../output/data-lines";
 import { skillsConfigSection } from "./skills/config";
 import { syncPresentations } from "./skills/presentation";
 import type { SkillsSyncResult } from "./skills/results";

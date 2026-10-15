@@ -405,11 +405,10 @@ describe("prisma project show", () => {
       label: "Retry with an explicit Project",
       command: "prisma project show <id-or-name>",
     });
-    // "Not linked" is prose for a reader; stdout leaves the field empty.
+    // "Not linked" is prose for a reader; stdout leaves the absent field out.
     expect(result.presented?.presentation.stdout).toEqual([
       `local repo\t${cwd}`,
       "workspace\tAcme Inc",
-      "project\t",
     ]);
   });
 

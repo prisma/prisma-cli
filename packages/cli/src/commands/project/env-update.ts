@@ -1,10 +1,5 @@
 /** The `project env update` command. */
-import {
-  type Block,
-  defineCommand,
-  type Presentations,
-  positional,
-} from "@prisma/cli-engine";
+import { type Block, defineCommand, type Presentations, positional, noDataLines } from "@prisma/cli-engine";
 import { CliStructuredError, ok } from "@prisma/cli-engine/protocol";
 import {
   formatScopeFlag,
@@ -20,7 +15,6 @@ import {
 import { runEnvUpdateFile } from "../../controllers/app-env-file";
 import { formatScopeLabel } from "../../lib/app/env-config";
 import { runCommand, userChoice } from "../../lib/app/env-errors";
-import { noDataLines } from "../../output/data-lines";
 import type { EnvUpdateResult } from "../../types/app-env";
 import { operationContext } from "./context";
 import {

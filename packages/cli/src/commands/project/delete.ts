@@ -1,10 +1,5 @@
 /** The `project delete` command. */
-import {
-  type Block,
-  defineCommand,
-  type Presentations,
-  positional,
-} from "@prisma/cli-engine";
+import { type Block, defineCommand, type Presentations, positional, noDataLines } from "@prisma/cli-engine";
 import type { Diagnostic } from "@prisma/cli-engine/protocol";
 import { ok } from "@prisma/cli-engine/protocol";
 import { cleanupLocalPinForProject } from "../../controllers/project";
@@ -13,7 +8,6 @@ import {
   resolveProjectForSetup,
   toProjectSummary,
 } from "../../lib/project/setup";
-import { noDataLines } from "../../output/data-lines";
 import type { ProjectDeleteResult } from "../../types/project";
 import { resolveActiveWorkspace } from "../resources-shared/workspace";
 import { listWorkspaceProjects, operationContext } from "./context";

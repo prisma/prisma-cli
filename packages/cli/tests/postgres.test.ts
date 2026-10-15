@@ -548,7 +548,9 @@ describe("prisma postgres show", () => {
         { label: "connections", value: "0" },
       ],
     });
-    expect(result.presented?.presentation.stdout).toContain("status\t");
+    expect(result.presented?.presentation.stdout).not.toContainEqual(
+      expect.stringMatching(/^status\t/),
+    );
   });
 
   it("fails when the follow-up read says the database is gone", async () => {
@@ -1124,10 +1126,6 @@ describe("prisma postgres usage", () => {
       "project\tBilling",
       "database\tacme-production",
       "id\tdb_1",
-      "period start\t",
-      "period end\t",
-      "operations\t",
-      "storage\t",
       "generated\t2026-07-01T00:00:00.000Z",
     ]);
   });

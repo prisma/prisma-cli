@@ -1,12 +1,7 @@
 /** The `postgres delete` command. */
-import {
-  type Block,
-  defineCommand,
-  type Presentations,
-} from "@prisma/cli-engine";
+import { type Block, defineCommand, type Presentations, noDataLines } from "@prisma/cli-engine";
 import { ok } from "@prisma/cli-engine/protocol";
 import { resolveDatabase } from "../../controllers/database";
-import { noDataLines } from "../../output/data-lines";
 import type { DatabaseDeleteResult } from "../../types/database";
 import {
   branchFlag,

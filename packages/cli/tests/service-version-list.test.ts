@@ -41,8 +41,8 @@ describe("prisma service version list", () => {
       ],
     });
     expect(result.presented?.presentation.stdout).toEqual([
-      "dep_2\trunning\t2026-08-02T00:00:00.000Z\tyes",
-      "dep_1\tstopped\t2026-08-01T00:00:00.000Z\t",
+      "dep_2\trunning\t2026-08-02T00:00:00.000Z\ttrue",
+      "dep_1\tstopped\t2026-08-01T00:00:00.000Z\tfalse",
     ]);
   });
 

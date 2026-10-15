@@ -1,10 +1,5 @@
 /** The `project env delete` command. */
-import {
-  type Block,
-  defineCommand,
-  type Presentations,
-  positional,
-} from "@prisma/cli-engine";
+import { type Block, defineCommand, type Presentations, positional, noDataLines } from "@prisma/cli-engine";
 import { CliStructuredError, ok } from "@prisma/cli-engine/protocol";
 import { formatScopeFlag } from "../../controllers/app-env";
 import {
@@ -13,7 +8,6 @@ import {
 } from "../../controllers/app-env-api";
 import { formatScopeLabel } from "../../lib/app/env-config";
 import { runCommand, userChoice } from "../../lib/app/env-errors";
-import { noDataLines } from "../../output/data-lines";
 import { scopeLabel } from "../../presenters/app-env";
 import type { EnvRmResult } from "../../types/app-env";
 import {

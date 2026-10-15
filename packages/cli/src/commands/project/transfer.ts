@@ -1,12 +1,5 @@
 /** The `project transfer` command. */
-import {
-  type Block,
-  defineCommand,
-  flag,
-  type Presentations,
-  positional,
-  SERVICE_TOKEN_ENV_VAR,
-} from "@prisma/cli-engine";
+import { type Block, defineCommand, flag, type Presentations, positional, SERVICE_TOKEN_ENV_VAR, noDataLines } from "@prisma/cli-engine";
 import type { Diagnostic } from "@prisma/cli-engine/protocol";
 import { CliStructuredError, ok } from "@prisma/cli-engine/protocol";
 import {
@@ -31,7 +24,6 @@ import {
   resolveProjectForSetup,
   toProjectSummary,
 } from "../../lib/project/setup";
-import { noDataLines } from "../../output/data-lines";
 import type { ProjectTransferResult } from "../../types/project";
 import { resolveActiveWorkspace } from "../resources-shared/workspace";
 import {

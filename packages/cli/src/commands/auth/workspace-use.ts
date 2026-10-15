@@ -12,7 +12,6 @@ import { CliStructuredError, ok } from "@prisma/cli-engine/protocol";
 import { sessionsForDisplay } from "../../auth/credential-manager";
 import { environmentCredentialInForce } from "../../auth/service-token";
 import { CLI_NAME } from "../../cli-name";
-import { fieldLines } from "../../output/data-lines";
 import { ENVIRONMENT_CREDENTIAL_NOTICE } from "./credential-card";
 import {
   requireSession,
@@ -86,7 +85,7 @@ function usePresentations(
           ]
         : []),
     ],
-    stdout: () => fieldLines(rows),
+    stdout: () => [spec.session.workspaceId],
     next: () => [
       {
         kind: "run-command",

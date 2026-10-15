@@ -1,15 +1,8 @@
 /** The `postgres backup restore` command. */
-import {
-  type Block,
-  defineCommand,
-  flag,
-  type Presentations,
-  positional,
-} from "@prisma/cli-engine";
+import { type Block, defineCommand, flag, type Presentations, positional, noDataLines } from "@prisma/cli-engine";
 import { CliStructuredError, ok } from "@prisma/cli-engine/protocol";
 import { CLI_NAME } from "../../cli-name";
 import { resolveDatabase } from "../../controllers/database";
-import { noDataLines } from "../../output/data-lines";
 import type { DatabaseRestoreResult } from "../../types/database";
 import { branchFlag, projectFlag, resolvePostgresContext } from "./context";
 import type { FieldRow } from "./presentation";

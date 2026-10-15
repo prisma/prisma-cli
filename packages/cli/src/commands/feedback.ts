@@ -1,3 +1,4 @@
+import { noDataLines } from "@prisma/cli-engine";
 import type { Presentations } from "@prisma/cli-engine";
 import { defineCommand, flag, positional } from "@prisma/cli-engine";
 import { CliStructuredError, ok } from "@prisma/cli-engine/protocol";
@@ -8,7 +9,6 @@ import {
   unreadableBodyDetail,
 } from "../lib/feedback";
 import { getCliVersion } from "../lib/version";
-import { noDataLines } from "../output/data-lines";
 
 const DEFAULT_FEEDBACK_ENDPOINT =
   "https://hiieirp2pwqnjvq9axzyg6d0.fra.prisma.build/feedback";

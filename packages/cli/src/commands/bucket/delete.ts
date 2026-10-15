@@ -1,11 +1,6 @@
 /** The `bucket delete` command. */
-import {
-  type Block,
-  defineCommand,
-  type Presentations,
-} from "@prisma/cli-engine";
+import { type Block, defineCommand, type Presentations, noDataLines } from "@prisma/cli-engine";
 import { CliStructuredError, ok } from "@prisma/cli-engine/protocol";
-import { noDataLines } from "../../output/data-lines";
 import type { BucketDeleteResult } from "../../types/bucket";
 import {
   bucketPositional,

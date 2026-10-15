@@ -1,13 +1,13 @@
 /** The `auth workspace logout` command: ends one workspace session. */
 import {
   defineCommand,
+  noDataLines,
   type Presentations,
   positional,
 } from "@prisma/cli-engine";
 import { ok } from "@prisma/cli-engine/protocol";
 import { environmentCredentialInForce } from "../../auth/service-token";
 import { CLI_NAME } from "../../cli-name";
-import { fieldLines } from "../../output/data-lines";
 import { ENVIRONMENT_CREDENTIAL_NOTICE } from "./credential-card";
 import {
   requireSession,
@@ -62,7 +62,9 @@ function logoutPresentations(
           ]
         : []),
     ],
-    stdout: () => fieldLines(rows),
+    stdout: noDataLines(
+      "Ending a workspace session has no data; its exit code is the result.",
+    ),
     next: () => [
       {
         kind: "run-command",

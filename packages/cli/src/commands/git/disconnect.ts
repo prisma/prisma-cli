@@ -1,9 +1,5 @@
 /** The `git disconnect` command. */
-import {
-  type Block,
-  defineCommand,
-  type Presentations,
-} from "@prisma/cli-engine";
+import { type Block, defineCommand, type Presentations, noDataLines } from "@prisma/cli-engine";
 import { ok } from "@prisma/cli-engine/protocol";
 import {
   readFirstSourceRepository,
@@ -11,7 +7,6 @@ import {
   repoNotConnectedError,
   toRepositoryConnection,
 } from "../../controllers/project";
-import { noDataLines } from "../../output/data-lines";
 import type { ProjectRepositoryConnectionResult } from "../../types/project";
 import { projectFlag, resolveGitContext } from "./context";
 

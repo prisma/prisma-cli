@@ -1,6 +1,7 @@
+import { noDataLines } from "@prisma/cli-engine";
 import type { Block, Presentations } from "@prisma/cli-engine";
 import type { NextAction } from "@prisma/cli-engine/protocol";
-import { fieldLines, noDataLines } from "../../output/data-lines";
+import { fieldLines } from "../../output/data-lines";
 import { adviceAction, runCommandAction } from "./errors";
 import type {
   ServiceCreateResult,
@@ -67,6 +68,13 @@ function domainDnsRows(domain: ServiceDomainSummary): FieldRow[] {
     label: `dns ${record.type}`,
     value: `${record.name} -> ${record.value}${record.ttl === null ? "" : ` (ttl ${record.ttl})`}`,
   }));
+}
+
+/** A DNS record as data: the fields a script hands to its DNS provider. */
+function dnsRecordFields(
+  record: ServiceDomainSummary["dnsRecords"][number],
+): string[] {
+  return [record.type, record.name, record.value];
 }
 
 function domainFailureRows(domain: ServiceDomainSummary): FieldRow[] {
@@ -235,7 +243,7 @@ export function versionListPresentations(
           version.id,
           version.status,
           version.createdAt,
-          version.live ? "yes" : "",
+          version.live === null ? "" : String(version.live),
         ].join("\t"),
       ),
     json: () => result,
@@ -294,7 +302,18 @@ export function versionShowPresentations(
     { label: "created", value: result.version.createdAt },
   ];
   return {
-    stdout: () => fieldLines(rows),
+    stdout: () =>
+      fieldLines([
+        { label: "service", value: result.service?.name ?? "" },
+        { label: "version", value: result.version.id },
+        { label: "status", value: result.version.status },
+        { label: "url", value: result.version.url ?? "" },
+        {
+          label: "live",
+          value: result.version.live === null ? "" : String(result.version.live),
+        },
+        { label: "created", value: result.version.createdAt },
+      ]),
     json: () => result,
     next: () => [],
     human: () => [title("Showing service version details."), fields(rows)],
@@ -505,7 +524,7 @@ export function domainAddPresentations(
   return {
     stdout: () =>
       result.domain.dnsRecords.map((record) =>
-        [record.type, record.name, record.value].join("\t"),
+        dnsRecordFields(record).join("\t"),
       ),
     json: () => result,
     human: () => [
@@ -538,15 +557,18 @@ export function domainShowPresentations(
   result: ServiceDomainShowResult,
 ): Presentations {
   return {
-    stdout: () =>
-      fieldLines([
+    stdout: () => [
+      ...fieldLines([
         { label: "hostname", value: result.domain.hostname },
         { label: "status", value: result.domain.status },
         ...domainFailureRows(result.domain),
         { label: "cert expires", value: result.domain.certExpiresAt ?? "" },
         { label: "created", value: result.domain.createdAt },
-        ...domainDnsRows(result.domain),
       ]),
+      ...result.domain.dnsRecords.map((record) =>
+        ["dns", ...dnsRecordFields(record)].join("\t"),
+      ),
+    ],
     json: () => result,
     human: () => [
       title("Showing custom domain status."),

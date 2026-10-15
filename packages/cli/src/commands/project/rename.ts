@@ -1,17 +1,11 @@
 /** The `project rename` command. */
-import {
-  defineCommand,
-  flag,
-  type Presentations,
-  positional,
-} from "@prisma/cli-engine";
+import { defineCommand, flag, type Presentations, positional, noDataLines } from "@prisma/cli-engine";
 import { ok } from "@prisma/cli-engine/protocol";
 import { createManagementProjectProvider } from "../../lib/project/provider";
 import {
   isValidProjectSetupName,
   projectSetupNameRequiredError,
 } from "../../lib/project/setup";
-import { noDataLines } from "../../output/data-lines";
 import type { ProjectRenameResult } from "../../types/project";
 import { resolveActiveWorkspace } from "../resources-shared/workspace";
 import { resolvePinnedProject } from "./context";
