@@ -68,6 +68,13 @@ export interface Presentations {
   readonly next: () => readonly NextAction[];
 }
 
+/** The `stdout` of a command whose only result is that it succeeded,
+ *  such as a delete. The reason says why the command has no data, where
+ *  its presentation is defined. */
+export function noDataLines(_reason: string): () => readonly string[] {
+  return () => [];
+}
+
 /**
  * What happened: it selects the glyph (✔ ✘ ⚠ ℹ) and carries a default
  * Tone of the same name. Separate from Tone because a failure can be

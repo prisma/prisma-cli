@@ -70,6 +70,23 @@ describe("a piped stdout", () => {
     expect(result.stderr).toContain("DEMO.BROKEN");
   });
 
+  test("gets the bare version for --version", async () => {
+    const result = await cli().run(["--version"], PIPED);
+
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout).toBe("0.0.0\n");
+    expect(result.stderr).toBe("");
+  });
+
+  test("gets the help card for --help, with nothing on stderr", async () => {
+    const result = await cli().run(["list", "--help"], PIPED);
+
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout).toContain("prisma-test list");
+    expect(result.stdout).toContain("Usage");
+    expect(result.stderr).toBe("");
+  });
+
   test("gets a human usage error for an unknown command", async () => {
     const result = await cli().run(["frobnicate"], PIPED);
 

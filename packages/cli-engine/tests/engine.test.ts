@@ -39,6 +39,7 @@ describe("main export", () => {
       "exitWithChildStatus",
       "flag",
       "loadConfig",
+      "noDataLines",
       "noSessionForWorkspaceError",
       "positional",
       "readActiveAccessToken",

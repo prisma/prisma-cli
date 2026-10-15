@@ -5,7 +5,7 @@
  */
 import type { MountedTree } from "../command-family";
 import { defineCommand } from "../commands";
-import type { Presentations } from "../presentation";
+import { noDataLines, type Presentations } from "../presentation";
 import { CliStructuredError, notOk, ok } from "../protocol";
 import { resolveGating, type TelemetryStatusReason } from "./gating";
 import { readUserConfig, userConfigPath, writeUserConfig } from "./user-config";
@@ -72,13 +72,16 @@ export function statusSummaryLine(status: TelemetryStatus): string {
   return `Telemetry is ${status.enabled ? "enabled" : "disabled"}: ${REASON_EXPLANATION[status.reason]}`;
 }
 
+/** `key<TAB>value` data lines; the reason is its code, such as
+ *  `stored-opt-out`, which is what a script compares against. */
 export function formatTelemetryStatusLines(
   status: TelemetryStatus,
 ): readonly string[] {
   return [
-    statusSummaryLine(status),
-    `Config file: ${status.configPath}`,
-    `Installation ID: ${status.installationIdStored ? "stored" : "not stored"}`,
+    `enabled\t${status.enabled}`,
+    `reason\t${status.reason}`,
+    `config file\t${status.configPath}`,
+    `installation id stored\t${status.installationIdStored}`,
   ];
 }
 
@@ -103,12 +106,13 @@ function statusPresentations(status: TelemetryStatus): Presentations {
   };
 }
 
-/** One confirmation line, echoed on stdout, with the stored decision as
- *  the json result. */
+/** One confirmation line, with the stored decision as the json result. */
 function consentPresentations(line: string, json: unknown): Presentations {
   return {
     human: () => [{ kind: "summary", status: "ok", text: line }],
-    stdout: () => [line],
+    stdout: noDataLines(
+      "Storing a preference has no data; telemetry status reports it.",
+    ),
     json: () => json,
     next: () => [],
   };
