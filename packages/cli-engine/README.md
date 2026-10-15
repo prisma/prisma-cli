@@ -10,6 +10,20 @@ Every command describes its output once, as blocks, and the engine renders it in
 - `@prisma/cli-engine/protocol` — the wire types for machine-readable (JSON) output.
 - `@prisma/cli-engine/testing` — the test harness for running commands in-process.
 
+## Mounting commands
+
+`createCli` takes commands by path. Every path with more than one word needs its group declared in `groups`, and the group's `brief` is its row on the parent's help card. A path can be a command and a group at once:
+
+```ts
+createCli({
+  groups: { dev: { brief: "Run the app locally. Start it, print URLs, stop it" } },
+  commands: { dev, "dev url": devUrl, "dev stop": devStop },
+  // ...
+});
+```
+
+`dev module.ts` runs `dev` with the positional `module.ts`, and `dev url gateway` runs `dev url`. When the word after `dev` names a command beneath it, that command runs, so `dev url` never reaches `dev` as a positional. To pass such a word as the positional, put `--` before it: `dev -- url` runs `dev` with `url`. A retired path declared as a redirect, such as `dev up`, wins over the positional the same way. `dev --help` shows the `dev` command's help and lists `url` and `stop`.
+
 ## Statement prompts
 
 A command asks what the user means to happen to something with `ctx.prompt.statement`. The answer is a verb and free text, and the command validates it.
