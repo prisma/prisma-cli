@@ -41,14 +41,7 @@ describe("the declared bin", () => {
         timeout: 60_000,
       },
     );
-    // Piped stdout is not a TTY, so the shell answers in its JSON
-    // stream; the terminal frame carries the version.
-    const frame = JSON.parse(stdout.trim()) as {
-      kind: string;
-      envelope: { ok: boolean; result: { version: string } };
-    };
-    expect(frame.kind).toBe("result");
-    expect(frame.envelope.ok).toBe(true);
-    expect(frame.envelope.result.version).toBe(packageJson.version);
+    // A pipe gets the plain data line, not JSON: the bare version.
+    expect(stdout).toBe(`${packageJson.version}\n`);
   });
 });
