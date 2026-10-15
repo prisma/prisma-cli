@@ -136,7 +136,7 @@ async function runEngine(
     groups: {},
     commands: { toy: command },
   });
-  return engine.execute(["toy"], runtime, hooks);
+  return engine.execute(["toy", "--json"], runtime, hooks);
 }
 
 const succeed = (

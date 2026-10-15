@@ -351,7 +351,7 @@ export class EngineImpl implements Engine {
     runtime: Runtime,
     hooks: RunHooks,
   ): Promise<number> {
-    const format = sniffFormat(argv, runtime);
+    const format = sniffFormat(argv);
     const state: RunState = {
       commandId: "",
       docsBaseUrl: undefined,

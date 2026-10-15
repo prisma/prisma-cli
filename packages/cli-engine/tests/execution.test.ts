@@ -311,10 +311,11 @@ describe("completed commands", () => {
 });
 
 describe("format selection", () => {
-  test("json is auto-selected when stdout is not a tty", async () => {
+  test("human is selected when stdout is not a tty: the pipe gets the data lines", async () => {
     const result = await makeCli().run(["greet", "world"]);
 
-    expect(result.json[result.json.length - 1]?.kind).toBe("result");
+    expect(result.json).toEqual([]);
+    expect(result.stdout).toBe("Hello world\n");
   });
 
   test("human is auto-selected when stdout is a tty", async () => {
@@ -983,7 +984,7 @@ describe("credentials that cannot be read", () => {
         arch: "x64",
       },
     };
-    const exitCode = await cli.run(["locked"], runtime);
+    const exitCode = await cli.run(["locked", "--json"], runtime);
 
     expect(exitCode).toBe(2);
     const frame = JSON.parse(stdoutText.trim());
@@ -1322,7 +1323,7 @@ describe("help examples", () => {
 
   test("json mode --help keeps stdout frame-clean: help prose goes to stderr", async () => {
     const cli = createTestCli({ commands: { greet: greet }, now: EPOCH });
-    const result = await cli.run(["greet", "--help"]);
+    const result = await cli.run(["greet", "--help", "--json"]);
 
     expect(result.exitCode).toBe(0);
     expect(result.stdout).toBe("");
@@ -1412,7 +1413,7 @@ describe("--version", () => {
 
   test("emits a single result frame in json mode", async () => {
     const cli = createTestCli({ commands: { greet: greet }, now: EPOCH });
-    const result = await cli.run(["--version"]);
+    const result = await cli.run(["--version", "--json"]);
 
     expect(result.exitCode).toBe(0);
     expect(result.json).toHaveLength(1);

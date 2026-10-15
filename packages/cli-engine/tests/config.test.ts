@@ -1396,7 +1396,7 @@ describe("needs.config", { timeout: 60_000 }, () => {
     });
     const reads = { value: 0 };
     const { runtime, stdout } = jsonRuntime(join(FIXTURES, "unmarked"), reads);
-    const exitCode = await cli.run(["plain"], runtime);
+    const exitCode = await cli.run(["plain", "--json"], runtime);
     expect(exitCode).toBe(0);
     expect(reads.value).toBe(0);
     const frame = JSON.parse(stdout().trim());
@@ -1414,7 +1414,7 @@ describe("needs.config", { timeout: 60_000 }, () => {
     });
     const reads = { value: 0 };
     const { runtime, stdout } = jsonRuntime(join(FIXTURES, "unmarked"), reads);
-    const exitCode = await cli.run(["show"], runtime);
+    const exitCode = await cli.run(["show", "--json"], runtime);
     expect(exitCode).toBe(2);
     expect(ran.value).toBe(false);
     expect(reads.value).toBe(1);
@@ -1957,7 +1957,8 @@ describe("--config on the command line", { timeout: 60_000 }, () => {
 
   async function usageFailure(argv: readonly string[]) {
     const { cli, asked } = spyingCli();
-    const run = await cli.run(argv);
+    const [command, ...rest] = argv;
+    const run = await cli.run([command, "--json", ...rest]);
     const frame = run.json[0];
     if (frame?.kind !== "result" || frame.envelope.ok) {
       throw new Error(`expected an errored result frame, got ${run.stderr}`);
@@ -2025,7 +2026,7 @@ describe("--config on the command line", { timeout: 60_000 }, () => {
         ),
     });
     const cli = createTestCli({ commands: { echo } });
-    const run = await cli.run(["echo", "--message", "--config="]);
+    const run = await cli.run(["echo", "--json", "--message", "--config="]);
     expect(run.exitCode).toBe(2);
     const frame = run.json[0];
     if (frame?.kind !== "result" || frame.envelope.ok) {

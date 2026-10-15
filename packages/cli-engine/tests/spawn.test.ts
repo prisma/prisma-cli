@@ -74,15 +74,15 @@ describe("structured output for commands that may spawn", () => {
     expect(result.spawns[0]?.output).toBe("diagnostic");
   });
 
-  test("a non-TTY caller auto-selects structured output", async () => {
+  test("a non-TTY caller without --json keeps the inherited handoff", async () => {
     const cli = createTestCli({ commands: { converge }, now: CLOCK });
 
     const result = await cli.run(["converge"]);
 
     expect(result.exitCode).toBe(0);
-    expect(result.json).toHaveLength(1);
+    expect(result.json).toEqual([]);
     expect(result.spawns).toHaveLength(1);
-    expect(result.spawns[0]?.output).toBe("diagnostic");
+    expect(result.spawns[0]?.output).toBe("inherit");
   });
 
   test("a Composer-shaped deployment summary reaches the terminal result", async () => {
@@ -115,7 +115,7 @@ describe("structured output for commands that may spawn", () => {
     });
     const cli = createTestCli({ commands: { deploy }, now: CLOCK });
 
-    const result = await cli.run(["deploy"]);
+    const result = await cli.run(["deploy", "--json"]);
 
     expect(result.exitCode).toBe(0);
     expect(result.json.at(-1)).toMatchObject({
@@ -176,7 +176,7 @@ describe("the child's status", () => {
       spawnScript: () => ({ exitCode: null, signal: "SIGINT" }),
     });
 
-    const result = await cli.run(["converge"]);
+    const result = await cli.run(["converge", "--json"]);
 
     expect(result.exitCode).toBe(130);
     expect(result.json.at(-1)).toMatchObject({
@@ -221,7 +221,7 @@ describe("the child's status", () => {
       spawnScript: () => ({ exitCode: 5, signal: null }),
     });
 
-    const result = await cli.run(["dev"]);
+    const result = await cli.run(["dev", "--json"]);
 
     expect(result.exitCode).toBe(5);
     expect(result.json.at(-1)).toMatchObject({
@@ -456,7 +456,7 @@ describe("the spawn request", () => {
     });
     const cli = createTestCli({ commands: { undeclared }, now: CLOCK });
 
-    const result = await cli.run(["undeclared"]);
+    const result = await cli.run(["undeclared", "--json"]);
 
     expect(result.exitCode).toBe(1);
     expect(JSON.stringify(result.json)).toContain("without declaring maySpawn");
@@ -1431,7 +1431,7 @@ describe("unknown terminations are never success", () => {
       spawnScript: () => ({ exitCode: null, signal: null }),
     });
 
-    const result = await cli.run(["converge"]);
+    const result = await cli.run(["converge", "--json"]);
 
     expect(result.exitCode).toBe(1);
     expect(result.json.at(-1)).toMatchObject({

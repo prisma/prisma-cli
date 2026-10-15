@@ -145,7 +145,12 @@ describe("consent tokens", () => {
       commands: { probe: promptProbe(dropDatabase) },
       now: EPOCH,
     });
-    const result = await cli.run(["probe", "--confirm", "staging-db"]);
+    const result = await cli.run([
+      "probe",
+      "--confirm",
+      "staging-db",
+      "--json",
+    ]);
 
     expect(result.exitCode).toBe(2);
     expect(errorOf(result)?.code).toBe("CLI.CONSENT_REQUIRED");
@@ -157,7 +162,7 @@ describe("consent tokens", () => {
       commands: { probe: promptProbe(dropDatabase) },
       now: EPOCH,
     });
-    const result = await cli.run(["probe"]);
+    const result = await cli.run(["probe", "--json"]);
 
     expect(result.exitCode).toBe(2);
     expect(errorOf(result)?.code).toBe("CLI.CONSENT_REQUIRED");
@@ -196,7 +201,7 @@ describe("consent tokens", () => {
     const once = await createTestCli({
       commands: { probe: twice },
       now: EPOCH,
-    }).run(["probe", "--confirm", "prod-db"]);
+    }).run(["probe", "--confirm", "prod-db", "--json"]);
     expect(once.exitCode).toBe(2);
     expect(errorOf(once)?.code).toBe("CLI.CONSENT_REQUIRED");
 
