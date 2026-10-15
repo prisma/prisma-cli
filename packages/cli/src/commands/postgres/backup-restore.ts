@@ -12,6 +12,7 @@ import { resolveDatabase } from "../../controllers/database";
 import type { DatabaseRestoreResult } from "../../types/database";
 import { branchFlag, projectFlag, resolvePostgresContext } from "./context";
 import type { FieldRow } from "./presentation";
+import { noDataLines } from "../../output/data-lines";
 
 const CONSENT_QUESTION =
   "Restoring immediately and irreversibly overwrites all data in the target database, so it requires the exact target database id.";
@@ -30,7 +31,9 @@ function restorePresentations(
   ];
 
   return {
-    stdout: () => [],
+    stdout: noDataLines(
+      "A restore overwrites an existing database and creates nothing new to pass on.",
+    ),
     json: () => result,
     human: (): Block[] => [
       {

@@ -32,12 +32,15 @@ import {
   roleFlag,
   variableFieldRows,
 } from "./env-shared";
+import { noDataLines } from "../../output/data-lines";
 
 const TITLE = "Replacing the environment variable's value.";
 
 function singlePresentations(result: EnvUpdateResult): Presentations {
   return {
-    stdout: () => [],
+    stdout: noDataLines(
+      "Replacing a value has no data; the variable keeps its key and id.",
+    ),
     json: () => result,
     next: () => [],
     human: (): Block[] => [

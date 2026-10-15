@@ -14,6 +14,7 @@ import {
 import type { ProjectShowResult } from "../../types/project";
 import { resolveActiveWorkspace } from "../resources-shared/workspace";
 import { listWorkspaceProjects, operationContext } from "./context";
+import { fieldLines } from "../../output/data-lines";
 
 interface FieldRow {
   readonly label: string;
@@ -92,8 +93,7 @@ function showPresentations(
           },
       { kind: "fields", rows },
     ],
-    stdout: () =>
-      stdoutFieldRows(result, cwd).map((row) => `${row.label}: ${row.value}`),
+    stdout: () => fieldLines(stdoutFieldRows(result, cwd)),
     next: () =>
       result.project === null
         ? buildProjectSetupNextActions({

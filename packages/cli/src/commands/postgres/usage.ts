@@ -23,6 +23,7 @@ import {
   formatUsageMetric,
   usageMetricValue,
 } from "./presentation";
+import { fieldLines } from "../../output/data-lines";
 
 const TITLE = "Showing database usage metrics.";
 
@@ -74,8 +75,7 @@ function usagePresentations(result: DatabaseUsageResult): Presentations {
       { kind: "summary", status: "info", text: TITLE },
       { kind: "fields", rows },
     ],
-    stdout: () =>
-      stdoutFieldRows(result).map((row) => `${row.label}: ${row.value}`),
+    stdout: () => fieldLines(stdoutFieldRows(result)),
   };
 }
 

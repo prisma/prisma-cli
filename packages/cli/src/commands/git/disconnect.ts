@@ -13,12 +13,15 @@ import {
 } from "../../controllers/project";
 import type { ProjectRepositoryConnectionResult } from "../../types/project";
 import { projectFlag, resolveGitContext } from "./context";
+import { noDataLines } from "../../output/data-lines";
 
 function disconnectPresentations(
   result: ProjectRepositoryConnectionResult,
 ): Presentations {
   return {
-    stdout: () => [],
+    stdout: noDataLines(
+      "Disconnecting a repository has no data; its exit code is the result.",
+    ),
     json: () => result,
     next: () => [],
     human: (): Block[] => [

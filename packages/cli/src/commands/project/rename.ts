@@ -14,10 +14,13 @@ import {
 import type { ProjectRenameResult } from "../../types/project";
 import { resolveActiveWorkspace } from "../resources-shared/workspace";
 import { resolvePinnedProject } from "./context";
+import { noDataLines } from "../../output/data-lines";
 
 function renamePresentations(result: ProjectRenameResult): Presentations {
   return {
-    stdout: () => [],
+    stdout: noDataLines(
+      "A rename has no data; the new name is the one the user typed.",
+    ),
     json: () => result,
     next: () => [],
     human: () => [

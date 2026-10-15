@@ -13,13 +13,16 @@ import {
   projectFlag,
   resolvePostgresContext,
 } from "./context";
+import { noDataLines } from "../../output/data-lines";
 
 const CONSENT_QUESTION =
   "Deleting this database is destructive and requires the exact id.";
 
 function deletePresentations(result: DatabaseDeleteResult): Presentations {
   return {
-    stdout: () => [],
+    stdout: noDataLines(
+      "A delete has no data; its exit code is the result.",
+    ),
     json: () => result,
     next: () => [],
     human: (): Block[] => [

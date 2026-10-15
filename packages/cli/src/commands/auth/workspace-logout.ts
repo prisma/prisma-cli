@@ -15,6 +15,7 @@ import {
   sessionUser,
   sessionUserLabel,
 } from "./session-ref";
+import { fieldLines } from "../../output/data-lines";
 
 export interface WorkspaceLogoutResult {
   readonly workspace: { readonly id: string; readonly name: string | null };
@@ -61,7 +62,7 @@ function logoutPresentations(
           ]
         : []),
     ],
-    stdout: () => rows.map((row) => `${row.label}: ${row.value}`),
+    stdout: () => fieldLines(rows),
     next: () => [
       {
         kind: "run-command",

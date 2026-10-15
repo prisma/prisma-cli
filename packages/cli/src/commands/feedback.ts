@@ -8,6 +8,7 @@ import {
   unreadableBodyDetail,
 } from "../lib/feedback";
 import { getCliVersion } from "../lib/version";
+import { noDataLines } from "../output/data-lines";
 
 const DEFAULT_FEEDBACK_ENDPOINT =
   "https://hiieirp2pwqnjvq9axzyg6d0.fra.prisma.build/feedback";
@@ -92,7 +93,9 @@ function emailInvalidError(value: string): CliStructuredError {
 
 function feedbackPresentations(result: FeedbackResult): Presentations {
   return {
-    stdout: () => [],
+    stdout: noDataLines(
+      "Sending feedback has no data; its exit code says whether it was sent.",
+    ),
     json: () => result,
     next: () => [],
     human: () => [

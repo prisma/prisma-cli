@@ -26,6 +26,7 @@ import {
   unmanagedDirectoryDiagnostics,
   versionConflictDiagnostics,
 } from "./skills/sync";
+import { noDataLines } from "../output/data-lines";
 
 export const POSTINSTALL_SCRIPT = "prisma skills sync || exit 0";
 
@@ -833,7 +834,9 @@ function initPresentations(
   return {
     json: () => result,
     next: () => postinstall.next ?? [],
-    stdout: () => [],
+    stdout: noDataLines(
+      "init writes files into the project; the card names them, and no value is left to pass on.",
+    ),
     human: (ui) => {
       const skillsBlocks =
         result.skills.sync === null

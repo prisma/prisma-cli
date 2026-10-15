@@ -11,13 +11,16 @@ import {
   LIST_BUCKETS_COMMAND,
   resolveBucketProviderOnly,
 } from "./context";
+import { noDataLines } from "../../output/data-lines";
 
 const CONSENT_QUESTION =
   "Deleting this bucket permanently removes all objects and access keys.";
 
 function deletePresentations(result: BucketDeleteResult): Presentations {
   return {
-    stdout: () => [],
+    stdout: noDataLines(
+      "A delete has no data; its exit code is the result.",
+    ),
     json: () => result,
     next: () => [],
     human: (): Block[] => [

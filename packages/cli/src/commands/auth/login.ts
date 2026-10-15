@@ -21,6 +21,7 @@ import {
   sessionUser,
   sessionUserLabel,
 } from "./session-ref";
+import { fieldLines } from "../../output/data-lines";
 
 const TITLE = "Starting an authenticated CLI session.";
 const LOGIN_STEP = "Sign in via your browser";
@@ -114,7 +115,7 @@ function presentationsFor(
             } as const,
           ]),
     ],
-    stdout: () => rows.map((row) => `${row.label}: ${row.value}`),
+    stdout: () => fieldLines(rows),
     next: () => nextActionsFor(spec.agentSetupTipCommand),
   };
 }

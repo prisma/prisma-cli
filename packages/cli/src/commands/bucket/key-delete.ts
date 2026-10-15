@@ -9,10 +9,13 @@ import { CliStructuredError, ok } from "@prisma/cli-engine/protocol";
 import { CLI_NAME } from "../../cli-name";
 import type { BucketKeyDeleteResult } from "../../types/bucket";
 import { bucketPositional, resolveBucketProviderOnly } from "./context";
+import { noDataLines } from "../../output/data-lines";
 
 function deletePresentations(result: BucketKeyDeleteResult): Presentations {
   return {
-    stdout: () => [],
+    stdout: noDataLines(
+      "A delete has no data; its exit code is the result.",
+    ),
     json: () => result,
     next: () => [],
     human: (): Block[] => [

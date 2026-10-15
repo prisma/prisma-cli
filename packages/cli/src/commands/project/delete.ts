@@ -17,13 +17,16 @@ import type { ProjectDeleteResult } from "../../types/project";
 import { resolveActiveWorkspace } from "../resources-shared/workspace";
 import { listWorkspaceProjects, operationContext } from "./context";
 import { localPinDiagnostics } from "./presentation";
+import { noDataLines } from "../../output/data-lines";
 
 const CONSENT_QUESTION =
   "Deleting a project is permanent, destroys its databases, and stops its apps, so it requires the exact project id.";
 
 function deletePresentations(result: ProjectDeleteResult): Presentations {
   return {
-    stdout: () => [],
+    stdout: noDataLines(
+      "A delete has no data; its exit code is the result.",
+    ),
     json: () => result,
     next: () => [],
     human: (): Block[] => [

@@ -39,6 +39,7 @@ import {
   type ProjectCommandContext,
 } from "./context";
 import { localPinDiagnostics } from "./presentation";
+import { noDataLines } from "../../output/data-lines";
 
 const CONSENT_QUESTION =
   "Transferring moves the project to another workspace and this workspace loses access, so it requires the exact project id.";
@@ -120,7 +121,9 @@ function transferPresentations(
   toWorkspace: string | undefined,
 ): Presentations {
   return {
-    stdout: () => [],
+    stdout: noDataLines(
+      "A transfer moves the project to another workspace and leaves nothing here to pass on.",
+    ),
     json: () => result,
     human: (): Block[] => [
       { kind: "summary", status: "ok", text: "Transferring project." },

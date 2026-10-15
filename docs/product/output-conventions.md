@@ -54,9 +54,9 @@ on stderr and the command's data lines on stdout, whether stdout is a
 terminal, a pipe, or a file. JSON is only ever explicit.
 
 ```bash
-$ prisma project list | head -3
-proj_cm3x…  shop
-proj_k91…   blog
+$ prisma project list | cut -f2
+proj_cm3x…
+proj_k91…
 $ curl "$(prisma service open shop)"
 $ prisma project list --json | jq '.result.items[].id'
 ```
@@ -91,9 +91,11 @@ Every command decides what its stdout carries in human format. The data lines
 are what a script or a person piping the command wants: values another command
 takes, with no labels, colour, or prose. Choose by what the command returns:
 
-- **A list:** one line per item. The first field is the value a follow-up
-  command takes, normally the item's id; the name follows. Fields are
-  separated by a tab. An empty list writes nothing.
+- **A list:** one line per item, its fields separated by a tab, in the order
+  the human table shows them. The fields always include the value a
+  follow-up command takes: the id, or the name where commands take a name.
+  Absent values are empty fields, never the placeholder words the table
+  shows. An empty list writes nothing.
 - **A show:** the resource's identifying value when one value identifies it
   (an id, a URL). Otherwise one `key<TAB>value` line per field, keys in the
   order the card shows them.

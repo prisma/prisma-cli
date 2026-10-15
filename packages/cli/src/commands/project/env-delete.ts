@@ -22,12 +22,15 @@ import {
   resolveEnvTarget,
   roleFlag,
 } from "./env-shared";
+import { noDataLines } from "../../output/data-lines";
 
 const TITLE = "Deleting the environment variable from the scope.";
 
 function deletePresentations(result: EnvRmResult): Presentations {
   return {
-    stdout: () => [],
+    stdout: noDataLines(
+      "A delete has no data; its exit code is the result.",
+    ),
     json: () => result,
     next: () => [],
     human: (): Block[] => [

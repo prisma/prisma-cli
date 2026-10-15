@@ -371,10 +371,10 @@ describe("prisma project show", () => {
     // fact per line, under the labels this command already uses when
     // the directory is not linked.
     expect(result.presented?.presentation.stdout).toEqual([
-      `local repo: ${cwd}`,
-      "workspace: Acme Inc",
-      "project: Billing",
-      "region: us-east-1",
+      `local repo\t${cwd}`,
+      "workspace\tAcme Inc",
+      "project\tBilling",
+      "region\tus-east-1",
     ]);
   });
 
@@ -403,9 +403,9 @@ describe("prisma project show", () => {
     });
     // "Not linked" is prose for a reader; stdout leaves the field empty.
     expect(result.presented?.presentation.stdout).toEqual([
-      `local repo: ${cwd}`,
-      "workspace: Acme Inc",
-      "project: ",
+      `local repo\t${cwd}`,
+      "workspace\tAcme Inc",
+      "project\t",
     ]);
   });
 

@@ -22,6 +22,7 @@ import {
   sessionUser,
   sessionUserLabel,
 } from "./session-ref";
+import { fieldLines } from "../../output/data-lines";
 
 export interface WorkspaceUseResult {
   readonly workspace: { readonly id: string; readonly name: string | null };
@@ -85,7 +86,7 @@ function usePresentations(
           ]
         : []),
     ],
-    stdout: () => rows.map((row) => `${row.label}: ${row.value}`),
+    stdout: () => fieldLines(rows),
     next: () => [
       {
         kind: "run-command",

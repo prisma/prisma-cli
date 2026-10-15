@@ -38,7 +38,7 @@ const TITLE = "Setting a new environment variable.";
 
 function singlePresentations(result: EnvAddResult): Presentations {
   return {
-    stdout: () => [],
+    stdout: () => (result.variable ? [result.variable.id] : []),
     json: () => result,
     next: () => [],
     human: (): Block[] => [

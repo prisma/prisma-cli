@@ -19,6 +19,7 @@ import {
   formatStatus,
   statusValue,
 } from "./presentation";
+import { fieldLines } from "../../output/data-lines";
 
 const TITLE = "Showing database metadata.";
 
@@ -58,8 +59,7 @@ function showPresentations(result: DatabaseShowResult): Presentations {
       { kind: "summary", status: "info", text: TITLE },
       { kind: "fields", rows },
     ],
-    stdout: () =>
-      stdoutFieldRows(result).map((row) => `${row.label}: ${row.value}`),
+    stdout: () => fieldLines(stdoutFieldRows(result)),
   };
 }
 

@@ -16,6 +16,7 @@ import {
   ENVIRONMENT_CREDENTIAL_NOTICE,
   UNVERIFIED_CREDENTIAL_NOTICE,
 } from "./credential-card";
+import { fieldLines } from "../../output/data-lines";
 
 const TITLE = "Showing the active authenticated identity.";
 
@@ -160,7 +161,7 @@ function presentationsFor(
           ]
         : []),
     ],
-    stdout: () => rows.map((row) => `${row.label}: ${row.value}`),
+    stdout: () => fieldLines(rows),
     next: () => (spec.credential === null ? [SIGN_IN] : []),
   };
 }

@@ -37,6 +37,7 @@ import {
   resolveGitContext,
 } from "./context";
 import { installWaitFailedError } from "./errors";
+import { noDataLines } from "../../output/data-lines";
 
 /** Where the deploy workflow's inputs and the minimal file are documented. */
 const WORKFLOW_DOCS_URL =
@@ -139,7 +140,9 @@ function connectPresentations(
 ): Presentations {
   const connection = result.repositoryConnection;
   return {
-    stdout: () => [],
+    stdout: noDataLines(
+      "Connecting a repository has no data to pass on; the repository is the one the user named.",
+    ),
     json: () => result,
     next: () => [
       {
