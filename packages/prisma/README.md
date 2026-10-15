@@ -72,7 +72,8 @@ npx prisma project env list --role preview
 | `postgres` | Create, inspect, back up, restore, and delete Prisma Postgres databases and their connections. |
 | `bucket` | Create, list, and delete object-store buckets and their access keys. |
 | `service` | Inspect services: versions, logs, domains, promote, roll back, delete. |
-| `dev`, `deploy` | Run a Composer app locally; deploy it to the platform. |
+| `dev`, `deploy` | Run a Composer app locally; deploy it to the platform. `dev url` prints a running node's local URL and `dev stop` stops the app. |
+| `emulator` | List the local emulators `prisma dev` runs services, databases and buckets on. |
 | `contract`, `db`, `migration`, `orm init`, `lsp` | The Prisma ORM workflow. |
 
 Common examples:

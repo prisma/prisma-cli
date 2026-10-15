@@ -333,11 +333,16 @@ own work:
    applies the schema, creates local stand-ins for declared buckets, starts
    the services, and prints a local URL. It watches built output and
    restarts a service when its build changes.
-2. Exercise the running app directly (for example with `curl` against the
-   printed URL) instead of reasoning about what the code would do.
-3. Stopping `dev` leaves local databases, buckets, and their data in place;
-   the next run is a warm start. `--fresh` wipes this app's local instances
-   and data first.
+2. Exercise the running app directly (for example with
+   `curl "$(prisma dev url <service>)"`) instead of reasoning about what the
+   code would do. `prisma dev url <node>` prints one node's local URL: a
+   service's HTTP URL, a database's connection string, or a bucket's S3
+   address. Use `prisma dev --detach` to start the app and get your shell
+   back.
+3. Stopping `dev` (Ctrl-C, or `prisma dev stop`) leaves local databases,
+   buckets, and their data in place; the next run is a warm start. `--fresh`
+   wipes this app's local instances and data first. `prisma emulator list`
+   shows every local instance on the machine.
 4. Deploying is the same pipeline pointed at the platform: switching from
    local to hosted is a configuration change, not a code change. Reach for
    `prisma deploy --stage <name>` only when you need a shareable URL or

@@ -84,7 +84,7 @@ The canonical command shape is:
 prisma <group> <action>
 ```
 
-The package includes project, environment-variable, service and service-version inspection, promotion, rollback, and deletion commands, plus the Prisma ORM (`contract`, `db`, `migration`, `orm init`) and Composer workflows (root `dev` and `deploy`), and the `postgres` and `bucket` resource groups. The product model intentionally avoids product-specific namespaces.
+The package includes project, environment-variable, service and service-version inspection, promotion, rollback, and deletion commands, plus the Prisma ORM (`contract`, `db`, `migration`, `orm init`) and Composer workflows (root `dev` and `deploy`, with `dev url`, `dev stop` and `emulator list`), and the `postgres` and `bucket` resource groups. The product model intentionally avoids product-specific namespaces.
 
 ## Documentation
 
