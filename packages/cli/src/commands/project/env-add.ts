@@ -20,7 +20,7 @@ import {
 import { runEnvAddFile } from "../../controllers/app-env-file";
 import { formatScopeLabel } from "../../lib/app/env-config";
 import { runCommand, userChoice } from "../../lib/app/env-errors";
-import type { EnvAddResult } from "../../types/app-env";
+import type { EnvAddResult, EnvSingleWriteResult } from "../../types/app-env";
 import { operationContext } from "./context";
 import {
   branchFlag,
@@ -36,9 +36,9 @@ import {
 
 const TITLE = "Setting a new environment variable.";
 
-function singlePresentations(result: EnvAddResult): Presentations {
+function singlePresentations(result: EnvSingleWriteResult): Presentations {
   return {
-    stdout: () => [],
+    stdout: () => [result.variable.id],
     json: () => result,
     next: () => [],
     human: (): Block[] => [
@@ -48,8 +48,7 @@ function singlePresentations(result: EnvAddResult): Presentations {
         rows: variableFieldRows(
           result.projectId,
           result.scope,
-          // biome-ignore lint/style/noNonNullAssertion: the single-write branch always carries the variable.
-          result.variable!,
+          result.variable,
         ),
       },
     ],
@@ -206,7 +205,7 @@ export const projectEnvAddCommand = defineCommand({
       throw apiCallError(`Failed to add ${input.key}`, response, error);
     }
 
-    const result: EnvAddResult = {
+    const result: EnvSingleWriteResult = {
       projectId,
       scope: resolved.descriptor,
       variable: toMetadata(

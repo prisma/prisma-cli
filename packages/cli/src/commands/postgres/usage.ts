@@ -11,6 +11,7 @@ import {
   resolveDatabase,
   USAGE_PERIOD_EXAMPLE_COMMAND,
 } from "../../controllers/database";
+import { fieldLines } from "../../output/data-lines";
 import type { DatabaseUsageResult } from "../../types/database";
 import {
   branchFlag,
@@ -74,8 +75,7 @@ function usagePresentations(result: DatabaseUsageResult): Presentations {
       { kind: "summary", status: "info", text: TITLE },
       { kind: "fields", rows },
     ],
-    stdout: () =>
-      stdoutFieldRows(result).map((row) => `${row.label}: ${row.value}`),
+    stdout: () => fieldLines(stdoutFieldRows(result)),
   };
 }
 

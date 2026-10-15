@@ -48,20 +48,85 @@ having to parse the delegated tool's human output.
 
 ## TTY and Piped Behavior
 
+The output format never depends on where stdout goes. Without `--json`,
+`--format json`, or `--format markdown`, every run is human output: blocks
+on stderr and the command's data lines on stdout, whether stdout is a
+terminal, a pipe, or a file. JSON is only ever explicit.
+
+```bash
+$ prisma project list | cut -f2
+proj_cm3x…
+proj_k91…
+$ curl "$(prisma service domain wait shop.acme.com)"
+$ prisma project list --json | jq '.envelope.result.items[].id'
+```
+
+No widely used CLI switches to JSON when piped (gh, aws, kubectl, gcloud, az,
+docker, supabase all keep their default format). A user who pipes a command
+expects the same values they saw, in a form `head`, `cut`, `xargs` and `$(…)`
+can take.
+
 Interactive TTY behavior:
 
 - human-oriented status and progress are visible on stderr
-- stdout is used only when the command emits data
+- stdout carries the command's data lines; when stdout and stderr are the same
+  terminal, the data lines are not written, because the card on stderr already
+  shows the same values
 - header framing, alignment, and color may be used when they improve scanability
 
 Non-TTY or piped behavior:
 
+- stdout carries exactly the command's data lines (see [Data Lines](#data-lines)),
+  with three exceptions: `--help` writes its help card to stdout, `--version`
+  writes the bare version, and a delegated child process writes its own output
+  to the stdout it inherits (see [Delegated child processes](#delegated-child-processes))
+- stderr still carries the human blocks, without color or animation
 - decorative output is suppressed
 - prompts are not shown
-- machine-readable output remains stable
-- headers collapse to plain text or are omitted when they add no value
+- a failure is a human error on stderr and a non-zero exit code; `--json`
+  turns it into a failure envelope on stdout
 
 This keeps pipes, captures, and automation clean.
+
+## Data Lines
+
+Every command decides what its stdout carries in human format. The data lines
+are what a script or a person piping the command wants: values another command
+takes, with no labels, colour, or prose. Choose by what the command returns:
+
+- **A list:** one line per item, its fields separated by a tab, in the order
+  the human table shows them. The fields always include the value a
+  follow-up command takes: the id, or the name where commands take a name.
+  Every line has every field, so a script can read them by position: an
+  absent value is an empty field, never the placeholder words the table
+  shows. An empty list writes nothing.
+- **A show:** one `key<TAB>value` line per field, keys in the order the card
+  shows them. A field whose value is absent is left out, so a script tests
+  for the key rather than for an empty value. A field that holds several
+  values, each with fields of its own, writes one line per value with the
+  key repeated and the value's fields tab-separated: `service domain show`
+  writes `dns<TAB>CNAME<TAB>shop.acme.com<TAB>edge.prisma.build` for each
+  DNS record, the same fields `service domain add` prints.
+- **One value:** a command whose result is one value prints it bare, on its
+  own line: a URL, a connection string, the id of a created resource. This
+  follows `docker port` and `encore db conn-uri`.
+- **A set of credentials:** a create that hands over several secrets that are
+  used together prints them as dotenv lines, `NAME=value`, so the output can
+  be appended to a `.env` file. `bucket key create` prints its four `S3_*`
+  lines this way.
+- **No data:** a command whose only result is that it succeeded (logout, a
+  delete, a stop) writes nothing to stdout. Its exit code is the result. Its
+  presentation says why with `noDataLines(reason)`.
+
+Values are written as plain text: a boolean is `true` or `false`, a time is
+the ISO 8601 timestamp, and nothing is padded or coloured.
+
+A single secret the command exists to hand over is a one-value result (see
+[One-Time Secret Output](#one-time-secret-output)). List and show commands
+never print secrets.
+
+Data lines are a stable interface: change their fields or order only as a
+breaking change. A script that needs more than the data lines uses `--json`.
 
 ## Automatic Update Notifications
 
@@ -222,9 +287,9 @@ is known, then the name, then the id. Selection prompts show the same identity.
 A table renders the standard unknown-value marker when no identity is known,
 and a prompt leaves it out.
 
-The plain stdout rows of `auth workspace list` keep their columns: workspace,
-id, status. Scripts read those columns by position, and the user is optional,
-so the user appears only in the table and in the structured output.
+The plain stdout rows of `auth workspace list` carry the table's four columns,
+tab-separated: workspace, user, id, status. The user and the status are empty
+fields when absent, so scripts can read the columns by position.
 
 Structured output carries a nullable `user` object on every item, and
 `context.scope` is `"local-sessions"`:
@@ -263,6 +328,9 @@ Rules:
 - show the bare secret in the human card on stderr
 - write exactly one raw secret value per successful create command to stdout
 - do not wrap the stdout secret in labels such as `DATABASE_URL=`
+- the exception is a set of credentials used together, such as a bucket
+  key's access key id, secret and endpoint: write them as dotenv lines,
+  `NAME=value` (see [Data Lines](#data-lines))
 - use `--verbose` for human metadata such as resource ids; keep generated names and opaque ids out of default human output unless they are the user-selected target
 - `--quiet` suppresses successful human stderr output and still writes the raw secret to stdout
 - list and show commands must never print or return secret values
@@ -521,8 +589,8 @@ future command needs that extra detail.
 
 Action commands and data commands follow the same stream rules, but not every command needs the same stdout behavior.
 
-- action commands may produce no stdout payload unless `--json` is requested
-- data commands may emit structured stdout payloads
+- action commands produce no stdout payload unless `--json` is requested
+- data commands write their data lines to stdout (see [Data Lines](#data-lines))
 - in human TTY mode, both kinds may still show status and next steps on stderr
 
 For automation, commands should prefer explicit `--json` rather than relying on human stderr output.
@@ -543,7 +611,7 @@ Rules:
 
 ## `--format markdown`
 
-`--format markdown` renders the same blocks a command describes for human output as plain Markdown: a summary line, `label: value` rows, GFM pipe tables, bullet lists, nested bullets for trees, and fenced code for drawings, followed by `### Next` for the suggested next actions and `### Diagnostics` for any findings. It exists for an agent that reads CLI output as text rather than parsing JSON: every value is labelled, nothing is padded, wrapped, aligned, or coloured, and no tokens go to envelope keys. Every part of the run's output — blocks, next actions, diagnostics, structured errors, help, `--version`, and live events — lands on stdout, and the engine writes nothing to stderr. The out-of-date agent skills notice follows the same rule: under this format it is a trailing `### Notice` section on stdout rather than a stderr line. The format is only ever explicit: without `--format markdown` a terminal gets human output and a pipe gets JSON.
+`--format markdown` renders the same blocks a command describes for human output as plain Markdown: a summary line, `label: value` rows, GFM pipe tables, bullet lists, nested bullets for trees, and fenced code for drawings, followed by `### Next` for the suggested next actions and `### Diagnostics` for any findings. It exists for an agent that reads CLI output as text rather than parsing JSON: every value is labelled, nothing is padded, wrapped, aligned, or coloured, and no tokens go to envelope keys. Every part of the run's output — blocks, next actions, diagnostics, structured errors, help, `--version`, and live events — lands on stdout, and the engine writes nothing to stderr. The out-of-date agent skills notice follows the same rule: under this format it is a trailing `### Notice` section on stdout rather than a stderr line. The format is only ever explicit: without `--format markdown` or `--json`, a terminal and a pipe both get human output.
 
 ## Non-Streaming JSON Shape
 

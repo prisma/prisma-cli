@@ -65,6 +65,7 @@ describe("prisma service domain wait", () => {
       status: "active",
       liveUrl: "https://shop.acme.com",
     });
+    expect(result.stdout).toBe("https://shop.acme.com\n");
   });
 
   it("does not repeat status events while the status is unchanged", async () => {

@@ -3,6 +3,7 @@
 import {
   type Block,
   defineCommand,
+  noDataLines,
   type Presentations,
   positional,
 } from "@prisma/cli-engine";
@@ -139,7 +140,9 @@ function connectPresentations(
 ): Presentations {
   const connection = result.repositoryConnection;
   return {
-    stdout: () => [],
+    stdout: noDataLines(
+      "Connecting a repository has no data to pass on; the repository is the one the user named.",
+    ),
     json: () => result,
     next: () => [
       {

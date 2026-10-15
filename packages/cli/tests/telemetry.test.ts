@@ -76,9 +76,10 @@ describe("prisma telemetry status", () => {
 
     expect(result.exitCode).toBe(0);
     expect(result.stdout).toBe(
-      "Telemetry is enabled: no explicit choice is stored, so the opt-out default applies.\n" +
-        `Config file: ${configPath}\n` +
-        "Installation ID: not stored\n",
+      "enabled\ttrue\n" +
+        "reason\tdefault-on\n" +
+        `config file\t${configPath}\n` +
+        "installation id stored\tfalse\n",
     );
     expect(result.stderr).toContain("ℹ Telemetry is enabled");
     // Read-only: no config file appears, no id is minted.
@@ -94,10 +95,8 @@ describe("prisma telemetry status", () => {
     });
 
     expect(result.exitCode).toBe(0);
-    expect(result.stdout).toContain(
-      'Telemetry is enabled: "enableTelemetry": true is stored in your config.',
-    );
-    expect(result.stdout).toContain("Installation ID: stored");
+    expect(result.stdout).toContain("reason\tstored-opt-in\n");
+    expect(result.stdout).toContain("installation id stored\ttrue\n");
     expect(result.stdout).not.toContain("id-secret-123");
   });
 
@@ -110,7 +109,7 @@ describe("prisma telemetry status", () => {
     });
 
     expect(result.exitCode).toBe(0);
-    expect(result.stdout).toContain(
+    expect(result.stderr).toContain(
       'Telemetry is disabled: "enableTelemetry": false is stored in your config.',
     );
   });
@@ -124,7 +123,7 @@ describe("prisma telemetry status", () => {
     });
 
     expect(result.exitCode).toBe(0);
-    expect(result.stdout).toContain(
+    expect(result.stderr).toContain(
       "Telemetry is disabled: an environment opt-out is set (DO_NOT_TRACK / PRISMA_DISABLE_TELEMETRY).",
     );
   });
@@ -139,7 +138,7 @@ describe("prisma telemetry status", () => {
     });
 
     expect(result.exitCode).toBe(0);
-    expect(result.stdout).toContain(
+    expect(result.stderr).toContain(
       "Telemetry is disabled: CI environment detected — telemetry is hard-disabled.",
     );
   });
@@ -175,8 +174,9 @@ describe("prisma telemetry enable", () => {
     });
 
     expect(result.exitCode).toBe(0);
-    expect(result.stdout).toBe(
-      `Telemetry enabled. Preference stored in ${configPath}.\n`,
+    expect(result.stdout).toBe("");
+    expect(result.stderr).toContain(
+      `Telemetry enabled. Preference stored in ${configPath}.`,
     );
     const config = storedConfig();
     expect(config.enableTelemetry).toBe(true);
@@ -221,8 +221,9 @@ describe("prisma telemetry disable", () => {
     });
 
     expect(result.exitCode).toBe(0);
-    expect(result.stdout).toBe(
-      `Telemetry disabled. Preference stored in ${configPath}.\n`,
+    expect(result.stdout).toBe("");
+    expect(result.stderr).toContain(
+      `Telemetry disabled. Preference stored in ${configPath}.`,
     );
     expect(storedConfig()).toEqual({ enableTelemetry: false });
   });

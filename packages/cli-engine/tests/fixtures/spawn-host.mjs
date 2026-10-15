@@ -132,4 +132,7 @@ writeFileSync(join(dir, "host-ready"), "ready");
 // tests, and it would truncate writes still queued on them — including
 // the commentary the engine flushes as the run settles. The engine has
 // already unsubscribed its signal handlers, so the loop drains.
-process.exitCode = await cli.run(["go"], runtime);
+process.exitCode = await cli.run(
+  scenario === "unframed-stdout" ? ["go", "--json"] : ["go"],
+  runtime,
+);

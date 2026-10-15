@@ -85,7 +85,7 @@ function usePresentations(
           ]
         : []),
     ],
-    stdout: () => rows.map((row) => `${row.label}: ${row.value}`),
+    stdout: () => [spec.session.workspaceId],
     next: () => [
       {
         kind: "run-command",

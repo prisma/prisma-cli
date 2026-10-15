@@ -3,6 +3,7 @@ import {
   type Block,
   defineCommand,
   flag,
+  noDataLines,
   type Presentations,
   positional,
 } from "@prisma/cli-engine";
@@ -30,7 +31,9 @@ function restorePresentations(
   ];
 
   return {
-    stdout: () => [],
+    stdout: noDataLines(
+      "A restore overwrites an existing database and creates nothing new to pass on.",
+    ),
     json: () => result,
     human: (): Block[] => [
       {

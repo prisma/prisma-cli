@@ -6,6 +6,7 @@ import {
 } from "@prisma/cli-engine";
 import { ok } from "@prisma/cli-engine/protocol";
 import { resolveDatabase } from "../../controllers/database";
+import { fieldLines } from "../../output/data-lines";
 import type { DatabaseShowResult } from "../../types/database";
 import {
   branchFlag,
@@ -58,8 +59,7 @@ function showPresentations(result: DatabaseShowResult): Presentations {
       { kind: "summary", status: "info", text: TITLE },
       { kind: "fields", rows },
     ],
-    stdout: () =>
-      stdoutFieldRows(result).map((row) => `${row.label}: ${row.value}`),
+    stdout: () => fieldLines(stdoutFieldRows(result)),
   };
 }
 

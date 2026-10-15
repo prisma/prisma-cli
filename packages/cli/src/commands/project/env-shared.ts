@@ -153,7 +153,8 @@ export function fileWritePresentations(
 ): Presentations {
   const rows = variableRows(input.variables);
   return {
-    stdout: () => [],
+    stdout: () =>
+      variableStdoutRows(input.variables).map((row) => row.join("\t")),
     json: () => result,
     next: () => [],
     human: (): Block[] => [

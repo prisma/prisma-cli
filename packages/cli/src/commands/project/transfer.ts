@@ -3,6 +3,7 @@ import {
   type Block,
   defineCommand,
   flag,
+  noDataLines,
   type Presentations,
   positional,
   SERVICE_TOKEN_ENV_VAR,
@@ -120,7 +121,9 @@ function transferPresentations(
   toWorkspace: string | undefined,
 ): Presentations {
   return {
-    stdout: () => [],
+    stdout: noDataLines(
+      "A transfer moves the project to another workspace and leaves nothing here to pass on.",
+    ),
     json: () => result,
     human: (): Block[] => [
       { kind: "summary", status: "ok", text: "Transferring project." },

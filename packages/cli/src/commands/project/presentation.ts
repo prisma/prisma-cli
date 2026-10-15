@@ -27,7 +27,7 @@ export function localPinDiagnostics(warnings: readonly string[]): Diagnostic[] {
 
 export function setupPresentations(result: ProjectSetupResult): Presentations {
   return {
-    stdout: () => [],
+    stdout: () => [result.project.id],
     human: () => [
       ...(result.action === "created"
         ? [

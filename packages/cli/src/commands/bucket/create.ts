@@ -52,7 +52,7 @@ export const bucketCreateCommand = defineCommand({
               text: `Created bucket "${bucket.name}" in ${bucketTargetLabel(projectName, bucket.branchId)}.`,
             },
           ],
-          stdout: () => [],
+          stdout: () => [bucket.id],
           json: () => result,
           next: () => [],
         },

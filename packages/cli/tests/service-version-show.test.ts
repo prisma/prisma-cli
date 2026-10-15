@@ -72,6 +72,14 @@ describe("prisma service version show", () => {
         live: true,
       },
     });
+    expect(result.presented?.presentation.stdout).toEqual([
+      "service\thello-world",
+      "version\tdep_2",
+      "status\trunning",
+      "url\thttps://hello.prisma.app",
+      "live\ttrue",
+      "created\t2026-08-02T00:00:00.000Z",
+    ]);
   });
 
   it("ignores a live deployment named only by local CLI state", async () => {

@@ -120,7 +120,10 @@ describe("golden rendering", () => {
         "Acme Inc   ws_1@example.com  ws_1  current\n" +
         "Globex     ws_2@example.com  ws_2  \u2014\n",
     );
-    expect(result.stdout).toBe("Acme Inc  ws_1  current\nGlobex  ws_2\n");
+    expect(result.stdout).toBe(
+      "Acme Inc\tws_1@example.com\tws_1\tcurrent\n" +
+        "Globex\tws_2@example.com\tws_2\t\n",
+    );
   });
 
   /**

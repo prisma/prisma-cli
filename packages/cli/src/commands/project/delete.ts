@@ -2,6 +2,7 @@
 import {
   type Block,
   defineCommand,
+  noDataLines,
   type Presentations,
   positional,
 } from "@prisma/cli-engine";
@@ -23,7 +24,7 @@ const CONSENT_QUESTION =
 
 function deletePresentations(result: ProjectDeleteResult): Presentations {
   return {
-    stdout: () => [],
+    stdout: noDataLines("A delete has no data; its exit code is the result."),
     json: () => result,
     next: () => [],
     human: (): Block[] => [

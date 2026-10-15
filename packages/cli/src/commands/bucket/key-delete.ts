@@ -2,6 +2,7 @@
 import {
   type Block,
   defineCommand,
+  noDataLines,
   type Presentations,
   positional,
 } from "@prisma/cli-engine";
@@ -12,7 +13,7 @@ import { bucketPositional, resolveBucketProviderOnly } from "./context";
 
 function deletePresentations(result: BucketKeyDeleteResult): Presentations {
   return {
-    stdout: () => [],
+    stdout: noDataLines("A delete has no data; its exit code is the result."),
     json: () => result,
     next: () => [],
     human: (): Block[] => [

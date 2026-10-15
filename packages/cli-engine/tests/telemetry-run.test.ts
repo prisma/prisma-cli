@@ -316,7 +316,7 @@ describe("the engine reports at command start", () => {
   });
 
   it("exempts the telemetry command — no event, no mint, no disclosure", async () => {
-    const result = await run(makeCli(), ["telemetry", "status"]);
+    const result = await run(makeCli(), ["telemetry", "status", "--json"]);
 
     expect(result.exitCode).toBe(0);
     expect(result.telemetry).toEqual([]);

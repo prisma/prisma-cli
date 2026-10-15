@@ -1,5 +1,10 @@
 /** The `postgres connection delete` command. */
-import { type Block, defineCommand, positional } from "@prisma/cli-engine";
+import {
+  type Block,
+  defineCommand,
+  noDataLines,
+  positional,
+} from "@prisma/cli-engine";
 import { CliStructuredError, ok } from "@prisma/cli-engine/protocol";
 import { CLI_NAME } from "../../cli-name";
 import type { DatabaseConnectionDeleteResult } from "../../types/database";
@@ -73,7 +78,9 @@ export const postgresConnectionDeleteCommand = defineCommand({
               ],
             },
           ],
-          stdout: () => [],
+          stdout: noDataLines(
+            "A delete has no data; its exit code is the result.",
+          ),
           json: () => ({ connection: result.connection }),
           next: () => [],
         },

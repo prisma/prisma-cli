@@ -416,9 +416,9 @@ describe("auth whoami", () => {
     });
 
     expect(result.exitCode).toBe(0);
-    expect(result.stdout).toContain("workspace: ws_env");
+    expect(result.stdout).toContain("workspace\tws_env");
     expect(result.stdout).toContain(
-      "environment variable: PRISMA_SERVICE_TOKEN",
+      "environment variable\tPRISMA_SERVICE_TOKEN",
     );
     expect(result.stderr).toContain(
       "PRISMA_SERVICE_TOKEN supplies the credential in force",
@@ -504,7 +504,10 @@ describe("auth workspace list", () => {
     });
 
     expect(result.exitCode).toBe(0);
-    expect(result.stdout).toBe("Acme Inc  ws_1\nws_2  ws_2  current\n");
+    expect(result.stdout).toBe(
+      "Acme Inc\tbob@example.com\tws_1\t\n" +
+        "ws_2\tbob@example.com\tws_2\tcurrent\n",
+    );
   });
 
   it("serializes the sessions and the current marker for json", async () => {
@@ -662,6 +665,15 @@ describe("auth workspace list", () => {
 
 describe("auth workspace use", () => {
   const twoSessions = [record("ws_1", "Acme Inc"), record("ws_2", "Globex")];
+
+  it("prints the selected workspace id to a pipe", async () => {
+    const cli = makeCli({ sessions: twoSessions, selectedWorkspaceId: "ws_1" });
+
+    const result = await cli.run(["auth", "workspace", "use", "Globex"]);
+
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout).toBe("ws_2\n");
+  });
 
   it("selects by workspace id", async () => {
     const cli = makeCli({ sessions: twoSessions, selectedWorkspaceId: "ws_1" });
@@ -838,6 +850,18 @@ describe("auth workspace use", () => {
 });
 
 describe("auth workspace logout", () => {
+  it("prints nothing to a pipe", async () => {
+    const cli = makeCli({
+      sessions: [record("ws_1", "Acme Inc"), record("ws_2", "Globex")],
+      selectedWorkspaceId: "ws_2",
+    });
+
+    const result = await cli.run(["auth", "workspace", "logout", "Acme Inc"]);
+
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout).toBe("");
+  });
+
   it("ends the named session using local metadata without a network lookup", async () => {
     const cli = makeCli({
       sessions: [record("ws_1", "Acme Inc"), record("ws_2", "Globex")],
