@@ -77,8 +77,9 @@ Interactive TTY behavior:
 Non-TTY or piped behavior:
 
 - stdout carries exactly the command's data lines (see [Data Lines](#data-lines)),
-  except that a delegated child process writes its own output to the stdout it
-  inherits (see [Delegated child processes](#delegated-child-processes))
+  with three exceptions: `--help` writes its help card to stdout, `--version`
+  writes the bare version, and a delegated child process writes its own output
+  to the stdout it inherits (see [Delegated child processes](#delegated-child-processes))
 - stderr still carries the human blocks, without color or animation
 - decorative output is suppressed
 - prompts are not shown
