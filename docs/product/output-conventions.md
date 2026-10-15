@@ -57,8 +57,8 @@ terminal, a pipe, or a file. JSON is only ever explicit.
 $ prisma project list | cut -f2
 proj_cm3x…
 proj_k91…
-$ curl "$(prisma service open shop)"
-$ prisma project list --json | jq '.result.items[].id'
+$ curl "$(prisma service domain wait shop.acme.com)"
+$ prisma project list --json | jq '.envelope.result.items[].id'
 ```
 
 No widely used CLI switches to JSON when piped (gh, aws, kubectl, gcloud, az,
@@ -76,7 +76,9 @@ Interactive TTY behavior:
 
 Non-TTY or piped behavior:
 
-- stdout carries exactly the command's data lines (see [Data Lines](#data-lines))
+- stdout carries exactly the command's data lines (see [Data Lines](#data-lines)),
+  except that a delegated child process writes its own output to the stdout it
+  inherits (see [Delegated child processes](#delegated-child-processes))
 - stderr still carries the human blocks, without color or animation
 - decorative output is suppressed
 - prompts are not shown
@@ -94,18 +96,31 @@ takes, with no labels, colour, or prose. Choose by what the command returns:
 - **A list:** one line per item, its fields separated by a tab, in the order
   the human table shows them. The fields always include the value a
   follow-up command takes: the id, or the name where commands take a name.
-  Absent values are empty fields, never the placeholder words the table
+  Every line has every field, so a script can read them by position: an
+  absent value is an empty field, never the placeholder words the table
   shows. An empty list writes nothing.
-- **A show:** the resource's identifying value when one value identifies it
-  (an id, a URL). Otherwise one `key<TAB>value` line per field, keys in the
-  order the card shows them.
+- **A show:** one `key<TAB>value` line per field, keys in the order the card
+  shows them. A field whose value is absent is left out, so a script tests
+  for the key rather than for an empty value. A field that holds several
+  values, each with fields of its own, writes one line per value with the
+  key repeated and the value's fields tab-separated: `service domain show`
+  writes `dns<TAB>CNAME<TAB>shop.acme.com<TAB>edge.prisma.build` for each
+  DNS record, the same fields `service domain add` prints.
 - **One value:** a command whose result is one value prints it bare, on its
   own line: a URL, a connection string, the id of a created resource. This
   follows `docker port` and `encore db conn-uri`.
+- **A set of credentials:** a create that hands over several secrets that are
+  used together prints them as dotenv lines, `NAME=value`, so the output can
+  be appended to a `.env` file. `bucket key create` prints its four `S3_*`
+  lines this way.
 - **No data:** a command whose only result is that it succeeded (logout, a
-  delete, a stop) writes nothing to stdout. Its exit code is the result.
+  delete, a stop) writes nothing to stdout. Its exit code is the result. Its
+  presentation says why with `noDataLines(reason)`.
 
-A secret the command exists to hand over is a one-value result (see
+Values are written as plain text: a boolean is `true` or `false`, a time is
+the ISO 8601 timestamp, and nothing is padded or coloured.
+
+A single secret the command exists to hand over is a one-value result (see
 [One-Time Secret Output](#one-time-secret-output)). List and show commands
 never print secrets.
 
@@ -271,9 +286,9 @@ is known, then the name, then the id. Selection prompts show the same identity.
 A table renders the standard unknown-value marker when no identity is known,
 and a prompt leaves it out.
 
-The plain stdout rows of `auth workspace list` keep their columns: workspace,
-id, status. Scripts read those columns by position, and the user is optional,
-so the user appears only in the table and in the structured output.
+The plain stdout rows of `auth workspace list` carry the table's four columns,
+tab-separated: workspace, user, id, status. The user and the status are empty
+fields when absent, so scripts can read the columns by position.
 
 Structured output carries a nullable `user` object on every item, and
 `context.scope` is `"local-sessions"`:
@@ -312,6 +327,9 @@ Rules:
 - show the bare secret in the human card on stderr
 - write exactly one raw secret value per successful create command to stdout
 - do not wrap the stdout secret in labels such as `DATABASE_URL=`
+- the exception is a set of credentials used together, such as a bucket
+  key's access key id, secret and endpoint: write them as dotenv lines,
+  `NAME=value` (see [Data Lines](#data-lines))
 - use `--verbose` for human metadata such as resource ids; keep generated names and opaque ids out of default human output unless they are the user-selected target
 - `--quiet` suppresses successful human stderr output and still writes the raw secret to stdout
 - list and show commands must never print or return secret values
