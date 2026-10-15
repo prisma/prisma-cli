@@ -470,6 +470,7 @@ describe("buildCli", () => {
       "telemetry",
       "status",
       "--config=",
+      "--json",
     ]);
 
     expect(run.exitCode).toBe(2);
@@ -525,7 +526,15 @@ describe("buildCli", () => {
     readonly diagnostics: readonly Diagnostic[];
   }> {
     const proc = makeProcess({
-      argv: ["node", "bin.js", "dev", "--config", configPath, "src/service.ts"],
+      argv: [
+        "node",
+        "bin.js",
+        "dev",
+        "--json",
+        "--config",
+        configPath,
+        "src/service.ts",
+      ],
     });
 
     const exitCode = await main(proc);

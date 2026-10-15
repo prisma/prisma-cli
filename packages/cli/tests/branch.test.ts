@@ -299,7 +299,7 @@ describe("prisma branch list", () => {
   });
 
   it("requires credentials", async () => {
-    const result = await makeCli(branchClient(), false).run(["branch", "list"]);
+    const result = await makeCli(branchClient(), false).run(["branch", "list", "--json"]);
 
     expect(result.exitCode).toBe(2);
     expect(resultFrame(result.json).envelope).toMatchObject({

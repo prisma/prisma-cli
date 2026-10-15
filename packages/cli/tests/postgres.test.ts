@@ -461,6 +461,7 @@ describe("prisma postgres list", () => {
     const result = await makeCli(postgresClient(), false).run([
       "postgres",
       "list",
+"--json"
     ]);
 
     expect(result.exitCode).toBe(2);
@@ -654,6 +655,7 @@ describe("prisma postgres show", () => {
       "postgres",
       "show",
       "db_1",
+"--json"
     ]);
 
     expect(result.exitCode).toBe(2);
@@ -888,6 +890,7 @@ describe("prisma postgres create", () => {
       "postgres",
       "create",
       "my-db",
+"--json"
     ]);
 
     expect(result.exitCode).toBe(2);
@@ -1188,6 +1191,7 @@ describe("prisma postgres usage", () => {
       "postgres",
       "usage",
       "db_1",
+"--json"
     ]);
 
     expect(result.exitCode).toBe(2);
@@ -1546,6 +1550,7 @@ describe("prisma postgres backup restore", () => {
       "bkp_1",
       "--confirm",
       "db_1",
+"--json"
     ]);
 
     expect(result.exitCode).toBe(2);
@@ -1731,6 +1736,7 @@ describe("prisma postgres delete", () => {
       "db_1",
       "--confirm",
       "db_1",
+"--json"
     ]);
 
     expect(result.exitCode).toBe(2);
@@ -1946,6 +1952,7 @@ describe("prisma postgres backup list", () => {
       "backup",
       "list",
       "db_1",
+"--json"
     ]);
 
     expect(result.exitCode).toBe(2);
@@ -2048,6 +2055,7 @@ describe("prisma postgres connection list", () => {
       "connection",
       "list",
       "db_1",
+"--json"
     ]);
 
     expect(result.exitCode).toBe(2);
@@ -2197,6 +2205,7 @@ describe("prisma postgres connection create", () => {
       "connection",
       "create",
       "db_1",
+"--json"
     ]);
 
     expect(result.exitCode).toBe(2);
@@ -2472,6 +2481,7 @@ describe("prisma postgres connection rotate", () => {
       "conn_1",
       "--confirm",
       "conn_1",
+"--json"
     ]);
 
     expect(result.exitCode).toBe(2);
@@ -2627,6 +2637,7 @@ describe("prisma postgres connection delete", () => {
       "conn_1",
       "--confirm",
       "conn_1",
+"--json"
     ]);
 
     expect(result.exitCode).toBe(2);

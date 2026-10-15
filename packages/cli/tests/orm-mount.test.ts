@@ -78,7 +78,7 @@ function shell(config?: Readonly<Record<string, unknown>>) {
 describe("the ORM family answers from the assembled tree", () => {
   it("runs migration list against a project directory", async () => {
     const result = await shell({ orm: ORM_SECTION }).run(
-      ["migration", "list"],
+      ["migration", "list", "--json"],
       { cwd: ORM_PROJECT_DIR },
     );
 

@@ -332,7 +332,7 @@ describe("prisma project list", () => {
   });
 
   it("requires credentials", async () => {
-    const result = await makeCli(fakeClient(), false).run(["project", "list"]);
+    const result = await makeCli(fakeClient(), false).run(["project", "list", "--json"]);
 
     expect(result.exitCode).toBe(2);
     expect(resultFrame(result.json).envelope).toMatchObject({
@@ -513,7 +513,7 @@ describe("prisma project show", () => {
   });
 
   it("requires credentials", async () => {
-    const result = await makeCli(fakeClient(), false).run(["project", "show"]);
+    const result = await makeCli(fakeClient(), false).run(["project", "show", "--json"]);
 
     expect(result.exitCode).toBe(2);
     expect(resultFrame(result.json).envelope).toMatchObject({
@@ -699,6 +699,7 @@ describe("prisma project create", () => {
       "project",
       "create",
       "my-app",
+"--json"
     ]);
 
     expect(result.exitCode).toBe(2);
@@ -877,7 +878,7 @@ describe("prisma project link", () => {
   });
 
   it("requires credentials", async () => {
-    const result = await makeCli(fakeClient(), false).run(["project", "link"]);
+    const result = await makeCli(fakeClient(), false).run(["project", "link", "--json"]);
 
     expect(result.exitCode).toBe(2);
     expect(resultFrame(result.json).envelope).toMatchObject({
@@ -1000,6 +1001,7 @@ describe("prisma project rename", () => {
       "project",
       "rename",
       "Billing v2",
+"--json"
     ]);
 
     expect(result.exitCode).toBe(2);
@@ -1647,6 +1649,7 @@ describe("prisma project env add", () => {
       "STRIPE_KEY=sk_test",
       "--role",
       "production",
+"--json"
     ]);
 
     expect(result.exitCode).toBe(2);
@@ -1805,6 +1808,7 @@ describe("prisma project env update", () => {
       "STRIPE_KEY=sk_new",
       "--role",
       "production",
+"--json"
     ]);
 
     expect(result.exitCode).toBe(2);
@@ -2188,6 +2192,7 @@ describe("prisma project env list", () => {
       "project",
       "env",
       "list",
+"--json"
     ]);
 
     expect(result.exitCode).toBe(2);
@@ -2298,6 +2303,7 @@ describe("prisma project env delete", () => {
       "STRIPE_KEY",
       "--role",
       "production",
+"--json"
     ]);
 
     expect(result.exitCode).toBe(2);
@@ -2583,6 +2589,7 @@ describe("prisma project delete", () => {
       "proj_1",
       "--confirm",
       "proj_1",
+"--json"
     ]);
 
     expect(result.exitCode).toBe(2);
@@ -2956,6 +2963,7 @@ describe("prisma project transfer", () => {
       "tok",
       "--confirm",
       "proj_1",
+"--json"
     ]);
 
     expect(result.exitCode).toBe(2);
