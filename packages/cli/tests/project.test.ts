@@ -557,6 +557,7 @@ describe("prisma project create", () => {
       },
       { kind: "summary", status: "info", text: "Saved .prisma/local.json" },
     ]);
+    expect(result.presented?.presentation.stdout).toEqual(["proj_new"]);
     expect(
       JSON.parse(
         await readFile(path.join(cwd, ".prisma", "local.json"), "utf8"),
@@ -731,6 +732,7 @@ describe("prisma project link", () => {
       action: "linked",
     });
     expect(blocks(result.presented)).toHaveLength(2);
+    expect(result.presented?.presentation.stdout).toEqual(["proj_2"]);
     expect(
       JSON.parse(
         await readFile(path.join(cwd, ".prisma", "local.json"), "utf8"),
@@ -1246,6 +1248,10 @@ describe("prisma project env add", () => {
       status: "info",
       text: "Setting a new environment variable.",
     });
+    const created = result.presented?.data as { variable: { id: string } };
+    expect(result.presented?.presentation.stdout).toEqual([
+      created.variable.id,
+    ]);
   });
 
   it("creates the branch on demand and warns that preview has no default", async () => {
@@ -1492,6 +1498,10 @@ describe("prisma project env add", () => {
     expect(
       blocks(result.presented).find((block) => block.kind === "table"),
     ).toMatchObject({ columns: ["variable", "id", "status"] });
+    expect(result.presented?.presentation.stdout).toEqual([
+      expect.stringMatching(/^A\t[^\t]+\t$/),
+      expect.stringMatching(/^B\t[^\t]+\t$/),
+    ]);
   });
 
   it("reports the keys written before a file import failed", async () => {

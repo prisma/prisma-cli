@@ -336,6 +336,7 @@ describe("prisma bucket create", () => {
         text: 'Created bucket "assets" in Billing / main.',
       },
     ]);
+    expect(result.presented?.presentation.stdout).toEqual(["bkt_1"]);
   });
 
   it("lets the server name the bucket when --name is blank", async () => {

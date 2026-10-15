@@ -66,6 +66,9 @@ describe("prisma service domain add", () => {
       status: "ok",
       text: "Added shop.acme.com to hello-world.",
     });
+    expect(result.presented?.presentation.stdout).toEqual([
+      "CNAME\tshop.acme.com\tedge.prisma.build",
+    ]);
   });
 
   it("emits the completed json envelope with commandId service.domain.add", async () => {
@@ -368,6 +371,12 @@ describe("prisma service domain show", () => {
       status: "info",
       text: "Showing custom domain status.",
     });
+    expect(result.presented?.presentation.stdout).toEqual([
+      "hostname\tshop.acme.com",
+      "status\tverifying",
+      "created\t2026-08-01T00:00:00.000Z",
+      "dns\tCNAME\tshop.acme.com\tedge.prisma.build",
+    ]);
   });
 
   it("emits the completed json envelope with commandId service.domain.show", async () => {

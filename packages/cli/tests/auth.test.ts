@@ -666,6 +666,15 @@ describe("auth workspace list", () => {
 describe("auth workspace use", () => {
   const twoSessions = [record("ws_1", "Acme Inc"), record("ws_2", "Globex")];
 
+  it("prints the selected workspace id to a pipe", async () => {
+    const cli = makeCli({ sessions: twoSessions, selectedWorkspaceId: "ws_1" });
+
+    const result = await cli.run(["auth", "workspace", "use", "Globex"]);
+
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout).toBe("ws_2\n");
+  });
+
   it("selects by workspace id", async () => {
     const cli = makeCli({ sessions: twoSessions, selectedWorkspaceId: "ws_1" });
 
@@ -841,6 +850,18 @@ describe("auth workspace use", () => {
 });
 
 describe("auth workspace logout", () => {
+  it("prints nothing to a pipe", async () => {
+    const cli = makeCli({
+      sessions: [record("ws_1", "Acme Inc"), record("ws_2", "Globex")],
+      selectedWorkspaceId: "ws_2",
+    });
+
+    const result = await cli.run(["auth", "workspace", "logout", "Acme Inc"]);
+
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout).toBe("");
+  });
+
   it("ends the named session using local metadata without a network lookup", async () => {
     const cli = makeCli({
       sessions: [record("ws_1", "Acme Inc"), record("ws_2", "Globex")],
