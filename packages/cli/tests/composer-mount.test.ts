@@ -7,7 +7,10 @@
 import { createTestCli } from "@prisma/cli-engine/testing";
 import { defineConfig as composer } from "@prisma/composer/config";
 import { nodeBuild } from "@prisma/composer/node/control";
-import { createComposerFamily } from "@prisma/composer-cli/family";
+import {
+  createComposerFamily,
+  type ListEmulators,
+} from "@prisma/composer-cli/family";
 import { createOperationsDouble } from "@prisma/composer-cli/testing";
 import { describe, expect, it } from "vitest";
 import { cliGroups, mountedCommands } from "../src/cli";
@@ -24,23 +27,55 @@ const COMPOSER_SECTION = composer({
   },
 });
 
-const NO_EMULATORS = {
-  ok: true as const,
-  value: { emulators: [] },
-  assertOk() {
-    return this.value;
+type Listing = Awaited<ReturnType<ListEmulators>>;
+
+function listing(emulators: readonly EmulatorListing[]): Listing {
+  const value = { emulators };
+  return {
+    ok: true as const,
+    value,
+    assertOk: () => value,
+    assertNotOk: (): never => {
+      throw new Error("the listing succeeded");
+    },
+  };
+}
+
+type EmulatorListing = Extract<
+  Listing,
+  { ok: true }
+>["value"]["emulators"][number];
+
+/** One running service emulator holding one instance that `prisma dev`
+ *  started, and a database emulator that is not running. */
+const ONE_INSTANCE = listing([
+  {
+    kind: "service",
+    running: true,
+    url: "http://localhost:4000",
+    instances: [
+      {
+        id: "svc_gateway",
+        kind: "service",
+        url: "http://localhost:4001",
+        state: "running",
+        labels: {
+          "composer.address": "gateway",
+          "composer.directory": "/projects/shop",
+        },
+      },
+    ],
+    error: null,
   },
-  assertNotOk(): never {
-    throw new Error("the listing succeeded");
-  },
-};
+  { kind: "database", running: false, url: null, instances: [], error: null },
+]);
 
 const COMPOSER_PATHS = ["dev", "dev url", "dev stop", "emulator list"];
 
-function shell() {
+function shell(emulators: Listing = listing([])) {
   const family = createComposerFamily({
     operations: createOperationsDouble().operations,
-    listEmulators: async () => NO_EMULATORS,
+    listEmulators: async () => emulators,
   });
   const commands = Object.fromEntries(
     COMPOSER_PATHS.map((path) => [path, family.commands[path]]),
@@ -81,6 +116,17 @@ describe("Composer's commands in the shell", () => {
     const result = await shell().run(["emulator", "list"]);
 
     expect(result.exitCode).toBe(0);
+  });
+
+  // The installed 0.31.0 preview predates prisma/composer#365, which gives
+  // emulator list its data lines. Unskip once the published 0.31.0 is pinned.
+  it.skip("pipes one tab-separated line per emulator instance", async () => {
+    const result = await shell(ONE_INSTANCE).run(["emulator", "list"]);
+
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout).toBe(
+      "service\tsvc_gateway\thttp://localhost:4001\trunning\tgateway\t/projects/shop\n",
+    );
   });
 
   it("shows dev's own help with its children listed", async () => {
