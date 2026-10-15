@@ -498,7 +498,7 @@ describe("buildCli", () => {
 
   /** The error the bin's stream settled on, read from the terminal
    *  result frame. Parsed rather than matched against the raw text:
-   *  stdout is not a TTY here, so the stream is JSON, and JSON escapes
+   *  the run passes --json, so the stream is JSON, and JSON escapes
    *  every separator in a Windows path — no path the CLI printed is a
    *  substring of the stream that carried it. */
   function resultFailure(stdoutText: string): {
