@@ -302,10 +302,8 @@ describe("the mount fragment", () => {
     await run(["telemetry", "enable"]);
     const enabled = await run(["telemetry", "status"]);
 
-    expect(disabled.stderr).toContain(
-"Telemetry is disabled");
-    expect(enabled.stderr).toContain(
-"Telemetry is enabled");
+    expect(disabled.stderr).toContain("Telemetry is disabled");
+    expect(enabled.stderr).toContain("Telemetry is enabled");
     expect(readUserConfig(isolatedEnv()).installationId).toMatch(V4_UUID);
   });
 });

@@ -20,10 +20,7 @@ import {
 import { runEnvAddFile } from "../../controllers/app-env-file";
 import { formatScopeLabel } from "../../lib/app/env-config";
 import { runCommand, userChoice } from "../../lib/app/env-errors";
-import type {
-  EnvAddResult,
-  EnvSingleWriteResult,
-} from "../../types/app-env";
+import type { EnvAddResult, EnvSingleWriteResult } from "../../types/app-env";
 import { operationContext } from "./context";
 import {
   branchFlag,

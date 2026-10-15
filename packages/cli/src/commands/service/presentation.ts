@@ -1,5 +1,5 @@
-import { noDataLines } from "@prisma/cli-engine";
 import type { Block, Presentations } from "@prisma/cli-engine";
+import { noDataLines } from "@prisma/cli-engine";
 import type { NextAction } from "@prisma/cli-engine/protocol";
 import { fieldLines } from "../../output/data-lines";
 import { adviceAction, runCommandAction } from "./errors";
@@ -310,7 +310,8 @@ export function versionShowPresentations(
         { label: "url", value: result.version.url ?? "" },
         {
           label: "live",
-          value: result.version.live === null ? "" : String(result.version.live),
+          value:
+            result.version.live === null ? "" : String(result.version.live),
         },
         { label: "created", value: result.version.createdAt },
       ]),

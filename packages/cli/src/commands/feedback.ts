@@ -1,6 +1,10 @@
-import { noDataLines } from "@prisma/cli-engine";
 import type { Presentations } from "@prisma/cli-engine";
-import { defineCommand, flag, positional } from "@prisma/cli-engine";
+import {
+  defineCommand,
+  flag,
+  noDataLines,
+  positional,
+} from "@prisma/cli-engine";
 import { CliStructuredError, ok } from "@prisma/cli-engine/protocol";
 import { CLI_NAME } from "../cli-name";
 import {

@@ -1,5 +1,11 @@
 /** The `project rename` command. */
-import { defineCommand, flag, type Presentations, positional, noDataLines } from "@prisma/cli-engine";
+import {
+  defineCommand,
+  flag,
+  noDataLines,
+  type Presentations,
+  positional,
+} from "@prisma/cli-engine";
 import { ok } from "@prisma/cli-engine/protocol";
 import { createManagementProjectProvider } from "../../lib/project/provider";
 import {

@@ -1,12 +1,16 @@
 import { readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
-import { noDataLines } from "@prisma/cli-engine";
 import type {
   Block,
   LoadedConfigFile,
   Presentations,
 } from "@prisma/cli-engine";
-import { defineCommand, flag, realpathOr } from "@prisma/cli-engine";
+import {
+  defineCommand,
+  flag,
+  noDataLines,
+  realpathOr,
+} from "@prisma/cli-engine";
 import type { Diagnostic, NextAction } from "@prisma/cli-engine/protocol";
 import { CliStructuredError, notOk, ok } from "@prisma/cli-engine/protocol";
 import { CLI_NAME } from "../cli-name";

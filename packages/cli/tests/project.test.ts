@@ -1498,10 +1498,12 @@ describe("prisma project env add", () => {
     expect(
       blocks(result.presented).find((block) => block.kind === "table"),
     ).toMatchObject({ columns: ["variable", "id", "status"] });
-    expect(result.presented?.presentation.stdout).toEqual([
-      expect.stringMatching(/^A\t[^\t]+\t$/),
-      expect.stringMatching(/^B\t[^\t]+\t$/),
-    ]);
+    const written = result.presented?.data as {
+      variables: { key: string; id: string }[];
+    };
+    expect(result.presented?.presentation.stdout).toEqual(
+      written.variables.map((variable) => `${variable.key}\t${variable.id}\t`),
+    );
   });
 
   it("reports the keys written before a file import failed", async () => {

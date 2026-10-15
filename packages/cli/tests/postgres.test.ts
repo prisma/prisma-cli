@@ -548,9 +548,11 @@ describe("prisma postgres show", () => {
         { label: "connections", value: "0" },
       ],
     });
-    expect(result.presented?.presentation.stdout).not.toContainEqual(
-      expect.stringMatching(/^status\t/),
-    );
+    expect(
+      result.presented?.presentation.stdout.some((line) =>
+        line.startsWith("status\t"),
+      ),
+    ).toBe(false);
   });
 
   it("fails when the follow-up read says the database is gone", async () => {

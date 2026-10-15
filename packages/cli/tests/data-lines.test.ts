@@ -115,7 +115,10 @@ function declaredFunction(
       node.initializer !== undefined
     ) {
       const initializer = withoutWrappers(node.initializer);
-      if (ts.isArrowFunction(initializer) || ts.isFunctionExpression(initializer)) {
+      if (
+        ts.isArrowFunction(initializer) ||
+        ts.isFunctionExpression(initializer)
+      ) {
         match = initializer;
       }
     }
@@ -136,6 +139,27 @@ function noDataLinesCall(
     : undefined;
 }
 
+function reasonOf(call: ts.CallExpression): string | undefined {
+  const [first] = call.arguments;
+  return first !== undefined && ts.isStringLiteralLike(first)
+    ? first.text
+    : undefined;
+}
+
+/** The function a stdout value is or names. */
+function functionOf(
+  file: ts.SourceFile,
+  value: ts.Expression,
+): ts.SignatureDeclaration | undefined {
+  const inner = withoutWrappers(value);
+  if (ts.isArrowFunction(inner) || ts.isFunctionExpression(inner)) {
+    return inner;
+  }
+  return ts.isIdentifier(inner)
+    ? declaredFunction(file, inner.text)
+    : undefined;
+}
+
 /** Every stdout that can return an empty array without saying why, and
  *  every noDataLines reason, in one file. */
 function inspect(file: ts.SourceFile, label: string) {
@@ -149,23 +173,10 @@ function inspect(file: ts.SourceFile, label: string) {
     }
     const call = noDataLinesCall(value);
     if (call !== undefined) {
-      const [first] = call.arguments;
-      reasons.push({
-        where: where(node),
-        reason:
-          first !== undefined && ts.isStringLiteralLike(first)
-            ? first.text
-            : undefined,
-      });
+      reasons.push({ where: where(node), reason: reasonOf(call) });
       return;
     }
-    const inner = withoutWrappers(value);
-    const fn =
-      ts.isArrowFunction(inner) || ts.isFunctionExpression(inner)
-        ? inner
-        : ts.isIdentifier(inner)
-          ? declaredFunction(file, inner.text)
-          : undefined;
+    const fn = functionOf(file, value);
     if (fn !== undefined && returnsEmptyArray(fn)) {
       silent.push({ where: where(node) });
     }
@@ -200,7 +211,10 @@ async function inspectSources() {
   const results = await Promise.all(
     files.map(async (file) => {
       const text = await readFile(file, "utf8");
-      const label = path.relative(path.resolve(import.meta.dirname, "../.."), file);
+      const label = path.relative(
+        path.resolve(import.meta.dirname, "../.."),
+        file,
+      );
       return inspect(
         ts.createSourceFile(file, text, ts.ScriptTarget.Latest, true),
         label,

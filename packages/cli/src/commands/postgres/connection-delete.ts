@@ -1,5 +1,10 @@
 /** The `postgres connection delete` command. */
-import { type Block, defineCommand, positional, noDataLines } from "@prisma/cli-engine";
+import {
+  type Block,
+  defineCommand,
+  noDataLines,
+  positional,
+} from "@prisma/cli-engine";
 import { CliStructuredError, ok } from "@prisma/cli-engine/protocol";
 import { CLI_NAME } from "../../cli-name";
 import type { DatabaseConnectionDeleteResult } from "../../types/database";

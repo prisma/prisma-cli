@@ -1,5 +1,11 @@
 /** The `project delete` command. */
-import { type Block, defineCommand, type Presentations, positional, noDataLines } from "@prisma/cli-engine";
+import {
+  type Block,
+  defineCommand,
+  noDataLines,
+  type Presentations,
+  positional,
+} from "@prisma/cli-engine";
 import type { Diagnostic } from "@prisma/cli-engine/protocol";
 import { ok } from "@prisma/cli-engine/protocol";
 import { cleanupLocalPinForProject } from "../../controllers/project";

@@ -1,5 +1,10 @@
 /** The `git disconnect` command. */
-import { type Block, defineCommand, type Presentations, noDataLines } from "@prisma/cli-engine";
+import {
+  type Block,
+  defineCommand,
+  noDataLines,
+  type Presentations,
+} from "@prisma/cli-engine";
 import { ok } from "@prisma/cli-engine/protocol";
 import {
   readFirstSourceRepository,

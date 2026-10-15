@@ -1,6 +1,12 @@
 /** The `git connect` command. */
 
-import { type Block, defineCommand, type Presentations, positional, noDataLines } from "@prisma/cli-engine";
+import {
+  type Block,
+  defineCommand,
+  noDataLines,
+  type Presentations,
+  positional,
+} from "@prisma/cli-engine";
 import { CliStructuredError, ok } from "@prisma/cli-engine/protocol";
 import type { ManagementApiClient } from "@prisma/management-api-sdk";
 import type { GitHubRepositoryReference } from "../../adapters/git";
