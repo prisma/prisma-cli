@@ -12,6 +12,7 @@ import { CliStructuredError, ok } from "@prisma/cli-engine/protocol";
 import { sessionsForDisplay } from "../../auth/credential-manager";
 import { environmentCredentialInForce } from "../../auth/service-token";
 import { CLI_NAME } from "../../cli-name";
+import { fieldLines } from "../../output/data-lines";
 import { ENVIRONMENT_CREDENTIAL_NOTICE } from "./credential-card";
 import {
   requireSession,
@@ -22,7 +23,6 @@ import {
   sessionUser,
   sessionUserLabel,
 } from "./session-ref";
-import { fieldLines } from "../../output/data-lines";
 
 export interface WorkspaceUseResult {
   readonly workspace: { readonly id: string; readonly name: string | null };

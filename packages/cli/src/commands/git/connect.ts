@@ -29,6 +29,7 @@ import {
   toRepositoryConnection,
   unsupportedRepositoryProviderError,
 } from "../../controllers/project";
+import { noDataLines } from "../../output/data-lines";
 import { formatGitConnectionDetail } from "../../presenters/project";
 import type { ProjectRepositoryConnectionResult } from "../../types/project";
 import {
@@ -37,7 +38,6 @@ import {
   resolveGitContext,
 } from "./context";
 import { installWaitFailedError } from "./errors";
-import { noDataLines } from "../../output/data-lines";
 
 /** Where the deploy workflow's inputs and the minimal file are documented. */
 const WORKFLOW_DOCS_URL =

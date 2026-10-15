@@ -6,6 +6,7 @@ import {
 } from "@prisma/cli-engine";
 import { ok } from "@prisma/cli-engine/protocol";
 import { resolveDatabase } from "../../controllers/database";
+import { fieldLines } from "../../output/data-lines";
 import type { DatabaseShowResult } from "../../types/database";
 import {
   branchFlag,
@@ -19,7 +20,6 @@ import {
   formatStatus,
   statusValue,
 } from "./presentation";
-import { fieldLines } from "../../output/data-lines";
 
 const TITLE = "Showing database metadata.";
 

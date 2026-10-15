@@ -13,6 +13,7 @@ import {
 import { performLogin } from "../../auth/operations";
 import { environmentCredentialInForce } from "../../auth/service-token";
 import { CLI_NAME } from "../../cli-name";
+import { fieldLines } from "../../output/data-lines";
 import { resolveAgentSetupTipCommand } from "./agent-setup-tip";
 import { ENVIRONMENT_CREDENTIAL_NOTICE } from "./credential-card";
 import {
@@ -21,7 +22,6 @@ import {
   sessionUser,
   sessionUserLabel,
 } from "./session-ref";
-import { fieldLines } from "../../output/data-lines";
 
 const TITLE = "Starting an authenticated CLI session.";
 const LOGIN_STEP = "Sign in via your browser";

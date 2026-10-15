@@ -31,6 +31,7 @@ import {
   resolveProjectForSetup,
   toProjectSummary,
 } from "../../lib/project/setup";
+import { noDataLines } from "../../output/data-lines";
 import type { ProjectTransferResult } from "../../types/project";
 import { resolveActiveWorkspace } from "../resources-shared/workspace";
 import {
@@ -39,7 +40,6 @@ import {
   type ProjectCommandContext,
 } from "./context";
 import { localPinDiagnostics } from "./presentation";
-import { noDataLines } from "../../output/data-lines";
 
 const CONSENT_QUESTION =
   "Transferring moves the project to another workspace and this workspace loses access, so it requires the exact project id.";

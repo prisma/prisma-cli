@@ -7,6 +7,7 @@ import {
 import { ok } from "@prisma/cli-engine/protocol";
 import { environmentCredentialInForce } from "../../auth/service-token";
 import { CLI_NAME } from "../../cli-name";
+import { fieldLines } from "../../output/data-lines";
 import { ENVIRONMENT_CREDENTIAL_NOTICE } from "./credential-card";
 import {
   requireSession,
@@ -15,7 +16,6 @@ import {
   sessionUser,
   sessionUserLabel,
 } from "./session-ref";
-import { fieldLines } from "../../output/data-lines";
 
 export interface WorkspaceLogoutResult {
   readonly workspace: { readonly id: string; readonly name: string | null };

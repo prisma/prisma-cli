@@ -6,6 +6,7 @@ import {
 } from "@prisma/cli-engine";
 import { ok } from "@prisma/cli-engine/protocol";
 import { resolveDatabase } from "../../controllers/database";
+import { noDataLines } from "../../output/data-lines";
 import type { DatabaseDeleteResult } from "../../types/database";
 import {
   branchFlag,
@@ -13,16 +14,13 @@ import {
   projectFlag,
   resolvePostgresContext,
 } from "./context";
-import { noDataLines } from "../../output/data-lines";
 
 const CONSENT_QUESTION =
   "Deleting this database is destructive and requires the exact id.";
 
 function deletePresentations(result: DatabaseDeleteResult): Presentations {
   return {
-    stdout: noDataLines(
-      "A delete has no data; its exit code is the result.",
-    ),
+    stdout: noDataLines("A delete has no data; its exit code is the result."),
     json: () => result,
     next: () => [],
     human: (): Block[] => [

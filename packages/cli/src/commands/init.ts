@@ -18,6 +18,7 @@ import {
 import { readSkillsStatus } from "../lib/skills/status";
 import { syncSkills } from "../lib/skills/sync";
 import { getCliVersion } from "../lib/version";
+import { noDataLines } from "../output/data-lines";
 import { skillsConfigSection } from "./skills/config";
 import { syncPresentations } from "./skills/presentation";
 import type { SkillsSyncResult } from "./skills/results";
@@ -26,7 +27,6 @@ import {
   unmanagedDirectoryDiagnostics,
   versionConflictDiagnostics,
 } from "./skills/sync";
-import { noDataLines } from "../output/data-lines";
 
 export const POSTINSTALL_SCRIPT = "prisma skills sync || exit 0";
 

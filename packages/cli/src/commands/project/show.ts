@@ -11,10 +11,10 @@ import {
   inspectProjectBinding,
   projectResolutionErrorToStructured,
 } from "../../lib/project/resolution";
+import { fieldLines } from "../../output/data-lines";
 import type { ProjectShowResult } from "../../types/project";
 import { resolveActiveWorkspace } from "../resources-shared/workspace";
 import { listWorkspaceProjects, operationContext } from "./context";
-import { fieldLines } from "../../output/data-lines";
 
 interface FieldRow {
   readonly label: string;

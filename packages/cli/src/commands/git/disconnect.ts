@@ -11,9 +11,9 @@ import {
   repoNotConnectedError,
   toRepositoryConnection,
 } from "../../controllers/project";
+import { noDataLines } from "../../output/data-lines";
 import type { ProjectRepositoryConnectionResult } from "../../types/project";
 import { projectFlag, resolveGitContext } from "./context";
-import { noDataLines } from "../../output/data-lines";
 
 function disconnectPresentations(
   result: ProjectRepositoryConnectionResult,

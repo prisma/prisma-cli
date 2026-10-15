@@ -20,6 +20,7 @@ import {
 import { runEnvUpdateFile } from "../../controllers/app-env-file";
 import { formatScopeLabel } from "../../lib/app/env-config";
 import { runCommand, userChoice } from "../../lib/app/env-errors";
+import { noDataLines } from "../../output/data-lines";
 import type { EnvUpdateResult } from "../../types/app-env";
 import { operationContext } from "./context";
 import {
@@ -32,7 +33,6 @@ import {
   roleFlag,
   variableFieldRows,
 } from "./env-shared";
-import { noDataLines } from "../../output/data-lines";
 
 const TITLE = "Replacing the environment variable's value.";
 

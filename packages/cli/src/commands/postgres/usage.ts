@@ -11,6 +11,7 @@ import {
   resolveDatabase,
   USAGE_PERIOD_EXAMPLE_COMMAND,
 } from "../../controllers/database";
+import { fieldLines } from "../../output/data-lines";
 import type { DatabaseUsageResult } from "../../types/database";
 import {
   branchFlag,
@@ -23,7 +24,6 @@ import {
   formatUsageMetric,
   usageMetricValue,
 } from "./presentation";
-import { fieldLines } from "../../output/data-lines";
 
 const TITLE = "Showing database usage metrics.";
 

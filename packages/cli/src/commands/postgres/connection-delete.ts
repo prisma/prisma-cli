@@ -2,9 +2,9 @@
 import { type Block, defineCommand, positional } from "@prisma/cli-engine";
 import { CliStructuredError, ok } from "@prisma/cli-engine/protocol";
 import { CLI_NAME } from "../../cli-name";
+import { noDataLines } from "../../output/data-lines";
 import type { DatabaseConnectionDeleteResult } from "../../types/database";
 import { resolvePostgresProviderOnly } from "./context";
-import { noDataLines } from "../../output/data-lines";
 
 const CONSENT_QUESTION =
   "Deleting this database connection is destructive and requires the exact id.";
@@ -75,8 +75,8 @@ export const postgresConnectionDeleteCommand = defineCommand({
             },
           ],
           stdout: noDataLines(
-      "A delete has no data; its exit code is the result.",
-    ),
+            "A delete has no data; its exit code is the result.",
+          ),
           json: () => ({ connection: result.connection }),
           next: () => [],
         },

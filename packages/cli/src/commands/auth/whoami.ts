@@ -11,12 +11,12 @@ import {
   ok,
 } from "@prisma/cli-engine/protocol";
 import { CLI_NAME } from "../../cli-name";
+import { fieldLines } from "../../output/data-lines";
 import {
   credentialFieldRows,
   ENVIRONMENT_CREDENTIAL_NOTICE,
   UNVERIFIED_CREDENTIAL_NOTICE,
 } from "./credential-card";
-import { fieldLines } from "../../output/data-lines";
 
 const TITLE = "Showing the active authenticated identity.";
 

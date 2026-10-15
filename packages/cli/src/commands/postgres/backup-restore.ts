@@ -9,10 +9,10 @@ import {
 import { CliStructuredError, ok } from "@prisma/cli-engine/protocol";
 import { CLI_NAME } from "../../cli-name";
 import { resolveDatabase } from "../../controllers/database";
+import { noDataLines } from "../../output/data-lines";
 import type { DatabaseRestoreResult } from "../../types/database";
 import { branchFlag, projectFlag, resolvePostgresContext } from "./context";
 import type { FieldRow } from "./presentation";
-import { noDataLines } from "../../output/data-lines";
 
 const CONSENT_QUESTION =
   "Restoring immediately and irreversibly overwrites all data in the target database, so it requires the exact target database id.";

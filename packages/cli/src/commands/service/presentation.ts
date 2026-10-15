@@ -285,7 +285,9 @@ export function versionShowPresentations(
       : []),
     { label: "version", value: result.version.id },
     { label: "status", value: result.version.status },
-    ...(result.version.url ? [{ label: "url", value: result.version.url }] : []),
+    ...(result.version.url
+      ? [{ label: "url", value: result.version.url }]
+      : []),
     ...(result.version.live === null
       ? []
       : [{ label: "live", value: result.version.live ? "yes" : "no" }]),
@@ -348,7 +350,9 @@ export function promotePresentations(
   alreadyLive: boolean,
 ): Presentations {
   return {
-    stdout: noDataLines("A promotion changes which version serves traffic and has no data."),
+    stdout: noDataLines(
+      "A promotion changes which version serves traffic and has no data.",
+    ),
     json: () => result,
     human: () => [
       completed(
@@ -374,7 +378,9 @@ export function rollbackPresentations(
   alreadyLive: boolean,
 ): Presentations {
   return {
-    stdout: noDataLines("A rollback changes which version serves traffic and has no data."),
+    stdout: noDataLines(
+      "A rollback changes which version serves traffic and has no data.",
+    ),
     json: () => result,
     human: () => [
       completed(
@@ -404,7 +410,9 @@ export function versionStartPresentations(
   result: ServiceVersionRunStateResult,
 ): Presentations {
   return {
-    stdout: noDataLines("Starting a version has no data; its exit code is the result."),
+    stdout: noDataLines(
+      "Starting a version has no data; its exit code is the result.",
+    ),
     json: () => result,
     human: () => [
       completed(
@@ -429,7 +437,9 @@ export function versionStopPresentations(
   result: ServiceVersionRunStateResult,
 ): Presentations {
   return {
-    stdout: noDataLines("Stopping a version has no data; its exit code is the result."),
+    stdout: noDataLines(
+      "Stopping a version has no data; its exit code is the result.",
+    ),
     json: () => result,
     human: () => [
       completed(
@@ -597,7 +607,9 @@ export function domainRetryPresentations(
   result: ServiceDomainRetryResult,
 ): Presentations {
   return {
-    stdout: noDataLines("A retry restarts verification and has no data; domain wait reports the outcome."),
+    stdout: noDataLines(
+      "A retry restarts verification and has no data; domain wait reports the outcome.",
+    ),
     json: () => result,
     human: () => [
       completed(`Retried verification for ${result.domain.hostname}.`),

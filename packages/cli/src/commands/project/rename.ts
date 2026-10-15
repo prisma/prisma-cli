@@ -11,10 +11,10 @@ import {
   isValidProjectSetupName,
   projectSetupNameRequiredError,
 } from "../../lib/project/setup";
+import { noDataLines } from "../../output/data-lines";
 import type { ProjectRenameResult } from "../../types/project";
 import { resolveActiveWorkspace } from "../resources-shared/workspace";
 import { resolvePinnedProject } from "./context";
-import { noDataLines } from "../../output/data-lines";
 
 function renamePresentations(result: ProjectRenameResult): Presentations {
   return {

@@ -13,6 +13,7 @@ import {
 } from "../../controllers/app-env-api";
 import { formatScopeLabel } from "../../lib/app/env-config";
 import { runCommand, userChoice } from "../../lib/app/env-errors";
+import { noDataLines } from "../../output/data-lines";
 import { scopeLabel } from "../../presenters/app-env";
 import type { EnvRmResult } from "../../types/app-env";
 import {
@@ -22,15 +23,12 @@ import {
   resolveEnvTarget,
   roleFlag,
 } from "./env-shared";
-import { noDataLines } from "../../output/data-lines";
 
 const TITLE = "Deleting the environment variable from the scope.";
 
 function deletePresentations(result: EnvRmResult): Presentations {
   return {
-    stdout: noDataLines(
-      "A delete has no data; its exit code is the result.",
-    ),
+    stdout: noDataLines("A delete has no data; its exit code is the result."),
     json: () => result,
     next: () => [],
     human: (): Block[] => [

@@ -16,6 +16,9 @@ import path from "node:path";
 import { describe, expect, it } from "vitest";
 
 const SOURCE_DIR = path.resolve(import.meta.dirname, "../src");
+const EMPTY_STDOUT = /stdout:\s*\(\)\s*=>\s*\[\s*\]/;
+const NO_DATA_CALL = /noDataLines\(\s*(?:"([^"]*)")?/g;
+const SENTENCE = /^[A-Za-z].{10,}\.$/;
 
 async function sourceFiles(dir: string): Promise<string[]> {
   const entries = await readdir(dir, { withFileTypes: true });
@@ -44,7 +47,7 @@ async function sources(): Promise<Array<{ file: string; text: string }>> {
 describe("stdout data lines", () => {
   it("no presentation writes an empty stdout without saying why", async () => {
     const silent = (await sources())
-      .filter(({ text }) => /stdout:\s*\(\)\s*=>\s*\[\s*\]/.test(text))
+      .filter(({ text }) => EMPTY_STDOUT.test(text))
       .map(({ file }) => file);
 
     expect(
@@ -55,7 +58,7 @@ describe("stdout data lines", () => {
 
   it("every noDataLines call gives its reason as a sentence", async () => {
     const reasons = (await sources()).flatMap(({ file, text }) =>
-      [...text.matchAll(/noDataLines\(\s*(?:"([^"]*)")?/g)].map((match) => ({
+      [...text.matchAll(NO_DATA_CALL)].map((match) => ({
         file,
         reason: match[1],
       })),
@@ -63,7 +66,7 @@ describe("stdout data lines", () => {
     const unexplained = reasons.filter(
       ({ file, reason }) =>
         file !== path.join("output", "data-lines.ts") &&
-        (reason === undefined || !/^[A-Za-z].{10,}\.$/.test(reason)),
+        (reason === undefined || !SENTENCE.test(reason)),
     );
 
     expect(reasons.length).toBeGreaterThan(0);
