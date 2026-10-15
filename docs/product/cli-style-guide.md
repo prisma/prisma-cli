@@ -240,6 +240,7 @@ Loading indicators are for slow or remote work, not for every step.
 
 Non-TTY behavior should be automation-friendly:
 
+- the format stays human: stdout carries the command's plain data lines, and JSON needs `--json` (see `output-conventions.md`)
 - no prompts unless explicitly supported and satisfied
 - no decorative output noise
 - no dependence on color, cursor control, or animation

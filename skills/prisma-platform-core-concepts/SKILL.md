@@ -31,8 +31,9 @@ when a concept needs more depth than this file carries.
 This file shares the platform's structures, hierarchies, relationships, and
 workflows. It is not a CLI reference: commands appear only where a workflow
 needs them. To learn a command surface, run `prisma --help`, or
-`prisma <group> --help` for any group named below; most commands accept
-`--json` for machine-readable output. The data contract, migrations, and
+`prisma <group> --help` for any group named below; pass `--json` for
+machine-readable output. Without it, a piped command prints plain data lines,
+not JSON. The data contract, migrations, and
 queries belong to the `prisma-orm-core-concepts` skill; declaring services
 and modules in code belongs to `prisma-composer-core-concepts`.
 

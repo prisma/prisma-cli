@@ -48,20 +48,67 @@ having to parse the delegated tool's human output.
 
 ## TTY and Piped Behavior
 
+The output format never depends on where stdout goes. Without `--json`,
+`--format json`, or `--format markdown`, every run is human output: blocks
+on stderr and the command's data lines on stdout, whether stdout is a
+terminal, a pipe, or a file. JSON is only ever explicit.
+
+```bash
+$ prisma project list | head -3
+proj_cm3x…  shop
+proj_k91…   blog
+$ curl "$(prisma service open shop)"
+$ prisma project list --json | jq '.result.items[].id'
+```
+
+No widely used CLI switches to JSON when piped (gh, aws, kubectl, gcloud, az,
+docker, supabase all keep their default format). A user who pipes a command
+expects the same values they saw, in a form `head`, `cut`, `xargs` and `$(…)`
+can take.
+
 Interactive TTY behavior:
 
 - human-oriented status and progress are visible on stderr
-- stdout is used only when the command emits data
+- stdout carries the command's data lines; when stdout and stderr are the same
+  terminal, the data lines are not written, because the card on stderr already
+  shows the same values
 - header framing, alignment, and color may be used when they improve scanability
 
 Non-TTY or piped behavior:
 
+- stdout carries exactly the command's data lines (see [Data Lines](#data-lines))
+- stderr still carries the human blocks, without color or animation
 - decorative output is suppressed
 - prompts are not shown
-- machine-readable output remains stable
-- headers collapse to plain text or are omitted when they add no value
+- a failure is a human error on stderr and a non-zero exit code; `--json`
+  turns it into a failure envelope on stdout
 
 This keeps pipes, captures, and automation clean.
+
+## Data Lines
+
+Every command decides what its stdout carries in human format. The data lines
+are what a script or a person piping the command wants: values another command
+takes, with no labels, colour, or prose. Choose by what the command returns:
+
+- **A list:** one line per item. The first field is the value a follow-up
+  command takes, normally the item's id; the name follows. Fields are
+  separated by a tab. An empty list writes nothing.
+- **A show:** the resource's identifying value when one value identifies it
+  (an id, a URL). Otherwise one `key<TAB>value` line per field, keys in the
+  order the card shows them.
+- **One value:** a command whose result is one value prints it bare, on its
+  own line: a URL, a connection string, the id of a created resource. This
+  follows `docker port` and `encore db conn-uri`.
+- **No data:** a command whose only result is that it succeeded (logout, a
+  delete, a stop) writes nothing to stdout. Its exit code is the result.
+
+A secret the command exists to hand over is a one-value result (see
+[One-Time Secret Output](#one-time-secret-output)). List and show commands
+never print secrets.
+
+Data lines are a stable interface: change their fields or order only as a
+breaking change. A script that needs more than the data lines uses `--json`.
 
 ## Automatic Update Notifications
 
@@ -521,8 +568,8 @@ future command needs that extra detail.
 
 Action commands and data commands follow the same stream rules, but not every command needs the same stdout behavior.
 
-- action commands may produce no stdout payload unless `--json` is requested
-- data commands may emit structured stdout payloads
+- action commands produce no stdout payload unless `--json` is requested
+- data commands write their data lines to stdout (see [Data Lines](#data-lines))
 - in human TTY mode, both kinds may still show status and next steps on stderr
 
 For automation, commands should prefer explicit `--json` rather than relying on human stderr output.
@@ -543,7 +590,7 @@ Rules:
 
 ## `--format markdown`
 
-`--format markdown` renders the same blocks a command describes for human output as plain Markdown: a summary line, `label: value` rows, GFM pipe tables, bullet lists, nested bullets for trees, and fenced code for drawings, followed by `### Next` for the suggested next actions and `### Diagnostics` for any findings. It exists for an agent that reads CLI output as text rather than parsing JSON: every value is labelled, nothing is padded, wrapped, aligned, or coloured, and no tokens go to envelope keys. Every part of the run's output — blocks, next actions, diagnostics, structured errors, help, `--version`, and live events — lands on stdout, and the engine writes nothing to stderr. The out-of-date agent skills notice follows the same rule: under this format it is a trailing `### Notice` section on stdout rather than a stderr line. The format is only ever explicit: without `--format markdown` a terminal gets human output and a pipe gets JSON.
+`--format markdown` renders the same blocks a command describes for human output as plain Markdown: a summary line, `label: value` rows, GFM pipe tables, bullet lists, nested bullets for trees, and fenced code for drawings, followed by `### Next` for the suggested next actions and `### Diagnostics` for any findings. It exists for an agent that reads CLI output as text rather than parsing JSON: every value is labelled, nothing is padded, wrapped, aligned, or coloured, and no tokens go to envelope keys. Every part of the run's output — blocks, next actions, diagnostics, structured errors, help, `--version`, and live events — lands on stdout, and the engine writes nothing to stderr. The out-of-date agent skills notice follows the same rule: under this format it is a trailing `### Notice` section on stdout rather than a stderr line. The format is only ever explicit: without `--format markdown` or `--json`, a terminal and a pipe both get human output.
 
 ## Non-Streaming JSON Shape
 
