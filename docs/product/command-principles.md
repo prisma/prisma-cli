@@ -146,6 +146,13 @@ When a group acts on a subordinate resource, the action may be a compound verb p
 
 That is still one action in the command grammar. It is preferable to inventing a temporary top-level `deployment` group for the MVP.
 
+## Custom domains
+
+`service domain` commands manage domains for the service on the selected branch.
+They default to `production`; `--branch <name>` selects a preview or staging
+branch. The service must have a promoted, running version before a domain can
+be added. Domain lookup, retry, waiting, and deletion stay within that service.
+
 ## Shared Flag Conventions
 
 Shared CLI flag rules:

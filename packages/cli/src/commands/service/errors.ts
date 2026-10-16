@@ -289,27 +289,6 @@ export function liveUrlUnavailableError(
   );
 }
 
-export function branchNotDeployableError(
-  branchName: string,
-): CliStructuredError {
-  return new CliStructuredError(
-    "SERVICE.BRANCH_NOT_DEPLOYABLE",
-    "Custom domains require the production branch",
-    {
-      why: `Custom domains on preview branch "${branchName}" are not supported in Public Beta.`,
-      nextActions: [
-        adviceAction(
-          "Use --branch production, or attach the domain after promoting/deploying to the production branch.",
-        ),
-        runCommandAction(
-          "Add on production",
-          "service domain add <hostname> --service <name> --branch production",
-        ),
-      ],
-    },
-  );
-}
-
 export function domainHostnameInvalidError(
   hostname: string,
   why?: string,
@@ -569,9 +548,9 @@ function domainRequiresDeploymentError(
 ): CliStructuredError {
   return new CliStructuredError(
     "SERVICE.NO_VERSIONS",
-    "Custom domain requires a live production version",
+    "Custom domain requires a live version",
     {
-      why: "The selected production service does not have a promoted version that can receive a custom domain.",
+      why: "The selected service does not have a promoted version that can receive a custom domain.",
       meta: debugMeta(error),
       nextActions: [
         // Legacy paired "rerun the domain command" with the fix line
@@ -579,7 +558,7 @@ function domainRequiresDeploymentError(
         // with the dropped command; without the advice the only thing
         // left told the user to rerun what had just failed.
         adviceAction(
-          "Promote a version on the service's production branch, then add the domain again.",
+          "Promote a version on the selected branch, then add the domain again.",
         ),
         runCommandAction(
           "Add the domain",

@@ -12,10 +12,13 @@ import {
 
 export const serviceDomainAddCommand = defineCommand({
   help: {
-    summary: "Register a custom domain on the service's production branch",
+    summary: "Register a custom domain on the selected service branch",
     description:
       "Points a hostname you own at the service instead of its generated URL. After registering, create the DNS record the platform asks for, then 'service domain wait' blocks until verification and TLS provisioning finish.",
-    examples: ["service domain add shop.acme.com --service my-service"],
+    examples: [
+      "service domain add shop.acme.com --service my-service",
+      "service domain add staging.acme.com --service my-service --branch staging",
+    ],
   },
   args: domainTargetArgs(),
   needs: { credentials: true },

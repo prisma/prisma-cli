@@ -19,7 +19,6 @@ import type { AuthWorkspace } from "../../types/auth";
 import type { BranchKind } from "../../types/branch";
 import type { ProjectResolution, ProjectSummary } from "../../types/project";
 import {
-  branchNotDeployableError,
   branchValueEmptyError,
   deployFailedError,
   domainCommandError,
@@ -520,9 +519,6 @@ export async function resolveServiceDomainTarget(
 ): Promise<ResolvedServiceDomainTarget> {
   requireBranchFlagValue(options.branchName);
   const branchName = options.branchName?.trim() ?? "production";
-  if (toBranchKind(branchName) !== "production") {
-    throw branchNotDeployableError(branchName);
-  }
 
   const requested = requireServiceArgument(
     options.serviceName,

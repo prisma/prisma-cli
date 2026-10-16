@@ -153,7 +153,7 @@ describe("prisma service domain add", () => {
     });
   });
 
-  it("maps a 422 without a live production deployment to SERVICE.NO_VERSIONS", async () => {
+  it("maps a 422 without a live deployment to SERVICE.NO_VERSIONS", async () => {
     const harness = await makeServiceCli({
       routes: domainRoutes({
         "POST /v1/apps/{appId}/domains": () => ({
@@ -181,7 +181,7 @@ describe("prisma service domain add", () => {
       {
         kind: "user-choice",
         label:
-          "Promote a version on the service's production branch, then add the domain again.",
+          "Promote a version on the selected branch, then add the domain again.",
       },
       {
         kind: "run-command",
@@ -207,9 +207,33 @@ describe("prisma service domain add", () => {
     expect(frame.envelope.error.code).toBe("SERVICE.DOMAIN_HOSTNAME_INVALID");
   });
 
-  it("rejects preview branches as SERVICE.BRANCH_NOT_DEPLOYABLE", async () => {
-    const harness = await makeServiceCli({ routes: domainRoutes() });
-
+  it.each([
+    "feature/foo",
+    "staging",
+  ])("registers a domain on branch %s", async (branchName) => {
+    const harness = await makeServiceCli({
+      routes: domainRoutes({
+        "GET /v1/apps": (init) => {
+          expect(init.params?.query?.branchGitName).toBe(branchName);
+          return {
+            data: page([
+              {
+                id: "svc_preview",
+                name: "hello-world",
+                region: { id: "eu-central-1" },
+                branchId: "br_preview",
+                latestDeploymentId: "dep_preview",
+                appEndpointDomain: "preview.prisma.build",
+              },
+            ]),
+          };
+        },
+        "POST /v1/apps/{appId}/domains": (init) => {
+          expect(init.params?.path?.appId).toBe("svc_preview");
+          return { data: { data: domainRecord({ appId: "svc_preview" }) } };
+        },
+      }),
+    });
     const result = await harness.cli.run(
       [
         "service",
@@ -218,18 +242,17 @@ describe("prisma service domain add", () => {
         "shop.acme.com",
         ...TARGET_ARGS,
         "--branch",
-        "feature/foo",
-        "--json",
+        branchName,
       ],
-      { cwd: harness.cwd, env: harness.env },
+      { cwd: harness.cwd, env: harness.env, isTty: { stdout: true } },
     );
-
-    expect(result.exitCode).toBe(2);
-    const frame = result.json[result.json.length - 1];
-    if (frame?.kind !== "result" || frame.envelope.ok) {
-      throw new Error("expected an errored envelope");
-    }
-    expect(frame.envelope.error.code).toBe("SERVICE.BRANCH_NOT_DEPLOYABLE");
+    expect(result.exitCode).toBe(0);
+    expect(result.presented?.data).toMatchObject({
+      branch: { name: branchName, kind: "preview" },
+      service: { id: "svc_preview", name: "hello-world" },
+      domain: { serviceId: "svc_preview" },
+    });
+    expect(presentedSummary(result.presented)?.status).toBe("ok");
   });
 
   it("accepts a service id in --service", async () => {
@@ -834,5 +857,97 @@ describe("prisma service domain delete", () => {
       throw new Error("expected an errored envelope");
     }
     expect(frame.envelope.error.code).toBe("CLI.CONSENT_REQUIRED");
+  });
+});
+
+it.each([
+  "show",
+  "retry",
+  "wait",
+  "delete",
+])("manages a staging domain with %s", async (command) => {
+  const harness = await makeServiceCli({
+    routes: domainRoutes({
+      "GET /v1/apps": (init) => {
+        expect(init.params?.query?.branchGitName).toBe("staging");
+        return {
+          data: page([
+            {
+              id: "svc_staging",
+              name: "hello-world",
+              region: { id: "eu-central-1" },
+              branchId: "br_staging",
+              latestDeploymentId: "dep_staging",
+              appEndpointDomain: "staging.prisma.build",
+            },
+          ]),
+        };
+      },
+      "GET /v1/apps/{appId}/domains": (init) => {
+        expect(init.params?.path?.appId).toBe("svc_staging");
+        return {
+          data: {
+            data: [
+              domainRecord({
+                id: "dom_staging",
+                appId: "svc_staging",
+                status: "active",
+              }),
+            ],
+          },
+        };
+      },
+      "GET /v1/domains/{domainId}": (init) => {
+        expect(init.params?.path?.domainId).toBe("dom_staging");
+        return {
+          data: {
+            data: domainRecord({
+              id: "dom_staging",
+              appId: "svc_staging",
+              status: "active",
+            }),
+          },
+        };
+      },
+      "POST /v1/domains/{domainId}/retry": (init) => {
+        expect(init.params?.path?.domainId).toBe("dom_staging");
+        return {
+          data: {
+            data: domainRecord({
+              id: "dom_staging",
+              appId: "svc_staging",
+              status: "verifying",
+            }),
+          },
+        };
+      },
+      "DELETE /v1/domains/{domainId}": (init) => {
+        expect(init.params?.path?.domainId).toBe("dom_staging");
+        return { data: { data: null } };
+      },
+    }),
+  });
+  const result = await harness.cli.run(
+    [
+      "service",
+      "domain",
+      command,
+      "shop.acme.com",
+      ...TARGET_ARGS,
+      "--branch",
+      "staging",
+      "--json",
+      ...(command === "delete" ? ["--confirm", "shop.acme.com"] : []),
+    ],
+    { cwd: harness.cwd, env: harness.env },
+  );
+  expect(result.exitCode).toBe(0);
+  const frame = result.json[result.json.length - 1];
+  if (frame?.kind !== "result" || !frame.envelope.ok) {
+    throw new Error("expected a completed envelope");
+  }
+  expect(frame.envelope.result).toMatchObject({
+    branch: { name: "staging", kind: "preview" },
+    service: { id: "svc_staging", name: "hello-world" },
   });
 });

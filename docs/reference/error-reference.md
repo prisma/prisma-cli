@@ -442,10 +442,6 @@ A `project` or `branch` group command was invoked with unusable arguments — fo
 
 A `--branch` flag was passed with an empty or whitespace-only value to a service command; the check runs before any resolution because a blank value must never fall through to the default-branch behavior of omitting the flag. The fix is to pass a non-empty branch name, or omit `--branch` to target the default branch. Meta: none.
 
-### SERVICE.BRANCH_NOT_DEPLOYABLE
-
-A `service domain` command was pointed at a non-production branch, which the domain-target resolver refuses because custom domains on preview branches are not supported in Public Beta. The fix is to use `--branch production`, or attach the domain after promoting to the production branch. Meta: none.
-
 ### SERVICE.DELETE_FAILED
 
 `service delete` called the platform's app-teardown API and it rejected; the underlying error's message becomes `why` and the original error is carried in `cause`. Next actions point at `service show` and `service version list` for the service. Meta: none.
@@ -520,7 +516,7 @@ A `service logs` response body ended without the terminal record that closes a p
 
 ### SERVICE.NO_VERSIONS
 
-The resolved service has no usable version for the command — raised by `service open` when the service has no versions, by `service logs` when it has no live version, and by `service domain add` when the API answers 422 because the production service has no promoted version that can receive a custom domain. The fix on the domain path is to promote a version on the production branch first, then add the domain again. Meta: `status`, `apiCode`, `hint` (domain-add path only; otherwise none).
+The resolved service has no usable version for the command — raised by `service open` when the service has no versions, by `service logs` when it has no live version, and by `service domain add` when the API answers 422 because the selected service has no promoted version that can receive a custom domain. The fix on the domain path is to promote a version on the selected branch first, then add the domain again. Meta: `status`, `apiCode`, `hint` (domain-add path only; otherwise none).
 
 ### SERVICE.SELECTION_INVALID
 
