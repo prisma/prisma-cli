@@ -2,6 +2,7 @@
 import {
   type Block,
   defineCommand,
+  noDataLines,
   type Presentations,
   positional,
 } from "@prisma/cli-engine";
@@ -27,7 +28,7 @@ const TITLE = "Deleting the environment variable from the scope.";
 
 function deletePresentations(result: EnvRmResult): Presentations {
   return {
-    stdout: () => [],
+    stdout: noDataLines("A delete has no data; its exit code is the result."),
     json: () => result,
     next: () => [],
     human: (): Block[] => [

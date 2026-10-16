@@ -75,16 +75,14 @@ function listPresentations(result: WorkspaceListResult): Presentations {
           ]
         : [{ kind: "table", columns, rows } as const]),
     ],
-    // Scripts read these columns by position, so the optional user stays out.
     stdout: () =>
       result.sessions.map((session) =>
         [
           sessionLabel(session),
+          sessionUserLabel(session) ?? "",
           session.workspaceId,
           session.workspaceId === result.selectedWorkspaceId ? "current" : "",
-        ]
-          .join("  ")
-          .trimEnd(),
+        ].join("\t"),
       ),
     json: () => serializeWorkspaceList(result),
     next: () => (result.sessions.length === 0 ? [LOGIN_NEXT_ACTION] : []),

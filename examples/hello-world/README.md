@@ -32,7 +32,7 @@ Fresh external scaffold:
 mkdir my-bun-app
 cd my-bun-app
 bun init --yes
-pnpm add -D @prisma/cli@next
+pnpm add -D @prisma/cli
 ```
 
 Then replace `index.ts` with a `Bun.serve(...)` server and run:

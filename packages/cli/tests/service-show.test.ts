@@ -48,6 +48,12 @@ describe("prisma service show", () => {
         },
       ],
     });
+    expect(result.presented?.presentation.stdout).toEqual([
+      "project\tproj_1",
+      "service\thello-world",
+      "live version\tdep_2",
+      "live url\thttps://hello.prisma.app",
+    ]);
   });
 
   it("scopes the service lookup to the requested branch", async () => {

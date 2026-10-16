@@ -1,4 +1,8 @@
-import { defineCommand, type Presentations } from "@prisma/cli-engine";
+import {
+  defineCommand,
+  noDataLines,
+  type Presentations,
+} from "@prisma/cli-engine";
 import { type NextAction, ok } from "@prisma/cli-engine/protocol";
 import { environmentCredentialInForce } from "../../auth/service-token";
 import { CLI_NAME } from "../../cli-name";
@@ -37,7 +41,9 @@ function presentationsFor(
           ]
         : []),
     ],
-    stdout: () => [],
+    stdout: noDataLines(
+      "Signing out has no data; its exit code is the result.",
+    ),
     next: () => [SIGN_IN],
   };
 }

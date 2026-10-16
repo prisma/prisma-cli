@@ -111,7 +111,7 @@ describe("prisma auth whoami", () => {
     });
 
     expect(result.exitCode).toBe(0);
-    expect(result.stdout).toBe("status: signed out\n");
+    expect(result.stdout).toBe("status\tsigned out\n");
     expect(result.stderr).toBe(
       "ℹ Showing the active authenticated identity.\n" +
         "\n" +
@@ -128,7 +128,7 @@ describe("prisma auth whoami", () => {
 
     expect(result.exitCode).toBe(0);
     expect(result.stdout).toBe(
-      "status: signed in\nuser: bob@example.com\nworkspace: Acme Inc\n",
+      "status\tsigned in\nuser\tbob@example.com\nworkspace\tAcme Inc\n",
     );
     expect(result.stderr).toBe(
       "ℹ Showing the active authenticated identity.\n" +
@@ -199,7 +199,7 @@ describe("prisma auth whoami", () => {
 
     expect(human.exitCode).toBe(0);
     expect(human.stdout).toBe(
-      "status: signed in\nenvironment variable: PRISMA_SERVICE_TOKEN\n",
+      "status\tsigned in\nenvironment variable\tPRISMA_SERVICE_TOKEN\n",
     );
     expect(human.stderr).not.toContain("workspace:");
     expect(human.stderr).not.toContain("undefined");
@@ -366,7 +366,7 @@ describe("prisma auth whoami", () => {
 
     expect(result.exitCode).toBe(0);
     expect(result.stdout).toBe(
-      "status: signed in\nuser: bob@example.com\nworkspace: Acme Inc\n",
+      "status\tsigned in\nuser\tbob@example.com\nworkspace\tAcme Inc\n",
     );
     expect(result.stderr).toBe(
       "ℹ Showing the active authenticated identity.\n" +

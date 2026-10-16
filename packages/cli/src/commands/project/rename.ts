@@ -2,6 +2,7 @@
 import {
   defineCommand,
   flag,
+  noDataLines,
   type Presentations,
   positional,
 } from "@prisma/cli-engine";
@@ -17,7 +18,9 @@ import { resolvePinnedProject } from "./context";
 
 function renamePresentations(result: ProjectRenameResult): Presentations {
   return {
-    stdout: () => [],
+    stdout: noDataLines(
+      "A rename has no data; the new name is the one the user typed.",
+    ),
     json: () => result,
     next: () => [],
     human: () => [

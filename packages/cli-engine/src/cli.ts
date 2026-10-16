@@ -32,8 +32,10 @@ export interface Cli {
 }
 
 /**
- * Shell-side construction. Group help is declared with the mount.
- * Collisions, unknown groups, reserved-flag violations, grammar
+ * Shell-side construction. Group help is declared with the mount. A
+ * path may be both a command and a group (`dev` beside `dev url`); a
+ * child's name wins over the command's positional. Redirects onto
+ * mounted paths, unknown groups, reserved-flag violations, grammar
  * violations, and foreign-section references fail construction (build
  * time, not run time).
  */

@@ -470,6 +470,7 @@ describe("buildCli", () => {
       "telemetry",
       "status",
       "--config=",
+      "--json",
     ]);
 
     expect(run.exitCode).toBe(2);
@@ -497,7 +498,7 @@ describe("buildCli", () => {
 
   /** The error the bin's stream settled on, read from the terminal
    *  result frame. Parsed rather than matched against the raw text:
-   *  stdout is not a TTY here, so the stream is JSON, and JSON escapes
+   *  the run passes --json, so the stream is JSON, and JSON escapes
    *  every separator in a Windows path — no path the CLI printed is a
    *  substring of the stream that carried it. */
   function resultFailure(stdoutText: string): {
@@ -525,7 +526,15 @@ describe("buildCli", () => {
     readonly diagnostics: readonly Diagnostic[];
   }> {
     const proc = makeProcess({
-      argv: ["node", "bin.js", "dev", "--config", configPath, "src/service.ts"],
+      argv: [
+        "node",
+        "bin.js",
+        "dev",
+        "--json",
+        "--config",
+        configPath,
+        "src/service.ts",
+      ],
     });
 
     const exitCode = await main(proc);

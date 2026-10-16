@@ -2,13 +2,27 @@
 
 The execution engine of the unified Prisma CLI: it owns the path from argv to exit code — parsing, execution, rendering, and error handling.
 
-Every command describes its output once, as blocks, and the engine renders it in one of three formats chosen by `--format`: `human` for a person at a terminal (padded, aligned, coloured, on stderr, with the machine-usable data lines on stdout), `json` for a program (a stream of frames ending in a result envelope on stdout), and `markdown` for an agent that reads the output as text (plain Markdown with every value labelled, everything on stdout, nothing on stderr). A terminal gets `human` and a pipe gets `json` unless a format is named; `markdown` is only ever explicit.
+Every command describes its output once, as blocks, and the engine renders it in one of three formats chosen by `--format`: `human` for a person at a terminal (padded, aligned, coloured, on stderr, with the machine-usable data lines on stdout), `json` for a program (a stream of frames ending in a result envelope on stdout), and `markdown` for an agent that reads the output as text (plain Markdown with every value labelled, everything on stdout, nothing on stderr). Without a format flag the format is `human`, whether stdout is a terminal or a pipe: a pipe receives the command's data lines and nothing else. `json` and `markdown` are only ever explicit.
 
 ## Entry points
 
 - `@prisma/cli-engine` — the engine: command definitions, context, and the runner.
 - `@prisma/cli-engine/protocol` — the wire types for machine-readable (JSON) output.
 - `@prisma/cli-engine/testing` — the test harness for running commands in-process.
+
+## Mounting commands
+
+`createCli` takes commands by path. Every path with more than one word needs its group declared in `groups`, and the group's `brief` is its row on the parent's help card. A path can be a command and a group at once:
+
+```ts
+createCli({
+  groups: { dev: { brief: "Run the app locally. Start it, print URLs, stop it" } },
+  commands: { dev, "dev url": devUrl, "dev stop": devStop },
+  // ...
+});
+```
+
+`dev module.ts` runs `dev` with the positional `module.ts`, and `dev url gateway` runs `dev url`. When the word after `dev` names a command beneath it, that command runs, so `dev url` never reaches `dev` as a positional. To pass such a word as the positional, put `--` before it: `dev -- url` runs `dev` with `url`. A retired path declared as a redirect, such as `dev up`, wins over the positional the same way. `dev --help` shows the `dev` command's help and lists `url` and `stop`.
 
 ## Statement prompts
 

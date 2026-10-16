@@ -461,6 +461,7 @@ describe("prisma postgres list", () => {
     const result = await makeCli(postgresClient(), false).run([
       "postgres",
       "list",
+      "--json",
     ]);
 
     expect(result.exitCode).toBe(2);
@@ -500,13 +501,13 @@ describe("prisma postgres show", () => {
     // The card shows the reader "unscoped"/"unknown" where a value is
     // absent; stdout mirrors the same labels with raw values.
     expect(result.presented?.presentation.stdout).toEqual([
-      "project: Billing",
-      "database: acme-production",
-      "id: db_1",
-      "branch: main",
-      "region: us-east-1",
-      "status: ready",
-      "connections: 1",
+      "project\tBilling",
+      "database\tacme-production",
+      "id\tdb_1",
+      "branch\tmain",
+      "region\tus-east-1",
+      "status\tready",
+      "connections\t1",
     ]);
   });
 
@@ -547,7 +548,11 @@ describe("prisma postgres show", () => {
         { label: "connections", value: "0" },
       ],
     });
-    expect(result.presented?.presentation.stdout).toContain("status: ");
+    expect(
+      result.presented?.presentation.stdout.some((line) =>
+        line.startsWith("status\t"),
+      ),
+    ).toBe(false);
   });
 
   it("fails when the follow-up read says the database is gone", async () => {
@@ -654,6 +659,7 @@ describe("prisma postgres show", () => {
       "postgres",
       "show",
       "db_1",
+      "--json",
     ]);
 
     expect(result.exitCode).toBe(2);
@@ -888,6 +894,7 @@ describe("prisma postgres create", () => {
       "postgres",
       "create",
       "my-db",
+      "--json",
     ]);
 
     expect(result.exitCode).toBe(2);
@@ -946,14 +953,14 @@ describe("prisma postgres usage", () => {
     // one sentence; stdout carries one raw fact per line, units and all
     // bounds being in the --json record.
     expect(result.presented?.presentation.stdout).toEqual([
-      "project: Billing",
-      "database: acme-production",
-      "id: db_1",
-      "period start: 2026-06-01T00:00:00.000Z",
-      "period end: 2026-06-30T23:59:59.999Z",
-      "operations: 1200",
-      "storage: 3",
-      "generated: 2026-07-01T00:00:00.000Z",
+      "project\tBilling",
+      "database\tacme-production",
+      "id\tdb_1",
+      "period start\t2026-06-01T00:00:00.000Z",
+      "period end\t2026-06-30T23:59:59.999Z",
+      "operations\t1200",
+      "storage\t3",
+      "generated\t2026-07-01T00:00:00.000Z",
     ]);
   });
 
@@ -1118,14 +1125,10 @@ describe("prisma postgres usage", () => {
       ],
     });
     expect(result.presented?.presentation.stdout).toEqual([
-      "project: Billing",
-      "database: acme-production",
-      "id: db_1",
-      "period start: ",
-      "period end: ",
-      "operations: ",
-      "storage: ",
-      "generated: 2026-07-01T00:00:00.000Z",
+      "project\tBilling",
+      "database\tacme-production",
+      "id\tdb_1",
+      "generated\t2026-07-01T00:00:00.000Z",
     ]);
   });
 
@@ -1157,7 +1160,7 @@ describe("prisma postgres usage", () => {
         { label: "storage", value: "0 GiB" },
       ]),
     });
-    expect(result.presented?.presentation.stdout).toContain("operations: 0");
+    expect(result.presented?.presentation.stdout).toContain("operations\t0");
   });
 
   it("carries absent metrics as null in json mode", async () => {
@@ -1188,6 +1191,7 @@ describe("prisma postgres usage", () => {
       "postgres",
       "usage",
       "db_1",
+      "--json",
     ]);
 
     expect(result.exitCode).toBe(2);
@@ -1546,6 +1550,7 @@ describe("prisma postgres backup restore", () => {
       "bkp_1",
       "--confirm",
       "db_1",
+      "--json",
     ]);
 
     expect(result.exitCode).toBe(2);
@@ -1731,6 +1736,7 @@ describe("prisma postgres delete", () => {
       "db_1",
       "--confirm",
       "db_1",
+      "--json",
     ]);
 
     expect(result.exitCode).toBe(2);
@@ -1946,6 +1952,7 @@ describe("prisma postgres backup list", () => {
       "backup",
       "list",
       "db_1",
+      "--json",
     ]);
 
     expect(result.exitCode).toBe(2);
@@ -2048,6 +2055,7 @@ describe("prisma postgres connection list", () => {
       "connection",
       "list",
       "db_1",
+      "--json",
     ]);
 
     expect(result.exitCode).toBe(2);
@@ -2197,6 +2205,7 @@ describe("prisma postgres connection create", () => {
       "connection",
       "create",
       "db_1",
+      "--json",
     ]);
 
     expect(result.exitCode).toBe(2);
@@ -2472,6 +2481,7 @@ describe("prisma postgres connection rotate", () => {
       "conn_1",
       "--confirm",
       "conn_1",
+      "--json",
     ]);
 
     expect(result.exitCode).toBe(2);
@@ -2627,6 +2637,7 @@ describe("prisma postgres connection delete", () => {
       "conn_1",
       "--confirm",
       "conn_1",
+      "--json",
     ]);
 
     expect(result.exitCode).toBe(2);

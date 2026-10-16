@@ -11,6 +11,7 @@ import {
   ok,
 } from "@prisma/cli-engine/protocol";
 import { CLI_NAME } from "../../cli-name";
+import { fieldLines } from "../../output/data-lines";
 import {
   credentialFieldRows,
   ENVIRONMENT_CREDENTIAL_NOTICE,
@@ -160,7 +161,7 @@ function presentationsFor(
           ]
         : []),
     ],
-    stdout: () => rows.map((row) => `${row.label}: ${row.value}`),
+    stdout: () => fieldLines(rows),
     next: () => (spec.credential === null ? [SIGN_IN] : []),
   };
 }

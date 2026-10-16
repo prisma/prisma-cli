@@ -928,7 +928,7 @@ describe("prisma git disconnect", () => {
 
   it("requires credentials", async () => {
     const result = await makeCli(gitClient(), { signedIn: false }).run(
-      ["git", "disconnect"],
+      ["git", "disconnect", "--json"],
       { cwd: await pinnedCwd() },
     );
 

@@ -5,7 +5,12 @@ import type {
   LoadedConfigFile,
   Presentations,
 } from "@prisma/cli-engine";
-import { defineCommand, flag, realpathOr } from "@prisma/cli-engine";
+import {
+  defineCommand,
+  flag,
+  noDataLines,
+  realpathOr,
+} from "@prisma/cli-engine";
 import type { Diagnostic, NextAction } from "@prisma/cli-engine/protocol";
 import { CliStructuredError, notOk, ok } from "@prisma/cli-engine/protocol";
 import { CLI_NAME } from "../cli-name";
@@ -833,7 +838,9 @@ function initPresentations(
   return {
     json: () => result,
     next: () => postinstall.next ?? [],
-    stdout: () => [],
+    stdout: noDataLines(
+      "init writes files into the project; the card names them, and no value is left to pass on.",
+    ),
     human: (ui) => {
       const skillsBlocks =
         result.skills.sync === null

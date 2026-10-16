@@ -139,9 +139,10 @@ export interface SharedFlags {
 
 /** The pre-parse format decision: json framing must be in effect before
  *  stricli parses (its own failure output is framed too), so the format
- *  flags are read from raw argv and a TTY stdout decides the rest. */
-export function sniffFormat(argv: readonly string[], runtime: Runtime): Format {
-  return formatFlagGiven(argv) ?? (runtime.isTty.stdout ? "human" : "json");
+ *  flags are read from raw argv. Where stdout goes never picks the
+ *  format: a pipe gets human output, whose stdout is the data lines. */
+export function sniffFormat(argv: readonly string[]): Format {
+  return formatFlagGiven(argv) ?? "human";
 }
 
 export function applySharedFlags(
@@ -149,7 +150,7 @@ export function applySharedFlags(
   shared: SharedFlags,
   runtime: Runtime,
 ): void {
-  state.format = shared.format ?? resolveAutoFormat(shared, runtime);
+  state.format = shared.format ?? (shared.json === true ? "json" : "human");
   state.yes = shared.yes === true;
   state.confirmValues = [...(shared.confirm ?? [])];
   state.interactive = shared.interactive ?? defaultInteractive(runtime);
@@ -186,13 +187,6 @@ function resolveColorEnabled(shared: SharedFlags, runtime: Runtime): boolean {
  *  `CI` variable, and used to be offered a prompt no one could answer. */
 export function defaultInteractive(runtime: Runtime): boolean {
   return runtime.isTty.stdin && !resolveIsCI(runtime);
-}
-
-function resolveAutoFormat(shared: SharedFlags, runtime: Runtime): Format {
-  if (shared.json === true) {
-    return "json";
-  }
-  return runtime.isTty.stdout ? "human" : "json";
 }
 
 /** --quiet and --verbose are log-level shorthands; either one beats an

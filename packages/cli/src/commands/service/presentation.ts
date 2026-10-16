@@ -1,5 +1,7 @@
 import type { Block, Presentations } from "@prisma/cli-engine";
+import { noDataLines } from "@prisma/cli-engine";
 import type { NextAction } from "@prisma/cli-engine/protocol";
+import { fieldLines } from "../../output/data-lines";
 import { adviceAction, runCommandAction } from "./errors";
 import type {
   ServiceCreateResult,
@@ -66,6 +68,13 @@ function domainDnsRows(domain: ServiceDomainSummary): FieldRow[] {
     label: `dns ${record.type}`,
     value: `${record.name} -> ${record.value}${record.ttl === null ? "" : ` (ttl ${record.ttl})`}`,
   }));
+}
+
+/** A DNS record as data: the fields a script hands to its DNS provider. */
+function dnsRecordFields(
+  record: ServiceDomainSummary["dnsRecords"][number],
+): string[] {
+  return [record.type, record.name, record.value];
 }
 
 function domainFailureRows(domain: ServiceDomainSummary): FieldRow[] {
@@ -144,7 +153,7 @@ export function createPresentations(
   result: ServiceCreateResult,
 ): Presentations {
   return {
-    stdout: () => [],
+    stdout: () => [result.service.id],
     json: () => result,
     human: () => [
       result.existing
@@ -196,7 +205,13 @@ export function showPresentations(result: ServiceShowResult): Presentations {
     );
   }
   return {
-    stdout: () => [],
+    stdout: () =>
+      fieldLines([
+        { label: "project", value: result.projectId },
+        { label: "service", value: result.service.name },
+        { label: "live version", value: result.liveVersion?.id ?? "" },
+        { label: "live url", value: result.liveUrl ?? "" },
+      ]),
     json: () => result,
     human: () => [
       title(`Showing the state of service ${result.service.name}.`),
@@ -222,7 +237,15 @@ export function versionListPresentations(
   result: ServiceVersionListResult,
 ): Presentations {
   return {
-    stdout: () => [],
+    stdout: () =>
+      result.versions.map((version) =>
+        [
+          version.id,
+          version.status,
+          version.createdAt,
+          version.live === null ? "" : String(version.live),
+        ].join("\t"),
+      ),
     json: () => result,
     human: () => [
       title(`Listing versions of service ${result.service.name}.`),
@@ -264,27 +287,37 @@ export function versionListPresentations(
 export function versionShowPresentations(
   result: ServiceVersionShowResult,
 ): Presentations {
+  const rows: FieldRow[] = [
+    ...(result.service
+      ? [{ label: "service", value: result.service.name }]
+      : []),
+    { label: "version", value: result.version.id },
+    { label: "status", value: result.version.status },
+    ...(result.version.url
+      ? [{ label: "url", value: result.version.url }]
+      : []),
+    ...(result.version.live === null
+      ? []
+      : [{ label: "live", value: result.version.live ? "yes" : "no" }]),
+    { label: "created", value: result.version.createdAt },
+  ];
   return {
-    stdout: () => [],
-    json: () => result,
-    next: () => [],
-    human: () => [
-      title("Showing service version details."),
-      fields([
-        ...(result.service
-          ? [{ label: "service", value: result.service.name }]
-          : []),
+    stdout: () =>
+      fieldLines([
+        { label: "service", value: result.service?.name ?? "" },
         { label: "version", value: result.version.id },
         { label: "status", value: result.version.status },
-        ...(result.version.url
-          ? [{ label: "url", value: result.version.url }]
-          : []),
-        ...(result.version.live === null
-          ? []
-          : [{ label: "live", value: result.version.live ? "yes" : "no" }]),
+        { label: "url", value: result.version.url ?? "" },
+        {
+          label: "live",
+          value:
+            result.version.live === null ? "" : String(result.version.live),
+        },
         { label: "created", value: result.version.createdAt },
       ]),
-    ],
+    json: () => result,
+    next: () => [],
+    human: () => [title("Showing service version details."), fields(rows)],
   };
 }
 
@@ -337,7 +370,9 @@ export function promotePresentations(
   alreadyLive: boolean,
 ): Presentations {
   return {
-    stdout: () => [],
+    stdout: noDataLines(
+      "A promotion changes which version serves traffic and has no data.",
+    ),
     json: () => result,
     human: () => [
       completed(
@@ -363,7 +398,9 @@ export function rollbackPresentations(
   alreadyLive: boolean,
 ): Presentations {
   return {
-    stdout: () => [],
+    stdout: noDataLines(
+      "A rollback changes which version serves traffic and has no data.",
+    ),
     json: () => result,
     human: () => [
       completed(
@@ -393,7 +430,9 @@ export function versionStartPresentations(
   result: ServiceVersionRunStateResult,
 ): Presentations {
   return {
-    stdout: () => [],
+    stdout: noDataLines(
+      "Starting a version has no data; its exit code is the result.",
+    ),
     json: () => result,
     human: () => [
       completed(
@@ -418,7 +457,9 @@ export function versionStopPresentations(
   result: ServiceVersionRunStateResult,
 ): Presentations {
   return {
-    stdout: () => [],
+    stdout: noDataLines(
+      "Stopping a version has no data; its exit code is the result.",
+    ),
     json: () => result,
     human: () => [
       completed(
@@ -440,7 +481,7 @@ export function versionDeletePresentations(
   result: ServiceVersionDeleteResult,
 ): Presentations {
   return {
-    stdout: () => [],
+    stdout: noDataLines("A delete has no data; its exit code is the result."),
     json: () => result,
     human: () => [
       completed(`Deleted ${result.versionId} from ${result.service.name}.`),
@@ -463,7 +504,7 @@ export function deletePresentations(
   result: ServiceDeleteResult,
 ): Presentations {
   return {
-    stdout: () => [],
+    stdout: noDataLines("A delete has no data; its exit code is the result."),
     json: () => result,
     human: () => [
       completed(`Deleted ${result.service.name} and every version it owned.`),
@@ -482,7 +523,10 @@ export function domainAddPresentations(
   result: ServiceDomainAddResult,
 ): Presentations {
   return {
-    stdout: () => [],
+    stdout: () =>
+      result.domain.dnsRecords.map((record) =>
+        dnsRecordFields(record).join("\t"),
+      ),
     json: () => result,
     human: () => [
       result.existing
@@ -514,7 +558,18 @@ export function domainShowPresentations(
   result: ServiceDomainShowResult,
 ): Presentations {
   return {
-    stdout: () => [],
+    stdout: () => [
+      ...fieldLines([
+        { label: "hostname", value: result.domain.hostname },
+        { label: "status", value: result.domain.status },
+        ...domainFailureRows(result.domain),
+        { label: "cert expires", value: result.domain.certExpiresAt ?? "" },
+        { label: "created", value: result.domain.createdAt },
+      ]),
+      ...result.domain.dnsRecords.map((record) =>
+        ["dns", ...dnsRecordFields(record)].join("\t"),
+      ),
+    ],
     json: () => result,
     human: () => [
       title("Showing custom domain status."),
@@ -557,7 +612,7 @@ export function domainDeletePresentations(
   result: ServiceDomainDeleteResult,
 ): Presentations {
   return {
-    stdout: () => [],
+    stdout: noDataLines("A delete has no data; its exit code is the result."),
     json: () => result,
     next: () => [],
     human: () => [
@@ -575,7 +630,9 @@ export function domainRetryPresentations(
   result: ServiceDomainRetryResult,
 ): Presentations {
   return {
-    stdout: () => [],
+    stdout: noDataLines(
+      "A retry restarts verification and has no data; domain wait reports the outcome.",
+    ),
     json: () => result,
     human: () => [
       completed(`Retried verification for ${result.domain.hostname}.`),
@@ -600,7 +657,7 @@ export function domainWaitPresentations(
   result: ServiceDomainWaitResult,
 ): Presentations {
   return {
-    stdout: () => [],
+    stdout: () => [result.liveUrl],
     json: () => result,
     next: () => [],
     human: () => [

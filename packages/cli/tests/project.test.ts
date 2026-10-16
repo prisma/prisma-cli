@@ -332,7 +332,11 @@ describe("prisma project list", () => {
   });
 
   it("requires credentials", async () => {
-    const result = await makeCli(fakeClient(), false).run(["project", "list"]);
+    const result = await makeCli(fakeClient(), false).run([
+      "project",
+      "list",
+      "--json",
+    ]);
 
     expect(result.exitCode).toBe(2);
     expect(resultFrame(result.json).envelope).toMatchObject({
@@ -371,10 +375,10 @@ describe("prisma project show", () => {
     // fact per line, under the labels this command already uses when
     // the directory is not linked.
     expect(result.presented?.presentation.stdout).toEqual([
-      `local repo: ${cwd}`,
-      "workspace: Acme Inc",
-      "project: Billing",
-      "region: us-east-1",
+      `local repo\t${cwd}`,
+      "workspace\tAcme Inc",
+      "project\tBilling",
+      "region\tus-east-1",
     ]);
   });
 
@@ -401,11 +405,10 @@ describe("prisma project show", () => {
       label: "Retry with an explicit Project",
       command: "prisma project show <id-or-name>",
     });
-    // "Not linked" is prose for a reader; stdout leaves the field empty.
+    // "Not linked" is prose for a reader; stdout leaves the absent field out.
     expect(result.presented?.presentation.stdout).toEqual([
-      `local repo: ${cwd}`,
-      "workspace: Acme Inc",
-      "project: ",
+      `local repo\t${cwd}`,
+      "workspace\tAcme Inc",
     ]);
   });
 
@@ -513,7 +516,11 @@ describe("prisma project show", () => {
   });
 
   it("requires credentials", async () => {
-    const result = await makeCli(fakeClient(), false).run(["project", "show"]);
+    const result = await makeCli(fakeClient(), false).run([
+      "project",
+      "show",
+      "--json",
+    ]);
 
     expect(result.exitCode).toBe(2);
     expect(resultFrame(result.json).envelope).toMatchObject({
@@ -550,6 +557,7 @@ describe("prisma project create", () => {
       },
       { kind: "summary", status: "info", text: "Saved .prisma/local.json" },
     ]);
+    expect(result.presented?.presentation.stdout).toEqual(["proj_new"]);
     expect(
       JSON.parse(
         await readFile(path.join(cwd, ".prisma", "local.json"), "utf8"),
@@ -699,6 +707,7 @@ describe("prisma project create", () => {
       "project",
       "create",
       "my-app",
+      "--json",
     ]);
 
     expect(result.exitCode).toBe(2);
@@ -723,6 +732,7 @@ describe("prisma project link", () => {
       action: "linked",
     });
     expect(blocks(result.presented)).toHaveLength(2);
+    expect(result.presented?.presentation.stdout).toEqual(["proj_2"]);
     expect(
       JSON.parse(
         await readFile(path.join(cwd, ".prisma", "local.json"), "utf8"),
@@ -877,7 +887,11 @@ describe("prisma project link", () => {
   });
 
   it("requires credentials", async () => {
-    const result = await makeCli(fakeClient(), false).run(["project", "link"]);
+    const result = await makeCli(fakeClient(), false).run([
+      "project",
+      "link",
+      "--json",
+    ]);
 
     expect(result.exitCode).toBe(2);
     expect(resultFrame(result.json).envelope).toMatchObject({
@@ -1000,6 +1014,7 @@ describe("prisma project rename", () => {
       "project",
       "rename",
       "Billing v2",
+      "--json",
     ]);
 
     expect(result.exitCode).toBe(2);
@@ -1233,6 +1248,10 @@ describe("prisma project env add", () => {
       status: "info",
       text: "Setting a new environment variable.",
     });
+    const created = result.presented?.data as { variable: { id: string } };
+    expect(result.presented?.presentation.stdout).toEqual([
+      created.variable.id,
+    ]);
   });
 
   it("creates the branch on demand and warns that preview has no default", async () => {
@@ -1479,6 +1498,12 @@ describe("prisma project env add", () => {
     expect(
       blocks(result.presented).find((block) => block.kind === "table"),
     ).toMatchObject({ columns: ["variable", "id", "status"] });
+    const written = result.presented?.data as {
+      variables: { key: string; id: string }[];
+    };
+    expect(result.presented?.presentation.stdout).toEqual(
+      written.variables.map((variable) => `${variable.key}\t${variable.id}\t`),
+    );
   });
 
   it("reports the keys written before a file import failed", async () => {
@@ -1647,6 +1672,7 @@ describe("prisma project env add", () => {
       "STRIPE_KEY=sk_test",
       "--role",
       "production",
+      "--json",
     ]);
 
     expect(result.exitCode).toBe(2);
@@ -1805,6 +1831,7 @@ describe("prisma project env update", () => {
       "STRIPE_KEY=sk_new",
       "--role",
       "production",
+      "--json",
     ]);
 
     expect(result.exitCode).toBe(2);
@@ -2188,6 +2215,7 @@ describe("prisma project env list", () => {
       "project",
       "env",
       "list",
+      "--json",
     ]);
 
     expect(result.exitCode).toBe(2);
@@ -2298,6 +2326,7 @@ describe("prisma project env delete", () => {
       "STRIPE_KEY",
       "--role",
       "production",
+      "--json",
     ]);
 
     expect(result.exitCode).toBe(2);
@@ -2583,6 +2612,7 @@ describe("prisma project delete", () => {
       "proj_1",
       "--confirm",
       "proj_1",
+      "--json",
     ]);
 
     expect(result.exitCode).toBe(2);
@@ -2956,6 +2986,7 @@ describe("prisma project transfer", () => {
       "tok",
       "--confirm",
       "proj_1",
+      "--json",
     ]);
 
     expect(result.exitCode).toBe(2);

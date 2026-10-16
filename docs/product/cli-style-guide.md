@@ -164,6 +164,12 @@ A flag brief states what the flag does; when the flag exists for a distinct situ
 
 A group card may declare a workflow: the ordered commands of that group's common path, each with a short purpose column. The engine renders it as a `Workflow` section, before any examples, with each step `$`-prefixed and copy-pastable. Declare a workflow only where a real multi-command path exists; a group of independent commands has no workflow.
 
+### Groups With Their Own Command
+
+A path can be a command and a group at once: `prisma dev <entry>` runs the app, and `prisma dev url` and `prisma dev stop` are commands beneath it. `prisma dev --help` shows the `dev` command's card, with the commands beneath it in a `Commands` section after its description. The group's brief is still its row on the parent card. The group's description and workflow do not appear on that card, so the command's description defines any term the rows beneath it rely on.
+
+When the word after the path names a command beneath it, that command runs, so `prisma dev url` never runs `dev` with an entry named `url`; `prisma dev -- url` does. Give the command a positional whose values cannot be spelled like those commands' names, such as a file path.
+
 ## Flags
 
 Shared flag rules:
@@ -234,6 +240,7 @@ Loading indicators are for slow or remote work, not for every step.
 
 Non-TTY behavior should be automation-friendly:
 
+- the format stays human: stdout carries the command's plain data lines, and JSON needs `--json` (see `output-conventions.md`)
 - no prompts unless explicitly supported and satisfied
 - no decorative output noise
 - no dependence on color, cursor control, or animation

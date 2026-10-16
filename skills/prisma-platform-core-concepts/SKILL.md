@@ -2,7 +2,7 @@
 name: prisma-platform-core-concepts
 metadata:
   library: "prisma"
-  library_version: "8.0.0-rc.22"
+  library_version: "8.0.0-rc.23"
   version: 2026.9.2
 description: >-
   Use when hosting, deploying, or operating an app on the Prisma Platform:
@@ -31,8 +31,9 @@ when a concept needs more depth than this file carries.
 This file shares the platform's structures, hierarchies, relationships, and
 workflows. It is not a CLI reference: commands appear only where a workflow
 needs them. To learn a command surface, run `prisma --help`, or
-`prisma <group> --help` for any group named below; most commands accept
-`--json` for machine-readable output. The data contract, migrations, and
+`prisma <group> --help` for any group named below; pass `--json` for
+machine-readable output. Without it, a piped command prints plain data lines,
+not JSON. The data contract, migrations, and
 queries belong to the `prisma-orm-core-concepts` skill; declaring services
 and modules in code belongs to `prisma-composer-core-concepts`.
 
@@ -268,15 +269,16 @@ inside a service; sleeping makes them silently unreliable.
 To your application, a Prisma Postgres database is a regular PostgreSQL
 database behind a connection string: any client works, including Prisma ORM,
 psql, Kysely, and Drizzle. On top of plain PostgreSQL each database has
-built-in connection pooling (no PgBouncer to run), optional query caching,
-and automated backups.
+built-in connection pooling (no PgBouncer to run) and, on paid plans,
+automated backups: a snapshot each day the database has activity.
 
 Databases usually come from deploying a module that declares one. They can
 also be created directly, in which case the connection URL prints exactly
 once. Additional connection strings can be minted and rotated per database;
 every secret is shown exactly once at creation, and no later read reveals
-it. Backups are automated, listable, and restorable, and per-database usage
-metrics are queryable; the `postgres` group covers all of it.
+it. On paid plans, backups are automated, listable, and restorable.
+Per-database usage metrics are queryable; the `postgres` group covers all of
+it.
 
 ## Object storage
 

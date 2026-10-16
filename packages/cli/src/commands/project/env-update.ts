@@ -2,6 +2,7 @@
 import {
   type Block,
   defineCommand,
+  noDataLines,
   type Presentations,
   positional,
 } from "@prisma/cli-engine";
@@ -37,7 +38,9 @@ const TITLE = "Replacing the environment variable's value.";
 
 function singlePresentations(result: EnvUpdateResult): Presentations {
   return {
-    stdout: () => [],
+    stdout: noDataLines(
+      "Replacing a value has no data; the variable keeps its key and id.",
+    ),
     json: () => result,
     next: () => [],
     human: (): Block[] => [

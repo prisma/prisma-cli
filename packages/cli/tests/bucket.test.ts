@@ -292,7 +292,11 @@ describe("prisma bucket list", () => {
   });
 
   it("requires credentials", async () => {
-    const result = await makeCli(bucketClient(), false).run(["bucket", "list"]);
+    const result = await makeCli(bucketClient(), false).run([
+      "bucket",
+      "list",
+      "--json",
+    ]);
 
     expect(result.exitCode).toBe(2);
     expect(resultFrame(result.json).envelope).toMatchObject({
@@ -332,6 +336,7 @@ describe("prisma bucket create", () => {
         text: 'Created bucket "assets" in Billing / main.',
       },
     ]);
+    expect(result.presented?.presentation.stdout).toEqual(["bkt_1"]);
   });
 
   it("lets the server name the bucket when --name is blank", async () => {
@@ -416,6 +421,7 @@ describe("prisma bucket create", () => {
     const result = await makeCli(bucketClient(), false).run([
       "bucket",
       "create",
+      "--json",
     ]);
 
     expect(result.exitCode).toBe(2);
@@ -579,6 +585,7 @@ describe("prisma bucket delete", () => {
       "bkt_1",
       "--confirm",
       "bkt_1",
+      "--json",
     ]);
 
     expect(result.exitCode).toBe(2);
@@ -684,6 +691,7 @@ describe("prisma bucket key list", () => {
       "key",
       "list",
       "bkt_1",
+      "--json",
     ]);
 
     expect(result.exitCode).toBe(2);
@@ -852,6 +860,7 @@ describe("prisma bucket key create", () => {
       "key",
       "create",
       "bkt_1",
+      "--json",
     ]);
 
     expect(result.exitCode).toBe(2);
@@ -956,6 +965,7 @@ describe("prisma bucket key delete", () => {
       "delete",
       "bkt_1",
       "bkey_1",
+      "--json",
     ]);
 
     expect(result.exitCode).toBe(2);

@@ -1,5 +1,10 @@
 import type { Presentations } from "@prisma/cli-engine";
-import { defineCommand, flag, positional } from "@prisma/cli-engine";
+import {
+  defineCommand,
+  flag,
+  noDataLines,
+  positional,
+} from "@prisma/cli-engine";
 import { CliStructuredError, ok } from "@prisma/cli-engine/protocol";
 import { CLI_NAME } from "../cli-name";
 import {
@@ -92,7 +97,9 @@ function emailInvalidError(value: string): CliStructuredError {
 
 function feedbackPresentations(result: FeedbackResult): Presentations {
   return {
-    stdout: () => [],
+    stdout: noDataLines(
+      "Sending feedback has no data; its exit code says whether it was sent.",
+    ),
     json: () => result,
     next: () => [],
     human: () => [

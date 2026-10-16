@@ -98,6 +98,19 @@ describe("prisma service create", () => {
     });
   });
 
+  it("prints the new service's id to a pipe", async () => {
+    const created = createRoutes();
+    const harness = await makeServiceCli({ routes: created.routes });
+
+    const result = await harness.cli.run(
+      ["service", "create", "worker", "--project", "acme-app"],
+      { cwd: harness.cwd, env: harness.env },
+    );
+
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout).toBe("svc_new\n");
+  });
+
   it("sends exactly the four create-body fields the API takes", async () => {
     const created = createRoutes();
     const harness = await makeServiceCli({ routes: created.routes });

@@ -132,45 +132,62 @@ export interface CommandTreeEntry {
 }
 
 export interface CommandTreeNode {
+  /** The command mounted at this group's own path, such as `dev` beside
+   *  `dev url`. It runs when the next argument names no child. */
+  ownCommand: CommandTreeEntry | undefined;
   readonly commands: Map<string, CommandTreeEntry>;
   readonly children: Map<string, CommandTreeNode>;
 }
 
 function emptyNode(): CommandTreeNode {
-  return { commands: new Map(), children: new Map() };
+  return { ownCommand: undefined, commands: new Map(), children: new Map() };
 }
 
+function childNode(node: CommandTreeNode, segment: string): CommandTreeNode {
+  let child = node.children.get(segment);
+  if (child === undefined) {
+    child = emptyNode();
+    node.children.set(segment, child);
+  }
+  return child;
+}
+
+/** Every path some other mounted path extends: `dev` when `dev url` is
+ *  mounted. */
+function groupPathsOf(paths: readonly string[]): ReadonlySet<string> {
+  const groups = new Set<string>();
+  for (const path of paths) {
+    const segments = path.split(" ");
+    for (let depth = 1; depth < segments.length; depth += 1) {
+      groups.add(segments.slice(0, depth).join(" "));
+    }
+  }
+  return groups;
+}
+
+/** A path that is also a group keeps its command on the group's node,
+ *  so the node's children and its own command meet in one place. */
 function insertCommand(
   root: CommandTreeNode,
   path: string,
   def: AnyCommand,
   docsBaseUrl: string | undefined,
+  isGroup: boolean,
 ): void {
   const segments = path.split(" ");
   if (segments.some((segment) => segment.length === 0)) {
     throw constructionError(`invalid command path '${path}'`);
   }
-  let node = root;
-  for (const segment of segments.slice(0, -1)) {
-    if (node.commands.has(segment)) {
-      throw constructionError(
-        `command path '${path}' collides with a command mounted at a prefix of it`,
-      );
-    }
-    let child = node.children.get(segment);
-    if (child === undefined) {
-      child = emptyNode();
-      node.children.set(segment, child);
-    }
-    node = child;
-  }
+  const entry = { def, id: segments.join("."), docsBaseUrl };
+  const parent = segments
+    .slice(0, -1)
+    .reduce((node, segment) => childNode(node, segment), root);
   const leaf = segments[segments.length - 1];
-  if (node.commands.has(leaf) || node.children.has(leaf)) {
-    throw constructionError(
-      `command path '${path}' collides with another mounted command`,
-    );
+  if (isGroup) {
+    childNode(parent, leaf).ownCommand = entry;
+  } else {
+    parent.commands.set(leaf, entry);
   }
-  node.commands.set(leaf, { def, id: segments.join("."), docsBaseUrl });
 }
 
 /** A command belongs to the family whose commands record contains it
@@ -253,6 +270,7 @@ export function buildCommandTree(spec: EngineSpec): CommandTreeNode {
   }
   validateDocsBaseUrls(spec);
   validateConfigSectionNames(spec);
+  const groupPaths = groupPathsOf(paths);
   const root = emptyNode();
   for (const path of paths) {
     const def = spec.commands[path];
@@ -271,7 +289,13 @@ export function buildCommandTree(spec: EngineSpec): CommandTreeNode {
         );
       }
     }
-    insertCommand(root, path, def, commandFamilyOf(spec, def)?.docsBaseUrl);
+    insertCommand(
+      root,
+      path,
+      def,
+      commandFamilyOf(spec, def)?.docsBaseUrl,
+      groupPaths.has(path),
+    );
   }
   return root;
 }

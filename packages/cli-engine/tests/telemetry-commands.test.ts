@@ -87,11 +87,12 @@ describe("telemetry status", () => {
     const result = await run(["telemetry", "status"]);
 
     expect(result.exitCode).toBe(0);
-    expect(result.stdout).toContain(
+    expect(result.stderr).toContain(
       "Telemetry is enabled: no explicit choice is stored, so the opt-out default applies.",
     );
-    expect(result.stdout).toContain(`Config file: ${configPath()}`);
-    expect(result.stdout).toContain("Installation ID: not stored");
+    expect(result.stdout).toBe(
+      `enabled\ttrue\nreason\tdefault-on\nconfig file\t${configPath()}\ninstallation id stored\tfalse\n`,
+    );
   });
 
   it("reports a stored opt-in", async () => {
@@ -99,10 +100,10 @@ describe("telemetry status", () => {
 
     const result = await run(["telemetry", "status"]);
 
-    expect(result.stdout).toContain(
+    expect(result.stderr).toContain(
       'Telemetry is enabled: "enableTelemetry": true is stored in your config.',
     );
-    expect(result.stdout).toContain("Installation ID: stored");
+    expect(result.stdout).toContain("installation id stored\ttrue\n");
   });
 
   it("reports a stored opt-out", async () => {
@@ -110,7 +111,7 @@ describe("telemetry status", () => {
 
     const result = await run(["telemetry", "status"]);
 
-    expect(result.stdout).toContain(
+    expect(result.stderr).toContain(
       'Telemetry is disabled: "enableTelemetry": false is stored in your config.',
     );
   });
@@ -122,7 +123,7 @@ describe("telemetry status", () => {
       env: { ...isolatedEnv(), DO_NOT_TRACK: "1" },
     });
 
-    expect(result.stdout).toContain(
+    expect(result.stderr).toContain(
       "Telemetry is disabled: an environment opt-out is set (DO_NOT_TRACK / PRISMA_DISABLE_TELEMETRY).",
     );
   });
@@ -132,7 +133,7 @@ describe("telemetry status", () => {
 
     const result = await run(["telemetry", "status"], { isCI: true });
 
-    expect(result.stdout).toContain(
+    expect(result.stderr).toContain(
       "Telemetry is disabled: CI environment detected — telemetry is hard-disabled.",
     );
   });
@@ -142,7 +143,7 @@ describe("telemetry status", () => {
 
     const result = await run(["telemetry", "status"]);
 
-    expect(result.stdout).toContain(
+    expect(result.stderr).toContain(
       "Telemetry is enabled: no explicit choice is stored, so the opt-out default applies.",
     );
   });
@@ -181,9 +182,10 @@ describe("telemetry enable", () => {
     const result = await run(["telemetry", "enable"]);
 
     expect(result.exitCode).toBe(0);
-    expect(result.stdout).toContain(
+    expect(result.stderr).toContain(
       `Telemetry enabled. Preference stored in ${configPath()}.`,
     );
+    expect(result.stdout).toBe("");
     const stored = readUserConfig(isolatedEnv());
     expect(stored.enableTelemetry).toBe(true);
     expect(stored.installationId).toMatch(V4_UUID);
@@ -221,9 +223,10 @@ describe("telemetry disable", () => {
     const result = await run(["telemetry", "disable"]);
 
     expect(result.exitCode).toBe(0);
-    expect(result.stdout).toContain(
+    expect(result.stderr).toContain(
       `Telemetry disabled. Preference stored in ${configPath()}.`,
     );
+    expect(result.stdout).toBe("");
     expect(readUserConfig(isolatedEnv())).toEqual({ enableTelemetry: false });
   });
 
@@ -299,8 +302,8 @@ describe("the mount fragment", () => {
     await run(["telemetry", "enable"]);
     const enabled = await run(["telemetry", "status"]);
 
-    expect(disabled.stdout).toContain("Telemetry is disabled");
-    expect(enabled.stdout).toContain("Telemetry is enabled");
+    expect(disabled.stderr).toContain("Telemetry is disabled");
+    expect(enabled.stderr).toContain("Telemetry is enabled");
     expect(readUserConfig(isolatedEnv()).installationId).toMatch(V4_UUID);
   });
 });

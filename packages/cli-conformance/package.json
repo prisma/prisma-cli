@@ -1,7 +1,7 @@
 {
   "name": "@repo/cli-conformance",
   "private": true,
-  "version": "8.0.0-rc.22",
+  "version": "8.0.0-rc.23",
   "description": "Reusable conformance checks for the engine's consumers: import purity over built output, config-section validators that never throw, and verification of the tarballs a registry would receive. Depends on no package it checks.",
   "type": "module",
   "exports": {
@@ -16,7 +16,7 @@
     "./tarball-io": "./src/tarball-io.ts"
   },
   "engines": {
-    "node": ">=22.12.0"
+    "node": "^22.18.0 || ^24.11.0 || >=26.0.0"
   },
   "license": "Apache-2.0",
   "scripts": {
@@ -24,7 +24,7 @@
     "test": "pnpm run typecheck && vitest run"
   },
   "devDependencies": {
-    "@repo/tsconfig": "workspace:8.0.0-rc.22",
+    "@repo/tsconfig": "workspace:8.0.0-rc.23",
     "@types/node": "^22.19.19",
     "es-module-lexer": "^2.1.0",
     "tsx": "^4.22.4",

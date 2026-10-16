@@ -351,7 +351,7 @@ export class EngineImpl implements Engine {
     runtime: Runtime,
     hooks: RunHooks,
   ): Promise<number> {
-    const format = sniffFormat(argv, runtime);
+    const format = sniffFormat(argv);
     const state: RunState = {
       commandId: "",
       docsBaseUrl: undefined,
@@ -457,6 +457,18 @@ export class EngineImpl implements Engine {
       );
       return 0;
     }
+    const retired = this.retiredPathBeneathCommand(argv);
+    if (retired !== undefined) {
+      unsubscribe();
+      const exitCode = settleCommandMoved(
+        this.spec,
+        invocation,
+        retired,
+        retired.from.replaceAll(" ", "."),
+      );
+      this.fireOnSettled(invocation, exitCode, startedAtMs);
+      return exitCode;
+    }
     const stricliArgv = this.takeStatementFlags(invocation, argv, startedAtMs);
     if (stricliArgv === undefined) {
       unsubscribe();
@@ -535,6 +547,24 @@ export class EngineImpl implements Engine {
     }
     state.statementValues = extraction.values;
     return extraction.argv;
+  }
+
+  /** A retired path beneath a mounted command, such as `dev up` beside
+   *  `dev`. The parser would hand `up` to `dev` as a positional, so the
+   *  redirect is matched first: a retired child's name wins over the
+   *  positional, as a live child's name does. */
+  private retiredPathBeneathCommand(
+    argv: readonly string[],
+  ): CommandRedirect | undefined {
+    const routed = routedCommand(this.tree, argv);
+    if (routed === undefined) {
+      return undefined;
+    }
+    const redirect = matchVerbRedirect(this.redirects, attemptedPath(argv));
+    return redirect !== undefined &&
+      redirect.from.split(" ").length > routed.id.split(".").length
+      ? redirect
+      : undefined;
   }
 
   /** stricli routed or parsed nothing runnable. When the redirect table

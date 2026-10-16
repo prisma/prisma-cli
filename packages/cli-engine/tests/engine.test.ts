@@ -39,6 +39,7 @@ describe("main export", () => {
       "exitWithChildStatus",
       "flag",
       "loadConfig",
+      "noDataLines",
       "noSessionForWorkspaceError",
       "positional",
       "readActiveAccessToken",
@@ -205,15 +206,6 @@ describe("construction validation", () => {
         commands: { "auth whoami": command },
       }),
     ).toThrow("unknown group 'auth'");
-  });
-
-  test("a command mount colliding with a group prefix fails construction", () => {
-    expect(() =>
-      createTestCli({
-        commands: { auth: command, "auth whoami": command },
-        groups: { auth: { brief: "Authentication" } },
-      }),
-    ).toThrow("collides");
   });
 
   test("reserved shared-family flag names fail construction", () => {

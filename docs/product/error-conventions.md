@@ -85,6 +85,10 @@ Bugs should fail fast and preserve stack traces. Catch them only at the outermos
 
 ## Human Error Shape
 
+Without `--json` or `--format`, a failure is a human error on stderr with the
+exit code below, whether stdout is a terminal, a pipe, or a file. A piped run
+never switches to the JSON envelope on its own.
+
 Human-readable errors should follow this shape:
 
 1. first line: short summary plus stable code

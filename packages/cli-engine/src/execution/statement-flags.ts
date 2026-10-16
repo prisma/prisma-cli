@@ -46,8 +46,9 @@ export interface StatementFlagValue {
 }
 
 /** The command argv routes to, found the way the parser routes: the
- *  leading words, group by group, until one names a command. Like the
- *  parser, a kebab-case word matches a camelCase name. */
+ *  leading words, group by group, until one names a command. A group
+ *  with its own command routes to it at the first word that names no
+ *  child. Like the parser, a kebab-case word matches a camelCase name. */
 export function routedCommand(
   tree: CommandTreeNode,
   argv: readonly string[],
@@ -62,11 +63,11 @@ export function routedCommand(
     const child =
       node.children.get(token) ?? node.children.get(camelCase(token));
     if (child === undefined) {
-      return undefined;
+      return node.ownCommand;
     }
     node = child;
   }
-  return undefined;
+  return node.ownCommand;
 }
 
 function statementFlagIn(

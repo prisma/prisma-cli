@@ -2,6 +2,7 @@
 import {
   type Block,
   defineCommand,
+  noDataLines,
   type Presentations,
 } from "@prisma/cli-engine";
 import { ok } from "@prisma/cli-engine/protocol";
@@ -18,7 +19,9 @@ function disconnectPresentations(
   result: ProjectRepositoryConnectionResult,
 ): Presentations {
   return {
-    stdout: () => [],
+    stdout: noDataLines(
+      "Disconnecting a repository has no data; its exit code is the result.",
+    ),
     json: () => result,
     next: () => [],
     human: (): Block[] => [
