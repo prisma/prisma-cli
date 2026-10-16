@@ -1,9 +1,7 @@
-/**
- * The package spec the CLI prints in its own hints. `latest` carries the
- * RC line since the 2026-08-25 cutover and the publish path no longer
- * moves `next` (docs/oss/versioning.md), so a hint spelling `@next`
- * installs a release that lags the current one.
- */
+// The package spec the CLI prints in its own hints. `latest` carries the
+// RC line since the 2026-08-25 cutover and the publish path no longer
+// moves `next` (docs/oss/versioning.md), so a hint spelling `@next`
+// installs a release that lags the current one.
 import { describe, expect, it } from "vitest";
 
 import {
