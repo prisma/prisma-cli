@@ -30,7 +30,7 @@ export const serviceDomainRetryCommand = defineCommand({
     });
     const domain = await resolveDomainByHostname(
       target.provider,
-      target.service.id,
+      target.resultTarget,
       hostname,
       "retry",
       ctx.signal,
@@ -38,7 +38,7 @@ export const serviceDomainRetryCommand = defineCommand({
     const retried = await target.provider
       .retryDomain(domain.id, { signal: ctx.signal })
       .catch((error) => {
-        throw domainCommandError("retry", error, hostname);
+        throw domainCommandError("retry", error, hostname, target.resultTarget);
       });
 
     const result: ServiceDomainRetryResult = {

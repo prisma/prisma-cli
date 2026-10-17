@@ -30,7 +30,7 @@ export const serviceDomainShowCommand = defineCommand({
     });
     const domain = await resolveDomainByHostname(
       target.provider,
-      target.service.id,
+      target.resultTarget,
       hostname,
       "show",
       ctx.signal,
@@ -38,7 +38,7 @@ export const serviceDomainShowCommand = defineCommand({
     const detail = await target.provider
       .showDomain(domain.id, { signal: ctx.signal })
       .catch((error) => {
-        throw domainCommandError("show", error, hostname);
+        throw domainCommandError("show", error, hostname, target.resultTarget);
       });
 
     const result: ServiceDomainShowResult = {

@@ -38,7 +38,7 @@ export const serviceDomainAddCommand = defineCommand({
         signal: ctx.signal,
       })
       .catch((error) => {
-        throw domainCommandError("add", error, hostname);
+        throw domainCommandError("add", error, hostname, target.resultTarget);
       });
 
     const result: ServiceDomainAddResult = {

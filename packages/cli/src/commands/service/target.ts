@@ -427,15 +427,15 @@ export function sameDomainHostname(left: string, right: string): boolean {
 
 export async function resolveDomainByHostname(
   provider: AppProvider,
-  serviceId: string,
+  target: ServiceDomainTarget,
   hostname: string,
   command: "add" | "show" | "delete" | "retry" | "wait",
   signal: AbortSignal,
 ): Promise<DomainRecord> {
   const domains = await provider
-    .listDomains(serviceId, { signal })
+    .listDomains(target.service.id, { signal })
     .catch((error) => {
-      throw domainCommandError(command, error, hostname);
+      throw domainCommandError(command, error, hostname, target);
     });
   const matched = domains.find((domain) =>
     sameDomainHostname(domain.hostname, hostname),
@@ -443,7 +443,7 @@ export async function resolveDomainByHostname(
   if (matched) {
     return matched;
   }
-  throw domainNotFoundError(hostname);
+  throw domainNotFoundError(hostname, target);
 }
 
 interface ServiceProjectState {

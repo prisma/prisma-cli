@@ -186,7 +186,8 @@ describe("prisma service domain add", () => {
       {
         kind: "run-command",
         label: "Add the domain",
-        command: "prisma service domain add shop.acme.com --service <name>",
+        command:
+          "prisma service domain add shop.acme.com --service svc_1 --project proj_1 --branch production",
       },
     ]);
   });
@@ -949,5 +950,51 @@ it.each([
   expect(frame.envelope.result).toMatchObject({
     branch: { name: "staging", kind: "preview" },
     service: { id: "svc_staging", name: "hello-world" },
+  });
+});
+
+it.each([
+  { message: "no promoted deployment", code: "SERVICE.NO_VERSIONS" },
+  {
+    message: "DNS is not configured",
+    hint: "Create a CNAME to switchboard.ewr.prisma.build first.",
+    code: "SERVICE.DOMAIN_DNS_NOT_CONFIGURED",
+  },
+])("keeps the selected target in $code recovery commands", async ({
+  message,
+  hint,
+  code,
+}) => {
+  const harness = await makeServiceCli({
+    routes: domainRoutes({
+      "POST /v1/apps/{appId}/domains": () => ({
+        error: { error: { message, hint } },
+        status: 422,
+      }),
+    }),
+  });
+  const result = await harness.cli.run(
+    [
+      "service",
+      "domain",
+      "add",
+      "shop.acme.com",
+      ...TARGET_ARGS,
+      "--branch",
+      "feature/customer's-test",
+      "--json",
+    ],
+    { cwd: harness.cwd, env: harness.env },
+  );
+  expect(result.exitCode).toBe(2);
+  const frame = result.json[result.json.length - 1];
+  if (frame?.kind !== "result" || frame.envelope.ok)
+    throw new Error("expected an errored envelope");
+  expect(frame.envelope.error.code).toBe(code);
+  expect(frame.envelope.nextActions).toContainEqual({
+    kind: "run-command",
+    label: "Add the domain",
+    command:
+      "prisma service domain add shop.acme.com --service svc_1 --project proj_1 --branch 'feature/customer'\\''s-test'",
   });
 });

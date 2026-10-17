@@ -1,10 +1,20 @@
 import type { NextAction } from "@prisma/cli-engine/protocol";
 import { CliStructuredError } from "@prisma/cli-engine/protocol";
 import { CLI_NAME } from "../../cli-name";
+import { formatCommandArgument } from "../../command-arguments";
 import { DomainApiError, type DomainRecord } from "../../lib/app/app-provider";
 import { formatDomainFailureFix } from "../../lib/app/domain-guidance";
+import type { ServiceDomainTarget } from "./results";
 
 type DomainCommand = "add" | "show" | "delete" | "retry" | "wait";
+
+function domainRecoveryCommand(
+  command: DomainCommand,
+  hostname: string,
+  target: ServiceDomainTarget,
+): string {
+  return `service domain ${command} ${formatCommandArgument(hostname)} --service ${formatCommandArgument(target.service.id)} --project ${formatCommandArgument(target.project.id)} --branch ${formatCommandArgument(target.branch.name)}`;
+}
 
 export function runCommandAction(label: string, command: string): NextAction {
   return { kind: "run-command", label, command: `${CLI_NAME} ${command}` };
@@ -311,7 +321,10 @@ export function domainHostnameInvalidError(
   );
 }
 
-export function domainNotFoundError(hostname: string): CliStructuredError {
+export function domainNotFoundError(
+  hostname: string,
+  target: ServiceDomainTarget,
+): CliStructuredError {
   return new CliStructuredError(
     "SERVICE.DOMAIN_NOT_FOUND",
     `Custom domain "${hostname}" not found`,
@@ -323,7 +336,7 @@ export function domainNotFoundError(hostname: string): CliStructuredError {
         ),
         runCommandAction(
           "Add the domain",
-          `service domain add ${hostname} --service <name>`,
+          domainRecoveryCommand("add", hostname, target),
         ),
       ],
     },
@@ -343,6 +356,7 @@ function formatDomainFailureWhy(domain: DomainRecord): string {
 export function domainVerificationFailedError(
   hostname: string,
   domain: DomainRecord,
+  target: ServiceDomainTarget,
 ): CliStructuredError {
   const why = formatDomainFailureWhy(domain);
   const guidance = formatDomainFailureFix(domain);
@@ -355,11 +369,11 @@ export function domainVerificationFailedError(
         ...(guidance ? [adviceAction(guidance)] : []),
         runCommandAction(
           "Show the domain",
-          `service domain show ${hostname} --service <name>`,
+          domainRecoveryCommand("show", hostname, target),
         ),
         runCommandAction(
           "Retry verification",
-          `service domain retry ${hostname} --service <name>`,
+          domainRecoveryCommand("retry", hostname, target),
         ),
       ],
     },
@@ -369,6 +383,7 @@ export function domainVerificationFailedError(
 export function domainVerificationTimeoutError(
   hostname: string,
   lastStatus: string,
+  target: ServiceDomainTarget,
 ): CliStructuredError {
   return new CliStructuredError(
     "SERVICE.DOMAIN_VERIFICATION_TIMEOUT",
@@ -378,7 +393,7 @@ export function domainVerificationTimeoutError(
       nextActions: [
         runCommandAction(
           "Show the domain",
-          `service domain show ${hostname} --service <name>`,
+          domainRecoveryCommand("show", hostname, target),
         ),
         adviceAction("Retry wait with a longer --timeout."),
       ],
@@ -413,9 +428,10 @@ export function domainCommandError(
   command: DomainCommand,
   error: unknown,
   hostname: string,
+  target: ServiceDomainTarget,
 ): CliStructuredError {
   if (error instanceof DomainApiError) {
-    const known = domainApiFailure(command, error, hostname);
+    const known = domainApiFailure(command, error, hostname, target);
     if (known) {
       return known;
     }
@@ -430,7 +446,7 @@ export function domainCommandError(
       nextActions: [
         runCommandAction(
           "Show the domain",
-          `service domain show ${hostname} --service <name>`,
+          domainRecoveryCommand("show", hostname, target),
         ),
       ],
       cause: error,
@@ -442,15 +458,16 @@ function domainApiFailure(
   command: DomainCommand,
   error: DomainApiError,
   hostname: string,
+  target: ServiceDomainTarget,
 ): CliStructuredError | null {
   if (command === "add") {
-    return domainAddFailure(error, hostname);
+    return domainAddFailure(error, hostname, target);
   }
   if (error.status === 404) {
-    return domainNotFoundError(hostname);
+    return domainNotFoundError(hostname, target);
   }
   if (command === "retry" && error.status === 409) {
-    return domainRetryNotEligibleError(hostname, error);
+    return domainRetryNotEligibleError(hostname, error, target);
   }
   return null;
 }
@@ -458,24 +475,25 @@ function domainApiFailure(
 function domainAddFailure(
   error: DomainApiError,
   hostname: string,
+  target: ServiceDomainTarget,
 ): CliStructuredError | null {
   if (
     (error.status === 400 || error.status === 422) &&
     isDomainDnsError(error)
   ) {
-    return domainDnsNotConfiguredError(hostname, error);
+    return domainDnsNotConfiguredError(hostname, error, target);
   }
   if (error.status === 400) {
-    return domainHostnameRejectedError(hostname, error);
+    return domainHostnameRejectedError(hostname, error, target);
   }
   if (error.status === 429 || isDomainQuotaError(error)) {
-    return domainQuotaExceededError(error);
+    return domainQuotaExceededError(error, target);
   }
   if (error.status === 409) {
     return domainAlreadyRegisteredError(hostname, error);
   }
   if (error.status === 422) {
-    return domainRequiresDeploymentError(hostname, error);
+    return domainRequiresDeploymentError(hostname, error, target);
   }
   return null;
 }
@@ -483,6 +501,7 @@ function domainAddFailure(
 function domainHostnameRejectedError(
   hostname: string,
   error: DomainApiError,
+  target: ServiceDomainTarget,
 ): CliStructuredError {
   return new CliStructuredError(
     "SERVICE.DOMAIN_HOSTNAME_INVALID",
@@ -496,14 +515,17 @@ function domainHostnameRejectedError(
         ),
         runCommandAction(
           "Add a domain",
-          "service domain add shop.acme.com --service <name>",
+          domainRecoveryCommand("add", hostname, target),
         ),
       ],
     },
   );
 }
 
-function domainQuotaExceededError(error: DomainApiError): CliStructuredError {
+function domainQuotaExceededError(
+  error: DomainApiError,
+  target: ServiceDomainTarget,
+): CliStructuredError {
   return new CliStructuredError(
     "SERVICE.DOMAIN_QUOTA_EXCEEDED",
     "Custom domain quota exceeded",
@@ -516,7 +538,7 @@ function domainQuotaExceededError(error: DomainApiError): CliStructuredError {
         ),
         runCommandAction(
           "Delete a domain",
-          "service domain delete <hostname> --service <name>",
+          domainRecoveryCommand("delete", "<hostname>", target),
         ),
       ],
     },
@@ -545,6 +567,7 @@ function domainAlreadyRegisteredError(
 function domainRequiresDeploymentError(
   hostname: string,
   error: DomainApiError,
+  target: ServiceDomainTarget,
 ): CliStructuredError {
   return new CliStructuredError(
     "SERVICE.NO_VERSIONS",
@@ -562,7 +585,7 @@ function domainRequiresDeploymentError(
         ),
         runCommandAction(
           "Add the domain",
-          `service domain add ${hostname} --service <name>`,
+          domainRecoveryCommand("add", hostname, target),
         ),
       ],
     },
@@ -572,6 +595,7 @@ function domainRequiresDeploymentError(
 function domainRetryNotEligibleError(
   hostname: string,
   error: DomainApiError,
+  target: ServiceDomainTarget,
 ): CliStructuredError {
   return new CliStructuredError(
     "SERVICE.DOMAIN_RETRY_NOT_ELIGIBLE",
@@ -585,7 +609,7 @@ function domainRetryNotEligibleError(
         ),
         runCommandAction(
           "Show the domain",
-          `service domain show ${hostname} --service <name>`,
+          domainRecoveryCommand("show", hostname, target),
         ),
       ],
     },
@@ -617,9 +641,10 @@ function isDomainDnsError(error: DomainApiError): boolean {
 function domainDnsNotConfiguredError(
   hostname: string,
   error: DomainApiError,
+  target: ServiceDomainTarget,
 ): CliStructuredError {
-  const target = extractDomainDnsTarget(error);
-  const record = target ? `CNAME ${hostname} -> ${target}` : null;
+  const dnsTarget = extractDomainDnsTarget(error);
+  const record = dnsTarget ? `CNAME ${hostname} -> ${dnsTarget}` : null;
   return new CliStructuredError(
     "SERVICE.DOMAIN_DNS_NOT_CONFIGURED",
     `DNS is not configured for "${hostname}"`,
@@ -633,7 +658,7 @@ function domainDnsNotConfiguredError(
             ),
             runCommandAction(
               "Add the domain",
-              `service domain add ${hostname} --service <name>`,
+              domainRecoveryCommand("add", hostname, target),
             ),
           ]
         : [
