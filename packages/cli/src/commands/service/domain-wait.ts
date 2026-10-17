@@ -107,7 +107,7 @@ export const serviceDomainWaitCommand = defineCommand({
     });
     const domain = await resolveDomainByHostname(
       target.provider,
-      target.service.id,
+      target.resultTarget,
       hostname,
       "wait",
       ctx.signal,
@@ -147,11 +147,19 @@ export const serviceDomainWaitCommand = defineCommand({
       }
 
       if (current.status === "failed") {
-        throw domainVerificationFailedError(hostname, current);
+        throw domainVerificationFailedError(
+          hostname,
+          current,
+          target.resultTarget,
+        );
       }
 
       if (timeoutMs === 0 || Date.now() >= deadline) {
-        throw domainVerificationTimeoutError(hostname, current.status);
+        throw domainVerificationTimeoutError(
+          hostname,
+          current.status,
+          target.resultTarget,
+        );
       }
 
       // biome-ignore lint/performance/noAwaitInLoops: this polls one domain until it settles, reporting each status change in the order it happened; the sleep between reads keeps the management API request rate down.
@@ -162,7 +170,12 @@ export const serviceDomainWaitCommand = defineCommand({
       current = await target.provider
         .showDomain(current.id, { signal: ctx.signal })
         .catch((error) => {
-          throw domainCommandError("wait", error, hostname);
+          throw domainCommandError(
+            "wait",
+            error,
+            hostname,
+            target.resultTarget,
+          );
         });
     }
   },
