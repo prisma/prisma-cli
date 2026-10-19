@@ -118,9 +118,7 @@ describe("Composer's commands in the shell", () => {
     expect(result.exitCode).toBe(0);
   });
 
-  // The installed 0.31.0 preview predates prisma/composer#365, which gives
-  // emulator list its data lines. Unskip once the published 0.31.0 is pinned.
-  it.skip("pipes one tab-separated line per emulator instance", async () => {
+  it("pipes one tab-separated line per emulator instance", async () => {
     const result = await shell(ONE_INSTANCE).run(["emulator", "list"]);
 
     expect(result.exitCode).toBe(0);
