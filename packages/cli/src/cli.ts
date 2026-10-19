@@ -352,9 +352,9 @@ export const cliGroups: Readonly<
   },
   emulator: {
     brief:
-      "Inspect the local emulators: programs on this machine that stand in for Prisma Cloud during prisma dev",
+      "Inspect the local emulators: programs on this machine that stand in for Prisma Cloud during 'prisma dev'",
     description:
-      "An emulator runs one kind of resource locally, so 'prisma dev' needs no account or network: one runs services, one runs Postgres databases, one runs S3-compatible buckets. Each holds instances, one per service, database or bucket that a 'prisma dev' started, from any directory on this machine. Emulators keep running after 'prisma dev' ends, and an instance keeps its port and data until it is deleted.",
+      "An emulator runs one kind of resource locally, so 'prisma dev' needs no account or network: one runs services, one runs Postgres databases, one runs S3-compatible buckets. Each holds instances, one per service, database or bucket that a 'prisma dev' started, from any directory on this machine. Emulators keep running after 'prisma dev' ends. Instances and their data stay until 'prisma dev --fresh' removes the current app's, and a stopped instance keeps its port.",
   },
   skills: {
     brief:
