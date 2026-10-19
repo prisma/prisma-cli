@@ -19,6 +19,8 @@ It is one binary for the ORM, Composer, and the Prisma Developer
 Platform: projects, branches, services, service versions, environment
 variables, and the Prisma ORM schema and migration workflow.
 
+Prisma also runs [Prisma Postgres](https://www.prisma.io/postgres) (managed Postgres) and [Prisma Compute](https://www.prisma.io/compute) (app hosting).
+
 ---
 
 ## Quickstart
