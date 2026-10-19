@@ -334,7 +334,8 @@ own work:
    the services, and prints a local URL. It watches built output and
    restarts a service when its build changes.
 2. Exercise the running app directly (for example with
-   `curl "$(prisma dev url <service>)"`) instead of reasoning about what the
+   `curl "$(prisma dev url gateway)"`, with your service's name in place of
+   `gateway`) instead of reasoning about what the
    code would do. `prisma dev url <node>` prints one node's local URL: a
    service's HTTP URL, a database's connection string, or a bucket's S3
    address. Use `prisma dev --detach` to start the app and get your shell
