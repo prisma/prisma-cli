@@ -346,6 +346,16 @@ export const cliGroups: Readonly<
       "A ref is a named pointer to a contract, letting commands target a contract by a stable name. Set, list, and delete refs here.",
   },
   orm: { brief: "Initialize a Prisma ORM project" },
+  dev: {
+    brief:
+      "Run your app on this machine, with no Prisma account. Start it, print a node's local URL, stop it",
+  },
+  emulator: {
+    brief:
+      "Inspect the local emulators: programs on this machine that stand in for Prisma Cloud during 'prisma dev'",
+    description:
+      "An emulator runs one kind of resource locally, so 'prisma dev' needs no account or network: one runs services, one runs Postgres databases, one runs S3-compatible buckets. Each holds instances, one per service, database or bucket that a 'prisma dev' started, from any directory on this machine. Emulators keep running after 'prisma dev' ends. Instances and their data stay until 'prisma dev --fresh' removes the current app's, and a stopped instance keeps its port.",
+  },
   skills: {
     brief:
       "Manage Prisma skills for AI coding agents. Sync and list the instruction files",
@@ -411,9 +421,13 @@ export const mountedCommands: Readonly<Record<string, AnyCommand>> = {
   "service domain delete": serviceDomainDeleteCommand,
   "service domain retry": serviceDomainRetryCommand,
   "service domain wait": serviceDomainWaitCommand,
-  // Composer's two product verbs, mounted at the root.
+  // Composer's product verbs: deploy and dev at the root, dev's
+  // children beneath it, and the local emulators under their own group.
   deploy: composerCommandFamily.commands.deploy,
   dev: composerCommandFamily.commands.dev,
+  "dev url": composerCommandFamily.commands["dev url"],
+  "dev stop": composerCommandFamily.commands["dev stop"],
+  "emulator list": composerCommandFamily.commands["emulator list"],
   // The ORM family. Written out per path: the shell owns the tree
   // (R12), so this map — not the family's own keying — is the source of
   // truth for where each command mounts.
