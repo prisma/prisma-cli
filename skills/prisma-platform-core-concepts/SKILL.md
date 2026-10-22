@@ -278,15 +278,6 @@ inside a service; sleeping makes them silently unreliable.
 
 ## Prisma Postgres
 
-For a project that needs a new standalone database, the separate
-[`create-db` tool](https://www.prisma.io/docs/postgres/npx-create-db), run as
-`npx create-db@1.2.1`, creates a temporary Prisma Postgres database without
-an account and prints its connection string and claim URL. By default it is
-deleted after 24 hours unless claimed. To keep it for free, open the claim
-URL and sign in with a Prisma account. A Composer app that declares its own
-database gets one through `dev` or `deploy` and does not need this separate
-step.
-
 To your application, a Prisma Postgres database is a regular PostgreSQL
 database behind a connection string: any client works, including Prisma ORM,
 psql, Kysely, and Drizzle. On top of plain PostgreSQL each database has
@@ -300,6 +291,15 @@ every secret is shown exactly once at creation, and no later read reveals
 it. On paid plans, backups are automated, listable, and restorable.
 Per-database usage metrics are queryable; the `postgres` group covers all of
 it.
+
+A database outside any project comes from the separate
+[`create-db` tool](https://www.prisma.io/docs/postgres/npx-create-db):
+`npx create-db@latest` needs no account and prints a connection string and a
+claim URL. The database is deleted after 24 hours unless claimed; claiming it
+with a Prisma account keeps it for free. Use it when the user has no Prisma
+account or project yet. When the project is on the platform, create the
+database in the project with the `postgres` group, or declare it in the
+module, instead.
 
 ## Object storage
 
