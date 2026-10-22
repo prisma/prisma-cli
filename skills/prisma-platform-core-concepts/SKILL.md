@@ -2,7 +2,7 @@
 name: prisma-platform-core-concepts
 metadata:
   library: "prisma"
-  library_version: "8.0.0-rc.25"
+  library_version: "8.0.0-rc.26"
   version: 2026.9.2
 description: >-
   Use when hosting, deploying, or operating an app on the Prisma Platform:
