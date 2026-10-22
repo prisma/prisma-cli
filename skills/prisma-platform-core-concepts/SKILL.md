@@ -280,7 +280,7 @@ inside a service; sleeping makes them silently unreliable.
 
 For a project that needs a new standalone database, the separate
 [`create-db` tool](https://www.prisma.io/docs/postgres/npx-create-db), run as
-`npx create-db@latest`, creates a temporary Prisma Postgres database without
+`npx create-db@1.2.1`, creates a temporary Prisma Postgres database without
 an account and prints its connection string and claim URL. By default it is
 deleted after 24 hours unless claimed. To keep it for free, open the claim
 URL and sign in with a Prisma account. A Composer app that declares its own
