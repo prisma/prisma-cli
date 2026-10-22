@@ -58,8 +58,13 @@ step and no connection strings to wire by hand; Composer injects them.
 
 ## Project setup
 
-The CLI carries every command named here, but an app's own code needs its
-dependencies installed. Start from:
+`prisma init` prepares local configuration and copies this skill from the
+installed `prisma` package into the configured agent directories. Database
+provisioning and deployment are separate choices. Keep the project's existing
+database and hosting setup unless the user wants to change it.
+
+For a Prisma Composer (Early Access) app deployed to Prisma Compute, install
+the app's dependencies:
 
 ```sh
 npm install prisma @prisma/composer @prisma/composer-prisma-cloud
@@ -211,6 +216,13 @@ runs. The first deploy creates the project, named after your module; the
 name must be unique in the workspace, and `--name` deploys under a different
 one.
 
+Before deploying, configure the Composer root module and the `composer`
+section in `prisma.config.ts`, then build the app. A new project also needs
+a region in `prismaCloud({ region: ... })` or `PRISMA_REGION`. The
+[deployment guide](https://www.prisma.io/docs/composer/deploying) covers
+these prerequisites; running `prisma init` alone does not prepare a
+deployable app.
+
 Both paths converge the same declaration, so they are mutually idempotent:
 a repo can be connected to GitHub and still be deployed from the CLI.
 
@@ -265,6 +277,15 @@ guard, it does not cancel your work. Do not build schedulers on `setInterval`
 inside a service; sleeping makes them silently unreliable.
 
 ## Prisma Postgres
+
+For a project that needs a new standalone database, the separate
+[`create-db` tool](https://www.prisma.io/docs/postgres/npx-create-db), run as
+`npx create-db@latest`, creates a temporary Prisma Postgres database without
+an account and prints its connection string and claim URL. By default it is
+deleted after 24 hours unless claimed. To keep it for free, open the claim
+URL and sign in with a Prisma account. A Composer app that declares its own
+database gets one through `dev` or `deploy` and does not need this separate
+step.
 
 To your application, a Prisma Postgres database is a regular PostgreSQL
 database behind a connection string: any client works, including Prisma ORM,
