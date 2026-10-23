@@ -106,6 +106,52 @@ it.each([
 });
 
 describe("prisma service domain add", () => {
+  it("explains when to restore the Cloudflare proxy and retries the same branch", async () => {
+    const hint =
+      "Set this record to DNS only (gray cloud). Once the domain is Active, turn Proxied back on with Full (strict) SSL/TLS and keep /.well-known/acme-challenge/* accessible.";
+    const harness = await makeServiceCli({
+      routes: domainRoutes({
+        "POST /v1/apps/{appId}/domains": () => ({
+          status: 400,
+          error: {
+            error: {
+              code: "domain-cloudflare-proxy",
+              message: "This hostname appears to use Cloudflare's proxy.",
+              hint,
+            },
+          },
+        }),
+      }),
+    });
+    const result = await harness.cli.run(
+      [
+        "service",
+        "domain",
+        "add",
+        "staging.example.com",
+        ...TARGET_ARGS,
+        "--branch",
+        "feature/domain fix",
+        "--json",
+      ],
+      { cwd: harness.cwd, env: harness.env },
+    );
+    const frame = result.json[result.json.length - 1];
+    if (frame?.kind !== "result" || frame.envelope.ok) {
+      throw new Error("expected an errored envelope");
+    }
+    expect(frame.envelope.error.code).toBe("SERVICE.DOMAIN_CLOUDFLARE_PROXY");
+    expect(frame.envelope.nextActions).toEqual([
+      { kind: "user-choice", label: hint },
+      {
+        kind: "run-command",
+        label: "Verify and connect",
+        command:
+          "prisma service domain add staging.example.com --service svc_1 --project proj_1 --branch 'feature/domain fix'",
+      },
+    ]);
+  });
+
   it("shows TXT instructions and keeps the target when workspace ownership is missing", async () => {
     const hint =
       "Add a TXT record named _prisma-verification.staging.example.com with value prisma-verification=workspace-proof. Keep this record to reconnect domains in this workspace, then retry the same command.";

@@ -158,6 +158,11 @@ well as the routing CNAME. Missing proof returns the exact DNS instructions and
 a command to retry on the same branch. Existing connected domains keep working;
 recreating a branch in the same workspace reuses its TXT record.
 
+Cloudflare proxy detection returns `SERVICE.DOMAIN_CLOUDFLARE_PROXY` with DNS-only
+instructions and a retry command for the same target. The customer can turn the
+proxy back on after the domain is Active, with Full (strict) SSL/TLS and the
+ACME challenge path accessible for certificate renewal.
+
 ## Shared Flag Conventions
 
 Shared CLI flag rules:

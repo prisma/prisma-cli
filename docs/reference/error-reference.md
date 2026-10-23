@@ -470,6 +470,15 @@ future attachments in this workspace, and rerun the suggested command. Recovery
 preserves the selected service, project, and branch. This does not mean that the
 service needs another deployment. Meta: `status`, `apiCode`, `hint`.
 
+### SERVICE.DOMAIN_CLOUDFLARE_PROXY
+
+The API found Cloudflare proxy addresses while the hostname's routing check
+failed. Set that DNS record to DNS only (gray cloud) and rerun the suggested
+command. After the domain is Active, Proxied can be enabled again with Full
+(strict) SSL/TLS. Keep `/.well-known/acme-challenge/*` accessible without caching
+or security challenges so Prisma can renew the certificate. Meta: `status`,
+`apiCode`, `hint`.
+
 ### SERVICE.DOMAIN_NOT_FOUND
 
 A `service domain` command targeted a hostname that is not attached to the resolved service — raised when the service's domain listing has no matching hostname, or when a show/delete/retry/wait call gets HTTP 404. The fix is to check the hostname and service, or add the domain first. Meta: none.
