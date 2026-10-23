@@ -153,6 +153,11 @@ They default to `production`; `--branch <name>` selects a preview or staging
 branch. The service must have a promoted, running version before a domain can
 be added. Domain lookup, retry, waiting, and deletion stay within that service.
 
+New domain attachments require a persistent workspace TXT ownership record as
+well as the routing CNAME. Missing proof returns the exact DNS instructions and
+a command to retry on the same branch. Existing connected domains keep working;
+recreating a branch in the same workspace reuses its TXT record.
+
 ## Shared Flag Conventions
 
 Shared CLI flag rules:

@@ -478,6 +478,27 @@ function domainAddFailure(
   hostname: string,
   target: ServiceDomainTarget,
 ): CliStructuredError | null {
+  if (error.code === "domain-ownership-required") {
+    return new CliStructuredError(
+      "SERVICE.DOMAIN_OWNERSHIP_REQUIRED",
+      `Verify ownership of ${hostname}`,
+      {
+        why: "DNS does not contain the TXT proof for this workspace.",
+        meta: debugMeta(error),
+        nextActions: [
+          adviceAction(
+            error.hint ??
+              "Add the workspace TXT record shown in Console's domain setup.",
+          ),
+          runCommandAction(
+            "Verify and connect",
+            domainRecoveryCommand("add", hostname, target),
+          ),
+        ],
+        cause: error,
+      },
+    );
+  }
   if (
     (error.status === 400 || error.status === 422) &&
     isDomainDnsError(error)
