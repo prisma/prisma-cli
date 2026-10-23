@@ -28,6 +28,49 @@ function domainRoutes(overrides: Routes = {}): Routes {
 const TARGET_ARGS = ["--project", "acme-app", "--service", "hello-world"];
 
 describe("prisma service domain add", () => {
+  it("uses the API's wait guidance when the workspace creation budget is exhausted", async () => {
+    const harness = await makeServiceCli({
+      routes: domainRoutes({
+        "POST /v1/apps/{appId}/domains": () => ({
+          status: 429,
+          error: {
+            error: {
+              code: "rate-limit-exceeded",
+              message:
+                "This workspace can create 10 custom domains per hour. Try again in 60 minutes.",
+              hint: "Wait before adding another custom domain to this workspace.",
+            },
+          },
+        }),
+      }),
+    });
+
+    const result = await harness.cli.run(
+      [
+        "service",
+        "domain",
+        "add",
+        "staging.example.com",
+        ...TARGET_ARGS,
+        "--json",
+      ],
+      { cwd: harness.cwd, env: harness.env },
+    );
+
+    const frame = result.json[result.json.length - 1];
+    if (frame?.kind !== "result" || frame.envelope.ok)
+      throw new Error("expected an errored envelope");
+    expect(result.exitCode).not.toBe(0);
+    expect(frame.envelope.error.code).toBe("SERVICE.DOMAIN_QUOTA_EXCEEDED");
+    expect(frame.envelope.error.why).toContain("10 custom domains per hour");
+    expect(frame.envelope.nextActions).toEqual([
+      {
+        kind: "user-choice",
+        label: "Wait before adding another custom domain to this workspace.",
+      },
+    ]);
+  });
+
   it("registers the domain and presents the target with dns records", async () => {
     const harness = await makeServiceCli({
       routes: domainRoutes({

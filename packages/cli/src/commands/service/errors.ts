@@ -532,15 +532,17 @@ function domainQuotaExceededError(
     {
       why: error.message,
       meta: debugMeta(error),
-      nextActions: [
-        adviceAction(
-          "Delete an existing custom domain before adding another one.",
-        ),
-        runCommandAction(
-          "Delete a domain",
-          domainRecoveryCommand("delete", "<hostname>", target),
-        ),
-      ],
+      nextActions: error.hint
+        ? [adviceAction(error.hint)]
+        : [
+            adviceAction(
+              "Delete an existing custom domain before adding another one.",
+            ),
+            runCommandAction(
+              "Delete a domain",
+              domainRecoveryCommand("delete", "<hostname>", target),
+            ),
+          ],
     },
   );
 }

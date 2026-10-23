@@ -468,7 +468,7 @@ A `service domain` command targeted a hostname that is not attached to the resol
 
 ### SERVICE.DOMAIN_QUOTA_EXCEEDED
 
-`service domain add` was refused because the custom-domain quota is reached — HTTP 429, or a 409 whose text mentions a quota, maximum, or limit. The fix is to delete an existing custom domain before adding another. Meta: `status`, `apiCode`, `hint`.
+`service domain add` was refused because the custom-domain quota is reached — HTTP 429, or a 409 whose text mentions a quota, maximum, or limit. The CLI uses the API's recovery hint when supplied, including waiting for an hourly creation budget. Without a hint, it advises deleting an existing custom domain before adding another. Meta: `status`, `apiCode`, `hint`.
 
 ### SERVICE.DOMAIN_RETRY_NOT_ELIGIBLE
 
