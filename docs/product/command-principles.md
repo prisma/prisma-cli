@@ -107,6 +107,8 @@ The scaffolded config imports `definePrismaConfig` from `prisma/config` and spel
 
 Resolve a service version and show or stream its logs.
 
+`dev logs` is the local counterpart: it reads the services of the app `prisma dev` runs from the current directory, so it sits under `dev` beside `dev url` and `dev stop` and `service logs` keeps meaning a deployed service. It takes the same `--tail` (default 100) and `--follow` (off by default) as `service logs`, so the two read alike.
+
 ### `delete` and `remove`
 
 `delete` destroys a resource; `remove` detaches one thing from another without destroying it. A command that permanently destroys what it targets is spelled `delete` (`project delete`, `service delete`, `postgres delete`); `remove` is reserved for detachment.

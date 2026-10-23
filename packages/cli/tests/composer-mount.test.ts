@@ -70,11 +70,22 @@ const ONE_INSTANCE = listing([
   { kind: "database", running: false, url: null, instances: [], error: null },
 ]);
 
-const COMPOSER_PATHS = ["dev", "dev url", "dev stop", "emulator list"];
+const COMPOSER_PATHS = [
+  "dev",
+  "dev url",
+  "dev logs",
+  "dev stop",
+  "emulator list",
+];
 
 function shell(emulators: Listing = listing([])) {
   const family = createComposerFamily({
-    operations: createOperationsDouble().operations,
+    operations: createOperationsDouble({
+      devLogLines: [
+        { service: "catalog", line: "catalog ready" },
+        { service: "gateway", line: "GET / 200" },
+      ],
+    }).operations,
     listEmulators: async () => emulators,
   });
   const commands = Object.fromEntries(
@@ -105,6 +116,16 @@ describe("Composer's commands in the shell", () => {
     expect(result.stdout).toBe("http://localhost:3000\n");
   });
 
+  it("pipes the log lines from dev logs, labelled by service", async () => {
+    const all = await shell().run(["dev", "logs"]);
+    const one = await shell().run(["dev", "logs", "gateway", "--tail", "20"]);
+
+    expect(all.exitCode).toBe(0);
+    expect(all.stdout).toBe("[catalog] catalog ready\n[gateway] GET / 200\n");
+    expect(one.exitCode).toBe(0);
+    expect(one.stdout).toBe("GET / 200\n");
+  });
+
   it("pipes nothing from dev stop", async () => {
     const result = await shell().run(["dev", "stop"]);
 
@@ -133,6 +154,7 @@ describe("Composer's commands in the shell", () => {
     expect(result.exitCode).toBe(0);
     expect(result.stdout).toContain("prisma-test dev");
     expect(result.stdout).toContain("url <address>");
+    expect(result.stdout).toContain("logs");
     expect(result.stdout).toContain("stop");
   });
 });

@@ -348,7 +348,7 @@ export const cliGroups: Readonly<
   orm: { brief: "Initialize a Prisma ORM project" },
   dev: {
     brief:
-      "Run your app on this machine, with no Prisma account. Start it, print a node's local URL, stop it",
+      "Run your app on this machine, with no Prisma account. Start it, print a node's local URL, read its logs, stop it",
   },
   emulator: {
     brief:
@@ -426,6 +426,7 @@ export const mountedCommands: Readonly<Record<string, AnyCommand>> = {
   deploy: composerCommandFamily.commands.deploy,
   dev: composerCommandFamily.commands.dev,
   "dev url": composerCommandFamily.commands["dev url"],
+  "dev logs": composerCommandFamily.commands["dev logs"],
   "dev stop": composerCommandFamily.commands["dev stop"],
   "emulator list": composerCommandFamily.commands["emulator list"],
   // The ORM family. Written out per path: the shell owns the tree

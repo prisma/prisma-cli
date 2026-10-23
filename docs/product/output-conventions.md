@@ -690,6 +690,11 @@ In human mode, `app logs` is a special case: raw app log lines are the primary
 streamed payload and go to stdout so they can be piped or redirected. CLI
 context, status, decoration, and errors stay on stderr.
 
+`dev logs` follows the same rule for a local app. Without an address it
+prefixes each line with `[address] ` so lines from several services stay
+attributable in a pipe; with one, lines are bare. In `--json` mode each line is
+an `output` frame whose `data` is `{ service, line }`.
+
 ## Data Conventions
 
 - ids are opaque and stable

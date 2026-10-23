@@ -107,6 +107,7 @@ const EXCLUSIONS: Readonly<Record<string, string>> = {
     "Provisions real cloud infrastructure for an app entry point, through a child `alchemy deploy`. Standing that up per CI run is neither cheap nor unattended-safe.",
   dev: "A session command: it runs until SIGINT or SIGTERM, redeploying on file change, so it has no happy path that terminates on its own.",
   "dev url": LOCAL_EMULATOR_REASON,
+  "dev logs": LOCAL_EMULATOR_REASON,
   "dev stop": LOCAL_EMULATOR_REASON,
   "emulator list": LOCAL_EMULATOR_REASON,
 };

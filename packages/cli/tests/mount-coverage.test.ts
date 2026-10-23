@@ -100,6 +100,7 @@ const EXPECTED_MOUNT_PATHS: readonly string[] = [
   "db verify",
   "deploy",
   "dev",
+  "dev logs",
   "dev stop",
   "dev url",
   "emulator list",

@@ -18,7 +18,7 @@ Namespaces:
 | `BRANCH` | Branch listing (`prisma branch`) |
 | `BUCKET` | Bucket and bucket-key management (`prisma bucket`) |
 | `CLI` | Engine-level invocation: arguments, config loading, prompts, consent, credentials, child processes |
-| `DEV` | Running an app on this machine with Composer (`prisma dev`, `prisma dev url`, `prisma dev stop`, `prisma emulator list`) |
+| `DEV` | Running an app on this machine with Composer (`prisma dev`, `prisma dev url`, `prisma dev logs`, `prisma dev stop`, `prisma emulator list`) |
 | `FEEDBACK` | Sending product feedback (`prisma feedback`) |
 | `GIT` | Git repository connections (`prisma git`) |
 | `INIT` | Project initialization diagnostics (`prisma init`) |
@@ -223,23 +223,31 @@ The typed path routed to no command (stricli's route failure, mapped at the adap
 
 ## DEV
 
-These codes come from Composer, the command family behind `prisma dev`, `prisma dev url`, `prisma dev stop` and `prisma emulator list`. A node is one service, database or bucket in your app; its address is its name in the app, with dots for a nested node (`catalog.database`). Each node runs on a local emulator: a program on this machine that stands in for Prisma Cloud.
+These codes come from Composer, the command family behind `prisma dev`, `prisma dev url`, `prisma dev logs`, `prisma dev stop` and `prisma emulator list`. A node is one service, database or bucket in your app; its address is its name in the app, with dots for a nested node (`catalog.database`). Each node runs on a local emulator: a program on this machine that stands in for Prisma Cloud.
 
 ### DEV.ADDRESS_UNKNOWN
 
-`prisma dev url <address>` named an address that the app `prisma dev` last ran from this directory does not have. The `why` lists the addresses that are recorded for it. The fix is to pass one of those; a nested node has a dotted address, such as `catalog.database`. Meta: `address`, `known` (the recorded addresses).
+`prisma dev url <address>` or `prisma dev logs <address>` named an address that the app `prisma dev` last ran from this directory does not have. The `why` lists the addresses that are recorded for it. The fix is to pass one of those; a nested node has a dotted address, such as `catalog.database`. Meta: `address`, `known` (the recorded addresses).
 
 ### DEV.EMULATOR_FAILED
 
-A local emulator answered a request with an error. `prisma dev url`, `prisma dev stop` and `prisma dev` raise it when the emulator that runs a node fails a request. In `prisma emulator list` it is not a failure of the command: the emulator is listed with this code and the emulator's message instead of its instances, and the command still exits `0`. Meta: none.
+A local emulator answered a request with an error. `prisma dev url`, `prisma dev logs`, `prisma dev stop` and `prisma dev` raise it when the emulator that runs a node fails a request. In `prisma emulator list` it is not a failure of the command: the emulator is listed with this code and the emulator's message instead of its instances, and the command still exits `0`. Meta: none.
 
 ### DEV.EMULATOR_UNREACHABLE
 
-A local emulator could not be reached. `prisma dev url` raises it when the emulator that runs the node is not running; the fix is to run `prisma dev <entry>` in this directory, which starts the emulators the app needs. It is also raised when an emulator is registered and its process is alive but it did not accept the connection; the fix then is to run the command again, and if it keeps failing, to end the emulator's process so the next `prisma dev` starts a new one. Meta: `address` and `kind` (the node's address and kind) when the emulator is not running; `url` (the emulator's address) when it did not accept the connection.
+A local emulator could not be reached. `prisma dev url` raises it when the emulator that runs the node is not running, and `prisma dev logs` when the emulator that runs the services is not running; the fix is to run `prisma dev <entry>` in this directory, which starts the emulators the app needs. It is also raised when an emulator is registered and its process is alive but it did not accept the connection; the fix then is to run the command again, and if it keeps failing, to end the emulator's process so the next `prisma dev` starts a new one. Meta: `address` and `kind` (the node's address and kind) when the emulator is not running; `url` (the emulator's address) when it did not accept the connection.
 
 ### DEV.EMULATORS_DIR_INVALID
 
-Any command that reaches the local emulators (`prisma dev`, `prisma dev url`, `prisma dev stop`, `prisma emulator list`) found the `PRISMA_COMPOSER_EMULATORS_DIR` environment variable set to a relative path. Every process that starts or reaches the local emulators resolves this directory, and a relative path would name a different directory in each working directory. The fix is to set it to an absolute path (`~` is not expanded) or to unset it, which uses `~/.prisma-composer/emulators`. Meta: `variable`, `value`.
+Any command that reaches the local emulators (`prisma dev`, `prisma dev url`, `prisma dev logs`, `prisma dev stop`, `prisma emulator list`) found the `PRISMA_COMPOSER_EMULATORS_DIR` environment variable set to a relative path. Every process that starts or reaches the local emulators resolves this directory, and a relative path would name a different directory in each working directory. The fix is to set it to an absolute path (`~` is not expanded) or to unset it, which uses `~/.prisma-composer/emulators`. Meta: `variable`, `value`.
+
+### DEV.LOGS_UNSUPPORTED
+
+`prisma dev logs` without `--follow` ran against an app whose Composer packages are older than the Composer in this `prisma` CLI, and they cannot read a service's log without following it. The fix is to upgrade the app's Composer packages (`@prisma/composer`, `@prisma/composer-prisma-cloud`) to the version this CLI uses, or to pass `--follow`. Meta: none.
+
+### DEV.NO_LOGS
+
+`prisma dev logs <address>` named a database or a bucket. Only services have logs: what a service's process writes to stdout and stderr. The fix is to pass a service's address, or no address for every service. Meta: `address`, `kind`.
 
 ### DEV.NOT_RUNNING
 
@@ -247,7 +255,7 @@ Any command that reaches the local emulators (`prisma dev`, `prisma dev url`, `p
 
 ### DEV.NOT_STARTED_HERE
 
-`prisma dev url` or `prisma dev stop` ran in a directory where `prisma dev` has not run. An app's local services, databases and buckets are recorded in the directory `prisma dev` runs from, and there is no such record here. The fix is to run `prisma dev <entry>` in this directory, or to run the command from the directory where `prisma dev` ran. Meta: `cwd`.
+`prisma dev url`, `prisma dev logs` or `prisma dev stop` ran in a directory where `prisma dev` has not run. An app's local services, databases and buckets are recorded in the directory `prisma dev` runs from, and there is no such record here. The fix is to run `prisma dev <entry>` in this directory, or to run the command from the directory where `prisma dev` ran. Meta: `cwd`.
 
 ## FEEDBACK
 
