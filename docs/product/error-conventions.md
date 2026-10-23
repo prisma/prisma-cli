@@ -201,6 +201,10 @@ If a production action is blocked or fails, the output should make clear whether
 
 Every error should help the user recover without opening another document first.
 
+Custom-domain input errors preserve an explicitly supplied `--branch` in recovery
+commands, even when validation fails before the service is selected. Recovery must
+not silently switch a preview or staging request to production.
+
 Custom-domain quota errors use the API's recovery hint when supplied. An hourly
 creation limit requires waiting; deleting a domain does not restore that budget.
 Without an API hint, the CLI keeps its advice to free an existing domain slot.

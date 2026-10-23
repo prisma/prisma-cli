@@ -23,7 +23,10 @@ export const serviceDomainDeleteCommand = defineCommand({
   args: domainTargetArgs(),
   needs: { credentials: true },
   handler: async (args, ctx) => {
-    const hostname = normalizeDomainHostname(args.positionals.hostname);
+    const hostname = normalizeDomainHostname(
+      args.positionals.hostname,
+      args.flags.branch,
+    );
     const target = await resolveServiceDomainTarget(ctx, {
       serviceName: args.flags.service,
       projectRef: args.flags.project,

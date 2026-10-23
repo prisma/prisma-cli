@@ -391,10 +391,13 @@ export function toServiceDomainSummary(
   };
 }
 
-export function normalizeDomainHostname(hostname: string): string {
+export function normalizeDomainHostname(
+  hostname: string,
+  branchName?: string,
+): string {
   const normalized = hostname.trim().replace(TRAILING_DOT, "").toLowerCase();
   if (!isValidDomainHostname(normalized)) {
-    throw domainHostnameInvalidError(hostname);
+    throw domainHostnameInvalidError(hostname, branchName);
   }
   return normalized;
 }

@@ -27,6 +27,84 @@ function domainRoutes(overrides: Routes = {}): Routes {
 
 const TARGET_ARGS = ["--project", "acme-app", "--service", "hello-world"];
 
+it.each([
+  "add",
+  "show",
+  "retry",
+  "wait",
+  "delete",
+])("keeps the supplied branch in %s invalid-hostname recovery", async (command) => {
+  const harness = await makeServiceCli({ routes: domainRoutes() });
+  const result = await harness.cli.run(
+    [
+      "service",
+      "domain",
+      command,
+      "not a hostname",
+      ...TARGET_ARGS,
+      "--branch",
+      "feature/domain fix",
+      "--json",
+    ],
+    { cwd: harness.cwd, env: harness.env },
+  );
+
+  const frame = result.json[result.json.length - 1];
+  if (frame?.kind !== "result" || frame.envelope.ok)
+    throw new Error("expected an errored envelope");
+  expect(frame.envelope.error.code).toBe("SERVICE.DOMAIN_HOSTNAME_INVALID");
+  expect(frame.envelope.nextActions).toContainEqual({
+    kind: "run-command",
+    label: "Add a domain",
+    command:
+      "prisma service domain add shop.acme.com --service <name> --branch 'feature/domain fix'",
+  });
+});
+
+it.each([
+  {
+    branch: undefined,
+    expected:
+      "prisma service domain wait shop.acme.com --service <name> --timeout 15m",
+  },
+  {
+    branch: "feature/domain fix",
+    expected:
+      "prisma service domain wait shop.acme.com --service <name> --timeout 15m --branch 'feature/domain fix'",
+  },
+])("keeps branch $branch in invalid-timeout recovery", async ({
+  branch,
+  expected,
+}) => {
+  const harness = await makeServiceCli({ routes: domainRoutes() });
+  const result = await harness.cli.run(
+    [
+      "service",
+      "domain",
+      "wait",
+      "shop.acme.com",
+      ...TARGET_ARGS,
+      "--timeout",
+      "invalid",
+      ...(branch === undefined ? [] : ["--branch", branch]),
+      "--json",
+    ],
+    { cwd: harness.cwd, env: harness.env },
+  );
+
+  const frame = result.json[result.json.length - 1];
+  if (frame?.kind !== "result" || frame.envelope.ok)
+    throw new Error("expected an errored envelope");
+  expect(frame.envelope.error.code).toBe("SERVICE.TIMEOUT_INVALID");
+  expect(frame.envelope.nextActions).toEqual([
+    {
+      kind: "run-command",
+      label: "Wait with a valid timeout",
+      command: expected,
+    },
+  ]);
+});
+
 describe("prisma service domain add", () => {
   it("uses the API's wait guidance when the workspace creation budget is exhausted", async () => {
     const harness = await makeServiceCli({
@@ -249,6 +327,11 @@ describe("prisma service domain add", () => {
       throw new Error("expected an errored envelope");
     }
     expect(frame.envelope.error.code).toBe("SERVICE.DOMAIN_HOSTNAME_INVALID");
+    expect(frame.envelope.nextActions).toContainEqual({
+      kind: "run-command",
+      label: "Add a domain",
+      command: "prisma service domain add shop.acme.com --service <name>",
+    });
   });
 
   it.each([

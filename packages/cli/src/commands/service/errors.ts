@@ -301,20 +301,18 @@ export function liveUrlUnavailableError(
 
 export function domainHostnameInvalidError(
   hostname: string,
-  why?: string,
+  branchName?: string,
 ): CliStructuredError {
   return new CliStructuredError(
     "SERVICE.DOMAIN_HOSTNAME_INVALID",
     `Invalid custom domain "${hostname}"`,
     {
-      why:
-        why ??
-        "Custom domains must be valid hostnames without protocol, path, wildcard, or port.",
+      why: "Custom domains must be valid hostnames without protocol, path, wildcard, or port.",
       nextActions: [
         adviceAction("Pass a hostname like shop.acme.com."),
         runCommandAction(
           "Add a domain",
-          "service domain add shop.acme.com --service <name>",
+          `service domain add shop.acme.com --service <name>${branchName === undefined ? "" : ` --branch ${formatCommandArgument(branchName)}`}`,
         ),
       ],
     },
@@ -401,7 +399,10 @@ export function domainVerificationTimeoutError(
   );
 }
 
-export function timeoutInvalidError(value: string): CliStructuredError {
+export function timeoutInvalidError(
+  value: string,
+  branchName?: string,
+): CliStructuredError {
   return new CliStructuredError(
     "SERVICE.TIMEOUT_INVALID",
     `Invalid timeout "${value}"`,
@@ -410,7 +411,7 @@ export function timeoutInvalidError(value: string): CliStructuredError {
       nextActions: [
         runCommandAction(
           "Wait with a valid timeout",
-          "service domain wait shop.acme.com --service <name> --timeout 15m",
+          `service domain wait shop.acme.com --service <name> --timeout 15m${branchName === undefined ? "" : ` --branch ${formatCommandArgument(branchName)}`}`,
         ),
       ],
     },
