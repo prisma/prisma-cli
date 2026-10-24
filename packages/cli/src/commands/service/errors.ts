@@ -478,6 +478,48 @@ function domainAddFailure(
   hostname: string,
   target: ServiceDomainTarget,
 ): CliStructuredError | null {
+  if (error.code === "domain-cloudflare-proxy") {
+    return new CliStructuredError(
+      "SERVICE.DOMAIN_CLOUDFLARE_PROXY",
+      `Turn off Cloudflare's proxy to connect ${hostname}`,
+      {
+        why: error.message,
+        meta: debugMeta(error),
+        nextActions: [
+          adviceAction(
+            error.hint ??
+              "Set this DNS record to DNS only (gray cloud), then retry. After the domain is Active, you can turn Proxied back on with Full (strict) SSL/TLS. Keep /.well-known/acme-challenge/* accessible for certificate renewal.",
+          ),
+          runCommandAction(
+            "Verify and connect",
+            domainRecoveryCommand("add", hostname, target),
+          ),
+        ],
+        cause: error,
+      },
+    );
+  }
+  if (error.code === "domain-ownership-required") {
+    return new CliStructuredError(
+      "SERVICE.DOMAIN_OWNERSHIP_REQUIRED",
+      `Verify ownership of ${hostname}`,
+      {
+        why: "DNS does not contain the TXT proof for this workspace.",
+        meta: debugMeta(error),
+        nextActions: [
+          adviceAction(
+            error.hint ??
+              "Add the workspace TXT record shown in Console's domain setup.",
+          ),
+          runCommandAction(
+            "Verify and connect",
+            domainRecoveryCommand("add", hostname, target),
+          ),
+        ],
+        cause: error,
+      },
+    );
+  }
   if (
     (error.status === 400 || error.status === 422) &&
     isDomainDnsError(error)

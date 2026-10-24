@@ -462,6 +462,23 @@ The general "Management API call failed" wrapper for the `service` command famil
 
 The hostname given to a `service domain` command is not a usable custom domain — raised either by local validation before any API call (protocol, path, port, wildcard, single label, or bad DNS labels) or when `service domain add` gets a plain HTTP 400 rejection from the domain API. The fix is to pass a bare hostname such as `shop.acme.com`. Meta: `status`, `apiCode`, `hint` (API-rejection path only; none for local validation).
 
+### SERVICE.DOMAIN_OWNERSHIP_REQUIRED
+
+The API could not find the TXT record proving that this workspace may attach the
+hostname. Add the exact name and value in the API hint, keep the TXT record for
+future attachments in this workspace, and rerun the suggested command. Recovery
+preserves the selected service, project, and branch. This does not mean that the
+service needs another deployment. Meta: `status`, `apiCode`, `hint`.
+
+### SERVICE.DOMAIN_CLOUDFLARE_PROXY
+
+The API found Cloudflare proxy addresses while the hostname's routing check
+failed. Set that DNS record to DNS only (gray cloud) and rerun the suggested
+command. After the domain is Active, Proxied can be enabled again with Full
+(strict) SSL/TLS. Keep `/.well-known/acme-challenge/*` accessible without caching
+or security challenges so Prisma can renew the certificate. Meta: `status`,
+`apiCode`, `hint`.
+
 ### SERVICE.DOMAIN_NOT_FOUND
 
 A `service domain` command targeted a hostname that is not attached to the resolved service — raised when the service's domain listing has no matching hostname, or when a show/delete/retry/wait call gets HTTP 404. The fix is to check the hostname and service, or add the domain first. Meta: none.
