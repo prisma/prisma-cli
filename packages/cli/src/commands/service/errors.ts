@@ -1,10 +1,20 @@
 import type { NextAction } from "@prisma/cli-engine/protocol";
 import { CliStructuredError } from "@prisma/cli-engine/protocol";
 import { CLI_NAME } from "../../cli-name";
+import { formatCommandArgument } from "../../command-arguments";
 import { DomainApiError, type DomainRecord } from "../../lib/app/app-provider";
 import { formatDomainFailureFix } from "../../lib/app/domain-guidance";
+import type { ServiceDomainTarget } from "./results";
 
 type DomainCommand = "add" | "show" | "delete" | "retry" | "wait";
+
+function domainRecoveryCommand(
+  command: DomainCommand,
+  hostname: string,
+  target: ServiceDomainTarget,
+): string {
+  return `service domain ${command} ${formatCommandArgument(hostname)} --service ${formatCommandArgument(target.service.id)} --project ${formatCommandArgument(target.project.id)} --branch ${formatCommandArgument(target.branch.name)}`;
+}
 
 export function runCommandAction(label: string, command: string): NextAction {
   return { kind: "run-command", label, command: `${CLI_NAME} ${command}` };
@@ -289,50 +299,30 @@ export function liveUrlUnavailableError(
   );
 }
 
-export function branchNotDeployableError(
-  branchName: string,
-): CliStructuredError {
-  return new CliStructuredError(
-    "SERVICE.BRANCH_NOT_DEPLOYABLE",
-    "Custom domains require the production branch",
-    {
-      why: `Custom domains on preview branch "${branchName}" are not supported in Public Beta.`,
-      nextActions: [
-        adviceAction(
-          "Use --branch production, or attach the domain after promoting/deploying to the production branch.",
-        ),
-        runCommandAction(
-          "Add on production",
-          "service domain add <hostname> --service <name> --branch production",
-        ),
-      ],
-    },
-  );
-}
-
 export function domainHostnameInvalidError(
   hostname: string,
-  why?: string,
+  branchName?: string,
 ): CliStructuredError {
   return new CliStructuredError(
     "SERVICE.DOMAIN_HOSTNAME_INVALID",
     `Invalid custom domain "${hostname}"`,
     {
-      why:
-        why ??
-        "Custom domains must be valid hostnames without protocol, path, wildcard, or port.",
+      why: "Custom domains must be valid hostnames without protocol, path, wildcard, or port.",
       nextActions: [
         adviceAction("Pass a hostname like shop.acme.com."),
         runCommandAction(
           "Add a domain",
-          "service domain add shop.acme.com --service <name>",
+          `service domain add shop.acme.com --service <name>${branchName === undefined ? "" : ` --branch ${formatCommandArgument(branchName)}`}`,
         ),
       ],
     },
   );
 }
 
-export function domainNotFoundError(hostname: string): CliStructuredError {
+export function domainNotFoundError(
+  hostname: string,
+  target: ServiceDomainTarget,
+): CliStructuredError {
   return new CliStructuredError(
     "SERVICE.DOMAIN_NOT_FOUND",
     `Custom domain "${hostname}" not found`,
@@ -344,7 +334,7 @@ export function domainNotFoundError(hostname: string): CliStructuredError {
         ),
         runCommandAction(
           "Add the domain",
-          `service domain add ${hostname} --service <name>`,
+          domainRecoveryCommand("add", hostname, target),
         ),
       ],
     },
@@ -364,6 +354,7 @@ function formatDomainFailureWhy(domain: DomainRecord): string {
 export function domainVerificationFailedError(
   hostname: string,
   domain: DomainRecord,
+  target: ServiceDomainTarget,
 ): CliStructuredError {
   const why = formatDomainFailureWhy(domain);
   const guidance = formatDomainFailureFix(domain);
@@ -376,11 +367,11 @@ export function domainVerificationFailedError(
         ...(guidance ? [adviceAction(guidance)] : []),
         runCommandAction(
           "Show the domain",
-          `service domain show ${hostname} --service <name>`,
+          domainRecoveryCommand("show", hostname, target),
         ),
         runCommandAction(
           "Retry verification",
-          `service domain retry ${hostname} --service <name>`,
+          domainRecoveryCommand("retry", hostname, target),
         ),
       ],
     },
@@ -390,6 +381,7 @@ export function domainVerificationFailedError(
 export function domainVerificationTimeoutError(
   hostname: string,
   lastStatus: string,
+  target: ServiceDomainTarget,
 ): CliStructuredError {
   return new CliStructuredError(
     "SERVICE.DOMAIN_VERIFICATION_TIMEOUT",
@@ -399,7 +391,7 @@ export function domainVerificationTimeoutError(
       nextActions: [
         runCommandAction(
           "Show the domain",
-          `service domain show ${hostname} --service <name>`,
+          domainRecoveryCommand("show", hostname, target),
         ),
         adviceAction("Retry wait with a longer --timeout."),
       ],
@@ -407,7 +399,10 @@ export function domainVerificationTimeoutError(
   );
 }
 
-export function timeoutInvalidError(value: string): CliStructuredError {
+export function timeoutInvalidError(
+  value: string,
+  branchName?: string,
+): CliStructuredError {
   return new CliStructuredError(
     "SERVICE.TIMEOUT_INVALID",
     `Invalid timeout "${value}"`,
@@ -416,7 +411,7 @@ export function timeoutInvalidError(value: string): CliStructuredError {
       nextActions: [
         runCommandAction(
           "Wait with a valid timeout",
-          "service domain wait shop.acme.com --service <name> --timeout 15m",
+          `service domain wait shop.acme.com --service <name> --timeout 15m${branchName === undefined ? "" : ` --branch ${formatCommandArgument(branchName)}`}`,
         ),
       ],
     },
@@ -434,9 +429,10 @@ export function domainCommandError(
   command: DomainCommand,
   error: unknown,
   hostname: string,
+  target: ServiceDomainTarget,
 ): CliStructuredError {
   if (error instanceof DomainApiError) {
-    const known = domainApiFailure(command, error, hostname);
+    const known = domainApiFailure(command, error, hostname, target);
     if (known) {
       return known;
     }
@@ -451,7 +447,7 @@ export function domainCommandError(
       nextActions: [
         runCommandAction(
           "Show the domain",
-          `service domain show ${hostname} --service <name>`,
+          domainRecoveryCommand("show", hostname, target),
         ),
       ],
       cause: error,
@@ -463,15 +459,16 @@ function domainApiFailure(
   command: DomainCommand,
   error: DomainApiError,
   hostname: string,
+  target: ServiceDomainTarget,
 ): CliStructuredError | null {
   if (command === "add") {
-    return domainAddFailure(error, hostname);
+    return domainAddFailure(error, hostname, target);
   }
   if (error.status === 404) {
-    return domainNotFoundError(hostname);
+    return domainNotFoundError(hostname, target);
   }
   if (command === "retry" && error.status === 409) {
-    return domainRetryNotEligibleError(hostname, error);
+    return domainRetryNotEligibleError(hostname, error, target);
   }
   return null;
 }
@@ -479,24 +476,67 @@ function domainApiFailure(
 function domainAddFailure(
   error: DomainApiError,
   hostname: string,
+  target: ServiceDomainTarget,
 ): CliStructuredError | null {
+  if (error.code === "domain-cloudflare-proxy") {
+    return new CliStructuredError(
+      "SERVICE.DOMAIN_CLOUDFLARE_PROXY",
+      `Turn off Cloudflare's proxy to connect ${hostname}`,
+      {
+        why: error.message,
+        meta: debugMeta(error),
+        nextActions: [
+          adviceAction(
+            error.hint ??
+              "Set this DNS record to DNS only (gray cloud), then retry. After the domain is Active, you can turn Proxied back on with Full (strict) SSL/TLS. Keep /.well-known/acme-challenge/* accessible for certificate renewal.",
+          ),
+          runCommandAction(
+            "Verify and connect",
+            domainRecoveryCommand("add", hostname, target),
+          ),
+        ],
+        cause: error,
+      },
+    );
+  }
+  if (error.code === "domain-ownership-required") {
+    return new CliStructuredError(
+      "SERVICE.DOMAIN_OWNERSHIP_REQUIRED",
+      `Verify ownership of ${hostname}`,
+      {
+        why: "DNS does not contain the TXT proof for this workspace.",
+        meta: debugMeta(error),
+        nextActions: [
+          adviceAction(
+            error.hint ??
+              "Add the workspace TXT record shown in Console's domain setup.",
+          ),
+          runCommandAction(
+            "Verify and connect",
+            domainRecoveryCommand("add", hostname, target),
+          ),
+        ],
+        cause: error,
+      },
+    );
+  }
   if (
     (error.status === 400 || error.status === 422) &&
     isDomainDnsError(error)
   ) {
-    return domainDnsNotConfiguredError(hostname, error);
+    return domainDnsNotConfiguredError(hostname, error, target);
   }
   if (error.status === 400) {
-    return domainHostnameRejectedError(hostname, error);
+    return domainHostnameRejectedError(hostname, error, target);
   }
   if (error.status === 429 || isDomainQuotaError(error)) {
-    return domainQuotaExceededError(error);
+    return domainQuotaExceededError(error, target);
   }
   if (error.status === 409) {
     return domainAlreadyRegisteredError(hostname, error);
   }
   if (error.status === 422) {
-    return domainRequiresDeploymentError(hostname, error);
+    return domainRequiresDeploymentError(hostname, error, target);
   }
   return null;
 }
@@ -504,6 +544,7 @@ function domainAddFailure(
 function domainHostnameRejectedError(
   hostname: string,
   error: DomainApiError,
+  target: ServiceDomainTarget,
 ): CliStructuredError {
   return new CliStructuredError(
     "SERVICE.DOMAIN_HOSTNAME_INVALID",
@@ -517,29 +558,34 @@ function domainHostnameRejectedError(
         ),
         runCommandAction(
           "Add a domain",
-          "service domain add shop.acme.com --service <name>",
+          domainRecoveryCommand("add", hostname, target),
         ),
       ],
     },
   );
 }
 
-function domainQuotaExceededError(error: DomainApiError): CliStructuredError {
+function domainQuotaExceededError(
+  error: DomainApiError,
+  target: ServiceDomainTarget,
+): CliStructuredError {
   return new CliStructuredError(
     "SERVICE.DOMAIN_QUOTA_EXCEEDED",
     "Custom domain quota exceeded",
     {
       why: error.message,
       meta: debugMeta(error),
-      nextActions: [
-        adviceAction(
-          "Delete an existing custom domain before adding another one.",
-        ),
-        runCommandAction(
-          "Delete a domain",
-          "service domain delete <hostname> --service <name>",
-        ),
-      ],
+      nextActions: error.hint
+        ? [adviceAction(error.hint)]
+        : [
+            adviceAction(
+              "Delete an existing custom domain before adding another one.",
+            ),
+            runCommandAction(
+              "Delete a domain",
+              domainRecoveryCommand("delete", "<hostname>", target),
+            ),
+          ],
     },
   );
 }
@@ -566,12 +612,13 @@ function domainAlreadyRegisteredError(
 function domainRequiresDeploymentError(
   hostname: string,
   error: DomainApiError,
+  target: ServiceDomainTarget,
 ): CliStructuredError {
   return new CliStructuredError(
     "SERVICE.NO_VERSIONS",
-    "Custom domain requires a live production version",
+    "Custom domain requires a live version",
     {
-      why: "The selected production service does not have a promoted version that can receive a custom domain.",
+      why: "The selected service does not have a promoted version that can receive a custom domain.",
       meta: debugMeta(error),
       nextActions: [
         // Legacy paired "rerun the domain command" with the fix line
@@ -579,11 +626,11 @@ function domainRequiresDeploymentError(
         // with the dropped command; without the advice the only thing
         // left told the user to rerun what had just failed.
         adviceAction(
-          "Promote a version on the service's production branch, then add the domain again.",
+          "Promote a version on the selected branch, then add the domain again.",
         ),
         runCommandAction(
           "Add the domain",
-          `service domain add ${hostname} --service <name>`,
+          domainRecoveryCommand("add", hostname, target),
         ),
       ],
     },
@@ -593,6 +640,7 @@ function domainRequiresDeploymentError(
 function domainRetryNotEligibleError(
   hostname: string,
   error: DomainApiError,
+  target: ServiceDomainTarget,
 ): CliStructuredError {
   return new CliStructuredError(
     "SERVICE.DOMAIN_RETRY_NOT_ELIGIBLE",
@@ -606,7 +654,7 @@ function domainRetryNotEligibleError(
         ),
         runCommandAction(
           "Show the domain",
-          `service domain show ${hostname} --service <name>`,
+          domainRecoveryCommand("show", hostname, target),
         ),
       ],
     },
@@ -638,9 +686,10 @@ function isDomainDnsError(error: DomainApiError): boolean {
 function domainDnsNotConfiguredError(
   hostname: string,
   error: DomainApiError,
+  target: ServiceDomainTarget,
 ): CliStructuredError {
-  const target = extractDomainDnsTarget(error);
-  const record = target ? `CNAME ${hostname} -> ${target}` : null;
+  const dnsTarget = extractDomainDnsTarget(error);
+  const record = dnsTarget ? `CNAME ${hostname} -> ${dnsTarget}` : null;
   return new CliStructuredError(
     "SERVICE.DOMAIN_DNS_NOT_CONFIGURED",
     `DNS is not configured for "${hostname}"`,
@@ -654,7 +703,7 @@ function domainDnsNotConfiguredError(
             ),
             runCommandAction(
               "Add the domain",
-              `service domain add ${hostname} --service <name>`,
+              domainRecoveryCommand("add", hostname, target),
             ),
           ]
         : [

@@ -21,7 +21,10 @@ export const serviceDomainShowCommand = defineCommand({
   args: domainTargetArgs(),
   needs: { credentials: true },
   handler: async (args, ctx) => {
-    const hostname = normalizeDomainHostname(args.positionals.hostname);
+    const hostname = normalizeDomainHostname(
+      args.positionals.hostname,
+      args.flags.branch,
+    );
     const target = await resolveServiceDomainTarget(ctx, {
       serviceName: args.flags.service,
       projectRef: args.flags.project,
@@ -30,7 +33,7 @@ export const serviceDomainShowCommand = defineCommand({
     });
     const domain = await resolveDomainByHostname(
       target.provider,
-      target.service.id,
+      target.resultTarget,
       hostname,
       "show",
       ctx.signal,
@@ -38,7 +41,7 @@ export const serviceDomainShowCommand = defineCommand({
     const detail = await target.provider
       .showDomain(domain.id, { signal: ctx.signal })
       .catch((error) => {
-        throw domainCommandError("show", error, hostname);
+        throw domainCommandError("show", error, hostname, target.resultTarget);
       });
 
     const result: ServiceDomainShowResult = {

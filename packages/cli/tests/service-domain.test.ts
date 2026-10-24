@@ -27,7 +27,220 @@ function domainRoutes(overrides: Routes = {}): Routes {
 
 const TARGET_ARGS = ["--project", "acme-app", "--service", "hello-world"];
 
+it.each([
+  "add",
+  "show",
+  "retry",
+  "wait",
+  "delete",
+])("keeps the supplied branch in %s invalid-hostname recovery", async (command) => {
+  const harness = await makeServiceCli({ routes: domainRoutes() });
+  const result = await harness.cli.run(
+    [
+      "service",
+      "domain",
+      command,
+      "not a hostname",
+      ...TARGET_ARGS,
+      "--branch",
+      "feature/domain fix",
+      "--json",
+    ],
+    { cwd: harness.cwd, env: harness.env },
+  );
+
+  const frame = result.json[result.json.length - 1];
+  if (frame?.kind !== "result" || frame.envelope.ok)
+    throw new Error("expected an errored envelope");
+  expect(frame.envelope.error.code).toBe("SERVICE.DOMAIN_HOSTNAME_INVALID");
+  expect(frame.envelope.nextActions).toContainEqual({
+    kind: "run-command",
+    label: "Add a domain",
+    command:
+      "prisma service domain add shop.acme.com --service <name> --branch 'feature/domain fix'",
+  });
+});
+
+it.each([
+  {
+    branch: undefined,
+    expected:
+      "prisma service domain wait shop.acme.com --service <name> --timeout 15m",
+  },
+  {
+    branch: "feature/domain fix",
+    expected:
+      "prisma service domain wait shop.acme.com --service <name> --timeout 15m --branch 'feature/domain fix'",
+  },
+])("keeps branch $branch in invalid-timeout recovery", async ({
+  branch,
+  expected,
+}) => {
+  const harness = await makeServiceCli({ routes: domainRoutes() });
+  const result = await harness.cli.run(
+    [
+      "service",
+      "domain",
+      "wait",
+      "shop.acme.com",
+      ...TARGET_ARGS,
+      "--timeout",
+      "invalid",
+      ...(branch === undefined ? [] : ["--branch", branch]),
+      "--json",
+    ],
+    { cwd: harness.cwd, env: harness.env },
+  );
+
+  const frame = result.json[result.json.length - 1];
+  if (frame?.kind !== "result" || frame.envelope.ok)
+    throw new Error("expected an errored envelope");
+  expect(frame.envelope.error.code).toBe("SERVICE.TIMEOUT_INVALID");
+  expect(frame.envelope.nextActions).toEqual([
+    {
+      kind: "run-command",
+      label: "Wait with a valid timeout",
+      command: expected,
+    },
+  ]);
+});
+
 describe("prisma service domain add", () => {
+  it("explains when to restore the Cloudflare proxy and retries the same branch", async () => {
+    const hint =
+      "Set this record to DNS only (gray cloud). Once the domain is Active, turn Proxied back on with Full (strict) SSL/TLS and keep /.well-known/acme-challenge/* accessible.";
+    const harness = await makeServiceCli({
+      routes: domainRoutes({
+        "POST /v1/apps/{appId}/domains": () => ({
+          status: 400,
+          error: {
+            error: {
+              code: "domain-cloudflare-proxy",
+              message: "This hostname appears to use Cloudflare's proxy.",
+              hint,
+            },
+          },
+        }),
+      }),
+    });
+    const result = await harness.cli.run(
+      [
+        "service",
+        "domain",
+        "add",
+        "staging.example.com",
+        ...TARGET_ARGS,
+        "--branch",
+        "feature/domain fix",
+        "--json",
+      ],
+      { cwd: harness.cwd, env: harness.env },
+    );
+    const frame = result.json[result.json.length - 1];
+    if (frame?.kind !== "result" || frame.envelope.ok) {
+      throw new Error("expected an errored envelope");
+    }
+    expect(frame.envelope.error.code).toBe("SERVICE.DOMAIN_CLOUDFLARE_PROXY");
+    expect(frame.envelope.nextActions).toEqual([
+      { kind: "user-choice", label: hint },
+      {
+        kind: "run-command",
+        label: "Verify and connect",
+        command:
+          "prisma service domain add staging.example.com --service svc_1 --project proj_1 --branch 'feature/domain fix'",
+      },
+    ]);
+  });
+
+  it("shows TXT instructions and keeps the target when workspace ownership is missing", async () => {
+    const hint =
+      "Add a TXT record named _prisma-verification.staging.example.com with value prisma-verification=workspace-proof. Keep this record to reconnect domains in this workspace, then retry the same command.";
+    const harness = await makeServiceCli({
+      routes: domainRoutes({
+        "POST /v1/apps/{appId}/domains": () => ({
+          status: 422,
+          error: {
+            error: {
+              code: "domain-ownership-required",
+              message: "Verify ownership before connecting this domain.",
+              hint,
+            },
+          },
+        }),
+      }),
+    });
+    const result = await harness.cli.run(
+      [
+        "service",
+        "domain",
+        "add",
+        "staging.example.com",
+        ...TARGET_ARGS,
+        "--branch",
+        "feature/domain fix",
+        "--json",
+      ],
+      { cwd: harness.cwd, env: harness.env },
+    );
+    const frame = result.json[result.json.length - 1];
+    if (frame?.kind !== "result" || frame.envelope.ok)
+      throw new Error("expected an errored envelope");
+    expect(frame.envelope.error.code).toBe("SERVICE.DOMAIN_OWNERSHIP_REQUIRED");
+    expect(frame.envelope.error.meta).toMatchObject({ hint });
+    expect(frame.envelope.nextActions).toEqual([
+      { kind: "user-choice", label: hint },
+      {
+        kind: "run-command",
+        label: "Verify and connect",
+        command:
+          "prisma service domain add staging.example.com --service svc_1 --project proj_1 --branch 'feature/domain fix'",
+      },
+    ]);
+  });
+
+  it("uses the API's wait guidance when the workspace creation budget is exhausted", async () => {
+    const harness = await makeServiceCli({
+      routes: domainRoutes({
+        "POST /v1/apps/{appId}/domains": () => ({
+          status: 429,
+          error: {
+            error: {
+              code: "rate-limit-exceeded",
+              message:
+                "This workspace can create 10 custom domains per hour. Try again in 60 minutes.",
+              hint: "Wait before adding another custom domain to this workspace.",
+            },
+          },
+        }),
+      }),
+    });
+
+    const result = await harness.cli.run(
+      [
+        "service",
+        "domain",
+        "add",
+        "staging.example.com",
+        ...TARGET_ARGS,
+        "--json",
+      ],
+      { cwd: harness.cwd, env: harness.env },
+    );
+
+    const frame = result.json[result.json.length - 1];
+    if (frame?.kind !== "result" || frame.envelope.ok)
+      throw new Error("expected an errored envelope");
+    expect(result.exitCode).not.toBe(0);
+    expect(frame.envelope.error.code).toBe("SERVICE.DOMAIN_QUOTA_EXCEEDED");
+    expect(frame.envelope.error.why).toContain("10 custom domains per hour");
+    expect(frame.envelope.nextActions).toEqual([
+      {
+        kind: "user-choice",
+        label: "Wait before adding another custom domain to this workspace.",
+      },
+    ]);
+  });
+
   it("registers the domain and presents the target with dns records", async () => {
     const harness = await makeServiceCli({
       routes: domainRoutes({
@@ -153,7 +366,7 @@ describe("prisma service domain add", () => {
     });
   });
 
-  it("maps a 422 without a live production deployment to SERVICE.NO_VERSIONS", async () => {
+  it("maps a 422 without a live deployment to SERVICE.NO_VERSIONS", async () => {
     const harness = await makeServiceCli({
       routes: domainRoutes({
         "POST /v1/apps/{appId}/domains": () => ({
@@ -181,12 +394,13 @@ describe("prisma service domain add", () => {
       {
         kind: "user-choice",
         label:
-          "Promote a version on the service's production branch, then add the domain again.",
+          "Promote a version on the selected branch, then add the domain again.",
       },
       {
         kind: "run-command",
         label: "Add the domain",
-        command: "prisma service domain add shop.acme.com --service <name>",
+        command:
+          "prisma service domain add shop.acme.com --service svc_1 --project proj_1 --branch production",
       },
     ]);
   });
@@ -205,11 +419,40 @@ describe("prisma service domain add", () => {
       throw new Error("expected an errored envelope");
     }
     expect(frame.envelope.error.code).toBe("SERVICE.DOMAIN_HOSTNAME_INVALID");
+    expect(frame.envelope.nextActions).toContainEqual({
+      kind: "run-command",
+      label: "Add a domain",
+      command: "prisma service domain add shop.acme.com --service <name>",
+    });
   });
 
-  it("rejects preview branches as SERVICE.BRANCH_NOT_DEPLOYABLE", async () => {
-    const harness = await makeServiceCli({ routes: domainRoutes() });
-
+  it.each([
+    "feature/foo",
+    "staging",
+  ])("registers a domain on branch %s", async (branchName) => {
+    const harness = await makeServiceCli({
+      routes: domainRoutes({
+        "GET /v1/apps": (init) => {
+          expect(init.params?.query?.branchGitName).toBe(branchName);
+          return {
+            data: page([
+              {
+                id: "svc_preview",
+                name: "hello-world",
+                region: { id: "eu-central-1" },
+                branchId: "br_preview",
+                latestDeploymentId: "dep_preview",
+                appEndpointDomain: "preview.prisma.build",
+              },
+            ]),
+          };
+        },
+        "POST /v1/apps/{appId}/domains": (init) => {
+          expect(init.params?.path?.appId).toBe("svc_preview");
+          return { data: { data: domainRecord({ appId: "svc_preview" }) } };
+        },
+      }),
+    });
     const result = await harness.cli.run(
       [
         "service",
@@ -218,18 +461,17 @@ describe("prisma service domain add", () => {
         "shop.acme.com",
         ...TARGET_ARGS,
         "--branch",
-        "feature/foo",
-        "--json",
+        branchName,
       ],
-      { cwd: harness.cwd, env: harness.env },
+      { cwd: harness.cwd, env: harness.env, isTty: { stdout: true } },
     );
-
-    expect(result.exitCode).toBe(2);
-    const frame = result.json[result.json.length - 1];
-    if (frame?.kind !== "result" || frame.envelope.ok) {
-      throw new Error("expected an errored envelope");
-    }
-    expect(frame.envelope.error.code).toBe("SERVICE.BRANCH_NOT_DEPLOYABLE");
+    expect(result.exitCode).toBe(0);
+    expect(result.presented?.data).toMatchObject({
+      branch: { name: branchName, kind: "preview" },
+      service: { id: "svc_preview", name: "hello-world" },
+      domain: { serviceId: "svc_preview" },
+    });
+    expect(presentedSummary(result.presented)?.status).toBe("ok");
   });
 
   it("accepts a service id in --service", async () => {
@@ -834,5 +1076,143 @@ describe("prisma service domain delete", () => {
       throw new Error("expected an errored envelope");
     }
     expect(frame.envelope.error.code).toBe("CLI.CONSENT_REQUIRED");
+  });
+});
+
+it.each([
+  "show",
+  "retry",
+  "wait",
+  "delete",
+])("manages a staging domain with %s", async (command) => {
+  const harness = await makeServiceCli({
+    routes: domainRoutes({
+      "GET /v1/apps": (init) => {
+        expect(init.params?.query?.branchGitName).toBe("staging");
+        return {
+          data: page([
+            {
+              id: "svc_staging",
+              name: "hello-world",
+              region: { id: "eu-central-1" },
+              branchId: "br_staging",
+              latestDeploymentId: "dep_staging",
+              appEndpointDomain: "staging.prisma.build",
+            },
+          ]),
+        };
+      },
+      "GET /v1/apps/{appId}/domains": (init) => {
+        expect(init.params?.path?.appId).toBe("svc_staging");
+        return {
+          data: {
+            data: [
+              domainRecord({
+                id: "dom_staging",
+                appId: "svc_staging",
+                status: "active",
+              }),
+            ],
+          },
+        };
+      },
+      "GET /v1/domains/{domainId}": (init) => {
+        expect(init.params?.path?.domainId).toBe("dom_staging");
+        return {
+          data: {
+            data: domainRecord({
+              id: "dom_staging",
+              appId: "svc_staging",
+              status: "active",
+            }),
+          },
+        };
+      },
+      "POST /v1/domains/{domainId}/retry": (init) => {
+        expect(init.params?.path?.domainId).toBe("dom_staging");
+        return {
+          data: {
+            data: domainRecord({
+              id: "dom_staging",
+              appId: "svc_staging",
+              status: "verifying",
+            }),
+          },
+        };
+      },
+      "DELETE /v1/domains/{domainId}": (init) => {
+        expect(init.params?.path?.domainId).toBe("dom_staging");
+        return { data: { data: null } };
+      },
+    }),
+  });
+  const result = await harness.cli.run(
+    [
+      "service",
+      "domain",
+      command,
+      "shop.acme.com",
+      ...TARGET_ARGS,
+      "--branch",
+      "staging",
+      "--json",
+      ...(command === "delete" ? ["--confirm", "shop.acme.com"] : []),
+    ],
+    { cwd: harness.cwd, env: harness.env },
+  );
+  expect(result.exitCode).toBe(0);
+  const frame = result.json[result.json.length - 1];
+  if (frame?.kind !== "result" || !frame.envelope.ok) {
+    throw new Error("expected a completed envelope");
+  }
+  expect(frame.envelope.result).toMatchObject({
+    branch: { name: "staging", kind: "preview" },
+    service: { id: "svc_staging", name: "hello-world" },
+  });
+});
+
+it.each([
+  { message: "no promoted deployment", code: "SERVICE.NO_VERSIONS" },
+  {
+    message: "DNS is not configured",
+    hint: "Create a CNAME to switchboard.ewr.prisma.build first.",
+    code: "SERVICE.DOMAIN_DNS_NOT_CONFIGURED",
+  },
+])("keeps the selected target in $code recovery commands", async ({
+  message,
+  hint,
+  code,
+}) => {
+  const harness = await makeServiceCli({
+    routes: domainRoutes({
+      "POST /v1/apps/{appId}/domains": () => ({
+        error: { error: { message, hint } },
+        status: 422,
+      }),
+    }),
+  });
+  const result = await harness.cli.run(
+    [
+      "service",
+      "domain",
+      "add",
+      "shop.acme.com",
+      ...TARGET_ARGS,
+      "--branch",
+      "feature/customer's-test",
+      "--json",
+    ],
+    { cwd: harness.cwd, env: harness.env },
+  );
+  expect(result.exitCode).toBe(2);
+  const frame = result.json[result.json.length - 1];
+  if (frame?.kind !== "result" || frame.envelope.ok)
+    throw new Error("expected an errored envelope");
+  expect(frame.envelope.error.code).toBe(code);
+  expect(frame.envelope.nextActions).toContainEqual({
+    kind: "run-command",
+    label: "Add the domain",
+    command:
+      "prisma service domain add shop.acme.com --service svc_1 --project proj_1 --branch 'feature/customer'\\''s-test'",
   });
 });

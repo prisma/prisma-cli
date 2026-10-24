@@ -23,7 +23,10 @@ export const serviceDomainDeleteCommand = defineCommand({
   args: domainTargetArgs(),
   needs: { credentials: true },
   handler: async (args, ctx) => {
-    const hostname = normalizeDomainHostname(args.positionals.hostname);
+    const hostname = normalizeDomainHostname(
+      args.positionals.hostname,
+      args.flags.branch,
+    );
     const target = await resolveServiceDomainTarget(ctx, {
       serviceName: args.flags.service,
       projectRef: args.flags.project,
@@ -32,7 +35,7 @@ export const serviceDomainDeleteCommand = defineCommand({
     });
     const domain = await resolveDomainByHostname(
       target.provider,
-      target.service.id,
+      target.resultTarget,
       hostname,
       "delete",
       ctx.signal,
@@ -53,7 +56,12 @@ export const serviceDomainDeleteCommand = defineCommand({
     await target.provider
       .removeDomain(domain.id, { signal: ctx.signal })
       .catch((error) => {
-        throw domainCommandError("delete", error, hostname);
+        throw domainCommandError(
+          "delete",
+          error,
+          hostname,
+          target.resultTarget,
+        );
       });
 
     const result: ServiceDomainDeleteResult = {

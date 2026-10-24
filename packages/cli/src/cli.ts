@@ -294,7 +294,7 @@ export const cliGroups: Readonly<
     brief:
       "Manage custom domains for a service. Register hostnames, drive DNS and TLS verification, inspect status",
     description:
-      "Custom domains point hostnames you own at a service's production branch. After add, create the DNS record the platform reports; wait and retry drive DNS verification and TLS provisioning to done.",
+      "Custom domains point hostnames you own at a service on any branch. Commands default to production; use --branch to select another branch. After add, create the DNS record the platform reports; wait and retry drive DNS verification and TLS provisioning to done.",
     workflow: [
       {
         run: "service domain add shop.acme.com --service my-api",

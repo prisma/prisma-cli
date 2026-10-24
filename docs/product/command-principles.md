@@ -146,6 +146,23 @@ When a group acts on a subordinate resource, the action may be a compound verb p
 
 That is still one action in the command grammar. It is preferable to inventing a temporary top-level `deployment` group for the MVP.
 
+## Custom domains
+
+`service domain` commands manage domains for the service on the selected branch.
+They default to `production`; `--branch <name>` selects a preview or staging
+branch. The service must have a promoted, running version before a domain can
+be added. Domain lookup, retry, waiting, and deletion stay within that service.
+
+New domain attachments require a persistent workspace TXT ownership record as
+well as the routing CNAME. Missing proof returns the exact DNS instructions and
+a command to retry on the same branch. Existing connected domains keep working;
+recreating a branch in the same workspace reuses its TXT record.
+
+Cloudflare proxy detection returns `SERVICE.DOMAIN_CLOUDFLARE_PROXY` with DNS-only
+instructions and a retry command for the same target. The customer can turn the
+proxy back on after the domain is Active, with Full (strict) SSL/TLS and the
+ACME challenge path accessible for certificate renewal.
+
 ## Shared Flag Conventions
 
 Shared CLI flag rules:
