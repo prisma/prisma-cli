@@ -9,6 +9,11 @@ import {
 import type { Diagnostic } from "@prisma/cli-engine/protocol";
 import { ok } from "@prisma/cli-engine/protocol";
 import { cleanupLocalPinForProject } from "../../controllers/project";
+import {
+  consentToken,
+  isNodeAddress,
+  resolveProjectSubject,
+} from "../../lib/address/node-address";
 import { createManagementProjectProvider } from "../../lib/project/provider";
 import {
   resolveProjectForSetup,
@@ -19,8 +24,9 @@ import { resolveActiveWorkspace } from "../resources-shared/workspace";
 import { listWorkspaceProjects, operationContext } from "./context";
 import { localPinDiagnostics } from "./presentation";
 
-const CONSENT_QUESTION =
-  "Deleting a project is permanent, destroys its databases, and stops its apps, so it requires the exact project id.";
+function consentQuestion(subject: string): string {
+  return `Deleting a project is permanent, destroys its databases, and stops its apps, so it requires the exact project ${isNodeAddress(subject) ? "address" : "id"}.`;
+}
 
 function deletePresentations(result: ProjectDeleteResult): Presentations {
   return {
@@ -54,7 +60,7 @@ export const projectDeleteCommand = defineCommand({
   args: {
     positionals: {
       project: positional.string({
-        brief: "Project id or name",
+        brief: "Project id or name, or its deploy address such as @shop",
         placeholder: "id-or-name",
       }),
     },
@@ -62,22 +68,29 @@ export const projectDeleteCommand = defineCommand({
   help: {
     summary: "Delete a Project permanently after exact id confirmation",
     description:
-      "Deletion is permanent: it destroys the project's databases and stops its deployed services. Because of that, the command asks for the exact project id as a consent token; pass it with --confirm to run non-interactively.",
-    examples: ["project delete proj_123 --confirm proj_123"],
+      "Deletion is permanent: it destroys the project's databases and stops its deployed services. Because of that, the command asks for the exact project id as a consent token, or the address when you pass one; pass it with --confirm to run non-interactively.",
+    examples: [
+      "project delete proj_123 --confirm proj_123",
+      "project delete @shop --confirm @shop",
+    ],
   },
   needs: { credentials: true },
   handler: async (args, ctx) => {
     const workspace = await resolveActiveWorkspace(ctx);
     const projects = await listWorkspaceProjects(ctx);
+    const subject = args.positionals.project.trim();
+    const projectRef = await resolveProjectSubject(
+      ctx.api,
+      subject,
+      ctx.signal,
+    );
     const project = toProjectSummary(
-      resolveProjectForSetup(
-        args.positionals.project.trim(),
-        projects,
-        workspace,
-      ),
+      resolveProjectForSetup(projectRef, projects, workspace),
     );
 
-    await ctx.prompt.consent(CONSENT_QUESTION, { token: project.id });
+    await ctx.prompt.consent(consentQuestion(subject), {
+      token: consentToken(subject, project.id),
+    });
 
     await createManagementProjectProvider(ctx.api).removeProject({
       projectId: project.id,

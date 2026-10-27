@@ -2,6 +2,7 @@
 import { defineCommand, positional } from "@prisma/cli-engine";
 import { CliStructuredError, ok } from "@prisma/cli-engine/protocol";
 import { formatCommandArgument } from "../../command-arguments";
+import { resolveProjectSubject } from "../../lib/address/node-address";
 import { createAppProvider } from "../../lib/app/app-provider";
 import {
   inferTargetName,
@@ -158,7 +159,10 @@ async function linkDirectoryToProject(
 ): Promise<ProjectSetupResult> {
   const workspace = await resolveActiveWorkspace(ctx);
   const projects = await listWorkspaceProjects(ctx);
-  const ref = projectRef?.trim();
+  const trimmed = projectRef?.trim();
+  const ref = trimmed
+    ? await resolveProjectSubject(ctx.api, trimmed, ctx.signal)
+    : undefined;
 
   return ref
     ? await bindDirectoryToProject(
@@ -174,7 +178,7 @@ export const projectLinkCommand = defineCommand({
   args: {
     positionals: {
       project: positional.optionalString({
-        brief: "Project id or name",
+        brief: "Project id or name, or its deploy address such as @shop",
         placeholder: "id-or-name",
       }),
     },

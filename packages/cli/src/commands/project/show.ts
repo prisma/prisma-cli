@@ -5,6 +5,7 @@ import {
   positional,
 } from "@prisma/cli-engine";
 import { ok } from "@prisma/cli-engine/protocol";
+import { resolveProjectSubject } from "../../lib/address/node-address";
 import { shortenHomePath } from "../../lib/fs/home-path";
 import {
   buildProjectSetupNextActions,
@@ -112,7 +113,7 @@ export const projectShowCommand = defineCommand({
     positionals: {
       project: positional.optionalString({
         brief:
-          "Project id or name (default: the project this directory is linked to)",
+          "Project id or name, or its deploy address such as @shop (default: the project this directory is linked to)",
         placeholder: "id-or-name",
       }),
     },
@@ -121,7 +122,11 @@ export const projectShowCommand = defineCommand({
     summary: "Show which Project this directory is linked to",
     description:
       "Reports which Project this directory is linked to, or that it is not linked, with next steps. Pass an id or name to inspect any project without changing the local link.",
-    examples: ["project show", "project show proj_123 --json"],
+    examples: [
+      "project show",
+      "project show proj_123 --json",
+      "project show @shop",
+    ],
   },
   needs: { credentials: true },
   handler: async (args, ctx) => {
@@ -129,7 +134,14 @@ export const projectShowCommand = defineCommand({
     const inspected = await inspectProjectBinding({
       context: operationContext(ctx),
       workspace,
-      explicitProject: args.positionals.project,
+      explicitProject:
+        args.positionals.project === undefined
+          ? undefined
+          : await resolveProjectSubject(
+              ctx.api,
+              args.positionals.project,
+              ctx.signal,
+            ),
       listProjects: () => listWorkspaceProjects(ctx),
       commandName: "project show",
     });
