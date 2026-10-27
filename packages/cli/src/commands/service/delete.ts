@@ -1,19 +1,25 @@
-import { defineCommand, flag, positional } from "@prisma/cli-engine";
+import { defineCommand, flag } from "@prisma/cli-engine";
 import { ok } from "@prisma/cli-engine/protocol";
+import { consentToken } from "../../lib/address/node-address";
 import { deleteFailedError, userCancelledError } from "./errors";
 import { deletePresentations } from "./presentation";
 import { destroyProgressReporter } from "./release";
 import type { ServiceDeleteResult } from "./results";
-import { resolveServiceReadState, toServiceSummary } from "./target";
+import {
+  resolveServiceReadState,
+  servicePositional,
+  toServiceSummary,
+} from "./target";
 
 export const serviceDeleteCommand = defineCommand({
   help: {
     summary: "Delete a service from one branch",
     description:
-      "Removes the service from the targeted Branch only: its versions stop serving and its URL goes away. The same service on other branches is untouched. Pass the confirmation token with --confirm to run non-interactively.",
+      "Removes the service from the targeted Branch only: its versions stop serving and its URL goes away. The same service on other branches is untouched. The confirmation token is the service name, or the address when you pass one; pass it with --confirm to run non-interactively.",
     examples: [
       "service delete my-service",
       "service delete my-service --confirm my-service",
+      "service delete @pr-42:shop.api --confirm @pr-42:shop.api",
     ],
   },
   args: {
@@ -28,10 +34,7 @@ export const serviceDeleteCommand = defineCommand({
       }),
     },
     positionals: {
-      service: positional.optionalString({
-        brief: "Service id or name",
-        placeholder: "service",
-      }),
+      service: servicePositional,
     },
   },
   needs: { credentials: true },
@@ -45,7 +48,7 @@ export const serviceDeleteCommand = defineCommand({
 
     const granted = await ctx.prompt.consent(
       `Delete Service "${state.service.name}" and every version it owns?`,
-      { token: state.service.name },
+      { token: consentToken(args.positionals.service, state.service.name) },
     );
     // A token consent resolves to true or throws (mismatch, or the
     // engine's consent-required error), so this guard only fires if that

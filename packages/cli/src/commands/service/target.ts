@@ -1,4 +1,5 @@
-import type { CommandContext } from "@prisma/cli-engine";
+import { type CommandContext, positional } from "@prisma/cli-engine";
+import { resolveScopedSubject } from "../../lib/address/node-address";
 import {
   type AppProvider,
   type AppRecord,
@@ -43,6 +44,13 @@ import type {
 /** A hostname's optional root dot, and one DNS label. */
 const TRAILING_DOT = /\.$/;
 const DNS_LABEL = /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/;
+
+/** The subject of every command that acts on one existing service. */
+export const servicePositional = positional.optionalString({
+  brief:
+    "Service id or name, or its deploy address: @shop.api (default branch) or @pr-42:shop.api (branch pr-42)",
+  placeholder: "service",
+});
 
 export type ServiceContext = Pick<
   CommandContext,
@@ -480,7 +488,8 @@ async function resolveServiceProjectState(
 
 /** The shared read flow for every command that acts on an existing
  *  service: project + branch resolution, service listing, and the
- *  parameter-only service match. */
+ *  parameter-only service match. A service address stands in for the
+ *  service id, `--project` and `--branch` together. */
 export async function resolveServiceReadState(
   ctx: ServiceContext,
   options: {
@@ -494,14 +503,25 @@ export async function resolveServiceReadState(
     options.serviceName,
     options.commandName,
   );
-  const state = await resolveServiceProjectState(ctx, options);
+  const subject = await resolveScopedSubject(
+    ctx.api,
+    "service",
+    requested,
+    { project: options.projectRef, branch: options.branchName },
+    ctx.signal,
+  );
+  const state = await resolveServiceProjectState(ctx, {
+    commandName: options.commandName,
+    ...(subject.project !== undefined ? { projectRef: subject.project } : {}),
+    ...(subject.branch !== undefined ? { branchName: subject.branch } : {}),
+  });
   const services = await listServices(
     ctx,
     state.provider,
     state.projectId,
     state.target.branch.name,
   );
-  const service = matchRequestedService(requested, services, state.projectId);
+  const service = matchRequestedService(subject.ref, services, state.projectId);
   return { ...state, service };
 }
 
