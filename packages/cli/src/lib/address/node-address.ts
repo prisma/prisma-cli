@@ -397,7 +397,7 @@ async function listNodes(
     logicalId: address.address,
     branchId: branch.id,
   };
-  const summary = `Failed to look up ${KIND_GROUP[kind]} rows by address`;
+  const summary = `Failed to look up ${kind}s by address`;
   const rows = await listAllPages<LogicalRow & { branchId: string | null }>(
     summary,
     (cursor) => {
