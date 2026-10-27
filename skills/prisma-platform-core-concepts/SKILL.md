@@ -94,6 +94,7 @@ import { defineConfig as orm } from "@prisma/orm-postgres/config";
 
 export default definePrismaConfig({
   composer: composer({
+    entry: "./module.ts",
     extensions: [prismaCloud(), nodeBuild()],
     state: prismaState(),
   }),
