@@ -16,6 +16,10 @@ import { postgresDeleteCommand } from "../src/commands/postgres/delete";
 import { postgresListCommand } from "../src/commands/postgres/list";
 import { postgresShowCommand } from "../src/commands/postgres/show";
 import { postgresUsageCommand } from "../src/commands/postgres/usage";
+import {
+  type AddressFixture,
+  addressListing,
+} from "./helpers/fake-address-api";
 
 const ACME_SESSION = {
   workspaceId: "ws_1",
@@ -2645,6 +2649,199 @@ describe("prisma postgres connection delete", () => {
     expect(resultFrame(result.json).envelope).toMatchObject({
       ok: false,
       error: { code: "CLI.CREDENTIALS_REQUIRED" },
+    });
+  });
+});
+
+describe("postgres commands given a deploy address", () => {
+  const CATALOG_PREVIEW = {
+    id: "db_catalog_pr42",
+    name: "catalog",
+    projectId: "proj_1",
+    branchGitName: "pr-42",
+    branchId: "br_pr42",
+    logicalId: "shop.catalog",
+    region: "us-east-1",
+    status: "ready",
+    isDefault: false,
+  };
+  const CATALOG_MAIN = {
+    ...CATALOG_PREVIEW,
+    id: "db_catalog_main",
+    branchGitName: "main",
+    branchId: "br_main",
+  };
+  const ADDRESSES: AddressFixture = {
+    projects: [{ ...PROJECTS[0], logicalId: "shop" }],
+    branches: {
+      proj_1: [
+        {
+          id: "br_main",
+          gitName: "main",
+          isDefault: true,
+          role: "production",
+        },
+        { id: "br_pr42", gitName: "pr-42", isDefault: false, role: "preview" },
+      ],
+    },
+    databases: [CATALOG_MAIN, CATALOG_PREVIEW],
+    services: [
+      {
+        id: "svc_api_main",
+        name: "api",
+        projectId: "proj_1",
+        branchId: "br_main",
+        logicalId: "shop.api",
+      },
+    ],
+  };
+
+  function addressClient(calls: Call[] = []) {
+    const listing = (call: Call) => ({
+      data: addressListing(ADDRESSES, call.path, call.init.params),
+    });
+    return postgresClient({
+      calls,
+      databases: [CATALOG_MAIN, CATALOG_PREVIEW],
+      routes: {
+        "GET /v1/projects": listing,
+        "GET /v1/projects/{projectId}/branches": listing,
+        "GET /v1/services": listing,
+        "GET /v1/buckets": listing,
+        "GET /v1/databases": (call) => {
+          const query = call.init.params?.query ?? {};
+          if (query.logicalId !== undefined) {
+            return listing(call);
+          }
+          return {
+            data: {
+              data: [CATALOG_MAIN, CATALOG_PREVIEW].filter(
+                (database) =>
+                  query.branchGitName === undefined ||
+                  database.branchGitName === query.branchGitName,
+              ),
+              pagination: { hasMore: false, nextCursor: null },
+            },
+          };
+        },
+      },
+    });
+  }
+
+  it("deletes the database the address names, with the address as the consent token", async () => {
+    const calls: Call[] = [];
+    const result = await makeCli(addressClient(calls)).run(
+      [
+        "postgres",
+        "delete",
+        "@pr-42:shop.catalog",
+        "--confirm",
+        "@pr-42:shop.catalog",
+        "--json",
+      ],
+      { cwd: await unpinnedCwd() },
+    );
+
+    expect(result.exitCode).toBe(0);
+    expect(
+      calls.find(
+        (call) =>
+          call.path === "/v1/databases" &&
+          call.init.params?.query?.branchGitName,
+      )?.init.params?.query,
+    ).toMatchObject({ projectId: "proj_1", branchGitName: "pr-42" });
+    expect(
+      calls
+        .filter((call) => call.method === "DELETE")
+        .map((call) => call.init.params?.path?.databaseId),
+    ).toEqual(["db_catalog_pr42"]);
+  });
+
+  it("refuses the database id as consent when the subject was an address", async () => {
+    const calls: Call[] = [];
+    const result = await makeCli(addressClient(calls)).run(
+      [
+        "postgres",
+        "delete",
+        "@pr-42:shop.catalog",
+        "--confirm",
+        "db_catalog_pr42",
+        "--json",
+      ],
+      { cwd: await unpinnedCwd() },
+    );
+
+    expect(result.exitCode).toBe(2);
+    expect(resultFrame(result.json).envelope).toMatchObject({
+      ok: false,
+      error: {
+        code: "CLI.CONSENT_REQUIRED",
+        meta: { consentToken: "@pr-42:shop.catalog" },
+      },
+    });
+    expect(calls.some((call) => call.method === "DELETE")).toBe(false);
+  });
+
+  it("asks for the address, not the id, at the prompt", async () => {
+    const result = await makeCli(addressClient()).run(
+      ["postgres", "delete", "@shop.catalog"],
+      {
+        cwd: await unpinnedCwd(),
+        answers: ["@shop.catalog"],
+        isTty: { stdin: true, stdout: true },
+      },
+    );
+
+    expect(result.exitCode).toBe(0);
+  });
+
+  it("shows the database on the default branch when the address names no environment", async () => {
+    const result = await makeCli(addressClient()).run(
+      ["postgres", "show", "@shop.catalog", "--json"],
+      { cwd: await unpinnedCwd() },
+    );
+
+    expect(result.exitCode).toBe(0);
+    expect(resultFrame(result.json).envelope).toMatchObject({
+      ok: true,
+      result: { projectId: "proj_1", database: { id: "db_catalog_main" } },
+    });
+  });
+
+  it("refuses --project or --branch alongside an address", async () => {
+    for (const flags of [
+      ["--project", "proj_1"],
+      ["--branch", "pr-42"],
+    ]) {
+      const calls: Call[] = [];
+      // biome-ignore lint/performance/noAwaitInLoops: each run is its own case.
+      const result = await makeCli(addressClient(calls)).run(
+        ["postgres", "show", "@shop.catalog", ...flags, "--json"],
+        { cwd: await pinnedCwd() },
+      );
+
+      expect(result.exitCode).toBe(2);
+      expect(resultFrame(result.json).envelope).toMatchObject({
+        ok: false,
+        error: { code: "ADDRESS.USAGE_ERROR" },
+      });
+      expect(calls).toEqual([]);
+    }
+  });
+
+  it("names the right command group when the address is a service", async () => {
+    const result = await makeCli(addressClient()).run(
+      ["postgres", "show", "@shop.api", "--json"],
+      { cwd: await unpinnedCwd() },
+    );
+
+    expect(result.exitCode).toBe(2);
+    expect(resultFrame(result.json).envelope).toMatchObject({
+      ok: false,
+      error: {
+        code: "ADDRESS.WRONG_KIND",
+        meta: { expected: "database", actual: "service" },
+      },
     });
   });
 });

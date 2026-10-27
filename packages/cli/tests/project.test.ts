@@ -2996,3 +2996,131 @@ describe("prisma project transfer", () => {
     });
   });
 });
+
+describe("project commands given a deploy address", () => {
+  const ADDRESSED_PROJECTS = [
+    { ...API_PROJECTS[0], logicalId: "billing" },
+    { ...API_PROJECTS[1], logicalId: null },
+  ];
+
+  function addressedClient(deleted: string[] = []) {
+    return fakeClient({
+      get: (apiPath, init) => {
+        if (apiPath !== "/v1/projects") {
+          return undefined;
+        }
+        const logicalId = (
+          init as { params?: { query?: { logicalId?: string } } } | undefined
+        )?.params?.query?.logicalId;
+        return {
+          data: {
+            data:
+              logicalId === undefined
+                ? ADDRESSED_PROJECTS
+                : ADDRESSED_PROJECTS.filter(
+                    (project) => project.logicalId === logicalId,
+                  ),
+            pagination: { hasMore: false, nextCursor: null },
+          },
+        };
+      },
+      del: (_apiPath, init) => {
+        deleted.push(
+          (init as { params: { path: { id: string } } }).params.path.id,
+        );
+        return { data: {} };
+      },
+    });
+  }
+
+  it("deletes the Project the app name names, with the address as the consent token", async () => {
+    const deleted: string[] = [];
+    const result = await makeCli(addressedClient(deleted)).run(
+      ["project", "delete", "@billing", "--confirm", "@billing"],
+      { cwd: await tempCwd() },
+    );
+
+    expect(result.exitCode).toBe(0);
+    expect(result.presented?.data).toMatchObject({
+      project: { id: "proj_1", name: "Billing" },
+    });
+    expect(deleted).toEqual(["proj_1"]);
+  });
+
+  it("refuses the project id as consent when the subject was an address", async () => {
+    const deleted: string[] = [];
+    const result = await makeCli(addressedClient(deleted)).run(
+      ["project", "delete", "@billing", "--confirm", "proj_1", "--json"],
+      { cwd: await tempCwd() },
+    );
+
+    expect(result.exitCode).toBe(2);
+    expect(resultFrame(result.json).envelope).toMatchObject({
+      ok: false,
+      error: {
+        code: "CLI.CONSENT_REQUIRED",
+        meta: { consentToken: "@billing" },
+      },
+    });
+    expect(deleted).toEqual([]);
+  });
+
+  it.each([
+    "@pr-42:billing",
+    "@billing.api",
+  ])("refuses %s, which names less than the whole Project", async (address) => {
+    const deleted: string[] = [];
+    const result = await makeCli(addressedClient(deleted)).run(
+      ["project", "delete", address, "--confirm", address, "--json"],
+      { cwd: await tempCwd() },
+    );
+
+    expect(result.exitCode).toBe(2);
+    expect(resultFrame(result.json).envelope).toMatchObject({
+      ok: false,
+      error: { code: "ADDRESS.WRONG_KIND", meta: { expected: "project" } },
+    });
+    expect(deleted).toEqual([]);
+  });
+
+  it("shows the Project an address names", async () => {
+    const result = await makeCli(addressedClient()).run(
+      ["project", "show", "@billing", "--json"],
+      { cwd: await tempCwd() },
+    );
+
+    expect(result.exitCode).toBe(0);
+    expect(resultFrame(result.json).envelope).toMatchObject({
+      ok: true,
+      result: { project: { id: "proj_1", name: "Billing" } },
+    });
+  });
+
+  it("links this directory to the Project an address names", async () => {
+    const cwd = await tempCwd();
+    const result = await makeCli(addressedClient()).run(
+      ["project", "link", "@billing"],
+      { cwd },
+    );
+
+    expect(result.exitCode).toBe(0);
+    expect(
+      JSON.parse(
+        await readFile(path.join(cwd, ".prisma", "local.json"), "utf8"),
+      ),
+    ).toMatchObject({ projectId: "proj_1" });
+  });
+
+  it("reports an app no Project was deployed for as not found", async () => {
+    const result = await makeCli(addressedClient()).run(
+      ["project", "show", "@storefront", "--json"],
+      { cwd: await tempCwd() },
+    );
+
+    expect(result.exitCode).toBe(2);
+    expect(resultFrame(result.json).envelope).toMatchObject({
+      ok: false,
+      error: { code: "ADDRESS.NOT_FOUND", meta: { app: "storefront" } },
+    });
+  });
+});
