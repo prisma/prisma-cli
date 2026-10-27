@@ -14,6 +14,7 @@ Namespaces:
 
 | Namespace | Covers |
 | --- | --- |
+| `ADDRESS` | Naming a Project, service, database or bucket by its deploy address (`@<environment>:<address>`) instead of its id |
 | `AUTH` | Workspace authentication and sessions (`prisma auth`, credential resolution) |
 | `BRANCH` | Branch listing (`prisma branch`) |
 | `BUCKET` | Bucket and bucket-key management (`prisma bucket`) |
@@ -26,6 +27,28 @@ Namespaces:
 | `PROJECT` | Project and environment management (`prisma project`) |
 | `SERVICE` | Deployed service management (`prisma service`) |
 | `SKILLS` | Agent-skill delivery (`prisma skills`) |
+
+## ADDRESS
+
+### ADDRESS.AMBIGUOUS
+
+A deploy address matched more than one row: more than one Project in the workspace carries the app name as its logical id, or more than one service, database or bucket on the addressed branch carries the full address. The nextActions list the matching ids to pass instead. Meta: `address`, plus `projectIds` or `matches` (id and name of each match).
+
+### ADDRESS.API_ERROR
+
+A Management API request made to look up an address (listing Projects, branches, services, databases or buckets by logical id) failed. The `why` carries the API's message or HTTP status, and the fix is the API's hint when it sent one. Meta: `status`, `apiCode` (the API's own error code, when the response supplied one).
+
+### ADDRESS.NOT_FOUND
+
+A deploy address named nothing: no Project in the workspace has the app name as its logical id, the Project has no branch for the environment (no default branch for production, or no branch with that git name), or nothing on that branch has the address. The nextActions point at `prisma project list`, `prisma branch list`, or `prisma deploy list`. Meta: `address`, plus `app`, `environment`, `projectId`, `branchId` or `expected` as they apply.
+
+### ADDRESS.USAGE_ERROR
+
+A subject starting with `@` is not a valid address (an empty environment before `:`, an empty address, an empty part between dots, or whitespace), or an address was combined with `--project` or `--branch`, which the address already names. Meta: `address`, plus `flags` for the flag conflict.
+
+### ADDRESS.WRONG_KIND
+
+A deploy address names a different kind of thing than the command acts on: a service, postgres or bucket command was given the bare app name (which names the Project) or the address of another kind of row, or a project command was given an address with an environment or with more than the app name. The nextActions name the command group that acts on it. Meta: `address`, `expected`, and `actual` when known.
 
 ## AUTH
 

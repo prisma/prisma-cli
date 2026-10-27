@@ -26,6 +26,7 @@ import { argv, exit, stderr, stdout } from "node:process";
 import { fileURLToPath } from "node:url";
 
 const NAMESPACES = [
+  "ADDRESS",
   "AUTH",
   "BRANCH",
   "BUCKET",
