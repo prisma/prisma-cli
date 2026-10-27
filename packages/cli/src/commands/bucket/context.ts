@@ -1,6 +1,7 @@
 /** Workspace, project and provider for the `bucket *` commands. */
 import { type CommandContext, flag, positional } from "@prisma/cli-engine";
 import { CLI_NAME } from "../../cli-name";
+import { resolveScopedSubject } from "../../lib/address/node-address";
 import {
   type BucketProvider,
   createManagementBucketProvider,
@@ -25,7 +26,8 @@ export const branchFlag = flag.string({
 });
 
 export const bucketPositional = positional.string({
-  brief: "Bucket id",
+  brief:
+    "Bucket id, or its deploy address: @shop.files (default branch) or @pr-42:shop.files (branch pr-42)",
   placeholder: "bucket-id",
 });
 
@@ -65,4 +67,20 @@ export function resolveBucketProviderOnly(
   ctx: BucketCommandContext,
 ): BucketProvider {
   return createManagementBucketProvider(ctx.api);
+}
+
+/** The bucket id the subject names: the id as typed, or the id of the
+ *  bucket a bucket address names. */
+export async function resolveBucketId(
+  ctx: BucketCommandContext,
+  bucketRef: string,
+): Promise<string> {
+  const subject = await resolveScopedSubject(
+    ctx.api,
+    "bucket",
+    bucketRef,
+    {},
+    ctx.signal,
+  );
+  return subject.ref;
 }

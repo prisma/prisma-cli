@@ -9,7 +9,11 @@ import {
 import { CliStructuredError, ok } from "@prisma/cli-engine/protocol";
 import { CLI_NAME } from "../../cli-name";
 import type { BucketKeyDeleteResult } from "../../types/bucket";
-import { bucketPositional, resolveBucketProviderOnly } from "./context";
+import {
+  bucketPositional,
+  resolveBucketId,
+  resolveBucketProviderOnly,
+} from "./context";
 
 function deletePresentations(result: BucketKeyDeleteResult): Presentations {
   return {
@@ -39,9 +43,9 @@ export const bucketKeyDeleteCommand = defineCommand({
   },
   needs: { credentials: true },
   handler: async (args, ctx) => {
-    const bucketId = args.positionals.bucketId.trim();
+    const bucketRef = args.positionals.bucketId.trim();
     const keyId = args.positionals.keyId.trim();
-    if (!bucketId || !keyId) {
+    if (!bucketRef || !keyId) {
       const listKeysCommand = `${CLI_NAME} bucket key list <bucketId>`;
       throw new CliStructuredError(
         "BUCKET.USAGE_ERROR",
@@ -59,6 +63,7 @@ export const bucketKeyDeleteCommand = defineCommand({
         },
       );
     }
+    const bucketId = await resolveBucketId(ctx, bucketRef);
 
     await resolveBucketProviderOnly(ctx).deleteKey(bucketId, keyId, {
       signal: ctx.signal,

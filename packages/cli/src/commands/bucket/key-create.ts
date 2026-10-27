@@ -10,6 +10,7 @@ import type { BucketKeyCreateResult } from "../../types/bucket";
 import {
   bucketPositional,
   LIST_BUCKETS_COMMAND,
+  resolveBucketId,
   resolveBucketProviderOnly,
 } from "./context";
 
@@ -83,8 +84,8 @@ export const bucketKeyCreateCommand = defineCommand({
   },
   needs: { credentials: true },
   handler: async (args, ctx) => {
-    const bucketId = args.positionals.bucketId.trim();
-    if (!bucketId) {
+    const bucketRef = args.positionals.bucketId.trim();
+    if (!bucketRef) {
       throw new CliStructuredError("BUCKET.USAGE_ERROR", "Bucket id required", {
         why: "Bucket key creation needs a bucket id.",
         nextActions: [
@@ -97,6 +98,7 @@ export const bucketKeyCreateCommand = defineCommand({
         ],
       });
     }
+    const bucketId = await resolveBucketId(ctx, bucketRef);
 
     const created = await resolveBucketProviderOnly(ctx).createKey({
       bucketId,

@@ -10,6 +10,7 @@ import type { BucketKeyListResult } from "../../types/bucket";
 import {
   bucketPositional,
   LIST_BUCKETS_COMMAND,
+  resolveBucketId,
   resolveBucketProviderOnly,
 } from "./context";
 import { bucketKeyRows } from "./presentation";
@@ -50,12 +51,16 @@ export const bucketKeyListCommand = defineCommand({
     summary: "List access keys for a bucket",
     description:
       "Shows each key's id, name, and role. Key secrets print once, at 'bucket key create'; listing never reveals them.",
-    examples: ["bucket key list bkt_123", "bucket key list bkt_123 --json"],
+    examples: [
+      "bucket key list bkt_123",
+      "bucket key list bkt_123 --json",
+      "bucket key list @shop.files",
+    ],
   },
   needs: { credentials: true },
   handler: async (args, ctx) => {
-    const bucketId = args.positionals.bucketId.trim();
-    if (!bucketId) {
+    const bucketRef = args.positionals.bucketId.trim();
+    if (!bucketRef) {
       throw new CliStructuredError("BUCKET.USAGE_ERROR", "Bucket id required", {
         why: "Bucket key listing needs a bucket id.",
         nextActions: [
@@ -68,6 +73,7 @@ export const bucketKeyListCommand = defineCommand({
         ],
       });
     }
+    const bucketId = await resolveBucketId(ctx, bucketRef);
 
     const keys = await resolveBucketProviderOnly(ctx).listKeys(bucketId, {
       signal: ctx.signal,
