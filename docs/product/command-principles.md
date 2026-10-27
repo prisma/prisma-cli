@@ -117,6 +117,8 @@ Resolve a service version and show or stream its logs.
 
 A command that operates on a subject resource takes that resource's identifier as its first positional argument (`service show my-api`, `postgres delete db_123`, `service version promote cpv_123`) — the established convention across CLIs. Flags never name the subject; they scope or qualify it (`--project`, `--branch`, `--role`). The argument primarily targets the stable platform id, with the display name as a secondary fallback: an id match always wins, and a resource named like another resource's id can never shadow it. Environment variables never target a subject. When the subject's identifier is globally unique — a service version id, a bucket id — the id alone is the complete target, and the command asks for no redundant parent scope.
 
+A Project, service, database or bucket can also be named by the address Prisma Composer deployed it at: `@<environment>:<address>`, such as `@pr-42:shop.api`. The address is the row's `logicalId`, and its first `.`-separated part is the app, which is the Project's `logicalId`. The environment is the git name of the Project's Branch. Leaving it out, or writing `production`, means the Project's default Branch, so `@shop.api` is production. A Project's address is the app name alone, with no environment (`@shop`). With an address, a destructive command's `--confirm` takes the address as typed (`postgres delete @pr-42:shop.db --confirm @pr-42:shop.db`). `--project` and `--branch` cannot be combined with an address, because the address already names both.
+
 ### `wait`
 
 Block until a remote resource reaches a terminal state.
