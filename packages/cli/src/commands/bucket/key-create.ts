@@ -10,7 +10,7 @@ import type { BucketKeyCreateResult } from "../../types/bucket";
 import {
   bucketPositional,
   LIST_BUCKETS_COMMAND,
-  resolveBucketId,
+  resolveBucket,
   resolveBucketProviderOnly,
 } from "./context";
 
@@ -98,7 +98,7 @@ export const bucketKeyCreateCommand = defineCommand({
         ],
       });
     }
-    const bucketId = await resolveBucketId(ctx, bucketRef);
+    const { id: bucketId } = await resolveBucket(ctx, bucketRef);
 
     const created = await resolveBucketProviderOnly(ctx).createKey({
       bucketId,

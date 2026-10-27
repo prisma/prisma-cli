@@ -1,7 +1,10 @@
 /** Workspace, project and provider for the `bucket *` commands. */
 import { type CommandContext, flag, positional } from "@prisma/cli-engine";
 import { CLI_NAME } from "../../cli-name";
-import { resolveScopedSubject } from "../../lib/address/node-address";
+import {
+  type AddressMatch,
+  resolveBranchScopedSubject,
+} from "../../lib/address/address";
 import {
   type BucketProvider,
   createManagementBucketProvider,
@@ -27,7 +30,7 @@ export const branchFlag = flag.string({
 
 export const bucketPositional = positional.string({
   brief:
-    "Bucket id, or its deploy address: @shop.files (default branch) or @pr-42:shop.files (branch pr-42)",
+    "Bucket id, or its address: @shop.files (production) or @pr-42:shop.files (environment pr-42)",
   placeholder: "bucket-id",
 });
 
@@ -69,18 +72,18 @@ export function resolveBucketProviderOnly(
   return createManagementBucketProvider(ctx.api);
 }
 
-/** The bucket id the subject names: the id as typed, or the id of the
- *  bucket a bucket address names. */
-export async function resolveBucketId(
+/** The bucket the subject names: the id as typed, or the bucket an
+ *  address names. Bucket ids are globally unique, so the Project and
+ *  Branch an address names are not needed past the lookup. */
+export async function resolveBucket(
   ctx: BucketCommandContext,
   bucketRef: string,
-): Promise<string> {
-  const subject = await resolveScopedSubject(
+): Promise<{ id: string; address: AddressMatch | undefined }> {
+  const subject = await resolveBranchScopedSubject(
     ctx.api,
     "bucket",
     bucketRef,
-    {},
     ctx.signal,
   );
-  return subject.ref;
+  return { id: subject.ref, address: subject.match };
 }

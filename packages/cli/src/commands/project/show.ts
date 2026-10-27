@@ -5,7 +5,6 @@ import {
   positional,
 } from "@prisma/cli-engine";
 import { ok } from "@prisma/cli-engine/protocol";
-import { resolveProjectSubject } from "../../lib/address/node-address";
 import { shortenHomePath } from "../../lib/fs/home-path";
 import {
   buildProjectSetupNextActions,
@@ -15,7 +14,11 @@ import {
 import { fieldLines } from "../../output/data-lines";
 import type { ProjectShowResult } from "../../types/project";
 import { resolveActiveWorkspace } from "../resources-shared/workspace";
-import { listWorkspaceProjects, operationContext } from "./context";
+import {
+  listWorkspaceProjects,
+  operationContext,
+  resolveProjectPositional,
+} from "./context";
 
 interface FieldRow {
   readonly label: string;
@@ -113,7 +116,7 @@ export const projectShowCommand = defineCommand({
     positionals: {
       project: positional.optionalString({
         brief:
-          "Project id or name, or its deploy address such as @shop (default: the project this directory is linked to)",
+          "Project id or name, or its address: @ and the app name, such as @shop (default: the project this directory is linked to)",
         placeholder: "id-or-name",
       }),
     },
@@ -134,14 +137,9 @@ export const projectShowCommand = defineCommand({
     const inspected = await inspectProjectBinding({
       context: operationContext(ctx),
       workspace,
-      explicitProject:
-        args.positionals.project === undefined
-          ? undefined
-          : await resolveProjectSubject(
-              ctx.api,
-              args.positionals.project,
-              ctx.signal,
-            ),
+      explicitProject: (
+        await resolveProjectPositional(ctx, args.positionals.project)
+      )?.ref,
       listProjects: () => listWorkspaceProjects(ctx),
       commandName: "project show",
     });

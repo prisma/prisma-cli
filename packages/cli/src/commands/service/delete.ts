@@ -1,6 +1,6 @@
 import { defineCommand, flag } from "@prisma/cli-engine";
 import { ok } from "@prisma/cli-engine/protocol";
-import { consentToken } from "../../lib/address/node-address";
+import { describeEnvironment } from "../../lib/address/address";
 import { deleteFailedError, userCancelledError } from "./errors";
 import { deletePresentations } from "./presentation";
 import { destroyProgressReporter } from "./release";
@@ -46,9 +46,12 @@ export const serviceDeleteCommand = defineCommand({
       commandName: "service delete",
     });
 
+    const where = state.address
+      ? ` (${state.service.id}) ${describeEnvironment(state.address)}`
+      : "";
     const granted = await ctx.prompt.consent(
-      `Delete Service "${state.service.name}" and every version it owns?`,
-      { token: consentToken(args.positionals.service, state.service.name) },
+      `Delete Service "${state.service.name}"${where} and every version it owns?`,
+      { token: state.address?.text ?? state.service.name },
     );
     // A token consent resolves to true or throws (mismatch, or the
     // engine's consent-required error), so this guard only fires if that

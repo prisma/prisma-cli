@@ -6,17 +6,26 @@ import {
   type Presentations,
 } from "@prisma/cli-engine";
 import { CliStructuredError, ok } from "@prisma/cli-engine/protocol";
-import { consentToken } from "../../lib/address/node-address";
+import {
+  type AddressMatch,
+  describeEnvironment,
+} from "../../lib/address/address";
 import type { BucketDeleteResult } from "../../types/bucket";
 import {
   bucketPositional,
   LIST_BUCKETS_COMMAND,
-  resolveBucketId,
+  resolveBucket,
   resolveBucketProviderOnly,
 } from "./context";
 
-const CONSENT_QUESTION =
-  "Deleting this bucket permanently removes all objects and access keys.";
+function consentQuestion(
+  bucketId: string,
+  address: AddressMatch | undefined,
+): string {
+  return address
+    ? `Deleting bucket ${bucketId} ${describeEnvironment(address)} permanently removes all objects and access keys.`
+    : "Deleting this bucket permanently removes all objects and access keys.";
+}
 
 function deletePresentations(result: BucketDeleteResult): Presentations {
   return {
@@ -61,10 +70,10 @@ export const bucketDeleteCommand = defineCommand({
         ],
       });
     }
-    const bucketId = await resolveBucketId(ctx, bucketRef);
+    const { id: bucketId, address } = await resolveBucket(ctx, bucketRef);
 
-    await ctx.prompt.consent(CONSENT_QUESTION, {
-      token: consentToken(bucketRef, bucketId),
+    await ctx.prompt.consent(consentQuestion(bucketId, address), {
+      token: address?.text ?? bucketId,
     });
 
     await resolveBucketProviderOnly(ctx).deleteBucket(bucketId, {

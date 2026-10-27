@@ -1,7 +1,10 @@
 /** Workspace, project and provider for the `postgres *` commands. */
 import { type CommandContext, flag, positional } from "@prisma/cli-engine";
 import { resolveDatabase } from "../../controllers/database";
-import { resolveScopedSubject } from "../../lib/address/node-address";
+import {
+  type AddressMatch,
+  resolveBranchScopedSubject,
+} from "../../lib/address/address";
 import {
   createManagementDatabaseProvider,
   type DatabaseProvider,
@@ -26,7 +29,7 @@ export const branchFlag = flag.string({
 
 export const databasePositional = positional.string({
   brief:
-    "Database id or name, or its deploy address: @shop.db (default branch) or @pr-42:shop.db (branch pr-42)",
+    "Database id or name, or its address: @shop.db (production) or @pr-42:shop.db (environment pr-42)",
   placeholder: "database",
 });
 
@@ -65,6 +68,8 @@ export interface PostgresDatabaseContext extends PostgresContext {
   /** The branch git name the database was looked up on, from --branch
    *  or the address. */
   readonly branchName: string | undefined;
+  /** Set when the database was named by an address. */
+  readonly address: AddressMatch | undefined;
 }
 
 /** The project, then the database the subject names. A database
@@ -76,12 +81,12 @@ export async function resolvePostgresDatabase(
   databaseRef: string,
   commandName: string,
 ): Promise<PostgresDatabaseContext> {
-  const subject = await resolveScopedSubject(
+  const subject = await resolveBranchScopedSubject(
     ctx.api,
     "database",
-    databaseRef,
-    flags,
+    databaseRef.trim(),
     ctx.signal,
+    flags,
   );
   const context = await resolvePostgresContext(
     ctx,
@@ -98,7 +103,12 @@ export async function resolvePostgresDatabase(
     subject.branch,
     ctx.signal,
   );
-  return { ...context, database, branchName: subject.branch };
+  return {
+    ...context,
+    database,
+    branchName: subject.branch,
+    address: subject.match,
+  };
 }
 
 /** `connection rotate` and `connection delete` address a connection

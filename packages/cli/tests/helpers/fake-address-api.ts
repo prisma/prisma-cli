@@ -1,11 +1,12 @@
 /**
  * The listings address resolution reads, answered the way the Management
- * API filters them: `/v1/projects` by `logicalId`, a Project's branches,
+ * API filters them: `/v1/projects` by `logicalId`, a Project's branches
+ * by `gitName`,
  * and `/v1/services`, `/v1/databases`, `/v1/buckets` by `projectId`,
  * `logicalId` and `branchId`.
  */
 
-export interface AddressedRow {
+export interface FakeRow {
   readonly id: string;
   readonly name: string;
   readonly projectId: string;
@@ -13,14 +14,14 @@ export interface AddressedRow {
   readonly logicalId: string | null;
 }
 
-export interface AddressedProjectRow {
+export interface FakeProjectRow {
   readonly id: string;
   readonly name: string;
   readonly logicalId: string | null;
   readonly workspace: { readonly id: string; readonly name: string };
 }
 
-export interface AddressedBranchRow {
+export interface FakeBranchRow {
   readonly id: string;
   readonly gitName: string;
   readonly isDefault: boolean;
@@ -28,11 +29,11 @@ export interface AddressedBranchRow {
 }
 
 export interface AddressFixture {
-  readonly projects: readonly AddressedProjectRow[];
-  readonly branches: Readonly<Record<string, readonly AddressedBranchRow[]>>;
-  readonly services?: readonly AddressedRow[];
-  readonly databases?: readonly AddressedRow[];
-  readonly buckets?: readonly AddressedRow[];
+  readonly projects: readonly FakeProjectRow[];
+  readonly branches: Readonly<Record<string, readonly FakeBranchRow[]>>;
+  readonly services?: readonly FakeRow[];
+  readonly databases?: readonly FakeRow[];
+  readonly buckets?: readonly FakeRow[];
 }
 
 export interface Page<T> {
@@ -71,8 +72,12 @@ export function addressListing(
     );
   }
   if (path === "/v1/projects/{projectId}/branches") {
-    const projectId = params.path?.projectId ?? "";
-    return page(fixture.branches[projectId] ?? []);
+    const branches = fixture.branches[params.path?.projectId ?? ""] ?? [];
+    return page(
+      query.gitName === undefined
+        ? branches
+        : branches.filter((branch) => branch.gitName === query.gitName),
+    );
   }
   if (path in ROW_PATHS) {
     const rows = fixture[ROW_PATHS[path as keyof typeof ROW_PATHS]] ?? [];

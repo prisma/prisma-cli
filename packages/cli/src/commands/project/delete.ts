@@ -9,11 +9,6 @@ import {
 import type { Diagnostic } from "@prisma/cli-engine/protocol";
 import { ok } from "@prisma/cli-engine/protocol";
 import { cleanupLocalPinForProject } from "../../controllers/project";
-import {
-  consentToken,
-  isNodeAddress,
-  resolveProjectSubject,
-} from "../../lib/address/node-address";
 import { createManagementProjectProvider } from "../../lib/project/provider";
 import {
   resolveProjectForSetup,
@@ -21,11 +16,20 @@ import {
 } from "../../lib/project/setup";
 import type { ProjectDeleteResult } from "../../types/project";
 import { resolveActiveWorkspace } from "../resources-shared/workspace";
-import { listWorkspaceProjects, operationContext } from "./context";
+import {
+  listWorkspaceProjects,
+  operationContext,
+  resolveProjectPositional,
+} from "./context";
 import { localPinDiagnostics } from "./presentation";
 
-function consentQuestion(subject: string): string {
-  return `Deleting a project is permanent, destroys its databases, and stops its apps, so it requires the exact project ${isNodeAddress(subject) ? "address" : "id"}.`;
+function consentQuestion(
+  project: { id: string; name: string },
+  address: string | undefined,
+): string {
+  return address
+    ? `Deleting Project "${project.name}" (${project.id}) is permanent, destroys its databases on every branch, and stops its apps, so it requires the exact project address.`
+    : "Deleting a project is permanent, destroys its databases, and stops its apps, so it requires the exact project id.";
 }
 
 function deletePresentations(result: ProjectDeleteResult): Presentations {
@@ -60,13 +64,14 @@ export const projectDeleteCommand = defineCommand({
   args: {
     positionals: {
       project: positional.string({
-        brief: "Project id or name, or its deploy address such as @shop",
+        brief:
+          "Project id or name, or its address: @ and the app name, such as @shop",
         placeholder: "id-or-name",
       }),
     },
   },
   help: {
-    summary: "Delete a Project permanently after exact id confirmation",
+    summary: "Delete a Project permanently after exact confirmation",
     description:
       "Deletion is permanent: it destroys the project's databases and stops its deployed services. Because of that, the command asks for the exact project id as a consent token, or the address when you pass one; pass it with --confirm to run non-interactively.",
     examples: [
@@ -78,18 +83,16 @@ export const projectDeleteCommand = defineCommand({
   handler: async (args, ctx) => {
     const workspace = await resolveActiveWorkspace(ctx);
     const projects = await listWorkspaceProjects(ctx);
-    const subject = args.positionals.project.trim();
-    const projectRef = await resolveProjectSubject(
-      ctx.api,
-      subject,
-      ctx.signal,
+    const subject = await resolveProjectPositional(
+      ctx,
+      args.positionals.project,
     );
     const project = toProjectSummary(
-      resolveProjectForSetup(projectRef, projects, workspace),
+      resolveProjectForSetup(subject?.ref ?? "", projects, workspace),
     );
 
-    await ctx.prompt.consent(consentQuestion(subject), {
-      token: consentToken(subject, project.id),
+    await ctx.prompt.consent(consentQuestion(project, subject?.address), {
+      token: subject?.address ?? project.id,
     });
 
     await createManagementProjectProvider(ctx.api).removeProject({

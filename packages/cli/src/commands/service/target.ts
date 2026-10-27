@@ -1,5 +1,8 @@
 import { type CommandContext, positional } from "@prisma/cli-engine";
-import { resolveScopedSubject } from "../../lib/address/node-address";
+import {
+  type AddressMatch,
+  resolveBranchScopedSubject,
+} from "../../lib/address/address";
 import {
   type AppProvider,
   type AppRecord,
@@ -48,7 +51,7 @@ const DNS_LABEL = /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/;
 /** The subject of every command that acts on one existing service. */
 export const servicePositional = positional.optionalString({
   brief:
-    "Service id or name, or its deploy address: @shop.api (default branch) or @pr-42:shop.api (branch pr-42)",
+    "Service id or name, or its address: @shop.api (production) or @pr-42:shop.api (environment pr-42)",
   placeholder: "service",
 });
 
@@ -259,10 +262,11 @@ export function requireServiceArgument(
   serviceRef: string | undefined,
   commandName: string,
 ): string {
-  if (!serviceRef) {
+  const trimmed = serviceRef?.trim();
+  if (!trimmed) {
     throw serviceTargetRequiredError(commandName);
   }
-  return serviceRef;
+  return trimmed;
 }
 
 /** Matches the service argument against the branch's services: the
@@ -465,6 +469,8 @@ interface ServiceProjectState {
 
 export interface ServiceReadState extends ServiceProjectState {
   service: AppRecord;
+  /** Set when the service was named by an address. */
+  address: AddressMatch | undefined;
 }
 
 /** Project + branch resolution, before the service match. */
@@ -503,12 +509,12 @@ export async function resolveServiceReadState(
     options.serviceName,
     options.commandName,
   );
-  const subject = await resolveScopedSubject(
+  const subject = await resolveBranchScopedSubject(
     ctx.api,
     "service",
     requested,
-    { project: options.projectRef, branch: options.branchName },
     ctx.signal,
+    { project: options.projectRef, branch: options.branchName },
   );
   const state = await resolveServiceProjectState(ctx, {
     commandName: options.commandName,
@@ -522,7 +528,7 @@ export async function resolveServiceReadState(
     state.target.branch.name,
   );
   const service = matchRequestedService(subject.ref, services, state.projectId);
-  return { ...state, service };
+  return { ...state, service, address: subject.match };
 }
 
 export interface ResolvedServiceDomainTarget {

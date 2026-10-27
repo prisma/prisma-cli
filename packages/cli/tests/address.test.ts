@@ -2,14 +2,15 @@ import type { ManagementApiClient } from "@prisma/management-api-sdk";
 import { describe, expect, it } from "vitest";
 
 import {
-  consentToken,
-  isNodeAddress,
-  parseNodeAddress,
-  resolveNodeAddress,
+  type AddressMatch,
+  describeEnvironment,
+  isAddress,
+  parseAddress,
+  resolveBranchScopedAddress,
+  resolveBranchScopedSubject,
   resolveProjectAddress,
   resolveProjectSubject,
-  resolveScopedSubject,
-} from "../src/lib/address/node-address";
+} from "../src/lib/address/address";
 import {
   type AddressFixture,
   addressListing,
@@ -125,9 +126,9 @@ function fakeApi(
 
 const signal = new AbortController().signal;
 
-describe("parseNodeAddress", () => {
+describe("parseAddress", () => {
   it("reads an address with no environment as production", () => {
-    expect(parseNodeAddress("@shop.api")).toEqual({
+    expect(parseAddress("@shop.api")).toEqual({
       text: "@shop.api",
       environment: undefined,
       address: "shop.api",
@@ -136,7 +137,7 @@ describe("parseNodeAddress", () => {
   });
 
   it("splits the environment off at the first colon", () => {
-    expect(parseNodeAddress("@pr-42:shop.api.v2")).toEqual({
+    expect(parseAddress("@pr-42:shop.api.v2")).toEqual({
       text: "@pr-42:shop.api.v2",
       environment: "pr-42",
       address: "shop.api.v2",
@@ -145,7 +146,7 @@ describe("parseNodeAddress", () => {
   });
 
   it("reads the bare app name as the address of the app", () => {
-    expect(parseNodeAddress("@shop")).toMatchObject({
+    expect(parseAddress("@shop")).toMatchObject({
       address: "shop",
       appName: "shop",
     });
@@ -160,7 +161,7 @@ describe("parseNodeAddress", () => {
     ["@.api", "an empty app name"],
     ["@shop.", "a trailing dot"],
   ])("refuses %s (%s) as a usage error", (subject) => {
-    expect(() => parseNodeAddress(subject)).toThrow(
+    expect(() => parseAddress(subject)).toThrow(
       expect.objectContaining({
         code: "ADDRESS.USAGE_ERROR",
         meta: { address: subject },
@@ -169,35 +170,70 @@ describe("parseNodeAddress", () => {
   });
 
   it("tells an address from an id or name by its leading @", () => {
-    expect(isNodeAddress("@shop.api")).toBe(true);
-    expect(isNodeAddress("db_catalog_main")).toBe(false);
-    expect(isNodeAddress("shop.api")).toBe(false);
+    expect(isAddress("@shop.api")).toBe(true);
+    expect(isAddress("db_catalog_main")).toBe(false);
+    expect(isAddress("shop.api")).toBe(false);
   });
 });
 
-describe("consentToken", () => {
-  it("is the address as typed when the subject is an address", () => {
-    expect(consentToken("@pr-42:shop.catalog", "db_catalog_pr42")).toBe(
-      "@pr-42:shop.catalog",
-    );
+describe("describeEnvironment", () => {
+  const match = (
+    environment: string,
+    branch: AddressMatch["branch"],
+  ): AddressMatch => ({
+    id: "db_catalog",
+    text: "@shop.catalog",
+    environment,
+    project: { id: "proj_shop", name: "Shop" },
+    branch,
   });
 
-  it("is the command's own token for an id or name", () => {
-    expect(consentToken("catalog", "db_catalog_main")).toBe("db_catalog_main");
-    expect(consentToken(undefined, "db_catalog_main")).toBe("db_catalog_main");
+  it("says production when the address names no environment", () => {
+    expect(
+      describeEnvironment(
+        match("production", {
+          id: "br_main",
+          gitName: "main",
+          isDefault: true,
+        }),
+      ),
+    ).toBe("in production (branch main)");
+  });
+
+  it("names the environment and its branch otherwise", () => {
+    expect(
+      describeEnvironment(
+        match("pr-42", { id: "br_pr42", gitName: "pr-42", isDefault: false }),
+      ),
+    ).toBe("in environment pr-42 (branch pr-42)");
+  });
+
+  it("says production when the named environment is the default branch", () => {
+    expect(
+      describeEnvironment(
+        match("main", { id: "br_main", gitName: "main", isDefault: true }),
+      ),
+    ).toBe("in environment main, which is production (branch main)");
   });
 });
 
-describe("resolveNodeAddress", () => {
+describe("resolveBranchScopedAddress", () => {
   it("finds the row on the default branch when the address names no environment", async () => {
     const { api, calls } = fakeApi();
 
-    const node = await resolveNodeAddress(api, "service", "@shop.api", signal);
+    const node = await resolveBranchScopedAddress(
+      api,
+      "service",
+      "@shop.api",
+      signal,
+    );
 
     expect(node).toEqual({
       id: "svc_api_main",
+      text: "@shop.api",
+      environment: "production",
       project: { id: "proj_shop", name: "Shop" },
-      branch: { id: "br_main", gitName: "main" },
+      branch: { id: "br_main", gitName: "main", isDefault: true },
     });
     expect(calls).toEqual([
       { path: "/v1/projects", query: { logicalId: "shop" } },
@@ -216,7 +252,7 @@ describe("resolveNodeAddress", () => {
   it("maps the production environment to the default branch, not a branch named production", async () => {
     const { api } = fakeApi();
 
-    const node = await resolveNodeAddress(
+    const node = await resolveBranchScopedAddress(
       api,
       "service",
       "@production:shop.api",
@@ -224,13 +260,17 @@ describe("resolveNodeAddress", () => {
     );
 
     expect(node.id).toBe("svc_api_main");
-    expect(node.branch).toEqual({ id: "br_main", gitName: "main" });
+    expect(node.branch).toEqual({
+      id: "br_main",
+      gitName: "main",
+      isDefault: true,
+    });
   });
 
-  it("finds the row on the branch whose git name is the environment", async () => {
-    const { api } = fakeApi();
+  it("finds the row on the branch whose git name is the environment, asking the API for that branch only", async () => {
+    const { api, calls } = fakeApi();
 
-    const node = await resolveNodeAddress(
+    const node = await resolveBranchScopedAddress(
       api,
       "service",
       "@pr-42:shop.api",
@@ -238,17 +278,25 @@ describe("resolveNodeAddress", () => {
     );
 
     expect(node.id).toBe("svc_api_pr42");
-    expect(node.branch).toEqual({ id: "br_pr42", gitName: "pr-42" });
+    expect(node.branch).toEqual({
+      id: "br_pr42",
+      gitName: "pr-42",
+      isDefault: false,
+    });
+    expect(
+      calls.find((call) => call.path === "/v1/projects/{projectId}/branches")
+        ?.query,
+    ).toEqual({ gitName: "pr-42" });
   });
 
   it("resolves databases and buckets from their own listings", async () => {
     const { api } = fakeApi();
 
     await expect(
-      resolveNodeAddress(api, "database", "@shop.catalog", signal),
+      resolveBranchScopedAddress(api, "database", "@shop.catalog", signal),
     ).resolves.toMatchObject({ id: "db_catalog_main" });
     await expect(
-      resolveNodeAddress(api, "bucket", "@pr-42:shop.files", signal),
+      resolveBranchScopedAddress(api, "bucket", "@pr-42:shop.files", signal),
     ).resolves.toMatchObject({ id: "bkt_files_pr42" });
   });
 
@@ -256,7 +304,7 @@ describe("resolveNodeAddress", () => {
     const { api } = fakeApi();
 
     await expect(
-      resolveNodeAddress(api, "service", "@cart.api", signal),
+      resolveBranchScopedAddress(api, "service", "@cart.api", signal),
     ).rejects.toMatchObject({
       code: "ADDRESS.NOT_FOUND",
       meta: { address: "@cart.api", app: "cart" },
@@ -292,7 +340,7 @@ describe("resolveNodeAddress", () => {
     );
 
     await expect(
-      resolveNodeAddress(api, "service", "@shop.api", signal),
+      resolveBranchScopedAddress(api, "service", "@shop.api", signal),
     ).rejects.toMatchObject({ code: "ADDRESS.NOT_FOUND" });
   });
 
@@ -311,17 +359,22 @@ describe("resolveNodeAddress", () => {
     });
 
     await expect(
-      resolveNodeAddress(api, "service", "@shop.api", signal),
+      resolveBranchScopedAddress(api, "service", "@shop.api", signal),
     ).rejects.toMatchObject({
       code: "ADDRESS.AMBIGUOUS",
-      meta: { projectIds: ["proj_shop", "proj_shop_copy"] },
+      meta: {
+        matches: [
+          { id: "proj_shop", name: "Shop" },
+          { id: "proj_shop_copy", name: "Shop copy" },
+        ],
+      },
     });
   });
 
   it("reports an environment with no branch as not found and points at branch list", async () => {
     const { api } = fakeApi();
 
-    const error = await resolveNodeAddress(
+    const error = await resolveBranchScopedAddress(
       api,
       "service",
       "@pr-7:shop.api",
@@ -355,7 +408,7 @@ describe("resolveNodeAddress", () => {
     });
 
     await expect(
-      resolveNodeAddress(api, "service", "@shop.api", signal),
+      resolveBranchScopedAddress(api, "service", "@shop.api", signal),
     ).rejects.toMatchObject({
       code: "ADDRESS.NOT_FOUND",
       meta: { environment: "production" },
@@ -366,7 +419,7 @@ describe("resolveNodeAddress", () => {
     const { api, calls } = fakeApi();
 
     await expect(
-      resolveNodeAddress(api, "service", "@shop.web", signal),
+      resolveBranchScopedAddress(api, "service", "@shop.web", signal),
     ).rejects.toMatchObject({
       code: "ADDRESS.NOT_FOUND",
       meta: {
@@ -388,7 +441,7 @@ describe("resolveNodeAddress", () => {
   it("reports an address that names a row of another kind as the wrong kind", async () => {
     const { api } = fakeApi();
 
-    const error = await resolveNodeAddress(
+    const error = await resolveBranchScopedAddress(
       api,
       "service",
       "@shop.catalog",
@@ -408,12 +461,46 @@ describe("resolveNodeAddress", () => {
     const { api, calls } = fakeApi();
 
     await expect(
-      resolveNodeAddress(api, "database", "@pr-42:shop", signal),
+      resolveBranchScopedAddress(api, "database", "@pr-42:shop", signal),
     ).rejects.toMatchObject({
       code: "ADDRESS.WRONG_KIND",
       meta: { expected: "database", actual: "project" },
     });
     expect(calls).toEqual([]);
+  });
+
+  it("compares a row's address and branch exactly, even when the API ignores the filters", async () => {
+    const { api } = fakeApi(FIXTURE, (path) =>
+      path === "/v1/databases"
+        ? {
+            data: {
+              data: [
+                {
+                  id: "db_catalog_pr42",
+                  name: "catalog",
+                  projectId: "proj_shop",
+                  branchId: "br_pr42",
+                  logicalId: "shop.catalog",
+                },
+                {
+                  id: "db_catalog_v2",
+                  name: "catalog-v2",
+                  projectId: "proj_shop",
+                  branchId: "br_main",
+                  logicalId: "shop.catalog.v2",
+                },
+                ...(FIXTURE.databases ?? []),
+              ],
+              pagination: { hasMore: false, nextCursor: null },
+            },
+            response: new Response(null, { status: 200 }),
+          }
+        : undefined,
+    );
+
+    await expect(
+      resolveBranchScopedAddress(api, "database", "@shop.catalog", signal),
+    ).resolves.toMatchObject({ id: "db_catalog_main" });
   });
 
   it("reports several rows with the address on one branch as ambiguous", async () => {
@@ -432,7 +519,7 @@ describe("resolveNodeAddress", () => {
     });
 
     await expect(
-      resolveNodeAddress(api, "database", "@shop.catalog", signal),
+      resolveBranchScopedAddress(api, "database", "@shop.catalog", signal),
     ).rejects.toMatchObject({
       code: "ADDRESS.AMBIGUOUS",
       meta: {
@@ -463,7 +550,7 @@ describe("resolveNodeAddress", () => {
     });
 
     await expect(
-      resolveNodeAddress(api, "service", "@shop.api", signal),
+      resolveBranchScopedAddress(api, "service", "@shop.api", signal),
     ).resolves.toMatchObject({ id: "svc_api_main" });
     expect(
       calls.filter((call) => call.path === "/v1/projects").map((c) => c.query),
@@ -484,7 +571,7 @@ describe("resolveNodeAddress", () => {
     );
 
     await expect(
-      resolveNodeAddress(api, "service", "@shop.api", signal),
+      resolveBranchScopedAddress(api, "service", "@shop.api", signal),
     ).rejects.toMatchObject({
       code: "ADDRESS.API_ERROR",
       why: "No access",
@@ -509,23 +596,23 @@ describe("resolveProjectAddress", () => {
     await expect(
       resolveProjectAddress(api, "@pr-42:shop", signal),
     ).rejects.toMatchObject({
-      code: "ADDRESS.WRONG_KIND",
-      meta: { expected: "project" },
+      code: "ADDRESS.USAGE_ERROR",
+      meta: { address: "@pr-42:shop" },
     });
     await expect(
       resolveProjectAddress(api, "@production:shop", signal),
-    ).rejects.toMatchObject({ code: "ADDRESS.WRONG_KIND" });
+    ).rejects.toMatchObject({ code: "ADDRESS.USAGE_ERROR" });
     expect(calls).toEqual([]);
   });
 
-  it("refuses the address of a node inside the app", async () => {
+  it("refuses the address of something inside the app", async () => {
     const { api } = fakeApi();
 
     await expect(
       resolveProjectAddress(api, "@shop.api", signal),
     ).rejects.toMatchObject({
       code: "ADDRESS.WRONG_KIND",
-      meta: { expected: "project" },
+      meta: { expected: "project", actual: "service, database or bucket" },
     });
   });
 
@@ -542,16 +629,17 @@ describe("resolveProjectAddress", () => {
   });
 });
 
-describe("resolveScopedSubject", () => {
+describe("resolveBranchScopedSubject", () => {
   it("hands over the row id, Project id and branch git name an address names", async () => {
     const { api } = fakeApi();
 
     await expect(
-      resolveScopedSubject(api, "bucket", "@pr-42:shop.files", {}, signal),
-    ).resolves.toEqual({
+      resolveBranchScopedSubject(api, "bucket", "@pr-42:shop.files", signal),
+    ).resolves.toMatchObject({
       ref: "bkt_files_pr42",
       project: "proj_shop",
       branch: "pr-42",
+      match: { id: "bkt_files_pr42", text: "@pr-42:shop.files" },
     });
   });
 
@@ -559,14 +647,16 @@ describe("resolveScopedSubject", () => {
     const { api, calls } = fakeApi();
 
     await expect(
-      resolveScopedSubject(
-        api,
-        "database",
-        "catalog",
-        { project: "Shop", branch: "pr-42" },
-        signal,
-      ),
-    ).resolves.toEqual({ ref: "catalog", project: "Shop", branch: "pr-42" });
+      resolveBranchScopedSubject(api, "database", "catalog", signal, {
+        project: "Shop",
+        branch: "pr-42",
+      }),
+    ).resolves.toEqual({
+      ref: "catalog",
+      project: "Shop",
+      branch: "pr-42",
+      match: undefined,
+    });
     expect(calls).toEqual([]);
   });
 
@@ -578,7 +668,7 @@ describe("resolveScopedSubject", () => {
     const { api, calls } = fakeApi();
 
     await expect(
-      resolveScopedSubject(api, "service", "@shop.api", scope, signal),
+      resolveBranchScopedSubject(api, "service", "@shop.api", signal, scope),
     ).rejects.toMatchObject({
       code: "ADDRESS.USAGE_ERROR",
       meta: { address: "@shop.api", flags },

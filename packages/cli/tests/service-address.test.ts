@@ -54,9 +54,23 @@ const listing =
   (path: string): RouteHandler =>
   (init) => ({ data: addressListing(ADDRESSES, path, init.params) });
 
+interface Recorded {
+  /** The branch git name each `/v1/apps` listing asked for. */
+  readonly appListings: string[];
+  /** The service id each version listing read. */
+  readonly versionListings: string[];
+  /** The service id each delete targeted. */
+  readonly deletes: string[];
+}
+
+function recorder(): Recorded {
+  return { appListings: [], versionListings: [], deletes: [] };
+}
+
 /** The release routes, with every listing the address lookup reads and
  *  a `/v1/apps` listing that filters by branch git name. */
-function addressRoutes(appListings: string[] = []) {
+function addressRoutes(recorded: Recorded = recorder()) {
+  const base = releaseRoutes();
   return releaseRoutes({
     "GET /v1/projects": listing("/v1/projects"),
     "GET /v1/projects/{projectId}/branches": listing(
@@ -67,20 +81,30 @@ function addressRoutes(appListings: string[] = []) {
     "GET /v1/buckets": listing("/v1/buckets"),
     "GET /v1/apps": (init) => {
       const branch = init.params?.query?.branchGitName as string;
-      appListings.push(branch);
+      recorded.appListings.push(branch);
       return {
         data: page(branch === "pr-42" ? [PREVIEW_SERVICE] : [SERVICE]),
       };
     },
+    "GET /v1/apps/{appId}/deployments": (init) => {
+      recorded.versionListings.push(init.params?.path?.appId ?? "");
+      return (
+        base["GET /v1/apps/{appId}/deployments"]?.(init) ?? {
+          data: page([]),
+        }
+      );
+    },
+    "DELETE /v1/apps/{appId}": (init) => {
+      recorded.deletes.push(init.params?.path?.appId ?? "");
+      return { data: { data: {} } };
+    },
   });
 }
 
-describe("service commands given a deploy address", () => {
+describe("service commands given an address", () => {
   it("acts on the service on the branch the environment names", async () => {
-    const appListings: string[] = [];
-    const harness = await makeServiceCli({
-      routes: addressRoutes(appListings),
-    });
+    const recorded = recorder();
+    const harness = await makeServiceCli({ routes: addressRoutes(recorded) });
 
     const result = await harness.cli.run(
       ["service", "version", "list", "@pr-42:shop.api", "--json"],
@@ -88,14 +112,13 @@ describe("service commands given a deploy address", () => {
     );
 
     expect(result.exitCode).toBe(0);
-    expect(appListings).toEqual(["pr-42"]);
+    expect(recorded.appListings).toEqual(["pr-42"]);
+    expect(recorded.versionListings).toEqual(["svc_api_pr42"]);
   });
 
   it("acts on the default branch's service when the address names no environment", async () => {
-    const appListings: string[] = [];
-    const harness = await makeServiceCli({
-      routes: addressRoutes(appListings),
-    });
+    const recorded = recorder();
+    const harness = await makeServiceCli({ routes: addressRoutes(recorded) });
 
     const result = await harness.cli.run(["service", "show", "@shop.api"], {
       cwd: harness.cwd,
@@ -107,11 +130,12 @@ describe("service commands given a deploy address", () => {
       projectId: "proj_1",
       service: { id: "svc_1" },
     });
-    expect(appListings).toEqual(["main"]);
+    expect(recorded.appListings).toEqual(["main"]);
   });
 
   it("takes the address, not the service name, as the delete consent token", async () => {
-    const harness = await makeServiceCli({ routes: addressRoutes() });
+    const recorded = recorder();
+    const harness = await makeServiceCli({ routes: addressRoutes(recorded) });
 
     const byName = await harness.cli.run(
       [
@@ -132,13 +156,38 @@ describe("service commands given a deploy address", () => {
     expect(frame.envelope.error.meta).toMatchObject({
       consentToken: "@pr-42:shop.api",
     });
+    expect(recorded.deletes).toEqual([]);
 
     const byAddress = await harness.cli.run(
-      ["service", "delete", "@pr-42:shop.api", "--confirm", "@pr-42:shop.api"],
+      [
+        "service",
+        "delete",
+        " @pr-42:shop.api ",
+        "--confirm",
+        "@pr-42:shop.api",
+      ],
       { cwd: harness.cwd, env: harness.env },
     );
     expect(byAddress.exitCode).toBe(0);
     expect(byAddress.presented?.data).toMatchObject({ deleted: true });
+    expect(recorded.deletes).toEqual(["svc_api_pr42"]);
+  });
+
+  it("names the environment, branch and service id in the delete consent question", async () => {
+    const harness = await makeServiceCli({ routes: addressRoutes() });
+
+    const result = await harness.cli.run(
+      ["service", "delete", "@shop.api", "--json"],
+      { cwd: harness.cwd, env: harness.env },
+    );
+
+    const frame = result.json.at(-1);
+    if (frame?.kind !== "result" || frame.envelope.ok) {
+      throw new Error("expected an errored envelope");
+    }
+    expect(frame.envelope.error.summary).toContain(
+      '"hello-world" (svc_1) in production (branch main)',
+    );
   });
 
   it("refuses --branch alongside an address", async () => {

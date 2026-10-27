@@ -981,7 +981,7 @@ describe("prisma bucket key delete", () => {
   });
 });
 
-describe("bucket commands given a deploy address", () => {
+describe("bucket commands given an address", () => {
   const ADDRESSES: AddressFixture = {
     projects: [{ ...PROJECTS[0], logicalId: "billing" }],
     branches: {
@@ -1070,6 +1070,9 @@ describe("bucket commands given a deploy address", () => {
       ok: false,
       error: {
         code: "CLI.CONSENT_REQUIRED",
+        summary: expect.stringContaining(
+          "bucket bkt_files_main in production (branch main)",
+        ),
         meta: { consentToken: "@billing.files" },
       },
     });

@@ -10,7 +10,7 @@ import type { BucketKeyListResult } from "../../types/bucket";
 import {
   bucketPositional,
   LIST_BUCKETS_COMMAND,
-  resolveBucketId,
+  resolveBucket,
   resolveBucketProviderOnly,
 } from "./context";
 import { bucketKeyRows } from "./presentation";
@@ -73,7 +73,7 @@ export const bucketKeyListCommand = defineCommand({
         ],
       });
     }
-    const bucketId = await resolveBucketId(ctx, bucketRef);
+    const { id: bucketId } = await resolveBucket(ctx, bucketRef);
 
     const keys = await resolveBucketProviderOnly(ctx).listKeys(bucketId, {
       signal: ctx.signal,

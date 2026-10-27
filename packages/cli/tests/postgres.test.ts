@@ -2653,7 +2653,7 @@ describe("prisma postgres connection delete", () => {
   });
 });
 
-describe("postgres commands given a deploy address", () => {
+describe("postgres commands given an address", () => {
   const CATALOG_PREVIEW = {
     id: "db_catalog_pr42",
     name: "catalog",
@@ -2776,7 +2776,30 @@ describe("postgres commands given a deploy address", () => {
       ok: false,
       error: {
         code: "CLI.CONSENT_REQUIRED",
+        summary: expect.stringContaining(
+          "database db_catalog_pr42 in environment pr-42 (branch pr-42)",
+        ),
         meta: { consentToken: "@pr-42:shop.catalog" },
+      },
+    });
+    expect(calls.some((call) => call.method === "DELETE")).toBe(false);
+  });
+
+  it("says production in the consent question, and trims the subject before reading it as an address", async () => {
+    const calls: Call[] = [];
+    const result = await makeCli(addressClient(calls)).run(
+      ["postgres", "delete", " @shop.catalog ", "--json"],
+      { cwd: await unpinnedCwd() },
+    );
+
+    expect(resultFrame(result.json).envelope).toMatchObject({
+      ok: false,
+      error: {
+        code: "CLI.CONSENT_REQUIRED",
+        summary: expect.stringContaining(
+          "database db_catalog_main in production (branch main)",
+        ),
+        meta: { consentToken: "@shop.catalog" },
       },
     });
     expect(calls.some((call) => call.method === "DELETE")).toBe(false);

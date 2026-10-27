@@ -11,7 +11,7 @@ import { CLI_NAME } from "../../cli-name";
 import type { BucketKeyDeleteResult } from "../../types/bucket";
 import {
   bucketPositional,
-  resolveBucketId,
+  resolveBucket,
   resolveBucketProviderOnly,
 } from "./context";
 
@@ -63,7 +63,7 @@ export const bucketKeyDeleteCommand = defineCommand({
         },
       );
     }
-    const bucketId = await resolveBucketId(ctx, bucketRef);
+    const { id: bucketId } = await resolveBucket(ctx, bucketRef);
 
     await resolveBucketProviderOnly(ctx).deleteKey(bucketId, keyId, {
       signal: ctx.signal,
