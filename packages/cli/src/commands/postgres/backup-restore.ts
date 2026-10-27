@@ -10,12 +10,14 @@ import {
 import { CliStructuredError, ok } from "@prisma/cli-engine/protocol";
 import { CLI_NAME } from "../../cli-name";
 import { resolveDatabase } from "../../controllers/database";
+import { consentToken, isNodeAddress } from "../../lib/address/node-address";
 import type { DatabaseRestoreResult } from "../../types/database";
-import { branchFlag, projectFlag, resolvePostgresContext } from "./context";
+import { branchFlag, projectFlag, resolvePostgresDatabase } from "./context";
 import type { FieldRow } from "./presentation";
 
-const CONSENT_QUESTION =
-  "Restoring immediately and irreversibly overwrites all data in the target database, so it requires the exact target database id.";
+function consentQuestion(subject: string): string {
+  return `Restoring immediately and irreversibly overwrites all data in the target database, so it requires the exact target database ${isNodeAddress(subject) ? "address" : "id"}.`;
+}
 
 function restorePresentations(
   result: DatabaseRestoreResult,
@@ -64,7 +66,8 @@ export const postgresBackupRestoreCommand = defineCommand({
   args: {
     positionals: {
       database: positional.string({
-        brief: "Target database id or name",
+        brief:
+          "Target database id or name, or its deploy address: @shop.db (default branch) or @pr-42:shop.db (branch pr-42)",
         placeholder: "database",
       }),
     },
@@ -85,7 +88,7 @@ export const postgresBackupRestoreCommand = defineCommand({
   help: {
     summary: "Restore a database from a backup after exact id confirmation",
     description:
-      "Replaces the target database's current state with the backup's contents; anything written since that backup is lost, so the exact target database id is the consent token. To restore another database's backup into this one, name where the backup came from with --source-database.",
+      "Replaces the target database's current state with the backup's contents; anything written since that backup is lost, so the exact target database id is the consent token (or the address, when you pass one). To restore another database's backup into this one, name where the backup came from with --source-database.",
     examples: [
       "postgres backup restore db_123 --backup bkp_456 --confirm db_123",
     ],
@@ -111,26 +114,26 @@ export const postgresBackupRestoreCommand = defineCommand({
       );
     }
 
-    const { provider, target, projectId, projectName } =
-      await resolvePostgresContext(ctx, args.flags, "postgres backup restore");
-    const database = await resolveDatabase(
-      provider,
-      target,
-      args.positionals.database,
-      args.flags.branch,
-      ctx.signal,
-    );
+    const { provider, target, projectId, projectName, branchName, database } =
+      await resolvePostgresDatabase(
+        ctx,
+        args.flags,
+        args.positionals.database,
+        "postgres backup restore",
+      );
     const sourceDatabase = args.flags.sourceDatabase
       ? await resolveDatabase(
           provider,
           target,
           args.flags.sourceDatabase,
-          args.flags.branch,
+          branchName,
           ctx.signal,
         )
       : database;
 
-    await ctx.prompt.consent(CONSENT_QUESTION, { token: database.id });
+    await ctx.prompt.consent(consentQuestion(args.positionals.database), {
+      token: consentToken(args.positionals.database, database.id),
+    });
 
     const restored = await provider.restoreDatabase({
       targetDatabaseId: database.id,

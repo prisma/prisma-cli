@@ -8,7 +8,6 @@ import {
 import { CliStructuredError, ok } from "@prisma/cli-engine/protocol";
 import {
   parseUsageDate,
-  resolveDatabase,
   USAGE_PERIOD_EXAMPLE_COMMAND,
 } from "../../controllers/database";
 import { fieldLines } from "../../output/data-lines";
@@ -17,7 +16,7 @@ import {
   branchFlag,
   databasePositional,
   projectFlag,
-  resolvePostgresContext,
+  resolvePostgresDatabase,
 } from "./context";
 import {
   type FieldRow,
@@ -127,15 +126,13 @@ export const postgresUsageCommand = defineCommand({
       );
     }
 
-    const { provider, target, projectId, projectName } =
-      await resolvePostgresContext(ctx, args.flags, "postgres usage");
-    const database = await resolveDatabase(
-      provider,
-      target,
-      args.positionals.database,
-      args.flags.branch,
-      ctx.signal,
-    );
+    const { provider, projectId, projectName, database } =
+      await resolvePostgresDatabase(
+        ctx,
+        args.flags,
+        args.positionals.database,
+        "postgres usage",
+      );
     const usage = await provider.getUsage(database.id, {
       from,
       to,

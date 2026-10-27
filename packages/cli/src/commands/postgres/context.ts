@@ -1,10 +1,13 @@
 /** Workspace, project and provider for the `postgres *` commands. */
 import { type CommandContext, flag, positional } from "@prisma/cli-engine";
+import { resolveDatabase } from "../../controllers/database";
+import { resolveScopedSubject } from "../../lib/address/node-address";
 import {
   createManagementDatabaseProvider,
   type DatabaseProvider,
 } from "../../lib/database/provider";
 import type { ResolvedProjectTarget } from "../../lib/project/resolution";
+import type { DatabaseSummary } from "../../types/database";
 import { resolvePinnedProject } from "../project/context";
 import { resolveActiveWorkspace } from "../resources-shared/workspace";
 
@@ -22,7 +25,8 @@ export const branchFlag = flag.string({
 });
 
 export const databasePositional = positional.string({
-  brief: "Database id or name",
+  brief:
+    "Database id or name, or its deploy address: @shop.db (default branch) or @pr-42:shop.db (branch pr-42)",
   placeholder: "database",
 });
 
@@ -54,6 +58,47 @@ export async function resolvePostgresContext(
     projectId: target.project.id,
     projectName: target.project.name,
   };
+}
+
+export interface PostgresDatabaseContext extends PostgresContext {
+  readonly database: DatabaseSummary;
+  /** The branch git name the database was looked up on, from --branch
+   *  or the address. */
+  readonly branchName: string | undefined;
+}
+
+/** The project, then the database the subject names. A database
+ *  address stands in for the database id, `--project` and `--branch`
+ *  together. */
+export async function resolvePostgresDatabase(
+  ctx: PostgresCommandContext,
+  flags: { project?: string; branch?: string },
+  databaseRef: string,
+  commandName: string,
+): Promise<PostgresDatabaseContext> {
+  const subject = await resolveScopedSubject(
+    ctx.api,
+    "database",
+    databaseRef,
+    flags,
+    ctx.signal,
+  );
+  const context = await resolvePostgresContext(
+    ctx,
+    {
+      ...(subject.project !== undefined ? { project: subject.project } : {}),
+      ...(subject.branch !== undefined ? { branch: subject.branch } : {}),
+    },
+    commandName,
+  );
+  const database = await resolveDatabase(
+    context.provider,
+    context.target,
+    subject.ref,
+    subject.branch,
+    ctx.signal,
+  );
+  return { ...context, database, branchName: subject.branch };
 }
 
 /** `connection rotate` and `connection delete` address a connection

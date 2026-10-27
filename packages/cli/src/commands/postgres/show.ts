@@ -5,14 +5,13 @@ import {
   type Presentations,
 } from "@prisma/cli-engine";
 import { ok } from "@prisma/cli-engine/protocol";
-import { resolveDatabase } from "../../controllers/database";
 import { fieldLines } from "../../output/data-lines";
 import type { DatabaseShowResult } from "../../types/database";
 import {
   branchFlag,
   databasePositional,
   projectFlag,
-  resolvePostgresContext,
+  resolvePostgresDatabase,
 } from "./context";
 import {
   branchLabel,
@@ -75,19 +74,18 @@ export const postgresShowCommand = defineCommand({
     examples: [
       "postgres show db_123",
       "postgres show acme-preview --branch preview --json",
+      "postgres show @shop.db",
     ],
   },
   needs: { credentials: true },
   handler: async (args, ctx) => {
-    const { provider, target, projectId, projectName } =
-      await resolvePostgresContext(ctx, args.flags, "postgres show");
-    const database = await resolveDatabase(
-      provider,
-      target,
-      args.positionals.database,
-      args.flags.branch,
-      ctx.signal,
-    );
+    const { provider, projectId, projectName, database } =
+      await resolvePostgresDatabase(
+        ctx,
+        args.flags,
+        args.positionals.database,
+        "postgres show",
+      );
     const connections = await provider.listConnections(database.id, {
       signal: ctx.signal,
     });

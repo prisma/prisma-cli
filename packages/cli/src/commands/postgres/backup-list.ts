@@ -6,14 +6,14 @@ import {
   type Presentations,
 } from "@prisma/cli-engine";
 import { ok } from "@prisma/cli-engine/protocol";
-import { parseBackupLimit, resolveDatabase } from "../../controllers/database";
+import { parseBackupLimit } from "../../controllers/database";
 import { serializeDatabaseBackupList } from "../../presenters/database";
 import type { DatabaseBackupListResult } from "../../types/database";
 import {
   branchFlag,
   databasePositional,
   projectFlag,
-  resolvePostgresContext,
+  resolvePostgresDatabase,
 } from "./context";
 import { backupRows, backupStdoutRows } from "./presentation";
 
@@ -90,15 +90,13 @@ export const postgresBackupListCommand = defineCommand({
   needs: { credentials: true },
   handler: async (args, ctx) => {
     const limit = parseBackupLimit(args.flags.limit);
-    const { provider, target, projectId, projectName } =
-      await resolvePostgresContext(ctx, args.flags, "postgres backup list");
-    const database = await resolveDatabase(
-      provider,
-      target,
-      args.positionals.database,
-      args.flags.branch,
-      ctx.signal,
-    );
+    const { provider, projectId, projectName, database } =
+      await resolvePostgresDatabase(
+        ctx,
+        args.flags,
+        args.positionals.database,
+        "postgres backup list",
+      );
     const backups = await provider.listBackups(database.id, {
       limit,
       signal: ctx.signal,
