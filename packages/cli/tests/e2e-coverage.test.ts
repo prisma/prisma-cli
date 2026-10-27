@@ -105,6 +105,8 @@ const EXCLUSIONS: Readonly<Record<string, string>> = {
     "Needs a connected repository, which `git connect` cannot create here.",
   deploy:
     "Provisions real cloud infrastructure for an app entry point, through a child `alchemy deploy`. Standing that up per CI run is neither cheap nor unattended-safe.",
+  "deploy list":
+    "Lists a deployed Composer app's stage, and this suite deploys none (see `deploy`). Composer's e2e deploy workflow runs it after every deploy and checks it against the platform.",
   dev: "A session command: it runs until SIGINT or SIGTERM, redeploying on file change, so it has no happy path that terminates on its own.",
   "dev url": LOCAL_EMULATOR_REASON,
   "dev stop": LOCAL_EMULATOR_REASON,

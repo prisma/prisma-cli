@@ -533,6 +533,7 @@ describe("buildCli", () => {
         "--json",
         "--config",
         configPath,
+        "--entry",
         "src/service.ts",
       ],
     });

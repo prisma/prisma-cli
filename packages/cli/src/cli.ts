@@ -346,6 +346,10 @@ export const cliGroups: Readonly<
       "A ref is a named pointer to a contract, letting commands target a contract by a stable name. Set, list, and delete refs here.",
   },
   orm: { brief: "Initialize a Prisma ORM project" },
+  deploy: {
+    brief:
+      "Deploy your app to Prisma Cloud, and list what a stage has deployed",
+  },
   dev: {
     brief:
       "Run your app on this machine, with no Prisma account. Start it, print a node's local URL, stop it",
@@ -421,9 +425,10 @@ export const mountedCommands: Readonly<Record<string, AnyCommand>> = {
   "service domain delete": serviceDomainDeleteCommand,
   "service domain retry": serviceDomainRetryCommand,
   "service domain wait": serviceDomainWaitCommand,
-  // Composer's product verbs: deploy and dev at the root, dev's
-  // children beneath it, and the local emulators under their own group.
+  // Composer's product verbs: deploy and dev at the root, their
+  // children beneath them, and the local emulators under their own group.
   deploy: composerCommandFamily.commands.deploy,
+  "deploy list": composerCommandFamily.commands["deploy list"],
   dev: composerCommandFamily.commands.dev,
   "dev url": composerCommandFamily.commands["dev url"],
   "dev stop": composerCommandFamily.commands["dev stop"],

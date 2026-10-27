@@ -94,6 +94,7 @@ import { defineConfig as orm } from "@prisma/orm-postgres/config";
 
 export default definePrismaConfig({
   composer: composer({
+    entry: "./module.ts",
     extensions: [prismaCloud(), nodeBuild()],
     state: prismaState(),
   }),
@@ -144,7 +145,7 @@ branch is the environment, and branches come into being by deploying to them:
 1. **Push a git branch** (with the GitHub integration connected and the
    deploy workflow in the repository): the workflow builds and deploys, and
    the platform creates the branch environment on the fly.
-2. **Deploy a stage from the CLI**: `prisma deploy module.ts --stage pr-42`
+2. **Deploy a stage from the CLI**: `prisma deploy --stage pr-42`
    creates a branch named `pr-42` and deploys the identical app graph into
    it. A stage name must be a valid git ref name; an invalid name is a hard
    error.
@@ -208,8 +209,11 @@ Opening a pull request does not itself deploy anything; previews track
 branch pushes. A connected repository without the workflow gets branch
 bookkeeping and preview teardown from the platform, and no builds.
 
-**CLI.** `prisma deploy module.ts` deploys production directly; add
-`--stage <name>` for a preview. Authenticate once with `prisma auth login`
+**CLI.** `prisma deploy` deploys production directly; add `--stage <name>`
+for a preview. It deploys the entry file named by `entry` in the `composer`
+section of `prisma.config.ts`; `--entry <path>` overrides it. `prisma deploy
+list` (same `--stage`) lists each deployed node's address, kind, platform ID
+and URL. Authenticate once with `prisma auth login`
 (interactive), or set `PRISMA_SERVICE_TOKEN` (plus `PRISMA_WORKSPACE_ID`
 when the token can see more than one workspace) for CI and other headless
 runs. The first deploy creates the project, named after your module; the
@@ -350,7 +354,7 @@ over deploying whenever you want to show the user a change or verify your
 own work:
 
 1. Build the app exactly as you would for deploy, then run
-   `prisma dev module.ts`. It provisions a local Prisma Postgres database,
+   `prisma dev` (it runs the config's `entry`, like deploy). It provisions a local Prisma Postgres database,
    applies the schema, creates local stand-ins for declared buckets, starts
    the services, and prints a local URL. It watches built output and
    restarts a service when its build changes.

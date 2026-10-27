@@ -99,6 +99,7 @@ const EXPECTED_MOUNT_PATHS: readonly string[] = [
   "db update",
   "db verify",
   "deploy",
+  "deploy list",
   "dev",
   "dev stop",
   "dev url",

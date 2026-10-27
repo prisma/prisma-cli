@@ -4,11 +4,13 @@
  * what a pipe receives, not Composer's dev logic, which Composer's own
  * integration tests run against real emulators.
  */
-import { createTestCli } from "@prisma/cli-engine/testing";
+import { createTestCli, mintTestJwt } from "@prisma/cli-engine/testing";
 import { defineConfig as composer } from "@prisma/composer/config";
 import { nodeBuild } from "@prisma/composer/node/control";
 import {
   createComposerFamily,
+  type DeployedNode,
+  type ListDeployed,
   type ListEmulators,
 } from "@prisma/composer-cli/family";
 import { createOperationsDouble } from "@prisma/composer-cli/testing";
@@ -70,12 +72,38 @@ const ONE_INSTANCE = listing([
   { kind: "database", running: false, url: null, instances: [], error: null },
 ]);
 
-const COMPOSER_PATHS = ["dev", "dev url", "dev stop", "emulator list"];
+const DEPLOYED: readonly DeployedNode[] = [
+  { address: "shop", kind: "project", platformId: "proj_1", url: null },
+  {
+    address: "shop.api",
+    kind: "service",
+    platformId: "cps_1",
+    url: "https://api.example.prisma.build",
+  },
+];
+
+const listDeployed: ListDeployed = async () => ({
+  ok: true,
+  value: DEPLOYED,
+  assertOk: () => DEPLOYED,
+  assertNotOk: () => {
+    throw new Error("listDeployed succeeded");
+  },
+});
+
+const COMPOSER_PATHS = [
+  "deploy list",
+  "dev",
+  "dev url",
+  "dev stop",
+  "emulator list",
+];
 
 function shell(emulators: Listing = listing([])) {
   const family = createComposerFamily({
     operations: createOperationsDouble().operations,
     listEmulators: async () => emulators,
+    listDeployed,
   });
   const commands = Object.fromEntries(
     COMPOSER_PATHS.map((path) => [path, family.commands[path]]),
@@ -83,17 +111,34 @@ function shell(emulators: Listing = listing([])) {
   return createTestCli({
     commandFamilies: [family],
     commands,
-    groups: { dev: cliGroups.dev, emulator: cliGroups.emulator },
+    groups: {
+      deploy: cliGroups.deploy,
+      dev: cliGroups.dev,
+      emulator: cliGroups.emulator,
+    },
     config: { composer: COMPOSER_SECTION },
+    sessions: [
+      {
+        workspaceId: "ws_1",
+        workspaceName: "Acme Inc",
+        credential: {
+          token: mintTestJwt({ sub: "usr_1", workspace_id: "ws_1" }),
+          refreshToken: undefined,
+          expiresAt: undefined,
+        },
+      },
+    ],
+    selectedWorkspaceId: "ws_1",
     now: () => new Date(0),
   });
 }
 
 describe("Composer's commands in the shell", () => {
-  it("mounts Composer's dev children and emulator list where the shell says", () => {
+  it("mounts Composer's deploy and dev children and emulator list where the shell says", () => {
     for (const path of COMPOSER_PATHS) {
       expect(mountedCommands[path], path).toBeDefined();
     }
+    expect(cliGroups.deploy).toBeDefined();
     expect(cliGroups.dev).toBeDefined();
     expect(cliGroups.emulator?.description).toContain("emulator");
   });
@@ -110,6 +155,15 @@ describe("Composer's commands in the shell", () => {
 
     expect(result.exitCode).toBe(0);
     expect(result.stdout).toBe("");
+  });
+
+  it("pipes one tab-separated line per deployed node from deploy list", async () => {
+    const result = await shell().run(["deploy", "list"]);
+
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout).toBe(
+      "shop\tproject\tproj_1\t\nshop.api\tservice\tcps_1\thttps://api.example.prisma.build\n",
+    );
   });
 
   it("lists emulators", async () => {
