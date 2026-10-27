@@ -2,7 +2,7 @@
 name: prisma-platform-core-concepts
 metadata:
   library: "prisma"
-  library_version: "8.0.0-rc.23"
+  library_version: "8.0.0-rc.27"
   version: 2026.9.2
 description: >-
   Use when hosting, deploying, or operating an app on the Prisma Platform:
@@ -58,8 +58,13 @@ step and no connection strings to wire by hand; Composer injects them.
 
 ## Project setup
 
-The CLI carries every command named here, but an app's own code needs its
-dependencies installed. Start from:
+`prisma init` prepares local configuration and copies this skill from the
+installed `prisma` package into the configured agent directories. Database
+provisioning and deployment are separate choices. Keep the project's existing
+database and hosting setup unless the user wants to change it.
+
+For a Prisma Composer (Early Access) app deployed to Prisma Compute, install
+the app's dependencies:
 
 ```sh
 npm install prisma @prisma/composer @prisma/composer-prisma-cloud
@@ -211,6 +216,13 @@ runs. The first deploy creates the project, named after your module; the
 name must be unique in the workspace, and `--name` deploys under a different
 one.
 
+Before deploying, configure the Composer root module and the `composer`
+section in `prisma.config.ts`, then build the app. A new project also needs
+a region in `prismaCloud({ region: ... })` or `PRISMA_REGION`. The
+[deployment guide](https://www.prisma.io/docs/composer/deploying) covers
+these prerequisites; running `prisma init` alone does not prepare a
+deployable app.
+
 Both paths converge the same declaration, so they are mutually idempotent:
 a repo can be connected to GitHub and still be deployed from the CLI.
 
@@ -280,6 +292,15 @@ it. On paid plans, backups are automated, listable, and restorable.
 Per-database usage metrics are queryable; the `postgres` group covers all of
 it.
 
+A database outside any project comes from the separate
+[`create-db` tool](https://www.prisma.io/docs/postgres/npx-create-db):
+`npx create-db@latest` needs no account and prints a connection string and a
+claim URL. The database is deleted after 24 hours unless claimed; claiming it
+with a Prisma account keeps it for free. Use it when the user has no Prisma
+account or project yet. When the project is on the platform, create the
+database in the project with the `postgres` group, or declare it in the
+module, instead.
+
 ## Object storage
 
 Buckets are S3-compatible object stores that live inside the project,
@@ -333,11 +354,17 @@ own work:
    applies the schema, creates local stand-ins for declared buckets, starts
    the services, and prints a local URL. It watches built output and
    restarts a service when its build changes.
-2. Exercise the running app directly (for example with `curl` against the
-   printed URL) instead of reasoning about what the code would do.
-3. Stopping `dev` leaves local databases, buckets, and their data in place;
-   the next run is a warm start. `--fresh` wipes this app's local instances
-   and data first.
+2. Exercise the running app directly (for example with
+   `curl "$(prisma dev url gateway)"`, with your service's name in place of
+   `gateway`) instead of reasoning about what the
+   code would do. `prisma dev url <node>` prints one node's local URL: a
+   service's HTTP URL, a database's connection string, or a bucket's S3
+   address. Use `prisma dev --detach` to start the app and get your shell
+   back.
+3. Stopping `dev` (Ctrl-C, or `prisma dev stop`) leaves local databases,
+   buckets, and their data in place; the next run is a warm start. `--fresh`
+   wipes this app's local instances and data first. `prisma emulator list`
+   shows every local instance on the machine.
 4. Deploying is the same pipeline pointed at the platform: switching from
    local to hosted is a configuration change, not a code change. Reach for
    `prisma deploy --stage <name>` only when you need a shareable URL or

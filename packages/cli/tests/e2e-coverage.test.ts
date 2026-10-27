@@ -50,6 +50,14 @@ const E2E_DIR = path.resolve(import.meta.dirname, "../e2e");
 const ORM_FAMILY_REASON =
   "ORM command: no management API involved. Real e2e lives in prisma/prisma (R7); the shell proves composition in orm-mount.test.ts (R8).";
 
+/**
+ * Composer's local commands talk to emulators on this machine, never to
+ * the management API this suite exists to cover. Composer's own
+ * integration tests run them against real emulators.
+ */
+const LOCAL_EMULATOR_REASON =
+  "Local emulators only: no management API involved. Composer's own integration tests run it against real emulators.";
+
 const EXCLUSIONS: Readonly<Record<string, string>> = {
   "contract emit": ORM_FAMILY_REASON,
   "contract infer": ORM_FAMILY_REASON,
@@ -98,6 +106,9 @@ const EXCLUSIONS: Readonly<Record<string, string>> = {
   deploy:
     "Provisions real cloud infrastructure for an app entry point, through a child `alchemy deploy`. Standing that up per CI run is neither cheap nor unattended-safe.",
   dev: "A session command: it runs until SIGINT or SIGTERM, redeploying on file change, so it has no happy path that terminates on its own.",
+  "dev url": LOCAL_EMULATOR_REASON,
+  "dev stop": LOCAL_EMULATOR_REASON,
+  "emulator list": LOCAL_EMULATOR_REASON,
 };
 
 /**

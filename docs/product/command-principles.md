@@ -99,6 +99,8 @@ Prepare the current repository for Prisma development, entirely locally: add the
 
 The scaffolded config imports `definePrismaConfig` from `prisma/config` and spells out `skills: { agents: [...] }`. The agents come from the `--skills` flag (`--skills=claude,cursor`, validated against the known agent names), or the default set when the flag is absent. `--skills=none` records the choice rather than merely skipping: the scaffold is written with `skills: { agents: [] }` — the committed record that no agent skills are wanted — and the sync is skipped on that run; with `agents: []` in place, later syncs, `skills list`, and the staleness notice all treat the project as having no skills to manage. There is no harness detection: the config is the only authority on which agents a project uses.
 
+`init` does not suggest products in its output or provision resources. Database and hosting guidance lives in the platform skill it copies.
+
 `init` calls no platform API, never prompts, and never edits a file the user already owns: a `postinstall` script the user wrote and an existing `prisma.config.ts` are both left alone and reported as diagnostics — the config diagnostic shows the exact `skills: { agents: [...] }` snippet to add by hand. A `prisma` declaration in any dependency field, at any version or range, is likewise left alone; only a project that declares it nowhere gets the dev dependency added. Everything lands in the current directory: the hook in its `package.json`, the config beside it, the skill copies in the agent directories under it. Rerunning is safe; each step reports what is already done and the command exits 0.
 
 `init` acts on the directory it runs in, with no special-casing of the scaffold: init at the repository root makes the root config, init in a package directory makes the package config, and config discovery wires them together. When the discovered config chain already holds a file in another directory — an ancestor `prisma.config.ts`, or one an explicit `parent` names — init writes only the config scaffold: the postinstall hook, the `prisma` dev dependency, and the skills sync belong at the repository root, so each is skipped and reported with that reason (`reason: "governing-config"` in the JSON reports). `--postinstall` opts the manifest edits back in and `--skills` opts the sync back in. Init in a directory with no governing config — the root case — is unchanged.
@@ -145,6 +147,23 @@ When a group acts on a subordinate resource, the action may be a compound verb p
 - `app show-deploy`
 
 That is still one action in the command grammar. It is preferable to inventing a temporary top-level `deployment` group for the MVP.
+
+## Custom domains
+
+`service domain` commands manage domains for the service on the selected branch.
+They default to `production`; `--branch <name>` selects a preview or staging
+branch. The service must have a promoted, running version before a domain can
+be added. Domain lookup, retry, waiting, and deletion stay within that service.
+
+New domain attachments require a persistent workspace TXT ownership record as
+well as the routing CNAME. Missing proof returns the exact DNS instructions and
+a command to retry on the same branch. Existing connected domains keep working;
+recreating a branch in the same workspace reuses its TXT record.
+
+Cloudflare proxy detection returns `SERVICE.DOMAIN_CLOUDFLARE_PROXY` with DNS-only
+instructions and a retry command for the same target. The customer can turn the
+proxy back on after the domain is Active, with Full (strict) SSL/TLS and the
+ACME challenge path accessible for certificate renewal.
 
 ## Shared Flag Conventions
 

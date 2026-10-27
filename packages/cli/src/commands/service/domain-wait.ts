@@ -26,7 +26,10 @@ const UNIT_MULTIPLIER_MS: Record<string, number> = {
   h: 3_600_000,
 };
 
-function parseWaitTimeout(value: string | undefined): number {
+function parseWaitTimeout(
+  value: string | undefined,
+  branchName?: string,
+): number {
   if (!value) {
     return DEFAULT_TIMEOUT_MS;
   }
@@ -36,7 +39,7 @@ function parseWaitTimeout(value: string | undefined): number {
   }
   const match = DURATION.exec(trimmed);
   if (!match) {
-    throw timeoutInvalidError(value);
+    throw timeoutInvalidError(value, branchName);
   }
   const amount = Number.parseInt(match[1] as string, 10);
   const multiplier = UNIT_MULTIPLIER_MS[match[2] as string] ?? 1;
@@ -97,8 +100,11 @@ export const serviceDomainWaitCommand = defineCommand({
   },
   needs: { credentials: true },
   handler: async (args, ctx) => {
-    const hostname = normalizeDomainHostname(args.positionals.hostname);
-    const timeoutMs = parseWaitTimeout(args.flags.timeout);
+    const hostname = normalizeDomainHostname(
+      args.positionals.hostname,
+      args.flags.branch,
+    );
+    const timeoutMs = parseWaitTimeout(args.flags.timeout, args.flags.branch);
     const target = await resolveServiceDomainTarget(ctx, {
       serviceName: args.flags.service,
       projectRef: args.flags.project,
@@ -107,7 +113,7 @@ export const serviceDomainWaitCommand = defineCommand({
     });
     const domain = await resolveDomainByHostname(
       target.provider,
-      target.service.id,
+      target.resultTarget,
       hostname,
       "wait",
       ctx.signal,
@@ -147,11 +153,19 @@ export const serviceDomainWaitCommand = defineCommand({
       }
 
       if (current.status === "failed") {
-        throw domainVerificationFailedError(hostname, current);
+        throw domainVerificationFailedError(
+          hostname,
+          current,
+          target.resultTarget,
+        );
       }
 
       if (timeoutMs === 0 || Date.now() >= deadline) {
-        throw domainVerificationTimeoutError(hostname, current.status);
+        throw domainVerificationTimeoutError(
+          hostname,
+          current.status,
+          target.resultTarget,
+        );
       }
 
       // biome-ignore lint/performance/noAwaitInLoops: this polls one domain until it settles, reporting each status change in the order it happened; the sleep between reads keeps the management API request rate down.
@@ -162,7 +176,12 @@ export const serviceDomainWaitCommand = defineCommand({
       current = await target.provider
         .showDomain(current.id, { signal: ctx.signal })
         .catch((error) => {
-          throw domainCommandError("wait", error, hostname);
+          throw domainCommandError(
+            "wait",
+            error,
+            hostname,
+            target.resultTarget,
+          );
         });
     }
   },
