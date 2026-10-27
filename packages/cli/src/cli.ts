@@ -181,7 +181,7 @@ export const cliGroups: Readonly<
     brief:
       "Manage Prisma Platform projects. CRUD, link a directory, transfer ownership, manage environment variables",
     description:
-      "A Project groups one product or codebase. It is the child of a workspace and the parent of Branches: isolated environments, one per Git branch, each holding its own services, databases, and buckets. 'Linking' connects a local directory to a Project: the link is stored locally, and every project-scoped command run in that directory targets the linked project unless --project names another. 'create' links automatically; 'link' points a directory at an existing Project; 'show' reports the link.",
+      "A Project groups one product or codebase. It is the child of a workspace and the parent of Branches: isolated environments, one per Git branch, each holding its own services, databases, and buckets. 'Linking' connects a local directory to a Project: the link is stored locally, and every project-scoped command run in that directory targets the linked project unless --project names another. 'create' links automatically; 'link' points a directory at an existing Project; 'show' reports the link. Name a Project by its id, its name, or its address: @ and the app name, such as @shop. A Project spans every branch, so its address takes no environment.",
     workflow: [
       {
         run: "project create my-app",
@@ -208,7 +208,7 @@ export const cliGroups: Readonly<
     brief:
       "Manage Prisma Postgres databases. CRUD, usage metrics, backups, and connection credentials",
     description:
-      "Databases are branch-bound: each belongs to a Branch, the isolated environment for one Git branch of a project, so commands take --branch to target one. Address a database by its id (db_...) or name. Connection URLs are secrets that print exactly once, at create or rotate; nothing shows them again. 'backup' restores platform-taken backups, and 'connection' manages per-consumer credentials.",
+      "Databases are branch-bound: each belongs to a Branch, the isolated environment for one Git branch of a project, so commands take --branch to target one. Name a database by its id (db_...), its name, or its address (@shop.db, @pr-42:shop.db). The address is the name the app gave it, such as shop.db; the part before ':' is the environment the app was deployed to: its branch, or production when left out. Connection URLs are secrets that print exactly once, at create or rotate; nothing shows them again. 'backup' restores platform-taken backups, and 'connection' manages per-consumer credentials.",
     workflow: [
       {
         run: "postgres create app-db",
@@ -228,7 +228,7 @@ export const cliGroups: Readonly<
     brief:
       "Inspect and restore database backups. The platform takes them automatically",
     description:
-      "The platform takes backups automatically; there is no backup-create command. Restore replaces a database's current state with a backup's contents after exact id confirmation.",
+      "The platform takes backups automatically; there is no backup-create command. Restore replaces a database's current state with a backup's contents after exact confirmation of the database's id, or its address when you name it by one.",
   },
   "postgres connection": {
     brief:
@@ -240,7 +240,7 @@ export const cliGroups: Readonly<
     brief:
       "Manage S3-compatible object-store buckets for a project. CRUD operations and access keys",
     description:
-      "A bucket is blob storage for files and uploads, bound to one Branch of a project and reachable through the standard S3 API. Access goes through S3-compatible keys minted per consumer with 'bucket key create', which prints credentials (endpoint, key id, secret) exactly once.",
+      "A bucket is blob storage for files and uploads, bound to one Branch of a project and reachable through the standard S3 API. Access goes through S3-compatible keys minted per consumer with 'bucket key create', which prints credentials (endpoint, key id, secret) exactly once. Name a bucket by its id or its address (@shop.files, @pr-42:shop.files). The address is the name the app gave it, such as shop.files; the part before ':' is the environment the app was deployed to: its branch, or production when left out.",
     workflow: [
       {
         run: "bucket create --name uploads",
@@ -274,7 +274,7 @@ export const cliGroups: Readonly<
     brief:
       "Manage deployed services. Logs, versions, promote and rollback releases, custom domains",
     description:
-      "A service is one HTTP application (a frontend or a backend) deployed on a Branch. Every deploy produces an immutable service version; at most one serves traffic at a time. The 'version' subcommands move which one that is: promote releases a preview build into production, rollback returns production to a previous version without rebuilding. 'logs' reads and streams output, and 'domain' attaches hostnames you own.",
+      "A service is one HTTP application (a frontend or a backend) deployed on a Branch. Every deploy produces an immutable service version; at most one serves traffic at a time. The 'version' subcommands move which one that is: promote releases a preview build into production, rollback returns production to a previous version without rebuilding. 'logs' reads and streams output, and 'domain' attaches hostnames you own. Name a service by its id, its name, or its address (@shop.api, @pr-42:shop.api). The address is the name the app gave it, such as shop.api; the part before ':' is the environment the app was deployed to: its branch, or production when left out.",
     workflow: [
       {
         run: "service logs my-api --follow",
