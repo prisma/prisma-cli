@@ -1,5 +1,5 @@
 /**
- * Node addresses as subjects, against the real API: `@<environment>:<address>`
+ * Addresses as subjects, against the real API: `@<environment>:<address>`
  * names a row by the Project's and the row's `logicalId` and the Branch's
  * git name, the way Composer deploys them.
  *
@@ -10,6 +10,9 @@
  * and a bucket; the default Branch an undeployed service with the same
  * address as the deployed one. Every pair that shares an address is
  * there to prove the environment picks the Branch.
+ *
+ * The delete tests act on rows no other test reads (a second database
+ * pair and a second bucket), so the tests pass in any order.
  */
 import { afterAll, beforeAll, expect, it } from "vitest";
 
@@ -107,9 +110,14 @@ interface Fixture {
   readonly environment: string;
   readonly productionDatabase: Row;
   readonly previewDatabase: Row;
+  /** A database pair the delete test removes one of. */
+  readonly productionDoomedDatabase: Row;
+  readonly previewDoomedDatabase: Row;
   readonly productionService: Row;
   readonly previewService: Row & { readonly deploymentId: string };
   readonly bucket: Row;
+  /** A bucket the delete test removes. */
+  readonly doomedBucket: Row;
 }
 
 let fixture: Fixture | undefined;
@@ -144,9 +152,17 @@ beforeAll(async () => {
 
   const catalog = `${app}.catalog`;
   const api = `${app}.api`;
-  const [productionDatabase, previewDatabase] = await Promise.all([
+  const doomed = `${app}.doomed`;
+  const [
+    productionDatabase,
+    previewDatabase,
+    productionDoomedDatabase,
+    previewDoomedDatabase,
+  ] = await Promise.all([
     createReadyDatabase(project.id, production.id, catalog),
     createReadyDatabase(project.id, preview.id, catalog),
+    createReadyDatabase(project.id, production.id, doomed),
+    createReadyDatabase(project.id, preview.id, doomed),
   ]);
   const createService = (branchId: string) =>
     managementApi<Row>("POST", "/v1/services", {
@@ -157,12 +173,15 @@ beforeAll(async () => {
     });
   const productionService = await createService(production.id);
   const previewService = await createService(preview.id);
-  const bucket = await managementApi<Row>("POST", "/v1/buckets", {
-    projectId: project.id,
-    branchId: preview.id,
-    logicalId: `${app}.files`,
-    name: scratchName("bkt"),
-  });
+  const createBucket = (logicalId: string) =>
+    managementApi<Row>("POST", "/v1/buckets", {
+      projectId: project?.id,
+      branchId: preview.id,
+      logicalId,
+      name: scratchName("bkt"),
+    });
+  const bucket = await createBucket(`${app}.files`);
+  const doomedBucket = await createBucket(`${app}.uploads`);
 
   const deploymentId = await createDeployment(previewService.id);
   deployment = { id: deploymentId, serviceName: previewService.name };
@@ -175,9 +194,12 @@ beforeAll(async () => {
     environment,
     productionDatabase,
     previewDatabase,
+    productionDoomedDatabase,
+    previewDoomedDatabase,
     productionService,
     previewService: { ...previewService, deploymentId },
     bucket,
+    doomedBucket,
   };
 });
 
@@ -299,8 +321,8 @@ describeCommands(["bucket key list", "bucket delete"], () => {
   });
 
   it("deletes the bucket an address names, with the address as consent", async () => {
-    const { app, environment, bucket } = requireFixture();
-    const address = `@${environment}:${app}.files`;
+    const { app, environment, doomedBucket } = requireFixture();
+    const address = `@${environment}:${app}.uploads`;
     const result = await run([
       "bucket",
       "delete",
@@ -310,7 +332,7 @@ describeCommands(["bucket key list", "bucket delete"], () => {
     ]);
     const deleted = result.envelope.result as { readonly bucket: Row };
 
-    expect(deleted.bucket.id).toBe(bucket.id);
+    expect(deleted.bucket.id).toBe(doomedBucket.id);
   });
 });
 
@@ -341,6 +363,9 @@ describeCommands(["postgres show", "postgres delete"], () => {
     );
 
     expect(result.envelope.error?.code).toBe("CLI.CONSENT_REQUIRED");
+    expect(result.envelope.error?.summary).toContain(
+      `database ${previewDatabase.id} in environment ${environment} (branch ${environment})`,
+    );
     const after = await run([
       "postgres",
       "show",
@@ -352,9 +377,13 @@ describeCommands(["postgres show", "postgres delete"], () => {
   });
 
   it("deletes only the named environment's database", async () => {
-    const { app, environment, previewDatabase, productionDatabase } =
-      requireFixture();
-    const address = `@${environment}:${app}.catalog`;
+    const {
+      app,
+      environment,
+      previewDoomedDatabase,
+      productionDoomedDatabase,
+    } = requireFixture();
+    const address = `@${environment}:${app}.doomed`;
     const result = await run([
       "postgres",
       "delete",
@@ -363,17 +392,17 @@ describeCommands(["postgres show", "postgres delete"], () => {
       address,
     ]);
     const deleted = result.envelope.result as { readonly database: Row };
-    expect(deleted.database.id).toBe(previewDatabase.id);
+    expect(deleted.database.id).toBe(previewDoomedDatabase.id);
 
-    const production = await run(["postgres", "show", `@${app}.catalog`]);
+    const production = await run(["postgres", "show", `@${app}.doomed`]);
     expect(
       (production.envelope.result as { readonly database: Row }).database.id,
-    ).toBe(productionDatabase.id);
+    ).toBe(productionDoomedDatabase.id);
   });
 
   it("reports an address nothing is deployed at", async () => {
     const { app, environment } = requireFixture();
-    const address = `@${environment}:${app}.catalog`;
+    const address = `@${environment}:${app}.missing`;
     const result = await run(["postgres", "show", address], false);
 
     expect(result.envelope.error?.code).toBe("ADDRESS.NOT_FOUND");
