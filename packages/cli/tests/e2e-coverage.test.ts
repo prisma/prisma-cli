@@ -138,17 +138,9 @@ const EXCLUSIONS: Readonly<Record<string, string>> = {
  * verification failed: ensure the hostname CNAMEs to
  * switchboard.ewr.prisma.build." No fixture inside this repo can satisfy
  * that; it needs a domain the test account owns and a DNS record.
- *
- *
- * `service logs` arrived while this was being written, excluded because
- * only Composer's deploy produced a deployment to read logs from. That
- * is no longer true, so it is owed rather than excused — it needs a
- * deployment that has actually served traffic, which is a little more
- * than the fixture does today.
  */
 const AWAITING_COVERAGE: readonly string[] = [
   "service version rollback",
-  "service logs",
   "service domain add",
   "service domain show",
   "service domain delete",
