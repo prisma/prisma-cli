@@ -1,5 +1,5 @@
 import type { CommandContext } from "@prisma/cli-engine";
-import { defineSessionCommand, flag, positional } from "@prisma/cli-engine";
+import { defineSessionCommand, flag } from "@prisma/cli-engine";
 import { CliStructuredError, ok } from "@prisma/cli-engine/protocol";
 import type { AppProvider, AppRecord } from "../../lib/app/app-provider";
 import { forEachNdjsonRecord } from "../../lib/ndjson";
@@ -19,6 +19,7 @@ import {
   resolveCurrentLiveVersionId,
   resolveServiceReadState,
   resolveVersionSubject,
+  servicePositional,
 } from "./target";
 
 const TRAILING_NEWLINE = /\n$/;
@@ -387,15 +388,13 @@ export const serviceLogsCommand = defineSessionCommand({
       "service logs my-service",
       "service logs my-service --tail 500",
       "service logs my-service --follow",
+      "service logs @pr-42:shop.api",
       "service logs --version-id cpv_123 --from-start",
     ],
   },
   args: {
     positionals: {
-      service: positional.optionalString({
-        brief: "Service id or name",
-        placeholder: "service",
-      }),
+      service: servicePositional,
     },
     flags: {
       project: flag.string({

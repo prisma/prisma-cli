@@ -11,6 +11,10 @@ import { bucketKeyCreateCommand } from "../src/commands/bucket/key-create";
 import { bucketKeyDeleteCommand } from "../src/commands/bucket/key-delete";
 import { bucketKeyListCommand } from "../src/commands/bucket/key-list";
 import { bucketListCommand } from "../src/commands/bucket/list";
+import {
+  type AddressFixture,
+  addressListing,
+} from "./helpers/fake-address-api";
 
 const ACME_SESSION = {
   workspaceId: "ws_1",
@@ -973,6 +977,133 @@ describe("prisma bucket key delete", () => {
     expect(resultFrame(result.json).envelope).toMatchObject({
       ok: false,
       error: { code: "CLI.CREDENTIALS_REQUIRED" },
+    });
+  });
+});
+
+describe("bucket commands given an address", () => {
+  const ADDRESSES: AddressFixture = {
+    projects: [{ ...PROJECTS[0], logicalId: "billing" }],
+    branches: {
+      proj_1: [
+        {
+          id: "br_main",
+          gitName: "main",
+          isDefault: true,
+          role: "production",
+        },
+        { id: "br_pr42", gitName: "pr-42", isDefault: false, role: "preview" },
+      ],
+    },
+    buckets: [
+      {
+        id: "bkt_files_main",
+        name: "files",
+        projectId: "proj_1",
+        branchId: "br_main",
+        logicalId: "billing.files",
+      },
+      {
+        id: "bkt_files_pr42",
+        name: "files",
+        projectId: "proj_1",
+        branchId: "br_pr42",
+        logicalId: "billing.files",
+      },
+    ],
+  };
+
+  function addressClient(calls: Call[]) {
+    const listing = (call: Call) => ({
+      data: addressListing(ADDRESSES, call.path, call.init.params),
+    });
+    return bucketClient({
+      calls,
+      routes: {
+        "GET /v1/projects": listing,
+        "GET /v1/projects/{projectId}/branches": listing,
+        "GET /v1/buckets": listing,
+        "GET /v1/services": listing,
+        "GET /v1/databases": listing,
+      },
+    });
+  }
+
+  it("deletes the bucket the address names, with the address as the consent token", async () => {
+    const calls: Call[] = [];
+    const result = await makeCli(addressClient(calls)).run(
+      [
+        "bucket",
+        "delete",
+        "@pr-42:billing.files",
+        "--confirm",
+        "@pr-42:billing.files",
+        "--json",
+      ],
+      {},
+    );
+
+    expect(result.exitCode).toBe(0);
+    expect(
+      calls
+        .filter((call) => call.method === "DELETE")
+        .map((call) => call.init.params?.path?.bucketId),
+    ).toEqual(["bkt_files_pr42"]);
+  });
+
+  it("refuses the bucket id as consent when the subject was an address", async () => {
+    const calls: Call[] = [];
+    const result = await makeCli(addressClient(calls)).run(
+      [
+        "bucket",
+        "delete",
+        "@billing.files",
+        "--confirm",
+        "bkt_files_main",
+        "--json",
+      ],
+      {},
+    );
+
+    expect(result.exitCode).toBe(2);
+    expect(resultFrame(result.json).envelope).toMatchObject({
+      ok: false,
+      error: {
+        code: "CLI.CONSENT_REQUIRED",
+        summary: expect.stringContaining(
+          "bucket bkt_files_main in production (branch main)",
+        ),
+        meta: { consentToken: "@billing.files" },
+      },
+    });
+    expect(calls.some((call) => call.method === "DELETE")).toBe(false);
+  });
+
+  it("lists the keys of the default branch's bucket for an address with no environment", async () => {
+    const calls: Call[] = [];
+    const result = await makeCli(addressClient(calls)).run(
+      ["bucket", "key", "list", "@billing.files", "--json"],
+      {},
+    );
+
+    expect(result.exitCode).toBe(0);
+    expect(
+      calls
+        .filter((call) => call.path === "/v1/buckets/{bucketId}/keys")
+        .map((call) => call.init.params?.path?.bucketId),
+    ).toEqual(["bkt_files_main"]);
+  });
+
+  it("reports an address nothing was deployed at as not found", async () => {
+    const result = await makeCli(addressClient([])).run(
+      ["bucket", "key", "create", "@billing.uploads", "--json"],
+      {},
+    );
+
+    expect(result.exitCode).toBe(2);
+    expect(resultFrame(result.json).envelope).toMatchObject({
+      ok: false,
+      error: { code: "ADDRESS.NOT_FOUND", meta: { expected: "bucket" } },
     });
   });
 });

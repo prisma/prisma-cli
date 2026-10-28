@@ -5,14 +5,13 @@ import {
   type Presentations,
 } from "@prisma/cli-engine";
 import { ok } from "@prisma/cli-engine/protocol";
-import { resolveDatabase } from "../../controllers/database";
 import { serializeDatabaseConnectionList } from "../../presenters/database";
 import type { DatabaseConnectionListResult } from "../../types/database";
 import {
   branchFlag,
   databasePositional,
   projectFlag,
-  resolvePostgresContext,
+  resolvePostgresDatabase,
 } from "./context";
 
 const TITLE = "Listing database connection metadata.";
@@ -86,15 +85,13 @@ export const postgresConnectionListCommand = defineCommand({
   },
   needs: { credentials: true },
   handler: async (args, ctx) => {
-    const { provider, target, projectId, projectName } =
-      await resolvePostgresContext(ctx, args.flags, "postgres connection list");
-    const database = await resolveDatabase(
-      provider,
-      target,
-      args.positionals.database,
-      args.flags.branch,
-      ctx.signal,
-    );
+    const { provider, projectId, projectName, database } =
+      await resolvePostgresDatabase(
+        ctx,
+        args.flags,
+        args.positionals.database,
+        "postgres connection list",
+      );
     const connections = await provider.listConnections(database.id, {
       signal: ctx.signal,
     });

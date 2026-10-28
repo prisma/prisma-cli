@@ -1,4 +1,4 @@
-import { defineCommand, flag, positional } from "@prisma/cli-engine";
+import { defineCommand, flag } from "@prisma/cli-engine";
 import { ok } from "@prisma/cli-engine/protocol";
 import { deployFailedError, runCommandAction } from "./errors";
 import { showPresentations } from "./presentation";
@@ -7,6 +7,7 @@ import {
   applyLiveVersionHint,
   resolveCurrentLiveVersionId,
   resolveServiceReadState,
+  servicePositional,
   sortVersionsNewestFirst,
   toServiceSummary,
 } from "./target";
@@ -33,10 +34,7 @@ export const serviceShowCommand = defineCommand({
       }),
     },
     positionals: {
-      service: positional.optionalString({
-        brief: "Service id or name",
-        placeholder: "service",
-      }),
+      service: servicePositional,
     },
   },
   needs: { credentials: true },

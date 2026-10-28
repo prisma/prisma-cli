@@ -23,13 +23,13 @@ type Runner = {
   run: (args: readonly string[], options?: RunOptions) => Promise<CliRun>;
 };
 
-function apiBaseUrl(): string {
+export function apiBaseUrl(): string {
   return (
     process.env.PRISMA_MANAGEMENT_API_URL?.trim() || "https://api.prisma.io"
   );
 }
 
-function serviceToken(): string {
+export function serviceToken(): string {
   const credentials = e2eCredentials();
   if (credentials === null) {
     throw new Error("no e2e credentials; this fixture should not have run");

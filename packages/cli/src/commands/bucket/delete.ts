@@ -6,15 +6,26 @@ import {
   type Presentations,
 } from "@prisma/cli-engine";
 import { CliStructuredError, ok } from "@prisma/cli-engine/protocol";
+import {
+  type AddressMatch,
+  describeEnvironment,
+} from "../../lib/address/address";
 import type { BucketDeleteResult } from "../../types/bucket";
 import {
   bucketPositional,
   LIST_BUCKETS_COMMAND,
+  resolveBucket,
   resolveBucketProviderOnly,
 } from "./context";
 
-const CONSENT_QUESTION =
-  "Deleting this bucket permanently removes all objects and access keys.";
+function consentQuestion(
+  bucketId: string,
+  address: AddressMatch | undefined,
+): string {
+  return address
+    ? `Deleting bucket ${bucketId} ${describeEnvironment(address)} permanently removes all objects and access keys.`
+    : "Deleting this bucket permanently removes all objects and access keys.";
+}
 
 function deletePresentations(result: BucketDeleteResult): Presentations {
   return {
@@ -37,13 +48,16 @@ export const bucketDeleteCommand = defineCommand({
   help: {
     summary: "Delete a bucket and all its access keys",
     description:
-      "Deletion is permanent: the stored objects are destroyed and every access key stops working. The exact bucket id is the consent token; pass it with --confirm to run non-interactively.",
-    examples: ["bucket delete bkt_123 --confirm bkt_123"],
+      "Deletion is permanent: the stored objects are destroyed and every access key stops working. The exact bucket id is the consent token, or the address when you pass one; pass it with --confirm to run non-interactively.",
+    examples: [
+      "bucket delete bkt_123 --confirm bkt_123",
+      "bucket delete @pr-42:shop.files --confirm @pr-42:shop.files",
+    ],
   },
   needs: { credentials: true },
   handler: async (args, ctx) => {
-    const bucketId = args.positionals.bucketId.trim();
-    if (!bucketId) {
+    const bucketRef = args.positionals.bucketId.trim();
+    if (!bucketRef) {
       throw new CliStructuredError("BUCKET.USAGE_ERROR", "Bucket id required", {
         why: "Bucket deletion needs a bucket id.",
         nextActions: [
@@ -56,8 +70,11 @@ export const bucketDeleteCommand = defineCommand({
         ],
       });
     }
+    const { id: bucketId, address } = await resolveBucket(ctx, bucketRef);
 
-    await ctx.prompt.consent(CONSENT_QUESTION, { token: bucketId });
+    await ctx.prompt.consent(consentQuestion(bucketId, address), {
+      token: address?.text ?? bucketId,
+    });
 
     await resolveBucketProviderOnly(ctx).deleteBucket(bucketId, {
       signal: ctx.signal,

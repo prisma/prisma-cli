@@ -1,4 +1,4 @@
-import { defineCommand, flag, positional } from "@prisma/cli-engine";
+import { defineCommand, flag } from "@prisma/cli-engine";
 import type { Diagnostic } from "@prisma/cli-engine/protocol";
 import { ok } from "@prisma/cli-engine/protocol";
 import {
@@ -16,6 +16,7 @@ import type { ServiceRollbackResult } from "./results";
 import {
   resolveCurrentLiveVersionId,
   resolveServiceReadState,
+  servicePositional,
   toServiceSummary,
 } from "./target";
 
@@ -47,10 +48,7 @@ export const serviceVersionRollbackCommand = defineCommand({
       }),
     },
     positionals: {
-      service: positional.optionalString({
-        brief: "Service id or name",
-        placeholder: "service",
-      }),
+      service: servicePositional,
     },
   },
   needs: { credentials: true },

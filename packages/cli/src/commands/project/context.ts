@@ -8,6 +8,7 @@ import path from "node:path";
 import type { CommandContext } from "@prisma/cli-engine";
 import type { CommandContext as ControllerCommandContext } from "../../controllers/context";
 import { listRealWorkspaceProjects } from "../../controllers/project";
+import { isAddress, resolveProjectSubject } from "../../lib/address/address";
 import {
   ensureLocalResolutionPinGitignore,
   LOCAL_RESOLUTION_PIN_RELATIVE_PATH,
@@ -70,6 +71,24 @@ export function listWorkspaceProjects(
   ctx: ProjectCommandContext,
 ): Promise<ProjectCandidate[]> {
   return listRealWorkspaceProjects(ctx.api, ctx.signal);
+}
+
+/** The Project a command's positional names, trimmed: the id or name as
+ *  typed, or the id of the Project an address names. `address` keeps the
+ *  address as typed for the consent token. Undefined when the positional
+ *  is absent or blank. */
+export async function resolveProjectPositional(
+  ctx: ProjectCommandContext,
+  positional: string | undefined,
+): Promise<{ ref: string; address: string | undefined } | undefined> {
+  const subject = positional?.trim();
+  if (!subject) {
+    return undefined;
+  }
+  return {
+    ref: await resolveProjectSubject(ctx.api, subject, ctx.signal),
+    address: isAddress(subject) ? subject : undefined,
+  };
 }
 
 /** Explicit `--project`, else the `.prisma/local.json` pin, else the

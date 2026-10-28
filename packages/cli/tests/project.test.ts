@@ -2996,3 +2996,225 @@ describe("prisma project transfer", () => {
     });
   });
 });
+
+describe("project commands given an address", () => {
+  const ADDRESSED_PROJECTS = [
+    { ...API_PROJECTS[0], logicalId: "billing" },
+    { ...API_PROJECTS[1], logicalId: null },
+  ];
+
+  function addressedClient(deleted: string[] = [], posted: string[] = []) {
+    return fakeClient({
+      get: (apiPath, init) => {
+        if (apiPath !== "/v1/projects") {
+          return undefined;
+        }
+        const logicalId = (
+          init as { params?: { query?: { logicalId?: string } } } | undefined
+        )?.params?.query?.logicalId;
+        return {
+          data: {
+            data:
+              logicalId === undefined
+                ? ADDRESSED_PROJECTS
+                : ADDRESSED_PROJECTS.filter(
+                    (project) => project.logicalId === logicalId,
+                  ),
+            pagination: { hasMore: false, nextCursor: null },
+          },
+        };
+      },
+      del: (_apiPath, init) => {
+        deleted.push(
+          (init as { params: { path: { id: string } } }).params.path.id,
+        );
+        return { data: {} };
+      },
+      post: (apiPath, init) => {
+        posted.push(
+          `${apiPath} ${(init as { params: { path: { id: string } } }).params.path.id}`,
+        );
+        return { data: { data: {} } };
+      },
+    });
+  }
+
+  it("deletes the Project the app name names, with the address as the consent token", async () => {
+    const deleted: string[] = [];
+    const result = await makeCli(addressedClient(deleted)).run(
+      ["project", "delete", "@billing", "--confirm", "@billing"],
+      { cwd: await tempCwd() },
+    );
+
+    expect(result.exitCode).toBe(0);
+    expect(result.presented?.data).toMatchObject({
+      project: { id: "proj_1", name: "Billing" },
+    });
+    expect(deleted).toEqual(["proj_1"]);
+  });
+
+  it("refuses the project id as consent when the subject was an address", async () => {
+    const deleted: string[] = [];
+    const result = await makeCli(addressedClient(deleted)).run(
+      ["project", "delete", "@billing", "--confirm", "proj_1", "--json"],
+      { cwd: await tempCwd() },
+    );
+
+    expect(result.exitCode).toBe(2);
+    expect(resultFrame(result.json).envelope).toMatchObject({
+      ok: false,
+      error: {
+        code: "CLI.CONSENT_REQUIRED",
+        meta: { consentToken: "@billing" },
+      },
+    });
+    expect(deleted).toEqual([]);
+  });
+
+  it("refuses an environment on a Project's address and deletes nothing", async () => {
+    const deleted: string[] = [];
+    const result = await makeCli(addressedClient(deleted)).run(
+      [
+        "project",
+        "delete",
+        "@pr-42:billing",
+        "--confirm",
+        "@pr-42:billing",
+        "--json",
+      ],
+      { cwd: await tempCwd() },
+    );
+
+    expect(result.exitCode).toBe(2);
+    expect(resultFrame(result.json).envelope).toMatchObject({
+      ok: false,
+      error: {
+        code: "ADDRESS.USAGE_ERROR",
+        meta: { address: "@pr-42:billing" },
+      },
+    });
+    expect(deleted).toEqual([]);
+  });
+
+  it("refuses the address of something inside the app and deletes nothing", async () => {
+    const deleted: string[] = [];
+    const result = await makeCli(addressedClient(deleted)).run(
+      [
+        "project",
+        "delete",
+        "@billing.api",
+        "--confirm",
+        "@billing.api",
+        "--json",
+      ],
+      { cwd: await tempCwd() },
+    );
+
+    expect(result.exitCode).toBe(2);
+    expect(resultFrame(result.json).envelope).toMatchObject({
+      ok: false,
+      error: { code: "ADDRESS.WRONG_KIND", meta: { expected: "project" } },
+    });
+    expect(deleted).toEqual([]);
+  });
+
+  it("names the Project in the consent question when given an address", async () => {
+    const result = await makeCli(addressedClient()).run(
+      ["project", "delete", " @billing ", "--json"],
+      { cwd: await tempCwd() },
+    );
+
+    expect(resultFrame(result.json).envelope).toMatchObject({
+      ok: false,
+      error: {
+        code: "CLI.CONSENT_REQUIRED",
+        summary: expect.stringContaining('Project "Billing" (proj_1)'),
+        meta: { consentToken: "@billing" },
+      },
+    });
+  });
+
+  it("transfers the Project an address names, with the address as the consent token", async () => {
+    const posted: string[] = [];
+    const result = await makeCli(addressedClient([], posted)).run(
+      [
+        "project",
+        "transfer",
+        "@billing",
+        "--recipient-token",
+        "tok_recipient",
+        "--confirm",
+        "@billing",
+      ],
+      { cwd: await tempCwd() },
+    );
+
+    expect(result.exitCode).toBe(0);
+    expect(posted).toEqual(["/v1/projects/{id}/transfer proj_1"]);
+  });
+
+  it("refuses an environment on a transfer's address and transfers nothing", async () => {
+    const posted: string[] = [];
+    const result = await makeCli(addressedClient([], posted)).run(
+      [
+        "project",
+        "transfer",
+        "@pr-42:billing",
+        "--recipient-token",
+        "tok_recipient",
+        "--confirm",
+        "@pr-42:billing",
+        "--json",
+      ],
+      { cwd: await tempCwd() },
+    );
+
+    expect(result.exitCode).toBe(2);
+    expect(resultFrame(result.json).envelope).toMatchObject({
+      ok: false,
+      error: { code: "ADDRESS.USAGE_ERROR" },
+    });
+    expect(posted).toEqual([]);
+  });
+
+  it("shows the Project an address names", async () => {
+    const result = await makeCli(addressedClient()).run(
+      ["project", "show", "@billing", "--json"],
+      { cwd: await tempCwd() },
+    );
+
+    expect(result.exitCode).toBe(0);
+    expect(resultFrame(result.json).envelope).toMatchObject({
+      ok: true,
+      result: { project: { id: "proj_1", name: "Billing" } },
+    });
+  });
+
+  it("links this directory to the Project an address names", async () => {
+    const cwd = await tempCwd();
+    const result = await makeCli(addressedClient()).run(
+      ["project", "link", "@billing"],
+      { cwd },
+    );
+
+    expect(result.exitCode).toBe(0);
+    expect(
+      JSON.parse(
+        await readFile(path.join(cwd, ".prisma", "local.json"), "utf8"),
+      ),
+    ).toMatchObject({ projectId: "proj_1" });
+  });
+
+  it("reports an app no Project was deployed for as not found", async () => {
+    const result = await makeCli(addressedClient()).run(
+      ["project", "show", "@storefront", "--json"],
+      { cwd: await tempCwd() },
+    );
+
+    expect(result.exitCode).toBe(2);
+    expect(resultFrame(result.json).envelope).toMatchObject({
+      ok: false,
+      error: { code: "ADDRESS.NOT_FOUND", meta: { app: "storefront" } },
+    });
+  });
+});

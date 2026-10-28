@@ -38,11 +38,18 @@ import {
   listWorkspaceProjects,
   operationContext,
   type ProjectCommandContext,
+  resolveProjectPositional,
 } from "./context";
 import { localPinDiagnostics } from "./presentation";
 
-const CONSENT_QUESTION =
-  "Transferring moves the project to another workspace and this workspace loses access, so it requires the exact project id.";
+function consentQuestion(
+  project: { id: string; name: string },
+  address: string | undefined,
+): string {
+  return address
+    ? `Transferring moves Project "${project.name}" (${project.id}) to another workspace and this workspace loses access, so it requires the exact project address.`
+    : "Transferring moves the project to another workspace and this workspace loses access, so it requires the exact project id.";
+}
 
 /** This CLI's command strings are `${CLI_NAME} …`; the legacy package-runner
  *  formatter does not port. */
@@ -174,7 +181,8 @@ export const projectTransferCommand = defineCommand({
   args: {
     positionals: {
       project: positional.string({
-        brief: "Project id or name",
+        brief:
+          "Project id or name, or its address: @ and the app name, such as @shop",
         placeholder: "id-or-name",
       }),
     },
@@ -192,10 +200,9 @@ export const projectTransferCommand = defineCommand({
     },
   },
   help: {
-    summary:
-      "Transfer a Project to another workspace after exact id confirmation",
+    summary: "Transfer a Project to another workspace after exact confirmation",
     description:
-      "Moves a project, with everything in it, out of the current workspace. Name the receiving workspace with --to-workspace when you are logged in to it too, or pass --recipient-token when someone else owns it. The exact project id is the consent token.",
+      "Moves a project, with everything in it, out of the current workspace. Name the receiving workspace with --to-workspace when you are logged in to it too, or pass --recipient-token when someone else owns it. The exact project id is the consent token, or the address when you pass one.",
     examples: [
       'project transfer proj_123 --to-workspace "Prisma Labs" --confirm proj_123',
       "project transfer proj_123 --recipient-token <token> --confirm proj_123",
@@ -240,15 +247,17 @@ export const projectTransferCommand = defineCommand({
     }
 
     const projects = await listWorkspaceProjects(ctx);
+    const subject = await resolveProjectPositional(
+      ctx,
+      args.positionals.project,
+    );
     const project = toProjectSummary(
-      resolveProjectForSetup(
-        args.positionals.project.trim(),
-        projects,
-        workspace,
-      ),
+      resolveProjectForSetup(subject?.ref ?? "", projects, workspace),
     );
 
-    await ctx.prompt.consent(CONSENT_QUESTION, { token: project.id });
+    await ctx.prompt.consent(consentQuestion(project, subject?.address), {
+      token: subject?.address ?? project.id,
+    });
 
     const recipient = await resolveRecipient(ctx, {
       toWorkspace,

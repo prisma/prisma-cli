@@ -6,17 +6,26 @@ import {
   type Presentations,
 } from "@prisma/cli-engine";
 import { ok } from "@prisma/cli-engine/protocol";
-import { resolveDatabase } from "../../controllers/database";
+import {
+  type AddressMatch,
+  describeEnvironment,
+} from "../../lib/address/address";
 import type { DatabaseDeleteResult } from "../../types/database";
 import {
   branchFlag,
   databasePositional,
   projectFlag,
-  resolvePostgresContext,
+  resolvePostgresDatabase,
 } from "./context";
 
-const CONSENT_QUESTION =
-  "Deleting this database is destructive and requires the exact id.";
+function consentQuestion(
+  databaseId: string,
+  address: AddressMatch | undefined,
+): string {
+  return address
+    ? `Deleting database ${databaseId} ${describeEnvironment(address)} is destructive and requires the exact address.`
+    : "Deleting this database is destructive and requires the exact id.";
+}
 
 function deletePresentations(result: DatabaseDeleteResult): Presentations {
   return {
@@ -47,24 +56,27 @@ export const postgresDeleteCommand = defineCommand({
     flags: { project: projectFlag, branch: branchFlag },
   },
   help: {
-    summary: "Delete a database after exact id confirmation",
+    summary: "Delete a database after exact confirmation",
     description:
-      "Deletion is permanent and destroys the data. The exact database id is the consent token; pass it with --confirm to run non-interactively.",
-    examples: ["postgres delete db_123 --confirm db_123"],
+      "Deletion is permanent and destroys the data. The exact database id is the consent token, or the address when you pass one; pass it with --confirm to run non-interactively.",
+    examples: [
+      "postgres delete db_123 --confirm db_123",
+      "postgres delete @pr-42:shop.db --confirm @pr-42:shop.db",
+    ],
   },
   needs: { credentials: true },
   handler: async (args, ctx) => {
-    const { provider, target, projectId, projectName } =
-      await resolvePostgresContext(ctx, args.flags, "postgres delete");
-    const database = await resolveDatabase(
-      provider,
-      target,
-      args.positionals.database,
-      args.flags.branch,
-      ctx.signal,
-    );
+    const { provider, projectId, projectName, database, address } =
+      await resolvePostgresDatabase(
+        ctx,
+        args.flags,
+        args.positionals.database,
+        "postgres delete",
+      );
 
-    await ctx.prompt.consent(CONSENT_QUESTION, { token: database.id });
+    await ctx.prompt.consent(consentQuestion(database.id, address), {
+      token: address?.text ?? database.id,
+    });
 
     await provider.removeDatabase(database.id, { signal: ctx.signal });
 

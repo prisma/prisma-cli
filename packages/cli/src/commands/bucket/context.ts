@@ -2,6 +2,10 @@
 import { type CommandContext, flag, positional } from "@prisma/cli-engine";
 import { CLI_NAME } from "../../cli-name";
 import {
+  type AddressMatch,
+  resolveBranchScopedSubject,
+} from "../../lib/address/address";
+import {
   type BucketProvider,
   createManagementBucketProvider,
 } from "../../lib/bucket/provider";
@@ -25,7 +29,8 @@ export const branchFlag = flag.string({
 });
 
 export const bucketPositional = positional.string({
-  brief: "Bucket id",
+  brief:
+    "Bucket id, or its address: @shop.files (production) or @pr-42:shop.files (environment pr-42)",
   placeholder: "bucket-id",
 });
 
@@ -65,4 +70,20 @@ export function resolveBucketProviderOnly(
   ctx: BucketCommandContext,
 ): BucketProvider {
   return createManagementBucketProvider(ctx.api);
+}
+
+/** The bucket the subject names: the id as typed, or the bucket an
+ *  address names. Bucket ids are globally unique, so the Project and
+ *  Branch an address names are not needed past the lookup. */
+export async function resolveBucket(
+  ctx: BucketCommandContext,
+  bucketRef: string,
+): Promise<{ id: string; address: AddressMatch | undefined }> {
+  const subject = await resolveBranchScopedSubject(
+    ctx.api,
+    "bucket",
+    bucketRef,
+    ctx.signal,
+  );
+  return { id: subject.ref, address: subject.match };
 }

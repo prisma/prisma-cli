@@ -14,7 +14,11 @@ import {
 import { fieldLines } from "../../output/data-lines";
 import type { ProjectShowResult } from "../../types/project";
 import { resolveActiveWorkspace } from "../resources-shared/workspace";
-import { listWorkspaceProjects, operationContext } from "./context";
+import {
+  listWorkspaceProjects,
+  operationContext,
+  resolveProjectPositional,
+} from "./context";
 
 interface FieldRow {
   readonly label: string;
@@ -112,7 +116,7 @@ export const projectShowCommand = defineCommand({
     positionals: {
       project: positional.optionalString({
         brief:
-          "Project id or name (default: the project this directory is linked to)",
+          "Project id or name, or its address: @ and the app name, such as @shop (default: the project this directory is linked to)",
         placeholder: "id-or-name",
       }),
     },
@@ -121,7 +125,11 @@ export const projectShowCommand = defineCommand({
     summary: "Show which Project this directory is linked to",
     description:
       "Reports which Project this directory is linked to, or that it is not linked, with next steps. Pass an id or name to inspect any project without changing the local link.",
-    examples: ["project show", "project show proj_123 --json"],
+    examples: [
+      "project show",
+      "project show proj_123 --json",
+      "project show @shop",
+    ],
   },
   needs: { credentials: true },
   handler: async (args, ctx) => {
@@ -129,7 +137,9 @@ export const projectShowCommand = defineCommand({
     const inspected = await inspectProjectBinding({
       context: operationContext(ctx),
       workspace,
-      explicitProject: args.positionals.project,
+      explicitProject: (
+        await resolveProjectPositional(ctx, args.positionals.project)
+      )?.ref,
       listProjects: () => listWorkspaceProjects(ctx),
       commandName: "project show",
     });

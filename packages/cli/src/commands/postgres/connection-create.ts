@@ -1,16 +1,13 @@
 /** The `postgres connection create` command. */
 import { defineCommand, flag } from "@prisma/cli-engine";
 import { ok } from "@prisma/cli-engine/protocol";
-import {
-  defaultConnectionName,
-  resolveDatabase,
-} from "../../controllers/database";
+import { defaultConnectionName } from "../../controllers/database";
 import type { DatabaseConnectionCreateResult } from "../../types/database";
 import {
   branchFlag,
   databasePositional,
   projectFlag,
-  resolvePostgresContext,
+  resolvePostgresDatabase,
 } from "./context";
 import { postgresTargetLabel, secretBlocks } from "./presentation";
 
@@ -39,19 +36,13 @@ export const postgresConnectionCreateCommand = defineCommand({
   },
   needs: { credentials: true },
   handler: async (args, ctx) => {
-    const { provider, target, projectId, projectName } =
-      await resolvePostgresContext(
+    const { provider, projectId, projectName, database } =
+      await resolvePostgresDatabase(
         ctx,
         args.flags,
+        args.positionals.database,
         "postgres connection create",
       );
-    const database = await resolveDatabase(
-      provider,
-      target,
-      args.positionals.database,
-      args.flags.branch,
-      ctx.signal,
-    );
     const created = await provider.createConnection({
       databaseId: database.id,
       name: args.flags.name?.trim() || defaultConnectionName(),

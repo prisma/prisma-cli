@@ -22,6 +22,7 @@ import {
   bindDirectoryToProject,
   listWorkspaceProjects,
   type ProjectCommandContext,
+  resolveProjectPositional,
 } from "./context";
 import { setupPresentations } from "./presentation";
 
@@ -158,7 +159,7 @@ async function linkDirectoryToProject(
 ): Promise<ProjectSetupResult> {
   const workspace = await resolveActiveWorkspace(ctx);
   const projects = await listWorkspaceProjects(ctx);
-  const ref = projectRef?.trim();
+  const ref = (await resolveProjectPositional(ctx, projectRef))?.ref;
 
   return ref
     ? await bindDirectoryToProject(
@@ -174,7 +175,8 @@ export const projectLinkCommand = defineCommand({
   args: {
     positionals: {
       project: positional.optionalString({
-        brief: "Project id or name",
+        brief:
+          "Project id or name, or its address: @ and the app name, such as @shop",
         placeholder: "id-or-name",
       }),
     },
