@@ -300,10 +300,11 @@ A database outside any project comes from the separate
 [`create-db` tool](https://www.prisma.io/docs/postgres/npx-create-db):
 `npx create-db@latest` needs no account and prints a connection string and a
 claim URL. The database is deleted after 24 hours unless claimed; claiming it
-with a Prisma account keeps it for free. Use it when the user has no Prisma
-account or project yet. When the project is on the platform, create the
-database in the project with the `postgres` group, or declare it in the
-module, instead.
+with a Prisma account keeps it for free. Give the user the claim URL itself
+and the deletion time: opening that URL is the only way to keep the database.
+Use it when the user has no Prisma account or project yet. When the project
+is on the platform, create the database in the project with the `postgres`
+group, or declare it in the module, instead.
 
 ## Object storage
 
