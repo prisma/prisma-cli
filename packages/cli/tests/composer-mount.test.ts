@@ -64,6 +64,7 @@ const ONE_INSTANCE = listing([
         labels: {
           "composer.address": "gateway",
           "composer.directory": "/projects/shop",
+          "composer.environment": "dev",
         },
       },
     ],
@@ -92,6 +93,7 @@ const listDeployed: ListDeployed = async () => ({
 });
 
 const COMPOSER_PATHS = [
+  "deploy",
   "deploy list",
   "dev",
   "dev url",
@@ -177,7 +179,7 @@ describe("Composer's commands in the shell", () => {
 
     expect(result.exitCode).toBe(0);
     expect(result.stdout).toBe(
-      "service\tsvc_gateway\thttp://localhost:4001\trunning\tgateway\t/projects/shop\n",
+      "service\tsvc_gateway\thttp://localhost:4001\trunning\tgateway\t/projects/shop\tdev\n",
     );
   });
 

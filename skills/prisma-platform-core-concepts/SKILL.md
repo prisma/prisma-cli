@@ -145,10 +145,10 @@ branch is the environment, and branches come into being by deploying to them:
 1. **Push a git branch** (with the GitHub integration connected and the
    deploy workflow in the repository): the workflow builds and deploys, and
    the platform creates the branch environment on the fly.
-2. **Deploy a stage from the CLI**: `prisma deploy --stage pr-42`
+2. **Deploy an environment from the CLI**: `prisma deploy --environment pr-42`
    creates a branch named `pr-42` and deploys the identical app graph into
-   it. A stage name must be a valid git ref name; an invalid name is a hard
-   error.
+   it. An environment name must be a valid git ref name; an invalid name is
+   a hard error.
 
 A preview branch that needs a database gets a fresh, empty one, wired in as a
 branch-scoped `DATABASE_URL`. Preview work can never touch production data
@@ -209,10 +209,10 @@ Opening a pull request does not itself deploy anything; previews track
 branch pushes. A connected repository without the workflow gets branch
 bookkeeping and preview teardown from the platform, and no builds.
 
-**CLI.** `prisma deploy` deploys production directly; add `--stage <name>`
+**CLI.** `prisma deploy` deploys production directly; add `--environment <name>`
 for a preview. It deploys the entry file named by `entry` in the `composer`
 section of `prisma.config.ts`; `--entry <path>` overrides it. `prisma deploy
-list` (same `--stage`) lists each deployed node's address, kind, platform ID
+list` (same `--environment`) lists each deployed node's address, kind, platform ID
 and URL. Authenticate once with `prisma auth login`
 (interactive), or set `PRISMA_SERVICE_TOKEN` (plus `PRISMA_WORKSPACE_ID`
 when the token can see more than one workspace) for CI and other headless
@@ -372,7 +372,7 @@ own work:
    shows every local instance on the machine.
 4. Deploying is the same pipeline pointed at the platform: switching from
    local to hosted is a configuration change, not a code change. Reach for
-   `prisma deploy --stage <name>` only when you need a shareable URL or
+   `prisma deploy --environment <name>` only when you need a shareable URL or
    platform behaviour (sleeping, real DNS, production-like config).
 5. For pure frontend iteration the framework's own dev server also works;
    the Composer local stack is what mirrors the deployed wiring.
@@ -397,8 +397,8 @@ Windows is not supported for the local stack yet.
 6. **Production shows a stale value after an environment-variable change.**
    Variables are resolved at deploy time. Re-deploy (or promote) so the new
    value is picked up.
-7. **A stage name is rejected.** Stage names must be valid git ref names;
-   rename it.
+7. **An environment name is rejected.** Environment names must be valid git
+   ref names; rename it.
 8. **A resource disappeared from the platform after a deploy.** It was
    removed from `module.ts`; the module is the source of truth and deploy
    converges to it. Restore the declaration and re-deploy.
@@ -422,9 +422,9 @@ Windows is not supported for the local stack yet.
 Name the gap instead of inventing an API:
 
 1. **No branch create or delete from the CLI.** The `branch` group only
-   lists. Branches are created by pushing or by deploying a stage, and
-   removed by deleting the upstream git branch; there is no CLI teardown
-   verb for a stage yet.
+   lists. Branches are created by pushing or by deploying an environment,
+   and removed by deleting the upstream git branch; there is no CLI teardown
+   verb for an environment yet.
 2. **No build retry.** A failed build is finished; the retry is the next
    push or the next deploy.
 3. **No reading environment-variable values back**, anywhere. This is a
