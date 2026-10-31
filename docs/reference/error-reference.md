@@ -19,6 +19,7 @@ Namespaces:
 | `BRANCH` | Branch listing (`prisma branch`) |
 | `BUCKET` | Bucket and bucket-key management (`prisma bucket`) |
 | `CLI` | Engine-level invocation: arguments, config loading, prompts, consent, credentials, child processes |
+| `DEPLOY` | Deploying and destroying a Composer app (`prisma deploy`, and the `deploy` and `destroy` operations of `@prisma/composer/control`) |
 | `DEV` | Running an app on this machine with Composer (`prisma dev`, `prisma dev url`, `prisma dev stop`, `prisma emulator list`) |
 | `FEEDBACK` | Sending product feedback (`prisma feedback`) |
 | `GIT` | Git repository connections (`prisma git`) |
@@ -245,6 +246,66 @@ The `prisma telemetry status|enable|disable` commands could not resolve the user
 ### CLI.UNKNOWN_COMMAND
 
 The typed path routed to no command (stricli's route failure, mapped at the adapter boundary) and no redirect claims it; next actions carry up to three "did you mean" suggestions ranked by edit distance over command paths and their prefixes, plus a pointer to `--help`. Exits 2. Meta: none.
+
+## DEPLOY
+
+These codes come from Composer, the command family behind `prisma deploy` and the `deploy` and `destroy` operations of `@prisma/composer/control`. The pipeline both actions share loads the config and app, assembles each service, connects to the deploy target, runs each extension's preflight (on the Prisma Cloud target, the environment-variable check), and hands the generated stack program to the deploy engine (alchemy).
+
+### DEPLOY.ALCHEMY_BIN_MISSING
+
+Composer starts the deploy engine from the `alchemy` package installed beside `@prisma/composer`, and no runnable engine entry could be resolved from the app's installed dependencies. Layouts without a `node_modules` directory, such as Yarn Plug'n'Play, are not supported. The fix is to reinstall dependencies so `@prisma/composer` and its `alchemy` dependency sit in a `node_modules` directory. Meta: none.
+
+### DEPLOY.BUILD_REQUIRED
+
+Assembling a service failed during a destroy. Destroy evaluates the same stack program as deploy, which packages the built artifacts, so an app must be built before it can be torn down. The fix is to run the build, then retry the destroy. The underlying assemble error rides as the cause.
+
+### DEPLOY.CONTAINER_FAILED
+
+Preparing the deploy target's container failed: ensuring it exists on a deploy, or locating it on a destroy. The underlying error rides as the cause.
+
+### DEPLOY.CONTAINER_REMOVE_FAILED
+
+Removing the deploy target's container at the end of a destroy failed. The underlying error rides as the cause.
+
+### DEPLOY.ENGINE_FAILED
+
+The deploy engine run failed: it could not be spawned, was interrupted by a signal, or exited non-zero. The message carries the engine's own error lines (credentials redacted). `meta.diagnostics` carries the exit code or signal, the path of the generated stack file (`.prisma-composer/alchemy.run.ts`), and a reproduce command that runs the engine directly against that file — running it separates "the framework computed the wrong thing" from "the engine or platform rejected the right thing". Meta: `diagnostics` (`exitCode` or `signal`, `stackFilePath`, `reproduceCommand`, `cwd`), and `signal` when interrupted.
+
+### DEPLOY.NODE_MISSING
+
+Composer starts the deploy engine with Node, and no `node` was found on PATH. The fix is to install Node.js 22.18 or newer on the 22 line, 24.11 or newer on the 24 line, or 26 or newer, and put it on PATH, or to run `prisma` under Node. Meta: none.
+
+### DEPLOY.PREFLIGHT_FAILED
+
+An extension's preflight step failed before the engine ran, or the preflight results could not be composed into the engine's environment. On the Prisma Cloud target the preflight is the environment-variable check against the connected project and branch, so this is the code behind a failed `check environment variables` step. The underlying error's message rides in the envelope.
+
+### DEPLOY.SCOPE_MISSING
+
+The configured deploy target supplied no deploy scope (its container defines no stage for the engine to run under). On a deploy the fix is to pass `--stage <name>` to choose the deploy scope explicitly; destroying production needs a target whose container supplies the production deploy scope. Meta: none.
+
+### DEPLOY.STACK_WRITE_FAILED
+
+Writing the generated stack module at `.prisma-composer/alchemy.run.ts` failed. The file is regenerated on every run, so the fix is usually to resolve the filesystem problem (permissions, disk space) and retry. The underlying error rides as the cause.
+
+### DEPLOY.STAGE_INVALID
+
+`--stage` was given a value that is not a valid git ref name (`git check-ref-format` rejected `refs/heads/<stage>`). The fix is to pass a stage name that is a valid git ref name. Meta: none.
+
+### DEPLOY.STAGE_UNVALIDATABLE
+
+`git` is required to validate `--stage` (via `git check-ref-format`) and running it failed, for example because git is not installed. The fix is to install git or make it runnable from PATH. The underlying error rides as the cause.
+
+### DEPLOY.TARGET_NOT_FOUND
+
+A destroy named an app (and optionally a stage) for which nothing is deployed, so the deploy target's container could not be located. Destroy never creates anything, so the fix is to deploy it first — or to pass the stage that actually exists. Meta: none.
+
+### DEPLOY.TEARDOWN_FAILED
+
+An extension's teardown step failed during a destroy. The underlying error rides as the cause.
+
+### DEPLOY.UNEXPECTED
+
+Not raised as an envelope of its own: the code recorded in the deploy report when the pipeline threw a non-structured error. A run that ends with this code is a bug in Composer rather than an expected failure; the original error is rethrown with its own message.
 
 ## DEV
 
