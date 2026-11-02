@@ -18,19 +18,71 @@ import type { PackageManagerId, PackageManagerRunner } from "./package-manager";
 import type { PresentedResult } from "./presentation";
 import type { RunSummary } from "./run-summary";
 import type { Host, Runtime } from "./runtime";
-import type { ChildResult, SpawnChild, SpawnRequest } from "./spawn";
+import type {
+  ChildOutputStream,
+  ChildResult,
+  SpawnChild,
+  SpawnRequest,
+} from "./spawn";
 import type { TelemetryPayload } from "./telemetry/payload";
 import type { TelemetryDeclaration } from "./telemetry/report";
 
 /**
  * What a scripted fake child does. `nextKill` resolves with each signal
  * the engine delivers, so a script can model a child that ignores
- * SIGTERM and only dies on SIGKILL.
+ * SIGTERM and only dies on SIGKILL. `write` emits output on a piped
+ * request (`output: "pipe"`) and is ignored otherwise; both streams end
+ * when the program returns.
  */
 export type ScriptedChildProgram = (
   request: SpawnRequest,
-  child: { readonly nextKill: () => Promise<"SIGTERM" | "SIGKILL"> },
+  child: {
+    readonly nextKill: () => Promise<"SIGTERM" | "SIGKILL">;
+    readonly write: (stream: ChildOutputStream, chunk: string) => void;
+  },
 ) => ChildResult | Promise<ChildResult>;
+
+interface ScriptedStream extends AsyncIterable<string> {
+  push(chunk: string): void;
+  end(): void;
+}
+
+function scriptedStream(): ScriptedStream {
+  const chunks: string[] = [];
+  let ended = false;
+  let wake: (() => void) | undefined;
+  const notify = () => {
+    const waiting = wake;
+    wake = undefined;
+    waiting?.();
+  };
+  return {
+    push: (chunk) => {
+      chunks.push(chunk);
+      notify();
+    },
+    end: () => {
+      ended = true;
+      notify();
+    },
+    [Symbol.asyncIterator]: () => {
+      const next = async (): Promise<IteratorResult<string>> => {
+        const chunk = chunks.shift();
+        if (chunk !== undefined) {
+          return { value: chunk, done: false };
+        }
+        if (ended) {
+          return { value: undefined, done: true };
+        }
+        await new Promise<void>((resolve) => {
+          wake = resolve;
+        });
+        return next();
+      };
+      return { next };
+    },
+  };
+}
 
 /** One ctx.spawn call, as the harness saw it. */
 export interface SpawnRecord {
@@ -53,19 +105,33 @@ function scriptedSpawn(program: ScriptedChildProgram): SpawnChild {
   return (request) => {
     const delivered: ("SIGTERM" | "SIGKILL")[] = [];
     const waiting: Array<(signal: "SIGTERM" | "SIGKILL") => void> = [];
+    const piped =
+      request.output === "pipe"
+        ? { stdout: scriptedStream(), stderr: scriptedStream() }
+        : undefined;
     return {
-      ended: (async () =>
-        program(request, {
-          nextKill: async () => {
-            const queued = delivered.shift();
-            return (
-              queued ??
-              (await new Promise<"SIGTERM" | "SIGKILL">((resolve) => {
-                waiting.push(resolve);
-              }))
-            );
-          },
-        }))(),
+      ended: (async () => {
+        try {
+          return await program(request, {
+            nextKill: async () => {
+              const queued = delivered.shift();
+              return (
+                queued ??
+                (await new Promise<"SIGTERM" | "SIGKILL">((resolve) => {
+                  waiting.push(resolve);
+                }))
+              );
+            },
+            write: (stream, chunk) => {
+              piped?.[stream].push(chunk);
+            },
+          });
+        } finally {
+          piped?.stdout.end();
+          piped?.stderr.end();
+        }
+      })(),
+      ...piped,
       kill: (signal) => {
         const waiter = waiting.shift();
         if (waiter === undefined) {
@@ -99,6 +165,8 @@ function recordingSpawn(
         record.kills.push(signal);
         child.kill(signal);
       },
+      stdout: child.stdout,
+      stderr: child.stderr,
     };
   };
 }

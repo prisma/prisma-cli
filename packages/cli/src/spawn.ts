@@ -27,8 +27,9 @@ export interface SpawnChildOptions {
 /**
  * The engine's spawn seam, adapted through cross-spawn. Human mode
  * inherits stdio; structured mode pipes both child output streams to
- * diagnostics. Neither mode detaches or opens a new console, so the child
- * stays in this process's group (POSIX) or console (Windows).
+ * diagnostics; pipe mode hands both to the engine. No mode detaches or
+ * opens a new console, so the child stays in this process's group
+ * (POSIX) or console (Windows).
  *
  * The child's own status settles the run: `ended` resolves from the
  * process `exit` event, waits for the diagnostic relay only up to the
@@ -45,7 +46,8 @@ export function makeSpawnChild(
     const child = spawn(request.command, [...request.args], {
       cwd: request.cwd,
       env: request.env,
-      stdio: structured ? ["inherit", "pipe", "pipe"] : "inherit",
+      stdio:
+        request.output === "inherit" ? "inherit" : ["inherit", "pipe", "pipe"],
     });
     const processEnded = new Promise<ChildResult>((resolve, reject) => {
       child.on("error", reject);
@@ -53,6 +55,33 @@ export function makeSpawnChild(
         resolve({ exitCode, signal });
       });
     });
+    const kill = (signal: "SIGTERM" | "SIGKILL") => {
+      child.kill(signal);
+    };
+    if (request.output === "pipe") {
+      const sources = [child.stdout, child.stderr].filter(
+        (source): source is Readable => source !== null,
+      );
+      const closed = Promise.all(
+        sources.map((source) => {
+          source.setEncoding("utf8");
+          return new Promise((resolve) => source.once("close", resolve));
+        }),
+      );
+      return {
+        ended: processEnded.then(async (result) => {
+          const drainDeadline = setTimeout(() => {
+            for (const source of sources) source.destroy();
+          }, drainGraceMs);
+          await closed;
+          clearTimeout(drainDeadline);
+          return result;
+        }),
+        kill,
+        ...(child.stdout === null ? {} : { stdout: child.stdout }),
+        ...(child.stderr === null ? {} : { stderr: child.stderr }),
+      };
+    }
     if (!structured) {
       return {
         ended: processEnded,

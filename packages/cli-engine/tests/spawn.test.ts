@@ -1808,3 +1808,269 @@ function controllableRuntime() {
     },
   };
 }
+
+type Chunk = readonly [stream: "stdout" | "stderr", chunk: string];
+
+function pipingCommand(chunks: Chunk[]) {
+  return defineCommand({
+    help: { summary: "Reads a child's output" },
+    maySpawn: true,
+    handler: async (_args, ctx) => {
+      await ctx.spawn({
+        command: "alchemy",
+        args: ["deploy"],
+        onOutput: (chunk, stream) => {
+          chunks.push([stream, chunk]);
+        },
+      });
+      return ok(exitWithChildStatus());
+    },
+  });
+}
+
+describe("piped child output", () => {
+  test("onOutput receives both streams in the order the child wrote them", async () => {
+    const chunks: Chunk[] = [];
+    const cli = createTestCli({
+      commands: { converge: pipingCommand(chunks) },
+      now: CLOCK,
+      spawnScript: async (_request, child) => {
+        child.write("stdout", "one ");
+        child.write("stdout", "two\n");
+        await new Promise((resolve) => setTimeout(resolve, 0));
+        child.write("stderr", "warn\n");
+        await new Promise((resolve) => setTimeout(resolve, 0));
+        child.write("stdout", "three\n");
+        return { exitCode: 0, signal: null };
+      },
+    });
+
+    const result = await cli.run(["converge", "--format", "human"]);
+
+    expect(result.exitCode).toBe(0);
+    expect(result.spawns[0]?.output).toBe("pipe");
+    expect(chunks).toEqual([
+      ["stdout", "one "],
+      ["stdout", "two\n"],
+      ["stderr", "warn\n"],
+      ["stdout", "three\n"],
+    ]);
+    expect(result.stdout).toBe("");
+    expect(result.stderr).toBe("");
+  });
+
+  test("json mode pipes too, and keeps stdout framed", async () => {
+    const chunks: Chunk[] = [];
+    const cli = createTestCli({
+      commands: { converge: pipingCommand(chunks) },
+      now: CLOCK,
+      spawnScript: (_request, child) => {
+        child.write("stdout", "hello");
+        return { exitCode: 0, signal: null };
+      },
+    });
+
+    const result = await cli.run(["converge", "--json"]);
+
+    expect(result.spawns[0]?.output).toBe("pipe");
+    expect(chunks).toEqual([["stdout", "hello"]]);
+    expect(result.json).toHaveLength(1);
+    expect(result.json[0]).toMatchObject({ kind: "result" });
+  });
+
+  test("ctx.spawn resolves only after the last chunk was delivered", async () => {
+    const seen: string[] = [];
+    const command = defineCommand({
+      help: { summary: "Reads a child's output" },
+      maySpawn: true,
+      handler: async (_args, ctx) => {
+        await ctx.spawn({
+          command: "alchemy",
+          onOutput: (chunk) => {
+            seen.push(chunk);
+          },
+        });
+        seen.push("resolved");
+        return ok(exitWithChildStatus());
+      },
+    });
+    const cli = createTestCli({
+      commands: { converge: command },
+      now: CLOCK,
+      spawnScript: (_request, child) => {
+        for (const chunk of ["a", "b", "c"]) {
+          child.write("stderr", chunk);
+        }
+        return { exitCode: 0, signal: null };
+      },
+    });
+
+    await cli.run(["converge"]);
+
+    expect(seen).toEqual(["a", "b", "c", "resolved"]);
+  });
+
+  test("the child's exit code still settles the run", async () => {
+    const cli = createTestCli({
+      commands: { converge: pipingCommand([]) },
+      now: CLOCK,
+      spawnScript: (_request, child) => {
+        child.write("stderr", "failed\n");
+        return { exitCode: 3, signal: null };
+      },
+    });
+
+    const result = await cli.run(["converge", "--format", "human"]);
+
+    expect(result.exitCode).toBe(3);
+  });
+
+  test("a SIGTERM delivered while piping is forwarded and the child's end settles the run", async () => {
+    const chunks: Chunk[] = [];
+    const controller = new AbortController();
+    const cli = createTestCli({
+      commands: { converge: pipingCommand(chunks) },
+      now: CLOCK,
+      spawnScript: async (_request, child) => {
+        child.write("stdout", "working\n");
+        controller.abort("SIGTERM");
+        await child.nextKill();
+        return { exitCode: null, signal: "SIGTERM" };
+      },
+    });
+
+    const result = await cli.run(["converge"], { abort: controller.signal });
+
+    expect(result.spawns[0]?.kills).toEqual(["SIGTERM"]);
+    expect(chunks).toEqual([["stdout", "working\n"]]);
+    expect(result.exitCode).toBe(143);
+  });
+
+  test("an abort runs the termination ladder on a piped child", async () => {
+    const controller = new AbortController();
+    const late = defineCommand({
+      help: { summary: "Spawns after the signal already fired" },
+      maySpawn: true,
+      handler: async (_args, ctx) => {
+        ctx.report({ kind: "status", subject: "run", status: "ready" });
+        await new Promise((resolve) => setTimeout(resolve, 0));
+        await ctx.spawn({ command: "alchemy", onOutput: () => {} });
+        return ok(exitWithChildStatus());
+      },
+    });
+    const cli = createTestCli({
+      commands: { late },
+      now: CLOCK,
+      spawnScript: async (_request, child) => {
+        child.write("stdout", "still deploying\n");
+        await child.nextKill();
+        await child.nextKill();
+        return { exitCode: null, signal: "SIGKILL" };
+      },
+    });
+
+    const result = await cli.run(["late"], {
+      abort: controller.signal,
+      onEvent: (event) => {
+        if (event.kind === "status") {
+          controller.abort();
+        }
+      },
+    });
+
+    expect(result.spawns[0]?.kills).toEqual(["SIGTERM", "SIGKILL"]);
+    expect(result.exitCode).toBe(137);
+  });
+
+  test("a throwing onOutput terminates the child and ctx.spawn rejects with its error", async () => {
+    let caught: unknown;
+    const delivered: string[] = [];
+    const command = defineCommand({
+      help: { summary: "Fails while reading a child's output" },
+      maySpawn: true,
+      handler: async (_args, ctx) => {
+        try {
+          await ctx.spawn({
+            command: "alchemy",
+            onOutput: (chunk) => {
+              delivered.push(chunk);
+              throw new Error("redaction failed");
+            },
+          });
+        } catch (cause) {
+          caught = cause;
+        }
+        return ok(exitWithChildStatus());
+      },
+    });
+    const cli = createTestCli({
+      commands: { converge: command },
+      now: CLOCK,
+      delay: (_ms, signal) => signalDone(signal),
+      spawnScript: async (_request, child) => {
+        child.write("stdout", "first");
+        child.write("stdout", "second");
+        await child.nextKill();
+        return { exitCode: null, signal: "SIGTERM" };
+      },
+    });
+
+    const result = await cli.run(["converge"]);
+
+    expect(result.spawns[0]?.kills).toEqual(["SIGTERM"]);
+    expect(delivered).toEqual(["first"]);
+    expect(caught).toBeInstanceOf(Error);
+    expect((caught as Error).message).toBe("redaction failed");
+  });
+
+  test("an adapter that returns no piped streams has its child terminated", async () => {
+    let caught: unknown;
+    const kills: string[] = [];
+    const command = defineCommand({
+      help: { summary: "Asks for piped output" },
+      maySpawn: true,
+      handler: async (_args, ctx) => {
+        try {
+          await ctx.spawn({ command: "alchemy", onOutput: () => {} });
+        } catch (cause) {
+          caught = cause;
+        }
+        return ok(exitWithChildStatus());
+      },
+    });
+    const cli = createTestCli({
+      commands: { converge: command },
+      now: CLOCK,
+      delay: (_ms, signal) => signalDone(signal),
+      spawn: () => {
+        let end: (signal: "SIGTERM" | "SIGKILL") => void = () => {};
+        return {
+          ended: new Promise((resolve) => {
+            end = (signal) => resolve({ exitCode: null, signal });
+          }),
+          kill: (signal) => {
+            kills.push(signal);
+            end(signal);
+          },
+        };
+      },
+    });
+
+    await cli.run(["converge"]);
+
+    expect(kills).toEqual(["SIGTERM"]);
+    expect((caught as Error).message).toContain(
+      "returned no piped stdout and stderr",
+    );
+  });
+
+  test("without onOutput the default handoffs are unchanged", async () => {
+    const cli = createTestCli({ commands: { converge }, now: CLOCK });
+
+    const human = await cli.run(["converge"]);
+    const json = await cli.run(["converge", "--json"]);
+
+    expect(human.spawns[0]?.output).toBe("inherit");
+    expect(json.spawns[0]?.output).toBe("diagnostic");
+  });
+});

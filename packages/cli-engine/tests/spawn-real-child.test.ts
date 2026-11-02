@@ -21,6 +21,7 @@ import { createTestCli } from "@prisma/cli-engine/testing";
 import { describe, expect, test } from "vitest";
 
 const NODE = process.execPath;
+const TICKS = /^(tick\n)+$/;
 const CHILD = fileURLToPath(new URL("./fixtures/child.mjs", import.meta.url));
 const HOST = fileURLToPath(
   new URL("./fixtures/spawn-host.mjs", import.meta.url),
@@ -45,6 +46,48 @@ const realSpawn: SpawnChild = (request) => {
     },
   };
 };
+
+/** The bin adapter's pipe mode: stdin inherited, both output streams
+ *  handed to the engine. */
+const pipingSpawn: SpawnChild = (request) => {
+  const child = spawn(request.command, [...request.args], {
+    cwd: request.cwd,
+    env: request.env,
+    stdio: ["ignore", "pipe", "pipe"],
+  });
+  child.stdout.setEncoding("utf8");
+  child.stderr.setEncoding("utf8");
+  return {
+    ended: new Promise((resolve, reject) => {
+      child.on("error", reject);
+      child.on("close", (exitCode, signal) => resolve({ exitCode, signal }));
+    }),
+    kill: (signal) => {
+      child.kill(signal);
+    },
+    stdout: child.stdout,
+    stderr: child.stderr,
+  };
+};
+
+type Chunk = readonly [stream: "stdout" | "stderr", chunk: string];
+
+function pipingCommand(chunks: Chunk[], ...childArgs: string[]) {
+  return defineCommand({
+    help: { summary: "Reads the fixture child's output" },
+    maySpawn: true,
+    handler: async (_args, ctx) => {
+      await ctx.spawn({
+        command: NODE,
+        args: [CHILD, ...childArgs],
+        onOutput: (chunk, stream) => {
+          chunks.push([stream, chunk]);
+        },
+      });
+      return ok(exitWithChildStatus());
+    },
+  });
+}
 
 function childCommand(...childArgs: string[]) {
   return defineCommand({
@@ -79,7 +122,7 @@ function termAfterReady(adapter: SpawnChild, ready: string): SpawnChild {
   return (request) => {
     const child = adapter(request);
     return {
-      ended: child.ended,
+      ...child,
       kill: (signal) => {
         if (signal === "SIGTERM") {
           waitForFile(ready, 2_000)
@@ -256,6 +299,73 @@ describe.skipIf(process.platform === "win32")(
       expect(graceAskedMs).toEqual([5000]);
       expect(result.spawns[0].kills).toEqual(["SIGTERM", "SIGKILL"]);
       expect(result.exitCode).toBe(137);
+    });
+
+    test("piped output reaches onOutput in order, and the exit code passes through", async () => {
+      const chunks: Chunk[] = [];
+      const cli = createTestCli({
+        commands: { converge: pipingCommand(chunks, "chatter", "4") },
+        spawn: pipingSpawn,
+      });
+
+      const result = await cli.run(["converge", "--format", "human"]);
+
+      expect(result.exitCode).toBe(4);
+      expect(chunks).toEqual([
+        ["stdout", "out-1\n"],
+        ["stderr", "err-1\n"],
+        ["stdout", "out-2\n"],
+      ]);
+      expect(result.stdout).toBe("");
+    });
+
+    test("a piped child that ignores SIGTERM is killed on abort, leaving no orphan", async () => {
+      const dir = scratch();
+      const pidFile = join(dir, "pid");
+      const chunks: Chunk[] = [];
+      const controller = new AbortController();
+      const watcher = defineCommand({
+        help: { summary: "Aborts while a piped child runs" },
+        maySpawn: true,
+        handler: async (_args, ctx) => {
+          ctx.report({ kind: "status", subject: "run", status: "ready" });
+          await new Promise((resolve) => setTimeout(resolve, 0));
+          await ctx.spawn({
+            command: NODE,
+            args: [CHILD, "chatter-ignore-term", pidFile],
+            onOutput: (chunk, stream) => {
+              chunks.push([stream, chunk]);
+            },
+          });
+          return ok(exitWithChildStatus());
+        },
+      });
+      const cli = createTestCli({
+        commands: { converge: watcher },
+        spawn: termAfterReady(pipingSpawn, pidFile),
+        delay: async () => {
+          await new Promise((resolve) => setTimeout(resolve, 300));
+        },
+      });
+
+      const result = await cli.run(["converge"], {
+        abort: controller.signal,
+        onEvent: (event) => {
+          if (event.kind === "status") {
+            controller.abort();
+          }
+        },
+      });
+
+      expect(result.spawns[0].kills).toEqual(["SIGTERM", "SIGKILL"]);
+      expect(result.exitCode).toBe(137);
+      expect(chunks.length).toBeGreaterThan(0);
+      expect(
+        chunks.every(
+          ([stream, chunk]) => stream === "stdout" && TICKS.test(chunk),
+        ),
+      ).toBe(true);
+      expect(alive(Number(readFileSync(pidFile, "utf8")))).toBe(false);
     });
   },
   20_000,

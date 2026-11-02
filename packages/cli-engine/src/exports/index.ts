@@ -149,6 +149,7 @@ export {
   type Runtime,
 } from "../runtime";
 export {
+  type ChildOutputStream,
   type ChildResult,
   type ChildStatusSettlement,
   type ExitWithChildStatusOptions,

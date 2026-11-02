@@ -19,9 +19,15 @@ export interface SpawnRequest {
    * NDJSON on stdout in that mode and cannot detect an adapter that
    * ignores this field — inherited child stdout would silently corrupt
    * the stream. Adapters written before this field existed must be
-   * updated. */
-  readonly output: "inherit" | "diagnostic";
+   * updated. "pipe" keeps stdin inherited and pipes stdout and stderr
+   * to this process: the adapter MUST return them as
+   * SpawnedChild.stdout and SpawnedChild.stderr, and the engine kills a
+   * child returned without them. */
+  readonly output: "inherit" | "diagnostic" | "pipe";
 }
+
+/** Which of the child's output streams a chunk came from. */
+export type ChildOutputStream = "stdout" | "stderr";
 
 /** How a child ended. A signal-killed child carries `signal` and a null
  *  `exitCode`, and is an abort rather than a failure: exitWithChildStatus
@@ -38,6 +44,13 @@ export interface SpawnedChild {
    *  launched at all; the engine phrases that as CLI.SPAWN_FAILED. */
   readonly ended: Promise<ChildResult>;
   readonly kill: (signal: "SIGTERM" | "SIGKILL") => void;
+  /** The child's piped output, decoded as UTF-8. Required when the
+   *  request's `output` is "pipe", absent otherwise. Each ends when
+   *  the child closes it; an adapter ends both no later than a grace
+   *  period after the child exits, so a grandchild holding the pipe
+   *  open cannot hold the run. */
+  readonly stdout?: AsyncIterable<string>;
+  readonly stderr?: AsyncIterable<string>;
 }
 
 /**
@@ -58,6 +71,18 @@ export interface SpawnOptions {
   /** Added to, and overriding, the invocation environment. The engine's
    *  credential variables are applied last and cannot be overridden. */
   readonly env?: Readonly<Record<string, string | undefined>>;
+  /**
+   * Receives the child's stdout and stderr instead of the terminal or
+   * the diagnostic stream, in the order each stream produced them, and
+   * the handler writes them on itself. The engine still owns the child:
+   * stdin, signals, the abort ladder and the exit status are as without
+   * it, and ctx.spawn resolves only after the last chunk was delivered.
+   * In json mode stdout carries the engine's frames, so write both
+   * streams to stderr. If it throws, the engine stops delivering,
+   * terminates the child as on abort, and ctx.spawn rejects with that
+   * error once the child has ended.
+   */
+  readonly onOutput?: (chunk: string, stream: ChildOutputStream) => void;
 }
 
 export const CHILD_STATUS: unique symbol = Symbol.for(

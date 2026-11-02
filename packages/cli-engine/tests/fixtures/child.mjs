@@ -40,6 +40,22 @@ switch (mode) {
     idle();
     writeFileSync(value, "ready");
     break;
+  case "chatter": {
+    const pause = () => new Promise((resolve) => setTimeout(resolve, 50));
+    process.stdout.write("out-1\n");
+    await pause();
+    process.stderr.write("err-1\n");
+    await pause();
+    process.stdout.write("out-2\n");
+    await pause();
+    process.exitCode = Number(value);
+    break;
+  }
+  case "chatter-ignore-term":
+    process.on("SIGTERM", () => {});
+    setInterval(() => process.stdout.write("tick\n"), 20);
+    writeFileSync(value, String(process.pid));
+    break;
   default:
     process.exit(9);
 }

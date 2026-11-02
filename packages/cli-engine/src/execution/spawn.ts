@@ -7,6 +7,7 @@ import {
 import type { EngineEvent } from "../events";
 import { CliStructuredError } from "../protocol";
 import type {
+  ChildOutputStream,
   ChildResult,
   SpawnChild,
   SpawnedChild,
@@ -138,12 +139,18 @@ async function runDelegated(
       args: options.args ?? [],
       cwd: options.cwd ?? invocation.runtime.cwd,
       env: await composeChildEnv(invocation, def, options.env),
-      output: state.format === "json" ? "diagnostic" : "inherit",
+      output: childOutput(options, state.format === "json"),
     };
     debug(
       `spawn: ${request.command} ${request.args.join(" ")} (cwd ${request.cwd})`,
     );
-    const result = await runChild(invocation, terminal, spawnChild, request);
+    const result = await runChild(
+      invocation,
+      terminal,
+      spawnChild,
+      request,
+      options.onOutput,
+    );
     debug(
       `spawn ended: exitCode=${String(result.exitCode)} signal=${String(result.signal)} recorded=[${terminal.recorded.join(",")}]`,
     );
@@ -161,6 +168,16 @@ async function runDelegated(
   }
 }
 
+function childOutput(
+  options: SpawnOptions,
+  structured: boolean,
+): SpawnRequest["output"] {
+  if (options.onOutput !== undefined) {
+    return "pipe";
+  }
+  return structured ? "diagnostic" : "inherit";
+}
+
 /** A handler that resolved or threw with its child still live: the
  *  engine ends the child on the abort ladder and waits for it, because
  *  the engine outliving the child is not negotiable. */
@@ -176,6 +193,7 @@ async function runChild(
   terminal: DelegatedTerminal,
   spawnChild: SpawnChild,
   request: SpawnRequest,
+  onOutput: SpawnOptions["onOutput"],
 ): Promise<ChildResult> {
   let child: SpawnedChild;
   try {
@@ -190,12 +208,71 @@ async function runChild(
   const ended = new AbortController();
   armTerminationLadder(invocation, terminal, child, ended.signal);
   try {
-    return recordCompletedChild(invocation, await child.ended);
-  } catch (cause) {
-    throw spawnFailedError(request.command, cause);
+    const delivery =
+      onOutput === undefined
+        ? undefined
+        : deliverOutput(terminal, child, onOutput);
+    let result: ChildResult;
+    try {
+      result = recordCompletedChild(invocation, await child.ended);
+    } catch (cause) {
+      throw spawnFailedError(request.command, cause);
+    }
+    const failure = await delivery;
+    if (failure !== undefined) {
+      throw failure.cause;
+    }
+    return result;
   } finally {
     ended.abort();
   }
+}
+
+/** Reads both piped streams into the handler's callback. A throwing
+ *  callback ends delivery and terminates the child on the abort ladder;
+ *  the failure is returned so ctx.spawn rejects with it once the child
+ *  has ended. A stream that fails on its own (the adapter destroying a
+ *  pipe a grandchild held open) just ends. */
+async function deliverOutput(
+  terminal: DelegatedTerminal,
+  child: SpawnedChild,
+  onOutput: NonNullable<SpawnOptions["onOutput"]>,
+): Promise<{ readonly cause: unknown } | undefined> {
+  if (child.stdout === undefined || child.stderr === undefined) {
+    terminal.termination.abort();
+    return {
+      cause: new Error(
+        "@prisma/cli-engine: ctx.spawn was given onOutput but the Runtime's spawn adapter returned no piped stdout and stderr",
+      ),
+    };
+  }
+  let failure: { readonly cause: unknown } | undefined;
+  const read = async (
+    source: AsyncIterable<string>,
+    stream: ChildOutputStream,
+  ): Promise<void> => {
+    try {
+      for await (const chunk of source) {
+        if (failure !== undefined) {
+          return;
+        }
+        try {
+          onOutput(chunk, stream);
+        } catch (cause) {
+          failure = { cause };
+          terminal.termination.abort();
+          return;
+        }
+      }
+    } catch {
+      return;
+    }
+  };
+  await Promise.all([
+    read(child.stdout, "stdout"),
+    read(child.stderr, "stderr"),
+  ]);
+  return failure;
 }
 
 /** The engine mints the result the handler sees and keeps it on the

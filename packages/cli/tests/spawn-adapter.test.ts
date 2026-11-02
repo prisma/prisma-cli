@@ -46,6 +46,19 @@ beforeEach(() => {
   diagnosticText = "";
 });
 
+async function readAll(
+  source: AsyncIterable<string> | undefined,
+): Promise<string> {
+  if (source === undefined) {
+    throw new Error("the adapter returned no piped stream");
+  }
+  let text = "";
+  for await (const chunk of source) {
+    text += chunk;
+  }
+  return text;
+}
+
 async function waitForFile(path: string, timeoutMs = 10_000): Promise<void> {
   const deadline = Date.now() + timeoutMs;
   while (!existsSync(path)) {
@@ -335,4 +348,59 @@ describe("the shipped spawn adapter", () => {
       ).toBe(true);
     }
   });
+
+  test("pipe mode hands both decoded streams to the engine and writes nothing itself", async () => {
+    const child = spawnChild({
+      command: NODE,
+      args: [
+        "-e",
+        "process.stdout.write(Buffer.from([0xf0, 0x9f])); setTimeout(() => { process.stdout.write(Buffer.from([0x98, 0x80])); process.stderr.write('child-err'); process.exit(5); }, 50)",
+      ],
+      cwd: process.cwd(),
+      env: process.env,
+      output: "pipe",
+    });
+
+    const [stdout, stderr, result] = await Promise.all([
+      readAll(child.stdout),
+      readAll(child.stderr),
+      child.ended,
+    ]);
+
+    expect(spawnOptionsSeen.at(-1)?.stdio).toEqual(["inherit", "pipe", "pipe"]);
+    expect(result).toEqual({ exitCode: 5, signal: null });
+    expect(stdout).toBe("😀");
+    expect(stderr).toBe("child-err");
+    expect(diagnosticText).toBe("");
+  });
+
+  test.skipIf(process.platform === "win32")(
+    "pipe mode: a grandchild holding the pipes does not block settlement past the drain grace",
+    async () => {
+      const gracedSpawn = makeSpawnChild(
+        { write: () => {} },
+        { drainGraceMs: 200 },
+      );
+      const startedAt = Date.now();
+      const child = gracedSpawn({
+        command: NODE,
+        args: [
+          "-e",
+          `require("node:child_process").spawn(process.execPath, ["-e", "setTimeout(() => {}, 10000)"], { detached: true, stdio: ["ignore", "inherit", "ignore"] }).unref();`,
+        ],
+        cwd: process.cwd(),
+        env: process.env,
+        output: "pipe",
+      });
+      const reading = Promise.all([
+        readAll(child.stdout).catch(() => ""),
+        readAll(child.stderr).catch(() => ""),
+      ]);
+
+      await expect(child.ended).resolves.toEqual({ exitCode: 0, signal: null });
+      await reading;
+      expect(Date.now() - startedAt).toBeLessThan(3_000);
+    },
+    20_000,
+  );
 });

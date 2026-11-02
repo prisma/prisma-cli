@@ -65,7 +65,9 @@ export interface CommandContext<
   /**
    * Hands the terminal to a child process and resolves when it ends.
    * The child inherits stdio and runs in this process's own group
-   * (POSIX) or console (Windows), so Ctrl-C reaches it natively.
+   * (POSIX) or console (Windows), so Ctrl-C reaches it natively. With
+   * `onOutput`, stdin is still inherited but stdout and stderr are
+   * delivered to the handler instead; everything below is unchanged.
    *
    * While a child is live the engine neither aborts nor exits on a
    * delivered signal: it records signals and replays them into its
