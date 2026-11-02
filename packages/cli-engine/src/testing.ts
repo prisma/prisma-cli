@@ -19,8 +19,8 @@ import type { PresentedResult } from "./presentation";
 import type { RunSummary } from "./run-summary";
 import type { Host, Runtime } from "./runtime";
 import type {
-  ChildOutputStream,
   ChildResult,
+  ChildStreamName,
   SpawnChild,
   SpawnRequest,
 } from "./spawn";
@@ -30,15 +30,15 @@ import type { TelemetryDeclaration } from "./telemetry/report";
 /**
  * What a scripted fake child does. `nextKill` resolves with each signal
  * the engine delivers, so a script can model a child that ignores
- * SIGTERM and only dies on SIGKILL. `write` emits output on a piped
- * request (`output: "pipe"`) and is ignored otherwise; both streams end
- * when the program returns.
+ * SIGTERM and only dies on SIGKILL. `write` emits output when the
+ * request's `output` is "engine" and is ignored otherwise; both streams
+ * end when the program returns.
  */
 export type ScriptedChildProgram = (
   request: SpawnRequest,
   child: {
     readonly nextKill: () => Promise<"SIGTERM" | "SIGKILL">;
-    readonly write: (stream: ChildOutputStream, chunk: string) => void;
+    readonly write: (stream: ChildStreamName, chunk: string) => void;
   },
 ) => ChildResult | Promise<ChildResult>;
 
@@ -106,7 +106,7 @@ function scriptedSpawn(program: ScriptedChildProgram): SpawnChild {
     const delivered: ("SIGTERM" | "SIGKILL")[] = [];
     const waiting: Array<(signal: "SIGTERM" | "SIGKILL") => void> = [];
     const piped =
-      request.output === "pipe"
+      request.output === "engine"
         ? { stdout: scriptedStream(), stderr: scriptedStream() }
         : undefined;
     return {

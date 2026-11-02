@@ -349,7 +349,7 @@ describe("the shipped spawn adapter", () => {
     }
   });
 
-  test("pipe mode hands both decoded streams to the engine and writes nothing itself", async () => {
+  test("engine mode returns both decoded streams to the engine and writes nothing itself", async () => {
     const child = spawnChild({
       command: NODE,
       args: [
@@ -358,7 +358,7 @@ describe("the shipped spawn adapter", () => {
       ],
       cwd: process.cwd(),
       env: process.env,
-      output: "pipe",
+      output: "engine",
     });
 
     const [stdout, stderr, result] = await Promise.all([
@@ -375,7 +375,7 @@ describe("the shipped spawn adapter", () => {
   });
 
   test.skipIf(process.platform === "win32")(
-    "pipe mode: a grandchild holding the pipes does not block settlement past the drain grace",
+    "engine mode: a grandchild holding the pipes does not block settlement past the drain grace",
     async () => {
       const gracedSpawn = makeSpawnChild(
         { write: () => {} },
@@ -390,7 +390,7 @@ describe("the shipped spawn adapter", () => {
         ],
         cwd: process.cwd(),
         env: process.env,
-        output: "pipe",
+        output: "engine",
       });
       const reading = Promise.all([
         readAll(child.stdout).catch(() => ""),

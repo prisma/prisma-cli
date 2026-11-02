@@ -12,6 +12,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
+  type ChildStreamName,
   defineCommand,
   exitWithChildStatus,
   type SpawnChild,
@@ -47,8 +48,9 @@ const realSpawn: SpawnChild = (request) => {
   };
 };
 
-/** The bin adapter's pipe mode: stdin inherited, both output streams
- *  handed to the engine. */
+/** Engine mode with both output streams returned to the engine. The
+ *  shipped adapter's engine mode is tested end to end in
+ *  packages/cli/tests/spawn-engine-output.test.ts. */
 const pipingSpawn: SpawnChild = (request) => {
   const child = spawn(request.command, [...request.args], {
     cwd: request.cwd,
@@ -70,23 +72,31 @@ const pipingSpawn: SpawnChild = (request) => {
   };
 };
 
-type Chunk = readonly [stream: "stdout" | "stderr", chunk: string];
+type Chunk = readonly [stream: ChildStreamName, chunk: string];
 
 function pipingCommand(chunks: Chunk[], ...childArgs: string[]) {
   return defineCommand({
-    help: { summary: "Reads the fixture child's output" },
+    help: { summary: "Transforms the fixture child's output" },
     maySpawn: true,
     handler: async (_args, ctx) => {
       await ctx.spawn({
         command: NODE,
         args: [CHILD, ...childArgs],
-        onOutput: (chunk, stream) => {
-          chunks.push([stream, chunk]);
-        },
+        transformOutput: recording(chunks),
       });
       return ok(exitWithChildStatus());
     },
   });
+}
+
+function recording(chunks: Chunk[]) {
+  return (stream: ChildStreamName) =>
+    new TransformStream<string, string>({
+      transform: (chunk, controller) => {
+        chunks.push([stream, chunk]);
+        controller.enqueue(chunk);
+      },
+    });
 }
 
 function childCommand(...childArgs: string[]) {
@@ -301,7 +311,7 @@ describe.skipIf(process.platform === "win32")(
       expect(result.exitCode).toBe(137);
     });
 
-    test("piped output reaches onOutput in order, and the exit code passes through", async () => {
+    test("transformed output keeps each stream's order, and the exit code passes through", async () => {
       const chunks: Chunk[] = [];
       const cli = createTestCli({
         commands: { converge: pipingCommand(chunks, "chatter", "4") },
@@ -316,7 +326,8 @@ describe.skipIf(process.platform === "win32")(
         ["stderr", "err-1\n"],
         ["stdout", "out-2\n"],
       ]);
-      expect(result.stdout).toBe("");
+      expect(result.stdout).toBe("out-1\nout-2\n");
+      expect(result.stderr).toBe("err-1\n");
     });
 
     test("a piped child that ignores SIGTERM is killed on abort, leaving no orphan", async () => {
@@ -333,9 +344,7 @@ describe.skipIf(process.platform === "win32")(
           await ctx.spawn({
             command: NODE,
             args: [CHILD, "chatter-ignore-term", pidFile],
-            onOutput: (chunk, stream) => {
-              chunks.push([stream, chunk]);
-            },
+            transformOutput: recording(chunks),
           });
           return ok(exitWithChildStatus());
         },

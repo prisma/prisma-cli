@@ -15,6 +15,7 @@ import {
 } from "../presentation";
 import { type Diagnostic, notOk, okVoid } from "../protocol";
 import type { LoadedConfigFile, OutputStream } from "../runtime";
+import { SPAWN_OPTION_NAMES } from "../spawn";
 import { buildManagementApiClient } from "./api-client";
 import { constructionError } from "./command-tree";
 import type { Invocation, RunState } from "./engine";
@@ -178,6 +179,7 @@ export function makeContext(
       return api;
     },
     spawn: makeSpawn(invocation, def),
+    spawnOptions: SPAWN_OPTION_NAMES,
     lastChild: () => state.lastChild,
     report: (event) => reportEvent(invocation, event),
     prompt: makePromptSurface(invocation),

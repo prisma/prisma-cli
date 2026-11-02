@@ -75,25 +75,38 @@ A statement is the command's own declared input, unlike a `--confirm` value, whi
 
 Each flag answers one question. A run that succeeds with a flag nothing consumed fails with `CLI.CONSENT_UNUSED`, so a mistyped subject or a second answer to one question is never ignored. The same holds for a `--confirm` token no consent asked for, on a command that declares statements (other commands still ignore a leftover `--confirm`; see [#339](https://github.com/prisma/prisma-cli/issues/339)). A refusal also names any given statement flag that matches none of its questions, and any `--confirm` token, so the user hears of it before answering a prompt. That check runs when the handler returns, after the command has acted. A command that asks everything in one batch passes `statements(questions, { last: true })` to get the same failure right after the questions are answered, before it does anything with them.
 
-## Reading a child's output
+## Transforming a child's output
 
-A command that declares `maySpawn` runs a child process with `ctx.spawn`. By default the child writes straight to the terminal, or, with `--json`, to stderr. To read the output instead, pass `onOutput`:
+A command that declares `maySpawn` runs a child process with `ctx.spawn`. By default the child writes straight to the terminal, or, with `--json`, to stderr. To change the text before it is written, for example to redact secrets, pass `transformOutput`:
 
 ```ts
+if (!ctx.spawnOptions?.includes("transformOutput")) {
+  throw new Error("This command needs @prisma/cli-engine 0.10.0 or later.");
+}
 const result = await ctx.spawn({
   command: "alchemy",
   args: ["deploy"],
-  onOutput: (chunk, stream) => {
-    redactor.write(stream, chunk);
-  },
+  transformOutput: (stream) => redactor(stream),
 });
-redactor.flush();
 ```
 
-`chunk` is text decoded as UTF-8, and `stream` is `"stdout"` or `"stderr"`. Chunks from one stream arrive in the order the child wrote them; there is no guaranteed order between the two streams. `ctx.spawn` resolves after the last chunk, so a command that holds text back between chunks writes the rest after the `await`. In json mode stdout carries the engine's frames, so write both streams to stderr.
+The engine calls `transformOutput` once for `"stdout"` and once for `"stderr"` before the child starts. It pipes each stream, decoded as UTF-8, through the `TransformStream` you return, and writes what comes out where the child's output would have gone without it:
 
-The engine still owns the child. Stdin stays inherited, Ctrl-C reaches the child as before, and a SIGTERM or an abort of `ctx.signal` ends it with SIGTERM, then SIGKILL after a grace period. If `onOutput` throws, the engine stops delivering, ends the child the same way, and `ctx.spawn` rejects with that error once the child has exited.
+- human and markdown format: the child's stdout to stdout, its stderr to stderr;
+- json format: both to stderr, so stdout carries only the engine's NDJSON output.
 
-A spawn adapter supports this by starting the child with stdout and stderr piped when the request's `output` is `"pipe"`, and returning both as `stdout` and `stderr` on the child. The engine ends a child whose adapter did not return both.
+Each stream keeps its own order; there is no order between the two. The engine reads the child only as fast as the terminal takes the text, so a slow reader slows the child down instead of filling memory. When a stream ends, the transform's `flush` runs and its output is written before `ctx.spawn` settles, including when the child was aborted or failed. A transform can therefore hold text back between chunks, as a redactor that matches across chunk boundaries must.
+
+When the command declares `needs: { credentials: "child" }`, the engine puts the access token in the child's `PRISMA_SERVICE_TOKEN`. The command never sees that value, so the engine replaces it with `[redacted]` itself, before your transform runs.
+
+The engine still owns the child. Stdin stays inherited, Ctrl-C reaches the child as before, and a SIGTERM or an abort of `ctx.signal` ends it with SIGTERM, then SIGKILL after a grace period. If a transform throws or errors, the engine stops reading that stream, ends the child the same way, and `ctx.spawn` rejects with that error once the child has exited. With `PRISMA_DEBUG=1`, a stream that fails, or that a grandchild keeps open after the child exits, leaves a line saying its later output was dropped.
+
+### Checking for support
+
+Hosts older than 0.10.0 ignore spawn options they do not know, so on those hosts a child would run with its output untransformed. `ctx.spawnOptions` lists the option names `ctx.spawn` accepts; it is absent on those hosts. Check it before spawning, as above. From 0.10.0 on, `ctx.spawn` refuses any option name it does not know, so a future option cannot be ignored silently.
+
+### Spawn adapters
+
+A spawn adapter supports `transformOutput` by starting the child with stdout and stderr piped when the request's `output` is `"engine"`, and returning both as `stdout` and `stderr` on the child. If the adapter returns no streams, the engine kills the child with SIGKILL at once and `ctx.spawn` rejects. An adapter written before `"engine"` existed has usually started that child with inherited output by then, so some of it can reach the terminal before the kill. This check catches a wrongly wired adapter; it does not make redaction safe with one.
 
 Part of [prisma/prisma-cli](https://github.com/prisma/prisma-cli).

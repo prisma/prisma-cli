@@ -12,6 +12,9 @@ export interface OutputStream {
    *  The engine reads it at render time rather than caching it, so a
    *  terminal resized mid-run is respected by the next thing drawn. */
   readonly columns?: number;
+  /** Resolves once the stream can take more text without buffering it
+   *  in memory. Absent means the stream never asks the writer to wait. */
+  readonly drained?: () => Promise<void>;
 }
 
 /**
@@ -155,6 +158,16 @@ export interface Host {
   readonly arch: string;
 }
 
+/** The parts of a Node writable the bin reads off process.stdout and
+ *  process.stderr. */
+export interface HostOutputStream {
+  write(text: string): unknown;
+  isTTY?: boolean;
+  writableNeedDrain?: boolean;
+  once?(event: "drain" | "error" | "close", listener: () => void): unknown;
+  off?(event: "drain" | "error" | "close", listener: () => void): unknown;
+}
+
 /**
  * The minimal process surface a bin adapts a Runtime from — Node's
  * `process` satisfies it structurally. The engine never reads it; it
@@ -168,12 +181,8 @@ export interface HostProcess {
   readonly platform: string;
   readonly arch: string;
   cwd(): string;
-  readonly stdout: { write(text: string): unknown; isTTY?: boolean };
-  readonly stderr: {
-    write(text: string): unknown;
-    isTTY?: boolean;
-    columns?: number;
-  };
+  readonly stdout: HostOutputStream;
+  readonly stderr: HostOutputStream & { columns?: number };
   readonly stdin: {
     isTTY?: boolean;
     setRawMode?(enabled: boolean): unknown;

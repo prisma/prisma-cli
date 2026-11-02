@@ -1,6 +1,7 @@
 import { fstatSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import {
+  type HostOutputStream,
   type HostProcess,
   type InputStream,
   type LoadedConfig,
@@ -146,6 +147,26 @@ export function makeStdin(proc: HostProcess): InputStream {
   };
 }
 
+/** A stream that errors or closes instead of draining resolves too,
+ *  so a writer waiting on it is never stuck. */
+function drained(stream: HostOutputStream): Promise<void> {
+  const { once, off } = stream;
+  if (stream.writableNeedDrain !== true || once === undefined) {
+    return Promise.resolve();
+  }
+  return new Promise((resolve) => {
+    const done = () => {
+      off?.call(stream, "drain", done);
+      off?.call(stream, "error", done);
+      off?.call(stream, "close", done);
+      resolve();
+    };
+    once.call(stream, "drain", done);
+    once.call(stream, "error", done);
+    once.call(stream, "close", done);
+  });
+}
+
 export async function assembleRuntime(proc: HostProcess): Promise<Runtime> {
   const stdin = makeStdin(proc);
   warnOnDeprecatedStateFileEnvVar(proc);
@@ -156,11 +177,13 @@ export async function assembleRuntime(proc: HostProcess): Promise<Runtime> {
       write: (text) => {
         proc.stdout.write(text);
       },
+      drained: () => drained(proc.stdout),
     },
     stderr: {
       write: (text) => {
         proc.stderr.write(text);
       },
+      drained: () => drained(proc.stderr),
       get columns() {
         return proc.stderr.columns;
       },

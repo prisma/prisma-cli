@@ -6,14 +6,16 @@ import {
 } from "../credential-manager";
 import type { EngineEvent } from "../events";
 import { CliStructuredError } from "../protocol";
+import type { OutputStream } from "../runtime";
 import type {
-  ChildOutputStream,
   ChildResult,
+  ChildStreamName,
   SpawnChild,
   SpawnedChild,
   SpawnOptions,
   SpawnRequest,
 } from "../spawn";
+import { SPAWN_OPTION_NAMES } from "../spawn";
 import { constructionError } from "./command-tree";
 import { makeDebugLog } from "./debug";
 import type { Invocation } from "./engine";
@@ -72,6 +74,14 @@ export function makeSpawn(
     if (!def.maySpawn) {
       throw constructionError(
         `command '${state.commandId}' called ctx.spawn without declaring maySpawn`,
+      );
+    }
+    const unknown = Object.keys(options).filter(
+      (name) => !(SPAWN_OPTION_NAMES as readonly string[]).includes(name),
+    );
+    if (unknown.length > 0) {
+      throw constructionError(
+        `command '${state.commandId}' passed ctx.spawn options it does not accept: ${unknown.join(", ")}`,
       );
     }
     if (state.delegatedTerminal !== undefined) {
@@ -134,12 +144,14 @@ async function runDelegated(
   const state = invocation.state;
   const debug = makeDebugLog(invocation.runtime);
   try {
+    const transforms = makeTransforms(options);
+    const env = await composeChildEnv(invocation, def, options.env);
     const request: SpawnRequest = {
       command: options.command,
       args: options.args ?? [],
       cwd: options.cwd ?? invocation.runtime.cwd,
-      env: await composeChildEnv(invocation, def, options.env),
-      output: childOutput(options, state.format === "json"),
+      env,
+      output: childOutput(transforms, state.format === "json"),
     };
     debug(
       `spawn: ${request.command} ${request.args.join(" ")} (cwd ${request.cwd})`,
@@ -149,7 +161,8 @@ async function runDelegated(
       terminal,
       spawnChild,
       request,
-      options.onOutput,
+      transforms,
+      injectedSecrets(def, env),
     );
     debug(
       `spawn ended: exitCode=${String(result.exitCode)} signal=${String(result.signal)} recorded=[${terminal.recorded.join(",")}]`,
@@ -168,12 +181,27 @@ async function runDelegated(
   }
 }
 
+type ChildTransforms = Readonly<
+  Record<ChildStreamName, TransformStream<string, string>>
+>;
+
+function makeTransforms(options: SpawnOptions): ChildTransforms | undefined {
+  const transformOutput = options.transformOutput;
+  if (transformOutput === undefined) {
+    return undefined;
+  }
+  return {
+    stdout: transformOutput("stdout"),
+    stderr: transformOutput("stderr"),
+  };
+}
+
 function childOutput(
-  options: SpawnOptions,
+  transforms: ChildTransforms | undefined,
   structured: boolean,
 ): SpawnRequest["output"] {
-  if (options.onOutput !== undefined) {
-    return "pipe";
+  if (transforms !== undefined) {
+    return "engine";
   }
   return structured ? "diagnostic" : "inherit";
 }
@@ -193,7 +221,8 @@ async function runChild(
   terminal: DelegatedTerminal,
   spawnChild: SpawnChild,
   request: SpawnRequest,
-  onOutput: SpawnOptions["onOutput"],
+  transforms: ChildTransforms | undefined,
+  secrets: readonly string[],
 ): Promise<ChildResult> {
   let child: SpawnedChild;
   try {
@@ -205,20 +234,28 @@ async function runChild(
   if (terminal.recorded.includes("SIGTERM") || terminal.recorded.length > 1) {
     child.kill("SIGTERM");
   }
+  if (
+    transforms !== undefined &&
+    (child.stdout === undefined || child.stderr === undefined)
+  ) {
+    return await refuseUnpipedChild(invocation, child);
+  }
   const ended = new AbortController();
   armTerminationLadder(invocation, terminal, child, ended.signal);
   try {
-    const delivery =
-      onOutput === undefined
+    const relay =
+      transforms === undefined
         ? undefined
-        : deliverOutput(terminal, child, onOutput);
+        : relayOutput(invocation, terminal, child, transforms, secrets);
     let result: ChildResult;
     try {
       result = recordCompletedChild(invocation, await child.ended);
     } catch (cause) {
+      terminal.termination.abort();
+      await relay;
       throw spawnFailedError(request.command, cause);
     }
-    const failure = await delivery;
+    const failure = await relay;
     if (failure !== undefined) {
       throw failure.cause;
     }
@@ -228,51 +265,141 @@ async function runChild(
   }
 }
 
-/** Reads both piped streams into the handler's callback. A throwing
- *  callback ends delivery and terminates the child on the abort ladder;
- *  the failure is returned so ctx.spawn rejects with it once the child
- *  has ended. A stream that fails on its own (the adapter destroying a
- *  pipe a grandchild held open) just ends. */
-async function deliverOutput(
+/** The adapter ignored output "engine", so the child is writing
+ *  wherever the adapter sent it. Nothing was promised to a child the
+ *  engine cannot read, so it gets no grace period. */
+async function refuseUnpipedChild(
+  invocation: Invocation,
+  child: SpawnedChild,
+): Promise<never> {
+  makeDebugLog(invocation.runtime)(
+    "spawn: the adapter returned no stdout and stderr for output engine; SIGKILL",
+  );
+  child.kill("SIGKILL");
+  const ended = await child.ended.catch(() => undefined);
+  if (ended !== undefined) {
+    recordCompletedChild(invocation, ended);
+  }
+  throw new Error(
+    "@prisma/cli-engine: ctx.spawn was given transformOutput but the Runtime's spawn adapter returned no piped stdout and stderr",
+  );
+}
+
+/** Pipes each child stream through its transform to the stream the
+ *  default output mode would have used. A failing transform ends the
+ *  child on the abort ladder and is returned, so ctx.spawn rejects with
+ *  it; the other stream keeps flowing until the child ends. */
+async function relayOutput(
+  invocation: Invocation,
   terminal: DelegatedTerminal,
   child: SpawnedChild,
-  onOutput: NonNullable<SpawnOptions["onOutput"]>,
+  transforms: ChildTransforms,
+  secrets: readonly string[],
 ): Promise<{ readonly cause: unknown } | undefined> {
-  if (child.stdout === undefined || child.stderr === undefined) {
-    terminal.termination.abort();
-    return {
-      cause: new Error(
-        "@prisma/cli-engine: ctx.spawn was given onOutput but the Runtime's spawn adapter returned no piped stdout and stderr",
-      ),
-    };
-  }
+  const runtime = invocation.runtime;
+  const debug = makeDebugLog(runtime);
+  const structured = invocation.state.format === "json";
   let failure: { readonly cause: unknown } | undefined;
-  const read = async (
-    source: AsyncIterable<string>,
-    stream: ChildOutputStream,
-  ): Promise<void> => {
-    try {
-      for await (const chunk of source) {
-        if (failure !== undefined) {
-          return;
-        }
-        try {
-          onOutput(chunk, stream);
-        } catch (cause) {
-          failure = { cause };
-          terminal.termination.abort();
-          return;
-        }
-      }
-    } catch {
+  const relay = async (stream: ChildStreamName): Promise<void> => {
+    const source = stream === "stdout" ? child.stdout : child.stderr;
+    if (source === undefined) {
       return;
     }
+    const destination =
+      stream === "stdout" && !structured ? runtime.stdout : runtime.stderr;
+    try {
+      await relayStream(
+        source,
+        [...secrets.map(redactingTransform), transforms[stream]],
+        destination,
+        (cause) => {
+          debug(
+            `spawn: the child's ${stream} failed, so its later output was dropped: ${errorMessage(cause)}`,
+          );
+        },
+      );
+    } catch (cause) {
+      failure ??= { cause };
+      terminal.termination.abort();
+    }
   };
-  await Promise.all([
-    read(child.stdout, "stdout"),
-    read(child.stderr, "stderr"),
-  ]);
+  await Promise.all([relay("stdout"), relay("stderr")]);
   return failure;
+}
+
+/** Reads `source` only as fast as `destination` drains, so a slow
+ *  destination makes the child block on its own writes. A source that
+ *  fails ends normally, so the transform still flushes. Rejects when
+ *  the transform or the destination fails. */
+export async function relayStream(
+  source: AsyncIterable<string>,
+  transforms: readonly TransformStream<string, string>[],
+  destination: OutputStream,
+  onSourceError: (cause: unknown) => void,
+): Promise<void> {
+  await transforms
+    .reduce(
+      (readable, transform) => readable.pipeThrough(transform),
+      ReadableStream.from(endOnError(source, onSourceError)),
+    )
+    .pipeTo(
+      new WritableStream<string>({
+        write: async (text) => {
+          destination.write(text);
+          await destination.drained?.();
+        },
+      }),
+    );
+}
+
+/** The credential the engine put in the child's environment. The
+ *  command never sees it, so only the engine can redact it. */
+function injectedSecrets(
+  def: AnyCommand,
+  env: Readonly<Record<string, string | undefined>>,
+): readonly string[] {
+  if (def.needs.credentials !== "child") {
+    return [];
+  }
+  const token = env[SERVICE_TOKEN_ENV_VAR];
+  return token === undefined || token === "" ? [] : [token];
+}
+
+/** Replaces `secret` with "[redacted]" across chunk boundaries by
+ *  holding back up to `secret.length - 1` characters until the next
+ *  chunk or the end of the stream. */
+function redactingTransform(secret: string): TransformStream<string, string> {
+  let held = "";
+  return new TransformStream<string, string>({
+    transform: (chunk, controller) => {
+      const text = (held + chunk).replaceAll(secret, "[redacted]");
+      const keep = Math.min(text.length, secret.length - 1);
+      held = text.slice(text.length - keep);
+      if (text.length > keep) {
+        controller.enqueue(text.slice(0, text.length - keep));
+      }
+    },
+    flush: (controller) => {
+      if (held !== "") {
+        controller.enqueue(held);
+      }
+    },
+  });
+}
+
+async function* endOnError(
+  source: AsyncIterable<string>,
+  onError: (cause: unknown) => void,
+): AsyncGenerator<string> {
+  try {
+    yield* source;
+  } catch (cause) {
+    onError(cause);
+  }
+}
+
+function errorMessage(cause: unknown): string {
+  return cause instanceof Error ? cause.message : String(cause);
 }
 
 /** The engine mints the result the handler sees and keeps it on the

@@ -63,11 +63,11 @@ export interface CommandContext<
   readonly api: ManagementApiClient;
 
   /**
-   * Hands the terminal to a child process and resolves when it ends.
-   * The child inherits stdio and runs in this process's own group
-   * (POSIX) or console (Windows), so Ctrl-C reaches it natively. With
-   * `onOutput`, stdin is still inherited but stdout and stderr are
-   * delivered to the handler instead; everything below is unchanged.
+   * Runs a child process and resolves when it ends. The child inherits
+   * stdin and runs in this process's own group (POSIX) or console
+   * (Windows), so Ctrl-C reaches it natively. Its stdout and stderr go
+   * where the output format sends them (see output-conventions.md),
+   * passing through `transformOutput` when the handler gives one.
    *
    * While a child is live the engine neither aborts nor exits on a
    * delivered signal: it records signals and replays them into its
@@ -86,6 +86,14 @@ export interface CommandContext<
    * failure.
    */
   readonly spawn: (options: SpawnOptions) => Promise<ChildResult>;
+
+  /**
+   * The option names ctx.spawn accepts on this host. ctx.spawn refuses
+   * any other name. Absent on hosts older than 0.10.0, which ignore
+   * options they do not know, so a command that depends on an option
+   * checks for it here before spawning.
+   */
+  readonly spawnOptions: readonly (keyof SpawnOptions)[];
 
   /**
    * How the run's most recent completed child ended, or undefined when

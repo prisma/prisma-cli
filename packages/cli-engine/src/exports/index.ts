@@ -140,6 +140,7 @@ export {
 export type { EngineCommandSnapshot, RunSummary } from "../run-summary";
 export {
   type Host,
+  type HostOutputStream,
   type HostProcess,
   type InputStream,
   type LoadedConfig,
@@ -149,9 +150,9 @@ export {
   type Runtime,
 } from "../runtime";
 export {
-  type ChildOutputStream,
   type ChildResult,
   type ChildStatusSettlement,
+  type ChildStreamName,
   type ExitWithChildStatusOptions,
   exitWithChildStatus,
   type SpawnChild,

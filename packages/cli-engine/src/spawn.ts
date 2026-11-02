@@ -19,15 +19,17 @@ export interface SpawnRequest {
    * NDJSON on stdout in that mode and cannot detect an adapter that
    * ignores this field — inherited child stdout would silently corrupt
    * the stream. Adapters written before this field existed must be
-   * updated. "pipe" keeps stdin inherited and pipes stdout and stderr
-   * to this process: the adapter MUST return them as
-   * SpawnedChild.stdout and SpawnedChild.stderr, and the engine kills a
-   * child returned without them. */
-  readonly output: "inherit" | "diagnostic" | "pipe";
+   * updated. "engine" keeps stdin inherited and pipes stdout and stderr
+   * back to the engine: the adapter MUST return them as
+   * SpawnedChild.stdout and SpawnedChild.stderr. The engine SIGKILLs a
+   * child returned without them, but an adapter that predates "engine"
+   * has already started that child with inherited output, so some of
+   * it can reach the terminal before the kill. */
+  readonly output: "inherit" | "diagnostic" | "engine";
 }
 
-/** Which of the child's output streams a chunk came from. */
-export type ChildOutputStream = "stdout" | "stderr";
+/** Names one of the child's two output streams. */
+export type ChildStreamName = "stdout" | "stderr";
 
 /** How a child ended. A signal-killed child carries `signal` and a null
  *  `exitCode`, and is an abort rather than a failure: exitWithChildStatus
@@ -45,7 +47,7 @@ export interface SpawnedChild {
   readonly ended: Promise<ChildResult>;
   readonly kill: (signal: "SIGTERM" | "SIGKILL") => void;
   /** The child's piped output, decoded as UTF-8. Required when the
-   *  request's `output` is "pipe", absent otherwise. Each ends when
+   *  request's `output` is "engine", absent otherwise. Each ends when
    *  the child closes it; an adapter ends both no later than a grace
    *  period after the child exits, so a grandchild holding the pipe
    *  open cannot hold the run. */
@@ -58,7 +60,9 @@ export interface SpawnedChild {
  * inherited stdio, in the caller's own process group (POSIX) / console
  * (Windows). In structured mode stdin remains inherited while stdout and
  * stderr are routed to the host's diagnostic stream, preserving framed
- * stdout. Neither mode detaches or opens a new console.
+ * stdout. In engine mode stdin remains inherited and both output
+ * streams are returned to the engine. No mode detaches or opens a new
+ * console.
  */
 export type SpawnChild = (request: SpawnRequest) => SpawnedChild;
 
@@ -72,18 +76,26 @@ export interface SpawnOptions {
    *  credential variables are applied last and cannot be overridden. */
   readonly env?: Readonly<Record<string, string | undefined>>;
   /**
-   * Receives the child's stdout and stderr instead of the terminal or
-   * the diagnostic stream, in the order each stream produced them, and
-   * the handler writes them on itself. The engine still owns the child:
-   * stdin, signals, the abort ladder and the exit status are as without
-   * it, and ctx.spawn resolves only after the last chunk was delivered.
-   * In json mode stdout carries the engine's frames, so write both
-   * streams to stderr. If it throws, the engine stops delivering,
-   * terminates the child as on abort, and ctx.spawn rejects with that
-   * error once the child has ended.
+   * Passes the child's output through a transform before the engine
+   * writes it. The engine calls this once per stream before the child
+   * starts, pipes that stream through the returned transform as UTF-8
+   * text, and writes the result where the child's output goes without
+   * it. The transform's `flush` runs when the stream ends, before
+   * ctx.spawn settles. If a transform throws or errors, the engine ends
+   * the child as on abort and ctx.spawn rejects with that error. The
+   * engine replaces the credential it injects into the child's
+   * environment with `[redacted]` before the transform sees the text.
+   * Hosts older than 0.10.0 ignore this option: check
+   * `ctx.spawnOptions?.includes("transformOutput")` first.
    */
-  readonly onOutput?: (chunk: string, stream: ChildOutputStream) => void;
+  readonly transformOutput?: (
+    stream: ChildStreamName,
+  ) => TransformStream<string, string>;
 }
+
+/** Every option ctx.spawn accepts; it refuses any other. */
+export const SPAWN_OPTION_NAMES: readonly (keyof SpawnOptions)[] =
+  Object.freeze(["command", "args", "cwd", "env", "transformOutput"]);
 
 export const CHILD_STATUS: unique symbol = Symbol.for(
   "@prisma/cli-engine.childStatus",

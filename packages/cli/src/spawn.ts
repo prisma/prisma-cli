@@ -1,6 +1,7 @@
+import type { ChildProcess } from "node:child_process";
 import { type Readable, Writable } from "node:stream";
 import { pipeline } from "node:stream/promises";
-import type { ChildResult, SpawnChild } from "@prisma/cli-engine";
+import type { ChildResult, SpawnChild, SpawnedChild } from "@prisma/cli-engine";
 import spawn from "cross-spawn";
 
 interface DiagnosticStream {
@@ -27,7 +28,7 @@ export interface SpawnChildOptions {
 /**
  * The engine's spawn seam, adapted through cross-spawn. Human mode
  * inherits stdio; structured mode pipes both child output streams to
- * diagnostics; pipe mode hands both to the engine. No mode detaches or
+ * diagnostics; engine mode returns both to the engine. No mode detaches or
  * opens a new console, so the child stays in this process's group
  * (POSIX) or console (Windows).
  *
@@ -58,29 +59,8 @@ export function makeSpawnChild(
     const kill = (signal: "SIGTERM" | "SIGKILL") => {
       child.kill(signal);
     };
-    if (request.output === "pipe") {
-      const sources = [child.stdout, child.stderr].filter(
-        (source): source is Readable => source !== null,
-      );
-      const closed = Promise.all(
-        sources.map((source) => {
-          source.setEncoding("utf8");
-          return new Promise((resolve) => source.once("close", resolve));
-        }),
-      );
-      return {
-        ended: processEnded.then(async (result) => {
-          const drainDeadline = setTimeout(() => {
-            for (const source of sources) source.destroy();
-          }, drainGraceMs);
-          await closed;
-          clearTimeout(drainDeadline);
-          return result;
-        }),
-        kill,
-        ...(child.stdout === null ? {} : { stdout: child.stdout }),
-        ...(child.stderr === null ? {} : { stderr: child.stderr }),
-      };
+    if (request.output === "engine") {
+      return engineReadChild(child, kill, processEnded, drainGraceMs);
     }
     if (!structured) {
       return {
@@ -109,6 +89,54 @@ export function makeSpawnChild(
         child.kill(signal);
       },
     };
+  };
+}
+
+/** The engine reads both pipes. A grandchild that inherited them can
+ *  hold them open after the child exits, so they are destroyed after
+ *  the drain grace, with an error that says why. */
+function engineReadChild(
+  child: ChildProcess,
+  kill: SpawnedChild["kill"],
+  processEnded: Promise<ChildResult>,
+  drainGraceMs: number,
+): SpawnedChild {
+  const sources = [child.stdout, child.stderr].filter(
+    (source): source is Readable => source !== null,
+  );
+  const closed = Promise.all(
+    sources.map((source) => {
+      source.setEncoding("utf8");
+      return new Promise((resolve) => source.once("close", resolve));
+    }),
+  );
+  const afterDrain = async (): Promise<void> => {
+    const drainDeadline = setTimeout(() => {
+      for (const source of sources) {
+        source.destroy(
+          new Error(
+            `the pipe was still open ${drainGraceMs}ms after the child exited, so it was closed`,
+          ),
+        );
+      }
+    }, drainGraceMs);
+    await closed;
+    clearTimeout(drainDeadline);
+  };
+  return {
+    ended: processEnded.then(
+      async (result) => {
+        await afterDrain();
+        return result;
+      },
+      async (cause: unknown) => {
+        await afterDrain();
+        throw cause;
+      },
+    ),
+    kill,
+    ...(child.stdout === null ? {} : { stdout: child.stdout }),
+    ...(child.stderr === null ? {} : { stderr: child.stderr }),
   };
 }
 
