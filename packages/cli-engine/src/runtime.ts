@@ -159,21 +159,23 @@ export interface Host {
   readonly arch: string;
 }
 
+type HostStreamEvent = "drain" | "error" | "close";
+type HostStreamListener = (cause?: unknown) => void;
+
 /** The parts of a Node writable the bin reads off process.stdout and
- *  process.stderr. */
-export interface HostOutputStream {
+ *  process.stderr. A stream that can wait for drain has both `once` and
+ *  `off`, so waiting never leaves a listener behind. */
+export type HostOutputStream = {
   write(text: string): unknown;
   isTTY?: boolean;
   writableNeedDrain?: boolean;
-  once?(
-    event: "drain" | "error" | "close",
-    listener: (cause?: unknown) => void,
-  ): unknown;
-  off?(
-    event: "drain" | "error" | "close",
-    listener: (cause?: unknown) => void,
-  ): unknown;
-}
+} & (
+  | {
+      once(event: HostStreamEvent, listener: HostStreamListener): unknown;
+      off(event: HostStreamEvent, listener: HostStreamListener): unknown;
+    }
+  | { once?: undefined; off?: undefined }
+);
 
 /**
  * The minimal process surface a bin adapts a Runtime from — Node's

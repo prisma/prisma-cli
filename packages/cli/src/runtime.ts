@@ -149,15 +149,10 @@ export function makeStdin(proc: HostProcess): InputStream {
 
 /** A stream that closes instead of draining resolves too, so a writer
  *  waiting on it is never stuck. A stream that errors rejects, so the
- *  writer stops instead of writing to a failed stream. A stream that
- *  cannot remove its listeners is never waited on. */
+ *  writer stops instead of writing to a failed stream. */
 function drained(stream: HostOutputStream): Promise<void> {
   const { once, off } = stream;
-  if (
-    stream.writableNeedDrain !== true ||
-    once === undefined ||
-    off === undefined
-  ) {
+  if (stream.writableNeedDrain !== true || once === undefined) {
     return Promise.resolve();
   }
   return new Promise((resolve, reject) => {

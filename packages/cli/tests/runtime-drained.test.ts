@@ -9,7 +9,11 @@ class HostStream extends EventEmitter {
   }
 }
 
-async function runtimeWith(stdout: HostStream) {
+function hostStreams() {
+  return { stdout: new HostStream(), stderr: new HostStream() };
+}
+
+async function runtimeWith(streams: ReturnType<typeof hostStreams>) {
   const proc: HostProcess = {
     argv: ["node", "bin.js"],
     version: "v22.18.0",
@@ -18,8 +22,8 @@ async function runtimeWith(stdout: HostStream) {
     arch: "x64",
     env: {},
     cwd: () => "/projects/acme",
-    stdout,
-    stderr: new HostStream(),
+    stdout: streams.stdout,
+    stderr: streams.stderr,
     stdin: {
       async *[Symbol.asyncIterator]() {},
     },
@@ -48,54 +52,57 @@ async function settledWithin(promise: Promise<void>, ms: number) {
 
 const LISTENED = ["drain", "error", "close"] as const;
 
-describe("runtime.stdout.drained", () => {
+describe.each(["stdout", "stderr"] as const)("runtime.%s.drained", (name) => {
   test("stays pending until the host stream emits drain, then resolves", async () => {
-    const stdout = new HostStream();
-    const runtime = await runtimeWith(stdout);
+    const streams = hostStreams();
+    const host = streams[name];
+    const runtime = await runtimeWith(streams);
 
-    const waiting = runtime.stdout.drained?.() ?? Promise.resolve();
+    const waiting = runtime[name].drained?.() ?? Promise.resolve();
 
     expect(await settledWithin(waiting, 20)).toBe(false);
-    stdout.writableNeedDrain = false;
-    stdout.emit("drain");
+    host.writableNeedDrain = false;
+    host.emit("drain");
     await expect(waiting).resolves.toBeUndefined();
     for (const event of LISTENED) {
-      expect(stdout.listenerCount(event)).toBe(0);
+      expect(host.listenerCount(event)).toBe(0);
     }
   });
 
   test("resolves when the host stream closes instead of draining", async () => {
-    const stdout = new HostStream();
-    const runtime = await runtimeWith(stdout);
+    const streams = hostStreams();
+    const host = streams[name];
+    const runtime = await runtimeWith(streams);
 
-    const waiting = runtime.stdout.drained?.() ?? Promise.resolve();
-    stdout.emit("close");
+    const waiting = runtime[name].drained?.() ?? Promise.resolve();
+    host.emit("close");
 
     await expect(waiting).resolves.toBeUndefined();
     for (const event of LISTENED) {
-      expect(stdout.listenerCount(event)).toBe(0);
+      expect(host.listenerCount(event)).toBe(0);
     }
   });
 
   test("rejects when the host stream fails", async () => {
-    const stdout = new HostStream();
-    const runtime = await runtimeWith(stdout);
+    const streams = hostStreams();
+    const host = streams[name];
+    const runtime = await runtimeWith(streams);
 
-    const waiting = runtime.stdout.drained?.() ?? Promise.resolve();
-    stdout.emit("error", new Error("EPIPE"));
+    const waiting = runtime[name].drained?.() ?? Promise.resolve();
+    host.emit("error", new Error("EPIPE"));
 
     await expect(waiting).rejects.toThrow("EPIPE");
     for (const event of LISTENED) {
-      expect(stdout.listenerCount(event)).toBe(0);
+      expect(host.listenerCount(event)).toBe(0);
     }
   });
 
   test("resolves at once when the host stream does not need to drain", async () => {
-    const stdout = new HostStream();
-    stdout.writableNeedDrain = false;
-    const runtime = await runtimeWith(stdout);
+    const streams = hostStreams();
+    streams[name].writableNeedDrain = false;
+    const runtime = await runtimeWith(streams);
 
-    await expect(runtime.stdout.drained?.()).resolves.toBeUndefined();
-    expect(stdout.listenerCount("drain")).toBe(0);
+    await expect(runtime[name].drained?.()).resolves.toBeUndefined();
+    expect(streams[name].listenerCount("drain")).toBe(0);
   });
 });
