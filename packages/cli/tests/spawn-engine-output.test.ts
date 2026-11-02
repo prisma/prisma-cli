@@ -14,7 +14,7 @@ import { describe, expect, test } from "vitest";
 import { makeSpawnChild } from "../src/spawn";
 
 const NODE = process.execPath;
-const TICKS = /^(tick\n)+$/;
+const READY_THEN_TICKS = /^ready\n(tick\n)*$/;
 
 function redacting(secret: string) {
   return (_stream: ChildStreamName) => {
@@ -109,42 +109,26 @@ describe.skipIf(process.platform === "win32")(
       expect(result.stderr).toContain("err-1\n");
     });
 
-    test("an abort ends the child, and its output written so far still arrives", async () => {
+    test("a SIGTERM ends the child, and its output written so far still arrives", async () => {
       const controller = new AbortController();
-      const command = defineCommand({
-        help: { summary: "Aborts, then runs a child" },
-        maySpawn: true,
-        handler: async (_args, ctx) => {
-          ctx.report({ kind: "status", subject: "run", status: "ready" });
-          await new Promise((resolve) => setTimeout(resolve, 0));
-          await ctx.spawn({
-            command: NODE,
-            args: [
-              "-e",
-              "setInterval(() => process.stdout.write('tick\\n'), 10)",
-            ],
-            transformOutput: redacting("hunter2"),
-          });
-          return ok(exitWithChildStatus());
-        },
-      });
-      const cli = createTestCli({
-        commands: { converge: command },
-        spawn: makeSpawnChild({ write: () => {} }, { drainGraceMs: 200 }),
-      });
+      const abortOnReady = (_stream: ChildStreamName) =>
+        new TransformStream<string, string>({
+          transform: (chunk, transformController) => {
+            transformController.enqueue(chunk);
+            if (chunk.includes("ready\n")) {
+              controller.abort("SIGTERM");
+            }
+          },
+        });
+      const script =
+        "process.stdout.write('ready\\n'); setInterval(() => process.stdout.write('tick\\n'), 10);";
+      const cli = cliFor(nodeCommand(script, abortOnReady));
 
-      const result = await cli.run(["converge"], {
-        abort: controller.signal,
-        onEvent: (event) => {
-          if (event.kind === "status") {
-            controller.abort();
-          }
-        },
-      });
+      const result = await cli.run(["converge"], { abort: controller.signal });
 
       expect(result.spawns[0]?.kills[0]).toBe("SIGTERM");
       expect(result.exitCode).toBe(143);
-      expect(result.stdout === "" || TICKS.test(result.stdout)).toBe(true);
+      expect(result.stdout).toMatch(READY_THEN_TICKS);
     });
 
     test("a throwing transform ends a child that ignores SIGTERM, and ctx.spawn rejects with its error", async () => {

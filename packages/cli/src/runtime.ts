@@ -147,23 +147,37 @@ export function makeStdin(proc: HostProcess): InputStream {
   };
 }
 
-/** A stream that errors or closes instead of draining resolves too,
- *  so a writer waiting on it is never stuck. */
+/** A stream that closes instead of draining resolves too, so a writer
+ *  waiting on it is never stuck. A stream that errors rejects, so the
+ *  writer stops instead of writing to a failed stream. A stream that
+ *  cannot remove its listeners is never waited on. */
 function drained(stream: HostOutputStream): Promise<void> {
   const { once, off } = stream;
-  if (stream.writableNeedDrain !== true || once === undefined) {
+  if (
+    stream.writableNeedDrain !== true ||
+    once === undefined ||
+    off === undefined
+  ) {
     return Promise.resolve();
   }
-  return new Promise((resolve) => {
-    const done = () => {
-      off?.call(stream, "drain", done);
-      off?.call(stream, "error", done);
-      off?.call(stream, "close", done);
-      resolve();
+  return new Promise((resolve, reject) => {
+    const settle = (outcome: () => void) => {
+      off.call(stream, "drain", onDrain);
+      off.call(stream, "error", onError);
+      off.call(stream, "close", onDrain);
+      outcome();
     };
-    once.call(stream, "drain", done);
-    once.call(stream, "error", done);
-    once.call(stream, "close", done);
+    const onDrain = () => {
+      settle(resolve);
+    };
+    const onError = (cause?: unknown) => {
+      settle(() => {
+        reject(cause instanceof Error ? cause : new Error(String(cause)));
+      });
+    };
+    once.call(stream, "drain", onDrain);
+    once.call(stream, "error", onError);
+    once.call(stream, "close", onDrain);
   });
 }
 

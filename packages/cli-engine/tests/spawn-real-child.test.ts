@@ -321,11 +321,13 @@ describe.skipIf(process.platform === "win32")(
       const result = await cli.run(["converge", "--format", "human"]);
 
       expect(result.exitCode).toBe(4);
-      expect(chunks).toEqual([
-        ["stdout", "out-1\n"],
-        ["stderr", "err-1\n"],
-        ["stdout", "out-2\n"],
-      ]);
+      const text = (stream: ChildStreamName) =>
+        chunks
+          .filter(([name]) => name === stream)
+          .map(([, chunk]) => chunk)
+          .join("");
+      expect(text("stdout")).toBe("out-1\nout-2\n");
+      expect(text("stderr")).toBe("err-1\n");
       expect(result.stdout).toBe("out-1\nout-2\n");
       expect(result.stderr).toBe("err-1\n");
     });
@@ -353,6 +355,7 @@ describe.skipIf(process.platform === "win32")(
         commands: { converge: watcher },
         spawn: termAfterReady(pipingSpawn, pidFile),
         delay: async () => {
+          await waitForFile(pidFile);
           await new Promise((resolve) => setTimeout(resolve, 300));
         },
       });

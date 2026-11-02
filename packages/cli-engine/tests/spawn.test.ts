@@ -2060,6 +2060,51 @@ describe("transformed child output", () => {
     expect((caught as Error).message).toBe("redaction failed");
   });
 
+  test("a transform whose promise rejects later ends the child, and ctx.spawn rejects with its error", async () => {
+    let caught: unknown;
+    const command = defineCommand({
+      help: { summary: "Fails asynchronously while transforming" },
+      maySpawn: true,
+      handler: async (_args, ctx) => {
+        try {
+          await ctx.spawn({
+            command: "alchemy",
+            transformOutput: () =>
+              new TransformStream<string, string>({
+                transform: async (chunk, controller) => {
+                  await new Promise((resolve) => setTimeout(resolve, 0));
+                  if (chunk === "second") {
+                    throw new Error("redaction failed later");
+                  }
+                  controller.enqueue(chunk);
+                },
+              }),
+          });
+        } catch (cause) {
+          caught = cause;
+        }
+        return ok(exitWithChildStatus());
+      },
+    });
+    const cli = createTestCli({
+      commands: { converge: command },
+      now: CLOCK,
+      delay: (_ms, signal) => signalDone(signal),
+      spawnScript: async (_request, child) => {
+        child.write("stdout", "first");
+        child.write("stdout", "second");
+        await child.nextKill();
+        return { exitCode: null, signal: "SIGTERM" };
+      },
+    });
+
+    const result = await cli.run(["converge", "--format", "human"]);
+
+    expect(result.spawns[0]?.kills).toEqual(["SIGTERM"]);
+    expect(result.stdout).toBe("first");
+    expect((caught as Error).message).toBe("redaction failed later");
+  });
+
   test("a throwing transformOutput rejects ctx.spawn before any child starts", async () => {
     let caught: unknown;
     const command = defineCommand({
@@ -2424,6 +2469,31 @@ describe("relayStream", () => {
         Object.defineProperty(ReadableStream, "from", from);
       }
     }
+  });
+
+  test("rejects when the destination fails while the relay waits for it to drain", async () => {
+    const source: AsyncIterable<string> = {
+      async *[Symbol.asyncIterator]() {
+        yield "one\n";
+        yield "two\n";
+      },
+    };
+    const written: string[] = [];
+
+    await expect(
+      relayStream(
+        source,
+        [],
+        {
+          write: (text) => {
+            written.push(text);
+          },
+          drained: () => Promise.reject(new Error("EPIPE")),
+        },
+        () => {},
+      ),
+    ).rejects.toThrow("EPIPE");
+    expect(written).toEqual(["one\n"]);
   });
 
   test("never splits a surrogate pair across two writes", async () => {

@@ -13,7 +13,8 @@ export interface OutputStream {
    *  terminal resized mid-run is respected by the next thing drawn. */
   readonly columns?: number;
   /** Resolves once the stream can take more text without buffering it
-   *  in memory. Absent means the stream never asks the writer to wait. */
+   *  in memory, and rejects when the stream fails. Absent means the
+   *  stream never asks the writer to wait. */
   readonly drained?: () => Promise<void>;
 }
 
@@ -164,8 +165,14 @@ export interface HostOutputStream {
   write(text: string): unknown;
   isTTY?: boolean;
   writableNeedDrain?: boolean;
-  once?(event: "drain" | "error" | "close", listener: () => void): unknown;
-  off?(event: "drain" | "error" | "close", listener: () => void): unknown;
+  once?(
+    event: "drain" | "error" | "close",
+    listener: (cause?: unknown) => void,
+  ): unknown;
+  off?(
+    event: "drain" | "error" | "close",
+    listener: (cause?: unknown) => void,
+  ): unknown;
 }
 
 /**
