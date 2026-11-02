@@ -2395,6 +2395,37 @@ describe("relayStream", () => {
     );
   });
 
+  test("works where ReadableStream.from does not exist, as in Bun", async () => {
+    const from = Object.getOwnPropertyDescriptor(ReadableStream, "from");
+    Reflect.deleteProperty(ReadableStream, "from");
+    try {
+      const source: AsyncIterable<string> = {
+        async *[Symbol.asyncIterator]() {
+          yield "one hun";
+          yield "ter2 two\n";
+        },
+      };
+      const written: string[] = [];
+
+      await relayStream(
+        source,
+        [redacting("hunter2")()],
+        {
+          write: (text) => {
+            written.push(text);
+          },
+        },
+        () => {},
+      );
+
+      expect(written.join("")).toBe("one [redacted] two\n");
+    } finally {
+      if (from !== undefined) {
+        Object.defineProperty(ReadableStream, "from", from);
+      }
+    }
+  });
+
   test("never splits a surrogate pair across two writes", async () => {
     const source: AsyncIterable<string> = {
       async *[Symbol.asyncIterator]() {

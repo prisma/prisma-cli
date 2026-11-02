@@ -340,7 +340,7 @@ export async function relayStream(
   await [...transforms, wholeCharacters()]
     .reduce(
       (readable, transform) => readable.pipeThrough(transform),
-      ReadableStream.from(endOnError(source, onSourceError)),
+      readableFrom(endOnError(source, onSourceError)),
     )
     .pipeTo(
       new WritableStream<string>({
@@ -350,6 +350,28 @@ export async function relayStream(
         },
       }),
     );
+}
+
+/** ReadableStream.from, which Bun does not have. A high-water mark of
+ *  zero reads the source only when the pipe asks for a chunk. */
+function readableFrom(source: AsyncIterable<string>): ReadableStream<string> {
+  const chunks = source[Symbol.asyncIterator]();
+  return new ReadableStream<string>(
+    {
+      pull: async (controller) => {
+        const next = await chunks.next();
+        if (next.done === true) {
+          controller.close();
+        } else {
+          controller.enqueue(next.value);
+        }
+      },
+      cancel: async () => {
+        await chunks.return?.();
+      },
+    },
+    { highWaterMark: 0 },
+  );
 }
 
 /** The credential the engine put in the child's environment. The
