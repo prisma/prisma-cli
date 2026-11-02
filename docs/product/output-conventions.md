@@ -37,7 +37,7 @@ command:
 - in human mode, the child inherits stdin, stdout, and stderr
 - in JSON mode, stdin remains inherited while the child's stdout and stderr
   are routed to the CLI's diagnostic stderr stream
-- when the command transforms the child's output (`transformOutput`), stdin remains inherited and the engine reads the child's stdout and stderr, passes each through the command's transform, and writes the result to the same place the two cases above would have: the child's stdout to stdout and its stderr to stderr in human and markdown format, and both to stderr in JSON mode. The engine also replaces the credential it injected into the child's environment with `[redacted]`
+- when the command transforms the child's output (`transformOutput`), stdin remains inherited and the engine reads the child's stdout and stderr, passes each through the command's transform, and writes the result to the same place the two cases above would have: the child's stdout to stdout and its stderr to stderr in human and markdown format, and both to stderr in JSON mode. The engine also replaces the credential it injected into the child's environment with `[redacted]`; without `transformOutput` it does not.
 - JSON stdout remains an NDJSON event stream with exactly one terminal result
   frame
 - a non-zero child status is preserved as the process exit code and is

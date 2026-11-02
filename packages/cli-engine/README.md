@@ -80,7 +80,7 @@ Each flag answers one question. A run that succeeds with a flag nothing consumed
 A command that declares `maySpawn` runs a child process with `ctx.spawn`. By default the child writes straight to the terminal, or, with `--json`, to stderr. To change the text before it is written, for example to redact secrets, pass `transformOutput`:
 
 ```ts
-if (!ctx.spawnOptions?.includes("transformOutput")) {
+if (!ctx.spawnOptionNames?.includes("transformOutput")) {
   throw new Error("This command needs @prisma/cli-engine 0.10.0 or later.");
 }
 const result = await ctx.spawn({
@@ -95,15 +95,15 @@ The engine calls `transformOutput` once for `"stdout"` and once for `"stderr"` b
 - human and markdown format: the child's stdout to stdout, its stderr to stderr;
 - json format: both to stderr, so stdout carries only the engine's NDJSON output.
 
-Each stream keeps its own order; there is no order between the two. The engine reads the child only as fast as the terminal takes the text, so a slow reader slows the child down instead of filling memory. When a stream ends, the transform's `flush` runs and its output is written before `ctx.spawn` settles, including when the child was aborted or failed. A transform can therefore hold text back between chunks, as a redactor that matches across chunk boundaries must.
+Each stream keeps its own order; there is no order between the two. The engine reads the child only as fast as the terminal takes the text, so a slow reader slows the child down instead of filling memory. When a stream ends, the transform's `flush` runs and its output is written before `ctx.spawn` settles, including when the child was aborted or failed. A transform can therefore hold text back between chunks, as a redactor that matches across chunk boundaries must. Hold back only what could still become a secret, the longest end of the text that is a start of one, and not a fixed number of characters: a child that prints a prompt with no newline and waits for input must show the prompt at once. The engine never splits a UTF-16 surrogate pair across two writes, so a transform that cuts text by length does not corrupt an emoji.
 
-When the command declares `needs: { credentials: "child" }`, the engine puts the access token in the child's `PRISMA_SERVICE_TOKEN`. The command never sees that value, so the engine replaces it with `[redacted]` itself, before your transform runs.
+When the command declares `needs: { credentials: "child" }`, the engine puts the access token in the child's `PRISMA_SERVICE_TOKEN`. The command never sees that value, so when the command passes `transformOutput`, the engine replaces the token with `[redacted]` itself, before your transform runs. Without `transformOutput` the engine does not read the child's output and does not redact the token, in any format, json included.
 
-The engine still owns the child. Stdin stays inherited, Ctrl-C reaches the child as before, and a SIGTERM or an abort of `ctx.signal` ends it with SIGTERM, then SIGKILL after a grace period. If a transform throws or errors, the engine stops reading that stream, ends the child the same way, and `ctx.spawn` rejects with that error once the child has exited. With `PRISMA_DEBUG=1`, a stream that fails, or that a grandchild keeps open after the child exits, leaves a line saying its later output was dropped.
+The engine still owns the child. Stdin stays inherited, Ctrl-C reaches the child as before, and a SIGTERM or an abort of `ctx.signal` ends it with SIGTERM, then SIGKILL after a grace period. If a transform throws or errors, the engine stops reading that stream, ends the child the same way, and `ctx.spawn` rejects with that error once the child has exited. With `PRISMA_DEBUG=1`, a stream that fails, or that a grandchild keeps open with no output after the child exits, leaves a line saying its later output was dropped. A slow reader does not cause this: the grace period counts only time the engine spends waiting for output that does not come.
 
 ### Checking for support
 
-Hosts older than 0.10.0 ignore spawn options they do not know, so on those hosts a child would run with its output untransformed. `ctx.spawnOptions` lists the option names `ctx.spawn` accepts; it is absent on those hosts. Check it before spawning, as above. From 0.10.0 on, `ctx.spawn` refuses any option name it does not know, so a future option cannot be ignored silently.
+Hosts older than 0.10.0 ignore spawn options they do not know, so on those hosts a child would run with its output untransformed. `ctx.spawnOptionNames` lists the option names `ctx.spawn` accepts; it is absent on those hosts, and its type is optional so the compiler makes you check it. Check it before spawning, as above. From 0.10.0 on, `ctx.spawn` refuses any option name it does not know, so a future option cannot be ignored silently.
 
 ### Spawn adapters
 

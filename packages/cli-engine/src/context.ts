@@ -93,7 +93,7 @@ export interface CommandContext<
    * options they do not know, so a command that depends on an option
    * checks for it here before spawning.
    */
-  readonly spawnOptions: readonly (keyof SpawnOptions)[];
+  readonly spawnOptionNames?: readonly (keyof SpawnOptions)[];
 
   /**
    * How the run's most recent completed child ended, or undefined when

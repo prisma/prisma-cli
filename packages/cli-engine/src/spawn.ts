@@ -48,9 +48,11 @@ export interface SpawnedChild {
   readonly kill: (signal: "SIGTERM" | "SIGKILL") => void;
   /** The child's piped output, decoded as UTF-8. Required when the
    *  request's `output` is "engine", absent otherwise. Each ends when
-   *  the child closes it; an adapter ends both no later than a grace
-   *  period after the child exits, so a grandchild holding the pipe
-   *  open cannot hold the run. */
+   *  the child closes it. After the child exits, an adapter ends a
+   *  stream that the engine has waited on for a grace period with no
+   *  output, so a grandchild holding the pipe open cannot hold the run.
+   *  Time the engine spends not reading does not count, so a slow
+   *  destination does not lose the child's last output. */
   readonly stdout?: AsyncIterable<string>;
   readonly stderr?: AsyncIterable<string>;
 }
@@ -86,16 +88,24 @@ export interface SpawnOptions {
    * engine replaces the credential it injects into the child's
    * environment with `[redacted]` before the transform sees the text.
    * Hosts older than 0.10.0 ignore this option: check
-   * `ctx.spawnOptions?.includes("transformOutput")` first.
+   * `ctx.spawnOptionNames?.includes("transformOutput")` first.
    */
   readonly transformOutput?: (
     stream: ChildStreamName,
   ) => TransformStream<string, string>;
 }
 
+const ACCEPTED_SPAWN_OPTIONS = {
+  command: true,
+  args: true,
+  cwd: true,
+  env: true,
+  transformOutput: true,
+} as const satisfies Record<keyof SpawnOptions, true>;
+
 /** Every option ctx.spawn accepts; it refuses any other. */
 export const SPAWN_OPTION_NAMES: readonly (keyof SpawnOptions)[] =
-  Object.freeze(["command", "args", "cwd", "env", "transformOutput"]);
+  Object.freeze(Object.keys(ACCEPTED_SPAWN_OPTIONS) as (keyof SpawnOptions)[]);
 
 export const CHILD_STATUS: unique symbol = Symbol.for(
   "@prisma/cli-engine.childStatus",

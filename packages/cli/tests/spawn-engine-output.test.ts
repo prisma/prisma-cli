@@ -22,7 +22,10 @@ function redacting(secret: string) {
     return new TransformStream<string, string>({
       transform: (chunk, controller) => {
         const text = (held + chunk).replaceAll(secret, "[redacted]");
-        const keep = Math.min(text.length, secret.length - 1);
+        let keep = Math.min(text.length, secret.length - 1);
+        while (keep > 0 && !text.endsWith(secret.slice(0, keep))) {
+          keep -= 1;
+        }
         held = text.slice(text.length - keep);
         if (text.length > keep) {
           controller.enqueue(text.slice(0, text.length - keep));
@@ -188,8 +191,36 @@ setInterval(() => process.stdout.write("tick\\n"), 10);
       expect(result.exitCode).toBe(0);
       expect(result.stdout).toBe("done\n");
       expect(result.stderr).toContain(
-        "spawn: the child's stdout failed, so its later output was dropped: the pipe was still open 200ms after the child exited, so it was closed",
+        "spawn: the child's stdout failed, so its later output was dropped: the pipe stayed open with no output for 200ms after the child exited, so it was closed",
       );
+    });
+
+    test("a slow reader still gets the child's last output after the drain grace", async () => {
+      const script = `process.stdout.write("x".repeat(300_000) + "LAST-LINE\\n");`;
+      const child = makeSpawnChild(
+        { write: () => {} },
+        { drainGraceMs: 200 },
+      )({
+        command: NODE,
+        args: ["-e", script],
+        cwd: process.cwd(),
+        env: process.env,
+        output: "engine",
+      });
+      let received = "";
+      for await (const chunk of child.stdout ?? []) {
+        received += chunk;
+        await new Promise((resolve) => setTimeout(resolve, 150));
+      }
+      let errors = "";
+      for await (const chunk of child.stderr ?? []) {
+        errors += chunk;
+      }
+
+      expect(await child.ended).toEqual({ exitCode: 0, signal: null });
+      expect(errors).toBe("");
+      expect(received.length).toBe(300_000 + "LAST-LINE\n".length);
+      expect(received.endsWith("LAST-LINE\n")).toBe(true);
     });
   },
   20_000,

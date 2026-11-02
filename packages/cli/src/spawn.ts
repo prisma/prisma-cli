@@ -93,14 +93,20 @@ export function makeSpawnChild(
 }
 
 /** The engine reads both pipes. A grandchild that inherited them can
- *  hold them open after the child exits, so they are destroyed after
- *  the drain grace, with an error that says why. */
+ *  hold them open after the child exits, so a pipe the engine has
+ *  waited on with no output for the drain grace is closed, with an
+ *  error that says why. Time the engine spends not reading, because
+ *  its destination is slow, does not count. */
 function engineReadChild(
   child: ChildProcess,
   kill: SpawnedChild["kill"],
   processEnded: Promise<ChildResult>,
   drainGraceMs: number,
 ): SpawnedChild {
+  const exited = processEnded.then(
+    () => undefined,
+    () => undefined,
+  );
   const sources = [child.stdout, child.stderr].filter(
     (source): source is Readable => source !== null,
   );
@@ -110,33 +116,72 @@ function engineReadChild(
       return new Promise((resolve) => source.once("close", resolve));
     }),
   );
-  const afterDrain = async (): Promise<void> => {
-    const drainDeadline = setTimeout(() => {
-      for (const source of sources) {
-        source.destroy(
-          new Error(
-            `the pipe was still open ${drainGraceMs}ms after the child exited, so it was closed`,
-          ),
-        );
-      }
-    }, drainGraceMs);
-    await closed;
-    clearTimeout(drainDeadline);
-  };
+  const readable = (source: Readable | null) =>
+    source === null ? undefined : closeWhenIdle(source, exited, drainGraceMs);
+  const stdout = readable(child.stdout);
+  const stderr = readable(child.stderr);
   return {
     ended: processEnded.then(
       async (result) => {
-        await afterDrain();
+        await closed;
         return result;
       },
       async (cause: unknown) => {
-        await afterDrain();
+        await closed;
         throw cause;
       },
     ),
     kill,
-    ...(child.stdout === null ? {} : { stdout: child.stdout }),
-    ...(child.stderr === null ? {} : { stderr: child.stderr }),
+    ...(stdout === undefined ? {} : { stdout }),
+    ...(stderr === undefined ? {} : { stderr }),
+  };
+}
+
+function closeWhenIdle(
+  source: Readable,
+  exited: Promise<void>,
+  drainGraceMs: number,
+): AsyncIterable<string> {
+  let childExited = false;
+  let waiting = false;
+  let deadline: ReturnType<typeof setTimeout> | undefined;
+  const arm = () => {
+    if (childExited && waiting && deadline === undefined) {
+      deadline = setTimeout(() => {
+        source.destroy(
+          new Error(
+            `the pipe stayed open with no output for ${drainGraceMs}ms after the child exited, so it was closed`,
+          ),
+        );
+      }, drainGraceMs);
+    }
+  };
+  const disarm = () => {
+    clearTimeout(deadline);
+    deadline = undefined;
+  };
+  void exited.then(() => {
+    childExited = true;
+    arm();
+  });
+  return {
+    [Symbol.asyncIterator]: () => {
+      const chunks: AsyncIterator<string> = source[Symbol.asyncIterator]();
+      return {
+        next: async () => {
+          waiting = true;
+          arm();
+          try {
+            return await chunks.next();
+          } finally {
+            waiting = false;
+            disarm();
+          }
+        },
+        return: async () =>
+          (await chunks.return?.()) ?? { done: true, value: undefined },
+      };
+    },
   };
 }
 

@@ -1811,15 +1811,18 @@ function controllableRuntime() {
   };
 }
 
-/** Replaces `secret` across chunk boundaries by holding back up to
- *  `secret.length - 1` characters, which flush writes at the end. */
+/** Replaces `secret` across chunk boundaries by holding back only an
+ *  end of the text that could still become the secret. */
 function redacting(secret: string): () => TransformStream<string, string> {
   return () => {
     let held = "";
     return new TransformStream<string, string>({
       transform: (chunk, controller) => {
         const text = (held + chunk).replaceAll(secret, "[redacted]");
-        const keep = Math.min(text.length, secret.length - 1);
+        let keep = Math.min(text.length, secret.length - 1);
+        while (keep > 0 && !text.endsWith(secret.slice(0, keep))) {
+          keep -= 1;
+        }
         held = text.slice(text.length - keep);
         if (text.length > keep) {
           controller.enqueue(text.slice(0, text.length - keep));
@@ -2237,12 +2240,66 @@ describe("transformed child output", () => {
     expect(seenByCommand.join("")).not.toContain(token);
   });
 
-  test("ctx.spawnOptions names transformOutput", async () => {
+  test("a prompt with no newline reaches the command's transform before the child exits", async () => {
+    const token = jwtExpiringIn(3600, "ws_1");
+    let promptSeen: () => void = () => {};
+    const seen = new Promise<true>((resolve) => {
+      promptSeen = () => resolve(true);
+    });
+    let seenBeforeExit = false;
+    const command = defineCommand({
+      help: { summary: "Hands credentials to a child that asks a question" },
+      maySpawn: true,
+      needs: { credentials: "child" },
+      handler: async (_args, ctx) => {
+        await ctx.spawn({
+          command: "alchemy",
+          transformOutput: () =>
+            new TransformStream<string, string>({
+              transform: (chunk, controller) => {
+                if (chunk.includes("(y/N) ")) {
+                  promptSeen();
+                }
+                controller.enqueue(chunk);
+              },
+            }),
+        });
+        return ok(exitWithChildStatus());
+      },
+    });
+    const cli = createTestCli({
+      commands: { converge: command },
+      now: CLOCK,
+      sessions: [
+        {
+          workspaceId: "ws_1",
+          workspaceName: undefined,
+          credential: { token, refreshToken: "r", expiresAt: undefined },
+        },
+      ],
+      selectedWorkspaceId: "ws_1",
+      spawnScript: async (_request, child) => {
+        child.write("stdout", "Deploy to production? (y/N) ");
+        seenBeforeExit = await Promise.race([
+          seen,
+          new Promise<false>((resolve) => setTimeout(resolve, 500, false)),
+        ]);
+        return { exitCode: 0, signal: null };
+      },
+    });
+
+    const result = await cli.run(["converge", "--format", "human"]);
+
+    expect(seenBeforeExit).toBe(true);
+    expect(result.stdout).toBe("Deploy to production? (y/N) ");
+  });
+
+  test("ctx.spawnOptionNames names transformOutput", async () => {
     let names: readonly string[] | undefined;
     const command = defineCommand({
       help: { summary: "Checks spawn support" },
       handler: async (_args, ctx) => {
-        names = ctx.spawnOptions;
+        names = ctx.spawnOptionNames;
         return ok(
           ctx.present(
             { data: null },
@@ -2302,6 +2359,76 @@ describe("transformed child output", () => {
 });
 
 describe("relayStream", () => {
+  test("writes a prompt with no newline at once through a redacting transform", async () => {
+    let finish: () => void = () => {};
+    const finished = new Promise<void>((resolve) => {
+      finish = resolve;
+    });
+    const source: AsyncIterable<string> = {
+      async *[Symbol.asyncIterator]() {
+        yield "Deploy to production? (y/N) ";
+        await finished;
+        yield "token hun";
+        yield "ter2\n";
+      },
+    };
+    const written: string[] = [];
+    const relaying = relayStream(
+      source,
+      [redacting("hunter2")()],
+      {
+        write: (text) => {
+          written.push(text);
+        },
+      },
+      () => {},
+    );
+
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    const writtenBeforeEnd = written.join("");
+    finish();
+    await relaying;
+
+    expect(writtenBeforeEnd).toBe("Deploy to production? (y/N) ");
+    expect(written.join("")).toBe(
+      "Deploy to production? (y/N) token [redacted]\n",
+    );
+  });
+
+  test("never splits a surrogate pair across two writes", async () => {
+    const source: AsyncIterable<string> = {
+      async *[Symbol.asyncIterator]() {
+        yield "hello \u{1F600}";
+        yield " bye";
+      },
+    };
+    const splitAtSeven = new TransformStream<string, string>({
+      transform: (chunk, controller) => {
+        controller.enqueue(chunk.slice(0, 7));
+        if (chunk.length > 7) {
+          controller.enqueue(chunk.slice(7));
+        }
+      },
+    });
+    const written: string[] = [];
+
+    await relayStream(
+      source,
+      [splitAtSeven],
+      {
+        write: (text) => {
+          written.push(text);
+        },
+      },
+      () => {},
+    );
+
+    expect(written.join("")).toBe("hello \u{1F600} bye");
+    for (const text of written) {
+      expect(Buffer.from(text, "utf8").toString("utf8")).toBe(text);
+    }
+  });
+
   test("does not read ahead of a destination that has not drained", async () => {
     let pulled = 0;
     const source: AsyncIterable<string> = {

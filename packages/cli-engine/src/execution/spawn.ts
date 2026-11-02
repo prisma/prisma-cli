@@ -337,7 +337,7 @@ export async function relayStream(
   destination: OutputStream,
   onSourceError: (cause: unknown) => void,
 ): Promise<void> {
-  await transforms
+  await [...transforms, wholeCharacters()]
     .reduce(
       (readable, transform) => readable.pipeThrough(transform),
       ReadableStream.from(endOnError(source, onSourceError)),
@@ -365,18 +365,18 @@ function injectedSecrets(
   return token === undefined || token === "" ? [] : [token];
 }
 
-/** Replaces `secret` with "[redacted]" across chunk boundaries by
- *  holding back up to `secret.length - 1` characters until the next
- *  chunk or the end of the stream. */
+/** Replaces `secret` with "[redacted]" across chunk boundaries. It
+ *  holds back only an end of the text that could still become the
+ *  secret, so a prompt with no newline is written at once. */
 function redactingTransform(secret: string): TransformStream<string, string> {
   let held = "";
   return new TransformStream<string, string>({
     transform: (chunk, controller) => {
       const text = (held + chunk).replaceAll(secret, "[redacted]");
-      const keep = Math.min(text.length, secret.length - 1);
-      held = text.slice(text.length - keep);
-      if (text.length > keep) {
-        controller.enqueue(text.slice(0, text.length - keep));
+      const cut = text.length - partialMatchLength(text, secret);
+      held = text.slice(cut);
+      if (cut > 0) {
+        controller.enqueue(text.slice(0, cut));
       }
     },
     flush: (controller) => {
@@ -385,6 +385,46 @@ function redactingTransform(secret: string): TransformStream<string, string> {
       }
     },
   });
+}
+
+/** The length of the longest end of `text` that is a start of `secret`. */
+function partialMatchLength(text: string, secret: string): number {
+  for (
+    let length = Math.min(text.length, secret.length - 1);
+    length > 0;
+    length -= 1
+  ) {
+    if (text.endsWith(secret.slice(0, length))) {
+      return length;
+    }
+  }
+  return 0;
+}
+
+/** Holds a trailing high surrogate until its pair arrives: a lone half
+ *  written on its own is encoded as U+FFFD. */
+function wholeCharacters(): TransformStream<string, string> {
+  let held = "";
+  return new TransformStream<string, string>({
+    transform: (chunk, controller) => {
+      const text = held + chunk;
+      const cut = endsWithHighSurrogate(text) ? text.length - 1 : text.length;
+      held = text.slice(cut);
+      if (cut > 0) {
+        controller.enqueue(text.slice(0, cut));
+      }
+    },
+    flush: (controller) => {
+      if (held !== "") {
+        controller.enqueue(held);
+      }
+    },
+  });
+}
+
+function endsWithHighSurrogate(text: string): boolean {
+  const last = text.charCodeAt(text.length - 1);
+  return last >= 0xd800 && last <= 0xdbff;
 }
 
 async function* endOnError(

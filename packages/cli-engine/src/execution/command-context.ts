@@ -179,7 +179,7 @@ export function makeContext(
       return api;
     },
     spawn: makeSpawn(invocation, def),
-    spawnOptions: SPAWN_OPTION_NAMES,
+    spawnOptionNames: SPAWN_OPTION_NAMES,
     lastChild: () => state.lastChild,
     report: (event) => reportEvent(invocation, event),
     prompt: makePromptSurface(invocation),
