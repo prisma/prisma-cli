@@ -1,10 +1,10 @@
 name: Update product versions
 
 # When composer or prisma/prisma publish a release of a package this repo
-# depends on, this workflow moves the dependency and opens a pull
-# request; merging it ships a dev version of the CLI (operator rulings
-# 2026-08-13 and 2026-08-17; docs/oss/release-automation.md). Only a real
-# CLI release needs a human.
+# depends on, this workflow moves the dependency, bumps the CLI to its next
+# version and opens a pull request; merging it releases the CLI
+# (docs/oss/release-automation.md). A CLI shipped behind a product release
+# breaks every project on that release, so nobody has to remember to cut it.
 #
 # It follows each product's RELEASE tag, never `dev`. The dev channel
 # gets its dev builds from publish.yml's stamp instead, so what this
@@ -65,50 +65,53 @@ jobs:
         id: compare
         run: node scripts/update-product-versions.mjs --channel release
 
-      # `pnpm install --no-frozen-lockfile` scoped to the lockfile
-      # refresh: the edit touches two manifests, and the pull request must
-      # carry the matching lockfile or every CI job fails on
-      # --frozen-lockfile.
-      - name: Refresh the lockfile
+      - name: Bump the CLI version
+        id: bump
         if: ${{ steps.compare.outputs.changed == 'true' }}
         run: |
           corepack enable
-          pnpm install --lockfile-only --no-frozen-lockfile
+          pnpm bump-version
+          echo "version=$(node -p "require('./package.json').version")" >> "$GITHUB_OUTPUT"
 
       - name: Open the pull request with auto-merge
         if: ${{ steps.compare.outputs.changed == 'true' }}
         env:
           GH_TOKEN: ${{ secrets.DEPLOY_GITHUB_TOKEN }}
           SUMMARY: ${{ steps.compare.outputs.summary }}
+          VERSION: ${{ steps.bump.outputs.version }}
         run: |
           if [ -z "$GH_TOKEN" ]; then
             echo "::error::DEPLOY_GITHUB_TOKEN is not configured, so this workflow cannot open a pull request that triggers CI. See docs/oss/release-automation.md."
             exit 1
           fi
-          # An open pull request from an earlier run already carries these
-          # versions or is about to be superseded by this one. Close it
-          # rather than stacking a second: two open version updates race
-          # each other's auto-merge and one lands on a stale lockfile.
+          # Every open version update or release pull request bumps the same
+          # version this one does, so only one of them can merge.
+          COMMENT="Superseded by the automatic release $VERSION, which follows the products' released versions: $SUMMARY."
           gh pr list --state open --json number,headRefName \
             --jq '.[] | select(.headRefName | startswith("product-versions/")) | .number' \
             | while read -r number; do
             [ -n "$number" ] || continue
-            gh pr close "$number" \
-              --comment "Superseded by a newer product version update." \
-              --delete-branch
+            gh pr close "$number" --comment "$COMMENT" --delete-branch
+          done
+          gh pr list --state open --json number,title \
+            --jq '.[] | select(.title | startswith("Bump to version ")) | .number' \
+            | while read -r number; do
+            [ -n "$number" ] || continue
+            gh pr close "$number" --comment "$COMMENT"
           done
           BRANCH="product-versions/$(date -u +%Y%m%d%H%M%S)"
+          TITLE="Release $VERSION: follow the products' released versions: $SUMMARY"
           git config user.name "willbot"
           git config user.email "w.a.madden+machine@gmail.com"
           git checkout -b "$BRANCH"
-          git add packages/cli/package.json packages/prisma/package.json pnpm-lock.yaml
+          git add -u
           git commit -s --trailer "Signed-off-by: Will Madden <madden@prisma.io>" \
-            -m "Follow the products' released versions: $SUMMARY" \
-            -m "Opened automatically (update-product-versions.yml); merging ships a dev version of the CLI. A real release stays a human act."
+            -m "$TITLE" \
+            -m "Opened automatically (update-product-versions.yml); merging releases the CLI."
           git push "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" "$BRANCH"
           PR_URL=$(gh pr create \
-            --title "Follow the products' released versions: $SUMMARY" \
-            --body "Opened automatically by update-product-versions.yml, following the products' release dist-tags ($SUMMARY). Merging publishes a \`dev\` version of the CLI; the conformance checks on this pull request are what stand between a product release and that dev build." \
+            --title "$TITLE" \
+            --body "Opened automatically by update-product-versions.yml, following the products' release dist-tags ($SUMMARY). Merging releases \`prisma@$VERSION\` under \`latest\`; the checks on this pull request are what stand between a product release and that CLI release." \
             --base main --head "$BRANCH")
           gh pr merge --auto --squash "$PR_URL"
           echo "Opened $PR_URL with auto-merge armed."
