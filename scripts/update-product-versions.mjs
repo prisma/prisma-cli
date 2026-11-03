@@ -171,20 +171,33 @@ export function pinChanges(before, after) {
   return [...changes.values()];
 }
 
-/** The manifests as the last release shipped them, read from its tag. */
+/**
+ * The manifests as the last release shipped them, read from its tag, or
+ * undefined while that tag does not exist: publish.yml tags a release only
+ * after it publishes, so a run in between, or after a failed publish, has
+ * nothing to compare with.
+ */
 function releasedManifests() {
   const { version } = JSON.parse(
     readFileSync(join(rootDir, "package.json"), "utf-8"),
   );
-  return MANIFEST_PATHS.map((path) => ({
-    path,
-    manifest: JSON.parse(
-      execFileSync("git", ["show", `v${version}:${path}`], {
-        cwd: rootDir,
-        encoding: "utf-8",
-      }),
-    ),
-  }));
+  try {
+    return MANIFEST_PATHS.map((path) => ({
+      path,
+      manifest: JSON.parse(
+        execFileSync("git", ["show", `v${version}:${path}`], {
+          cwd: rootDir,
+          encoding: "utf-8",
+          stdio: ["ignore", "pipe", "pipe"],
+        }),
+      ),
+    }));
+  } catch {
+    console.warn(
+      `::warning::No tag v${version} yet (its publish is still running, or failed), so only the registry's versions are compared.`,
+    );
+    return undefined;
+  }
 }
 
 const PACKAGE_ABSENT = /E404|404 Not Found/;
@@ -288,10 +301,11 @@ function main() {
     // A release ships what main moved since the last release, which
     // includes pins a follow pull request merged after a release that
     // already took its version number.
+    const released = channel === "release" ? releasedManifests() : undefined;
     const changes =
-      channel === "release"
-        ? pinChanges(releasedManifests(), manifests)
-        : [...new Map(updates.map((update) => [update.name, update])).values()];
+      released === undefined
+        ? [...new Map(updates.map((update) => [update.name, update])).values()]
+        : pinChanges(released, manifests);
     const summary = changes
       .map(({ name, from, to }) => `${name} ${from} -> ${to}`)
       .join("; ");
