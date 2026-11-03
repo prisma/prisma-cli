@@ -146,6 +146,47 @@ export function applyUpdates(manifests, updates) {
   }
 }
 
+/**
+ * Each watched pin that differs between two sets of manifests, once per
+ * package. Pure; exported for tests.
+ *
+ * @param {ReadonlyArray<{ path: string; manifest: Record<string, unknown> }>} before
+ * @param {ReadonlyArray<{ path: string; manifest: Record<string, unknown> }>} after
+ * @returns {Array<{ name: string; from: string; to: string }>}
+ */
+export function pinChanges(before, after) {
+  const published = new Map();
+  for (const { manifest } of after) {
+    for (const field of FIELDS) {
+      for (const { name } of WATCHED) {
+        const version = manifest[field]?.[name];
+        if (version !== undefined) published.set(name, version);
+      }
+    }
+  }
+  const changes = new Map();
+  for (const { name, from, to } of computeUpdates(before, published)) {
+    if (!changes.has(name)) changes.set(name, { name, from, to });
+  }
+  return [...changes.values()];
+}
+
+/** The manifests as the last release shipped them, read from its tag. */
+function releasedManifests() {
+  const { version } = JSON.parse(
+    readFileSync(join(rootDir, "package.json"), "utf-8"),
+  );
+  return MANIFEST_PATHS.map((path) => ({
+    path,
+    manifest: JSON.parse(
+      execFileSync("git", ["show", `v${version}:${path}`], {
+        cwd: rootDir,
+        encoding: "utf-8",
+      }),
+    ),
+  }));
+}
+
 const PACKAGE_ABSENT = /E404|404 Not Found/;
 
 /**
@@ -244,16 +285,19 @@ function main() {
 
   const outputFile = process.env.GITHUB_OUTPUT;
   if (outputFile) {
-    // One line per package, not per manifest: both manifests carry the
-    // same pins, so naming each twice makes an unreadable PR title.
-    const summary = [
-      ...new Set(
-        updates.map(({ name, from, to }) => `${name} ${from} -> ${to}`),
-      ),
-    ].join("; ");
+    // A release ships what main moved since the last release, which
+    // includes pins a follow pull request merged after a release that
+    // already took its version number.
+    const changes =
+      channel === "release"
+        ? pinChanges(releasedManifests(), manifests)
+        : [...new Map(updates.map((update) => [update.name, update])).values()];
+    const summary = changes
+      .map(({ name, from, to }) => `${name} ${from} -> ${to}`)
+      .join("; ");
     appendFileSync(
       outputFile,
-      `changed<<EOF\n${String(updates.length > 0)}\nEOF\n`,
+      `changed<<EOF\n${String(changes.length > 0)}\nEOF\n`,
     );
     appendFileSync(outputFile, `summary<<EOF\n${summary}\nEOF\n`);
   }
