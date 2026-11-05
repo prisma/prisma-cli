@@ -134,13 +134,15 @@ describe("auth login callback", () => {
     expect(result.body).toContain("@media (prefers-color-scheme: dark)");
   });
 
-  it("sizes and colors the logo through theme CSS", async () => {
+  it("shows the full-colour Prisma logo at its theme size", async () => {
     const result = await requestSuccessPage({ workspaceName: "Acme Corp" });
 
     expect(result.body).toContain('<svg class="mark" width="36" height="36"');
     expect(result.body).toContain("width: 36px;");
     expect(result.body).toContain("height: 36px;");
-    expect(result.body).toContain("fill: currentColor !important;");
+    for (const color of ["#04D5E7", "#FE4352", "#FEBE29"]) {
+      expect(result.body).toContain(`fill="${color}"`);
+    }
   });
 
   it("rejects when the command signal aborts while waiting for the callback", async () => {
