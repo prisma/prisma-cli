@@ -68,7 +68,7 @@ execFileSync("node", [setVersionScript, nextVersion], {
 
 console.log("");
 console.log("Refreshing pnpm-lock.yaml to match the rewritten specifiers...");
-execFileSync("pnpm", ["install", "--lockfile-only"], {
+execFileSync("pnpm", ["install", "--lockfile-only", "--no-frozen-lockfile"], {
   cwd: rootDir,
   stdio: "inherit",
 });

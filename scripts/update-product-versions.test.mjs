@@ -4,6 +4,7 @@ import {
   applyUpdates,
   computeUpdates,
   isPackageAbsent,
+  pinChanges,
   selectTag,
   tagsFor,
 } from "./update-product-versions.mjs";
@@ -261,5 +262,47 @@ describe("applyUpdates", () => {
     assert.deepEqual(manifests[1].manifest, {
       dependencies: { "@prisma/composer-cli": "0.7.0" },
     });
+  });
+});
+
+describe("pinChanges", () => {
+  const manifests = (cli, prisma) => [
+    { path: CLI, manifest: { dependencies: cli } },
+    { path: PRISMA, manifest: { dependencies: prisma } },
+  ];
+
+  /**
+   * The case that needs it: a follow pull request merged after a release
+   * that already took its version number, so main holds pins no release
+   * shipped and the registry comparison finds nothing to move.
+   */
+  it("lists each watched pin main moved since the last release, once", () => {
+    assert.deepEqual(
+      pinChanges(
+        manifests(
+          { "@prisma/orm-toolchain": "8.0.0-rc.21", execa: "^9.0.0" },
+          { "@prisma/orm-toolchain": "8.0.0-rc.21" },
+        ),
+        manifests(
+          { "@prisma/orm-toolchain": "8.0.0-rc.22", execa: "^9.6.1" },
+          { "@prisma/orm-toolchain": "8.0.0-rc.22" },
+        ),
+      ),
+      [
+        {
+          name: "@prisma/orm-toolchain",
+          from: "8.0.0-rc.21",
+          to: "8.0.0-rc.22",
+        },
+      ],
+    );
+  });
+
+  it("finds nothing when main holds the pins the last release shipped", () => {
+    const pins = { "@prisma/composer-cli": "0.36.0" };
+    assert.deepEqual(
+      pinChanges(manifests(pins, pins), manifests(pins, pins)),
+      [],
+    );
   });
 });
