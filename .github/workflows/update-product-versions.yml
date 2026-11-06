@@ -70,9 +70,13 @@ jobs:
       - name: Bump the CLI version
         id: bump
         if: ${{ steps.compare.outputs.changed == 'true' }}
+        # Not `pnpm bump-version`: pnpm verifies the install before running a
+        # script, and in CI that is a frozen install, which fails because
+        # the manifests now pin versions the lockfile does not. The script
+        # refreshes the lockfile itself.
         run: |
           corepack enable
-          pnpm bump-version
+          node scripts/bump-version.ts
           echo "version=$(node -p "require('./package.json').version")" >> "$GITHUB_OUTPUT"
 
       - name: Open the pull request with auto-merge
