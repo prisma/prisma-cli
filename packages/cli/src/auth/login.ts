@@ -431,26 +431,27 @@ function renderSuccessPage(
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Prisma Developer Platform</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500&family=Sora:wght@700&display=swap">
   <style>
     :root {
       color-scheme: light dark;
       --background: #ffffff;
-      --foreground: #1f2430;
-      --muted: #4f5665;
-      --mark-color: #050812;
-      --surface: #f6f7fb;
-      --border: #e4e7ee;
+      --foreground: #121212;
+      --muted: #525252;
+      --surface: #f5f5f5;
+      --border: #e5e5e5;
       --success: #15803d;
     }
 
     @media (prefers-color-scheme: dark) {
       :root {
-        --background: #050812;
-        --foreground: #f6f7fb;
-        --muted: #c5cad6;
-        --mark-color: #ffffff;
-        --surface: #0d1322;
-        --border: #232a3d;
+        --background: #121212;
+        --foreground: #ffffff;
+        --muted: #c4c4c4;
+        --surface: #1c1c1c;
+        --border: #2e2e2e;
         --success: #4ade80;
       }
     }
@@ -464,7 +465,7 @@ function renderSuccessPage(
       margin: 0;
       background: var(--background);
       color: var(--foreground);
-      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      font-family: Inter, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
       display: grid;
       grid-template-rows: 128px 1fr;
     }
@@ -474,11 +475,6 @@ function renderSuccessPage(
       justify-self: center;
       width: 36px;
       height: 36px;
-      color: var(--mark-color);
-    }
-
-    .mark path {
-      fill: currentColor !important;
     }
 
     main {
@@ -491,6 +487,7 @@ function renderSuccessPage(
 
     h1 {
       margin: 0 0 12px;
+      font-family: Sora, Inter, system-ui, sans-serif;
       font-size: 26px;
       line-height: 1.2;
       font-weight: 700;
@@ -595,7 +592,7 @@ function renderSuccessPage(
   </style>
 </head>
 <body>
-  <svg class="mark" width="36" height="36" viewBox="0 0 32 32" xmlns="http://www.w3.org/2000/svg"><path d="M25.21,24.21,12.739,27.928a.525.525,0,0,1-.667-.606L16.528,5.811a.43.43,0,0,1,.809-.094l8.249,17.661A.6.6,0,0,1,25.21,24.21Zm2.139-.878L17.8,2.883h0A1.531,1.531,0,0,0,16.491,2a1.513,1.513,0,0,0-1.4.729L4.736,19.648a1.592,1.592,0,0,0,.018,1.7l5.064,7.909a1.628,1.628,0,0,0,1.83.678l14.7-4.383a1.6,1.6,0,0,0,1-2.218Z" style="fill:#0c344b;fill-rule:evenodd"/></svg>
+  <svg class="mark" width="36" height="36" viewBox="0 0 263 264" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Prisma"><path d="M57.3357 92.5003L0 149.939V53.5L53.2105 0.10425V0H149.524L57.3357 92.5003Z" fill="#04D5E7"/><path d="M263 91.7452L91.0537 264H0V172.229L171.92 0H263V91.7452Z" fill="#FE4352"/><path d="M209.686 264H113.373L156.453 220.773L263.001 114.034V210.5L209.686 264Z" fill="#FEBE29"/></svg>
   <main>
     <h1>You're all set.</h1>
     <p>${body}</p>
