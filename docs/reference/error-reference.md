@@ -140,7 +140,7 @@ Emitted only as a json-mode error envelope when a command that handed the termin
 
 ### CLI.COMMAND_MOVED
 
-The user typed a retired command path, or a retired flag on a surviving command, that the redirect table claims; instead of failing as unknown, the run names the replacement invocation as a run-command next action, with the retirement reason in `why` when one is recorded. A Prisma 7 command path or flag settles as `CLI.V7_COMMAND` or `CLI.V7_FLAG` instead. Exits 2. Meta: none.
+The user typed a retired command path, or a retired flag on a surviving command, that the redirect table claims; instead of failing as unknown, the run names the replacement invocation as a run-command next action, with the retirement reason in `why` when one is recorded. Exits 2. Meta: none.
 
 ### CLI.CONFIG_MISSING_MARKER
 

@@ -53,7 +53,7 @@ export const v7CommandFamily: CommandFamily = defineCommandFamily({
       ],
       help: "project create",
       reason:
-        "Setting up a new app takes two commands: `project create` creates a Project, the container for one app's databases and services, and links this directory to it; `postgres create` then adds a Prisma Postgres database to that Project.",
+        "Setting up a new app takes two commands: `project create` creates a Project, the container for one app's databases and services, and links this directory to it; `postgres create` then adds a Prisma Postgres database to that Project and prints its connection URL once, without writing it to a .env file. Neither sets up a database schema or the code your app queries the database with; `orm init` does that.",
     }),
     v7Command("version", {
       replacement: "{bin} --version",
