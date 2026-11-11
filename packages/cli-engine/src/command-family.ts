@@ -2,10 +2,9 @@ import type { AnyCommand } from "./commands";
 import type { ConfigSection } from "./config-section";
 
 /**
- * A retired invocation and the invocation that replaced it. Redirects
- * are metadata, never commands: they stay out of help and out of the
- * command tree, and are consulted only when an invocation fails to
- * resolve.
+ * A retired invocation. Redirects are metadata, never commands: they
+ * stay out of help and out of the command tree, and are consulted only
+ * when an invocation fails to resolve.
  */
 export interface RedirectSpec {
   /**
@@ -21,11 +20,6 @@ export interface RedirectSpec {
    * (rendered --kebab-case, as flag declarations are).
    */
   readonly flag?: string;
-  /**
-   * The replacement invocation, written the way help examples are
-   * written: no binary name, `{bin}` available when the name has to sit
-   * mid-string. Placeholder arguments use angle brackets (`<ref>`).
-   */
   readonly replacement?: string | readonly string[];
   /** One sentence of context, surfaced as the error's `why`. */
   readonly reason?: string;

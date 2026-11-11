@@ -840,12 +840,12 @@ describe("redirects with optional next actions", () => {
       {
         from: "generate",
         replacement: "contract emit",
-        code: "CLI.V7_COMMAND",
+        code: "CLI.TEST_REDIRECT",
       },
     ]).run(["generate", "--json"]);
 
     expect(result.exitCode).toBe(2);
-    expect(erroredEnvelope(result.json).error.code).toBe("CLI.V7_COMMAND");
+    expect(erroredEnvelope(result.json).error.code).toBe("CLI.TEST_REDIRECT");
   });
 
   test("a custom summary replaces the default and has {bin} substituted", async () => {
@@ -868,7 +868,7 @@ describe("redirects with optional next actions", () => {
         from: "migrate dev",
         replacement: ["migration plan", "db migrate --db <url>"],
         reason: "Planning and applying are separate steps.",
-        code: "CLI.V7_COMMAND",
+        code: "CLI.TEST_REDIRECT",
         summary: "`{bin} migrate dev` is not available",
         help: "migration status",
         docsUrl: "https://example.com/docs/cli",
@@ -878,7 +878,7 @@ describe("redirects with optional next actions", () => {
     expect(result.exitCode).toBe(2);
     expect(result.stdout).toBe("");
     expect(result.stderr).toBe(
-      "✘ [CLI.V7_COMMAND] `prisma-test migrate dev` is not available\n" +
+      "✘ [CLI.TEST_REDIRECT] `prisma-test migrate dev` is not available\n" +
         "  why: Planning and applying are separate steps.\n" +
         "→ Step 1: prisma-test migration plan\n" +
         "→ Step 2: prisma-test db migrate --db <url>\n" +
@@ -892,7 +892,7 @@ describe("redirects with optional next actions", () => {
       {
         from: "migration status",
         flag: "graph",
-        code: "CLI.V7_FLAG_TEST",
+        code: "CLI.TEST_FLAG_REDIRECT",
         summary: "`--graph` is gone from `{bin} migration status`",
         help: "migration status",
         docsUrl: "https://example.com/docs/cli",
@@ -902,7 +902,7 @@ describe("redirects with optional next actions", () => {
     expect(result.exitCode).toBe(2);
     const envelope = erroredEnvelope(result.json);
     expect(envelope.commandId).toBe("migration.status");
-    expect(envelope.error.code).toBe("CLI.V7_FLAG_TEST");
+    expect(envelope.error.code).toBe("CLI.TEST_FLAG_REDIRECT");
     expect(envelope.error.summary).toBe(
       "`--graph` is gone from `prisma-test migration status`",
     );

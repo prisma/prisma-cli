@@ -393,12 +393,10 @@ export const normalizedRedirectFlag: string | undefined =
   familyWithRedirects.redirects[0].flag;
 export const normalizedRedirectReason: string | undefined =
   familyWithRedirects.redirects[0].reason;
-// replacement is optional; a redirect without one names help or docs instead
 export const redirectWithoutReplacement: RedirectSpec = {
   from: "migration",
   help: "migrate",
 };
-// a replacement may be one step or ordered steps, normalized to a list
 export const redirectWithSteps: RedirectSpec = {
   from: "migration",
   replacement: ["migrate plan", "migrate apply"],
