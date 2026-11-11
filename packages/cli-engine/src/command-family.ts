@@ -26,17 +26,25 @@ export interface RedirectSpec {
    * written: no binary name, `{bin}` available when the name has to sit
    * mid-string. Placeholder arguments use angle brackets (`<ref>`).
    */
-  readonly replacement: string;
+  readonly replacement?: string | readonly string[];
   /** One sentence of context, surfaced as the error's `why`. */
   readonly reason?: string;
+  readonly code?: `${string}.${string}`;
+  readonly summary?: string;
+  readonly help?: string;
+  readonly docsUrl?: string;
 }
 
 /** The normalized redirect a command family carries. */
 export interface CommandRedirect {
   readonly from: string;
   readonly flag: string | undefined;
-  readonly replacement: string;
+  readonly replacement: readonly string[];
   readonly reason: string | undefined;
+  readonly code: `${string}.${string}` | undefined;
+  readonly summary: string | undefined;
+  readonly help: string | undefined;
+  readonly docsUrl: string | undefined;
 }
 
 /**
@@ -64,12 +72,26 @@ function normalizePath(from: string): string {
   return from.trim().replace(/\s+/g, " ");
 }
 
+function replacementSteps(replacement: RedirectSpec["replacement"]): string[] {
+  if (replacement === undefined) {
+    return [];
+  }
+  if (typeof replacement === "string") {
+    return [replacement];
+  }
+  return [...replacement];
+}
+
 function normalizeRedirect(spec: RedirectSpec): CommandRedirect {
   return Object.freeze({
     from: normalizePath(spec.from),
     flag: spec.flag,
-    replacement: spec.replacement,
+    replacement: Object.freeze(replacementSteps(spec.replacement)),
     reason: spec.reason,
+    code: spec.code,
+    summary: spec.summary,
+    help: spec.help,
+    docsUrl: spec.docsUrl,
   });
 }
 

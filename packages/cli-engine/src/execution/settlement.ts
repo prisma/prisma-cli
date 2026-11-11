@@ -36,6 +36,7 @@ import { emitFrame } from "./reporting";
 import {
   OWN_COMMAND_ROUTE,
   resolveExample,
+  substituteBinName,
   usageErrorCode,
 } from "./stricli-adapter";
 
@@ -455,6 +456,35 @@ function retiredInvocation(redirect: CommandRedirect): string {
   return `\`--${kebabCase(redirect.flag)}\` on \`${redirect.from}\``;
 }
 
+function redirectNextActions(
+  redirect: CommandRedirect,
+  cliName: string,
+): NextAction[] {
+  const steps: NextAction[] = redirect.replacement.map((step, index) => ({
+    kind: "run-command",
+    label:
+      redirect.replacement.length === 1
+        ? "Use the replacement"
+        : `Step ${index + 1}`,
+    command: resolveExample(step, cliName),
+  }));
+  const help: NextAction[] =
+    redirect.help === undefined
+      ? []
+      : [
+          {
+            kind: "run-command",
+            label: "Read its help",
+            command: resolveExample(`${redirect.help} --help`, cliName),
+          },
+        ];
+  const docs: NextAction[] =
+    redirect.docsUrl === undefined
+      ? []
+      : [{ kind: "open-url", label: "Read the docs", url: redirect.docsUrl }];
+  return [...steps, ...help, ...docs];
+}
+
 /** A retired invocation the redirect table claims: the run names its
  *  replacement instead of failing as an unknown command or flag. A
  *  retired flag can name a server command, whose stdout belongs to a
@@ -469,23 +499,22 @@ export function settleCommandMoved(
   if (spec.commands[redirect.from]?.kind === "server-command") {
     invocation.state.format = "human";
   }
-  const useReplacement: NextAction = {
-    kind: "run-command",
-    label: "Use the replacement",
-    command: resolveExample(redirect.replacement, spec.name),
-  };
+  const nextActions = redirectNextActions(redirect, spec.name);
   emitErrored(invocation, {
     ok: false,
     commandId,
     error: {
-      code: "CLI.COMMAND_MOVED",
+      code: redirect.code ?? "CLI.COMMAND_MOVED",
       severity: "error",
-      summary: `${retiredInvocation(redirect)} has been replaced`,
+      summary:
+        redirect.summary === undefined
+          ? `${retiredInvocation(redirect)} has been replaced`
+          : substituteBinName(redirect.summary, spec.name),
       ...(redirect.reason === undefined ? {} : { why: redirect.reason }),
-      nextActions: [useReplacement],
+      nextActions,
     },
     diagnostics: [],
-    nextActions: [useReplacement],
+    nextActions,
   });
   return 2;
 }
