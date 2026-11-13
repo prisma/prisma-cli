@@ -5,43 +5,70 @@ import {
 } from "@prisma/cli-engine";
 import { CLI_DOCS_URL } from "./cli-name";
 
+type V7Entry = Omit<RedirectSpec, "from" | "flag" | "code" | "summary"> & {
+  readonly reason: string;
+  readonly placeholder?: string;
+};
+
+function kebabCase(flag: string): string {
+  return flag.replace(/[A-Z]/g, (letter) => `-${letter.toLowerCase()}`);
+}
+
+function withPrisma7Install(reason: string, invocation: string): string {
+  return `${reason} To keep using Prisma 7, install its CLI with \`npm install --save-dev @prisma/prisma7@7\` and run \`prisma7 ${invocation}\`.`;
+}
+
+function withPlaceholder(invocation: string, placeholder?: string): string {
+  return placeholder === undefined
+    ? invocation
+    : `${invocation} ${placeholder}`;
+}
+
 function v7Command(
   from: string,
-  entry: Omit<RedirectSpec, "from" | "flag" | "code" | "summary">,
+  { placeholder, ...entry }: V7Entry,
 ): RedirectSpec {
   return {
     from,
     code: "CLI.V7_COMMAND",
     summary: `\`{bin} ${from}\` is a Prisma 7 command and is not available in Prisma 8`,
     ...entry,
+    reason: withPrisma7Install(
+      entry.reason,
+      withPlaceholder(from, placeholder),
+    ),
   };
 }
 
 function v7Flag(
   command: string,
   flag: string,
-  entry: Omit<RedirectSpec, "from" | "flag" | "code" | "summary">,
+  { placeholder, ...entry }: V7Entry,
 ): RedirectSpec {
   return {
     from: command,
     flag,
     code: "CLI.V7_FLAG",
-    summary: `\`--${flag.replace(/[A-Z]/g, (letter) => `-${letter.toLowerCase()}`)}\` on \`{bin} ${command}\` is a Prisma 7 flag and is not available in Prisma 8`,
+    summary: `\`--${kebabCase(flag)}\` on \`{bin} ${command}\` is a Prisma 7 flag and is not available in Prisma 8`,
     ...entry,
+    reason: withPrisma7Install(
+      entry.reason,
+      withPlaceholder(`${command} --${kebabCase(flag)}`, placeholder),
+    ),
   };
 }
 
 const INIT_SCHEMA_REASON =
   "`init` prepares this repository for Prisma: it writes prisma.config.ts, adds prisma as a dev dependency and installs the AI-agent skills. It sets up no database schema or client; `orm init` does that.";
 
-const INIT_SCHEMA_FLAGS: readonly string[] = [
-  "datasourceProvider",
-  "generatorProvider",
-  "previewFeature",
-  "output",
-  "url",
-  "withModel",
-];
+const INIT_SCHEMA_FLAGS: Readonly<Record<string, string | undefined>> = {
+  datasourceProvider: "<provider>",
+  generatorProvider: "<provider>",
+  previewFeature: "<feature>",
+  output: "<path>",
+  url: "<url>",
+  withModel: undefined,
+};
 
 export const v7CommandFamily: CommandFamily = defineCommandFamily({
   commands: {},
@@ -71,6 +98,7 @@ export const v7CommandFamily: CommandFamily = defineCommandFamily({
         "No command starts an MCP (Model Context Protocol) server for AI tools.",
     }),
     v7Command("complete", {
+      placeholder: "<shell>",
       docsUrl: CLI_DOCS_URL,
       reason:
         "This CLI has no shell completion: no command prints or installs a completion script for your shell.",
@@ -78,7 +106,7 @@ export const v7CommandFamily: CommandFamily = defineCommandFamily({
     v7Command("platform status", {
       docsUrl: CLI_DOCS_URL,
       reason:
-        "No command reports the status of your Prisma Platform account. The docs list the commands that inspect workspaces, Projects and databases.",
+        "No command reports whether Prisma Data Platform services are up.",
     }),
     v7Command("postgres link", {
       replacement: [
@@ -101,11 +129,12 @@ export const v7CommandFamily: CommandFamily = defineCommandFamily({
       reason:
         "`--skills=none` skips installing the AI-agent skills and records in prisma.config.ts that none are wanted, so later installs do not add them.",
     }),
-    ...INIT_SCHEMA_FLAGS.map((flag) =>
+    ...Object.entries(INIT_SCHEMA_FLAGS).map(([flag, placeholder]) =>
       v7Flag("init", flag, {
         replacement: "{bin} orm init",
         help: "orm init",
         reason: INIT_SCHEMA_REASON,
+        placeholder,
       }),
     ),
   ],

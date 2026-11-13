@@ -13,7 +13,10 @@ const UPPERCASE_LETTER = /[A-Z]/g;
 const WHY_LINE = /^ {2}why: /;
 const WHITESPACE = /\s+/;
 const PRISMA_7 = /Prisma 7|prisma@7/;
-const PRISMA_7_PACKAGE = /prisma@7/;
+const PRISMA_7_PACKAGE = /prisma@7|prisma7/;
+const INSTALL_SENTENCE =
+  / To keep using Prisma 7, install its CLI with `npm install --save-dev @prisma\/prisma7@7` and run `prisma7 [^`]+`\.$/;
+const NPX = /\bnpx\b/;
 
 function makeProcess(argv: readonly string[], stdoutIsTty: boolean) {
   const proc = {
@@ -132,6 +135,55 @@ const INIT_FLAGS: Readonly<Record<string, readonly NextAction[]>> = {
   ],
 };
 
+function install(invocation: string): string {
+  return ` To keep using Prisma 7, install its CLI with \`npm install --save-dev @prisma/prisma7@7\` and run \`prisma7 ${invocation}\`.`;
+}
+
+const PATH_WHY: Readonly<Record<string, string>> = {
+  bootstrap:
+    "Setting up a new app takes two commands: `project create` creates a Project, the container for one app's databases and services, and links this directory to it; `postgres create` then adds a Prisma Postgres database to that Project and prints its connection URL once, without writing it to a .env file. Neither sets up a database schema or the code your app queries the database with; `orm init` does that." +
+    install("bootstrap"),
+  version:
+    "`--version` prints only this CLI's version number. It does not report Node.js, operating system or engine details." +
+    install("version"),
+  debug:
+    "No command prints debugging information about this CLI and its environment." +
+    install("debug"),
+  mcp:
+    "No command starts an MCP (Model Context Protocol) server for AI tools." +
+    install("mcp"),
+  complete:
+    "This CLI has no shell completion: no command prints or installs a completion script for your shell." +
+    install("complete <shell>"),
+  "platform status":
+    "No command reports whether Prisma Data Platform services are up." +
+    install("platform status"),
+  "postgres link":
+    "Linking and connecting are two commands: `project link` points this directory at an existing Project, so commands run here act on it; `postgres connection create` creates a connection URL for one of its databases. The URL prints once, in that command's output; nothing writes it to a .env file." +
+    install("postgres link"),
+};
+
+const INIT_SCHEMA_WHY =
+  "`init` prepares this repository for Prisma: it writes prisma.config.ts, adds prisma as a dev dependency and installs the AI-agent skills. It sets up no database schema or client; `orm init` does that.";
+
+const INIT_FLAG_WHY: Readonly<Record<string, string>> = {
+  db:
+    "`init` creates no database. `postgres create` creates a Prisma Postgres database in the Project this directory is linked to." +
+    install("init --db"),
+  "datasource-provider":
+    INIT_SCHEMA_WHY + install("init --datasource-provider <provider>"),
+  "generator-provider":
+    INIT_SCHEMA_WHY + install("init --generator-provider <provider>"),
+  "preview-feature":
+    INIT_SCHEMA_WHY + install("init --preview-feature <feature>"),
+  output: INIT_SCHEMA_WHY + install("init --output <path>"),
+  url: INIT_SCHEMA_WHY + install("init --url <url>"),
+  "with-model": INIT_SCHEMA_WHY + install("init --with-model"),
+  "no-skills":
+    "`--skills=none` skips installing the AI-agent skills and records in prisma.config.ts that none are wanted, so later installs do not add them." +
+    install("init --no-skills"),
+};
+
 function humanLine(action: NextAction): string {
   return `→ ${action.label}: ${action.command ?? action.url}`;
 }
@@ -158,7 +210,7 @@ describe("v7 command paths the shell owns", () => {
     expect(envelope.error.summary).toBe(
       `\`prisma ${path}\` is a Prisma 7 command and is not available in Prisma 8`,
     );
-    expect(envelope.error.why).toEqual(expect.any(String));
+    expect(envelope.error.why).toBe(PATH_WHY[path]);
     expect(envelope.nextActions).toEqual(nextActions);
     expect(envelope.error.nextActions).toEqual(nextActions);
   });
@@ -209,7 +261,7 @@ describe("v7 flags on the shell's init", () => {
     expect(envelope.error.summary).toBe(
       `\`--${flag}\` on \`prisma init\` is a Prisma 7 flag and is not available in Prisma 8`,
     );
-    expect(envelope.error.why).toEqual(expect.any(String));
+    expect(envelope.error.why).toBe(INIT_FLAG_WHY[flag]);
     expect(envelope.nextActions).toEqual(nextActions);
   });
 
@@ -264,9 +316,12 @@ describe("every suggestion names a mounted command", () => {
     expect(Object.keys(mountedCommands)).toContain(suggestedPath(suggestion));
   });
 
-  it("no entry mentions Prisma 7 outside its summary", () => {
+  it("no entry mentions Prisma 7 outside its summary and install sentence", () => {
     for (const redirect of v7CommandFamily.redirects) {
-      expect(redirect.reason).not.toMatch(PRISMA_7);
+      const stripped = redirect.reason?.replace(INSTALL_SENTENCE, "");
+      expect(stripped).not.toMatch(PRISMA_7);
+      expect(stripped).not.toMatch(PRISMA_7_PACKAGE);
+      expect(redirect.reason).not.toMatch(NPX);
       for (const suggestion of redirect.replacement) {
         expect(suggestion).not.toMatch(PRISMA_7_PACKAGE);
       }
