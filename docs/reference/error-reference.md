@@ -248,6 +248,14 @@ The `prisma telemetry status|enable|disable` commands could not resolve the user
 
 The typed path routed to no command (stricli's route failure, mapped at the adapter boundary) and no redirect claims it; next actions carry up to three "did you mean" suggestions ranked by edit distance over command paths and their prefixes, plus a pointer to `--help`. Exits 2. Meta: none.
 
+### CLI.V7_COMMAND
+
+The user typed a Prisma 7 command path that Prisma 8 does not have, such as `prisma bootstrap` or `prisma postgres link`; instead of failing as unknown, the redirect table settles it with the summary "`prisma <path>` is a Prisma 7 command and is not available in Prisma 8". `why` says what the suggested Prisma 8 commands do and what they do not cover. Next actions, in order: the replacement commands as run-command actions (labelled "Use the replacement" for one, "Step 1", "Step 2", … for several), a run-command pointing at the suggested command's `--help`, and an open-url action to the CLI docs when Prisma 8 has no equivalent. Each command family declares the Prisma 7 paths that relate to its own commands. Exits 2. Meta: none.
+
+### CLI.V7_FLAG
+
+The user passed a Prisma 7 flag that the same-named Prisma 8 command does not accept, such as `--datasource-provider` on `prisma init`; instead of failing as an unknown flag, the redirect table settles it with the summary "`--<flag>` on `prisma <command>` is a Prisma 7 flag and is not available in Prisma 8". `why` and the next actions follow `CLI.V7_COMMAND`. Exits 2. Meta: none.
+
 ## CONFIG
 
 These codes come from Composer, the command family behind `prisma dev` and `prisma deploy`. They report a problem with the `composer` section of `prisma.config.ts`, or with what its `config` and `secrets` adapters return, and are raised before Composer starts the app.

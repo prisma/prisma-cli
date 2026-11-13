@@ -567,9 +567,7 @@ export class EngineImpl implements Engine {
       : undefined;
   }
 
-  /** stricli routed or parsed nothing runnable. When the redirect table
-   *  claims the invocation the user typed, the run names its
-   *  replacement; otherwise it settles as the usage error it is. */
+  /** stricli routed or parsed nothing runnable. */
   private settleRouting(
     invocation: Invocation,
     stricliExitCode: number | string | null | undefined,

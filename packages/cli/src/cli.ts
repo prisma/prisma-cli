@@ -69,6 +69,7 @@ import { serviceVersionStartCommand } from "./commands/service/version-start";
 import { serviceVersionStopCommand } from "./commands/service/version-stop";
 import { skillsCommandFamily } from "./commands/skills/family";
 import { getCliVersion } from "./lib/version";
+import { v7CommandFamily } from "./v7-redirects";
 
 export const platformCommandFamily: CommandFamily = defineCommandFamily({
   docsBaseUrl: DOCS_ERRORS_BASE_URL,
@@ -479,6 +480,7 @@ export function buildCli(): Cli {
       composerCommandFamily,
       ormCommandFamily,
       skillsCommandFamily,
+      v7CommandFamily,
     ],
     groups: cliGroups,
     commands: mountedCommands,

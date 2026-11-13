@@ -709,3 +709,214 @@ describe("redirects stay out of help", () => {
     expect(result.stdout).not.toContain("--graph");
   });
 });
+
+describe("redirects with optional next actions", () => {
+  test("a redirect with no replacement, help, or docs URL fails construction", () => {
+    const family = defineCommandFamily({
+      commands: { status },
+      redirects: [{ from: "migration apply" }],
+    });
+
+    expect(() =>
+      createTestCli({
+        commandFamilies: [family],
+        commands: { "migration status": status },
+        groups: MIGRATION_GROUP,
+      }),
+    ).toThrow(
+      "redirect 'migration apply' names no replacement, help, or docs URL, so it gives the user nowhere to go",
+    );
+  });
+
+  test("a flag redirect with an empty replacement list and nothing else fails construction", () => {
+    const family = defineCommandFamily({
+      commands: { status },
+      redirects: [{ from: "migration status", flag: "graph", replacement: [] }],
+    });
+
+    expect(() =>
+      createTestCli({
+        commandFamilies: [family],
+        commands: { "migration status": status },
+        groups: MIGRATION_GROUP,
+      }),
+    ).toThrow(
+      "redirect for flag 'graph' on 'migration status' names no replacement, help, or docs URL, so it gives the user nowhere to go",
+    );
+  });
+
+  test("a replacement list renders each step in order", async () => {
+    const result = await redirectingCli([
+      {
+        from: "migrate dev",
+        replacement: ["migration plan", "{bin} db migrate --db <url>"],
+      },
+    ]).run(["migrate", "dev", "--json"]);
+
+    expect(result.exitCode).toBe(2);
+    const envelope = erroredEnvelope(result.json);
+    expect(envelope.error.code).toBe("CLI.COMMAND_MOVED");
+    expect(envelope.nextActions).toEqual([
+      {
+        kind: "run-command",
+        label: "Step 1",
+        command: "prisma-test migration plan",
+      },
+      {
+        kind: "run-command",
+        label: "Step 2",
+        command: "prisma-test db migrate --db <url>",
+      },
+    ]);
+    expect(envelope.error.nextActions).toEqual(envelope.nextActions);
+  });
+
+  test("a single-entry replacement list keeps the single-step label", async () => {
+    const result = await redirectingCli([
+      { from: "migration apply", replacement: ["migrate --to <ref>"] },
+    ]).run(["migration", "apply", "--json"]);
+
+    expect(erroredEnvelope(result.json).nextActions).toEqual([
+      {
+        kind: "run-command",
+        label: "Use the replacement",
+        command: "prisma-test migrate --to <ref>",
+      },
+    ]);
+  });
+
+  test("a redirect with no replacement points at a command's help", async () => {
+    const result = await redirectingCli([
+      { from: "migrate status", help: "migration status" },
+    ]).run(["migrate", "status", "--json"]);
+
+    expect(result.exitCode).toBe(2);
+    expect(erroredEnvelope(result.json).nextActions).toEqual([
+      {
+        kind: "run-command",
+        label: "Read its help",
+        command: "prisma-test migration status --help",
+      },
+    ]);
+  });
+
+  test("a redirect with no replacement points at the docs", async () => {
+    const result = await redirectingCli([
+      { from: "studio", docsUrl: "https://example.com/docs/cli" },
+    ]).run(["studio", "--json"]);
+
+    expect(result.exitCode).toBe(2);
+    expect(erroredEnvelope(result.json).nextActions).toEqual([
+      {
+        kind: "open-url",
+        label: "Read the docs",
+        url: "https://example.com/docs/cli",
+      },
+    ]);
+  });
+
+  test("steps come first, then help, then docs", async () => {
+    const result = await redirectingCli([
+      {
+        from: "bootstrap",
+        replacement: ["project create <name>", "postgres create <name>"],
+        help: "migration status",
+        docsUrl: "https://example.com/docs/cli",
+      },
+    ]).run(["bootstrap", "--json"]);
+
+    const envelope = erroredEnvelope(result.json);
+    expect(envelope.nextActions.map((action) => action.label)).toEqual([
+      "Step 1",
+      "Step 2",
+      "Read its help",
+      "Read the docs",
+    ]);
+    expect(envelope.error.nextActions).toEqual(envelope.nextActions);
+  });
+
+  test("a custom code replaces CLI.COMMAND_MOVED", async () => {
+    const result = await redirectingCli([
+      {
+        from: "generate",
+        replacement: "contract emit",
+        code: "CLI.TEST_REDIRECT",
+      },
+    ]).run(["generate", "--json"]);
+
+    expect(result.exitCode).toBe(2);
+    expect(erroredEnvelope(result.json).error.code).toBe("CLI.TEST_REDIRECT");
+  });
+
+  test("a custom summary replaces the default and has {bin} substituted", async () => {
+    const result = await redirectingCli([
+      {
+        from: "generate",
+        replacement: "contract emit",
+        summary: "`{bin} generate` is not available here",
+      },
+    ]).run(["generate", "--json"]);
+
+    expect(erroredEnvelope(result.json).error.summary).toBe(
+      "`prisma-test generate` is not available here",
+    );
+  });
+
+  test("human mode renders every next action on stderr", async () => {
+    const result = await redirectingCli([
+      {
+        from: "migrate dev",
+        replacement: ["migration plan", "db migrate --db <url>"],
+        reason: "Planning and applying are separate steps.",
+        code: "CLI.TEST_REDIRECT",
+        summary: "`{bin} migrate dev` is not available",
+        help: "migration status",
+        docsUrl: "https://example.com/docs/cli",
+      },
+    ]).run(["migrate", "dev"], { isTty: { stdout: true } });
+
+    expect(result.exitCode).toBe(2);
+    expect(result.stdout).toBe("");
+    expect(result.stderr).toBe(
+      "✘ [CLI.TEST_REDIRECT] `prisma-test migrate dev` is not available\n" +
+        "  why: Planning and applying are separate steps.\n" +
+        "→ Step 1: prisma-test migration plan\n" +
+        "→ Step 2: prisma-test db migrate --db <url>\n" +
+        "→ Read its help: prisma-test migration status --help\n" +
+        "→ Read the docs: https://example.com/docs/cli\n",
+    );
+  });
+
+  test("a flag redirect carries the new fields", async () => {
+    const result = await redirectingCli([
+      {
+        from: "migration status",
+        flag: "graph",
+        code: "CLI.TEST_FLAG_REDIRECT",
+        summary: "`--graph` is gone from `{bin} migration status`",
+        help: "migration status",
+        docsUrl: "https://example.com/docs/cli",
+      },
+    ]).run(["migration", "status", "--graph", "--json"]);
+
+    expect(result.exitCode).toBe(2);
+    const envelope = erroredEnvelope(result.json);
+    expect(envelope.commandId).toBe("migration.status");
+    expect(envelope.error.code).toBe("CLI.TEST_FLAG_REDIRECT");
+    expect(envelope.error.summary).toBe(
+      "`--graph` is gone from `prisma-test migration status`",
+    );
+    expect(envelope.nextActions).toEqual([
+      {
+        kind: "run-command",
+        label: "Read its help",
+        command: "prisma-test migration status --help",
+      },
+      {
+        kind: "open-url",
+        label: "Read the docs",
+        url: "https://example.com/docs/cli",
+      },
+    ]);
+  });
+});

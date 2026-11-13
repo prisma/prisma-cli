@@ -393,8 +393,16 @@ export const normalizedRedirectFlag: string | undefined =
   familyWithRedirects.redirects[0].flag;
 export const normalizedRedirectReason: string | undefined =
   familyWithRedirects.redirects[0].reason;
-// @ts-expect-error a redirect spec needs a replacement
-export const redirectWithoutReplacement: RedirectSpec = { from: "migration" };
+export const redirectWithoutReplacement: RedirectSpec = {
+  from: "migration",
+  help: "migrate",
+};
+export const redirectWithSteps: RedirectSpec = {
+  from: "migration",
+  replacement: ["migrate plan", "migrate apply"],
+};
+export const normalizedRedirectReplacement: readonly string[] =
+  familyWithRedirects.redirects[0].replacement;
 
 // Normalized definitions: every field is always present
 export const normalizedHelp: MutuallyAssignable<

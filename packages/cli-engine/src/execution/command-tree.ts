@@ -392,6 +392,12 @@ function addFlagRedirect(
   table.set(key, redirect);
 }
 
+function describeRedirect(redirect: CommandRedirect): string {
+  return redirect.flag === undefined
+    ? `redirect '${redirect.from}'`
+    : `redirect for flag '${redirect.flag}' on '${redirect.from}'`;
+}
+
 export function buildRedirectTable(spec: EngineSpec): RedirectTable {
   const byPath = new Map<string, CommandRedirect>();
   const byFlag = new Map<string, CommandRedirect>();
@@ -400,6 +406,15 @@ export function buildRedirectTable(spec: EngineSpec): RedirectTable {
       if (redirect.from === "") {
         throw constructionError(
           "redirect declares an empty path, so no invocation can produce it",
+        );
+      }
+      if (
+        redirect.replacement.length === 0 &&
+        redirect.help === undefined &&
+        redirect.docsUrl === undefined
+      ) {
+        throw constructionError(
+          `${describeRedirect(redirect)} names no replacement, help, or docs URL, so it gives the user nowhere to go`,
         );
       }
       if (redirect.flag === undefined) {
