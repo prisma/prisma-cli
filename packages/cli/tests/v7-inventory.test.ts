@@ -12,53 +12,245 @@ const WHITESPACE = /\s+/;
 const INSTALL = "npm install --save-dev @prisma/prisma7@7";
 const NPX = /\bnpx\b/;
 
-const V7_COMMANDS = [
-  "bootstrap",
-  "version",
-  "debug",
-  "mcp",
-  "complete",
-  "platform status",
-  "postgres link",
-  "migrate dev",
-  "migrate deploy",
-  "migrate status",
-  "migrate diff",
-  "migrate reset",
-  "migrate resolve",
-  "generate",
-  "validate",
-  "format",
-  "studio",
-  "db pull",
-  "db push",
-  "db seed",
-  "db execute",
-  "dev ls",
-  "dev rm",
-  "dev start",
-] as const;
+type InstallForm = "keep" | "migrations";
 
-const V7_FLAGS = [
-  "init --db",
-  "init --no-skills",
-  "init --datasource-provider x",
-  "init --generator-provider x",
-  "init --preview-feature x",
-  "init --output x",
-  "init --url x",
-  "init --with-model",
-  "dev --port 1",
-  "dev --db-port 1",
-  "dev --shadow-db-port 1",
-  "dev --debug",
-  "dev stop --debug",
-] as const;
+interface V7Case {
+  readonly invocation: string;
+  readonly code: "CLI.V7_COMMAND" | "CLI.V7_FLAG";
+  readonly prisma7: string;
+  readonly form: InstallForm;
+}
 
-const CASES: readonly (readonly [string, string])[] = [
-  ...V7_COMMANDS.map((path) => [path, "CLI.V7_COMMAND"] as const),
-  ...V7_FLAGS.map((invocation) => [invocation, "CLI.V7_FLAG"] as const),
+const CASES: readonly V7Case[] = [
+  {
+    invocation: "bootstrap",
+    code: "CLI.V7_COMMAND",
+    prisma7: "bootstrap",
+    form: "keep",
+  },
+  {
+    invocation: "version",
+    code: "CLI.V7_COMMAND",
+    prisma7: "version",
+    form: "keep",
+  },
+  {
+    invocation: "debug",
+    code: "CLI.V7_COMMAND",
+    prisma7: "debug",
+    form: "keep",
+  },
+  {
+    invocation: "mcp",
+    code: "CLI.V7_COMMAND",
+    prisma7: "mcp",
+    form: "keep",
+  },
+  {
+    invocation: "complete",
+    code: "CLI.V7_COMMAND",
+    prisma7: "complete <shell>",
+    form: "keep",
+  },
+  {
+    invocation: "platform status",
+    code: "CLI.V7_COMMAND",
+    prisma7: "platform status",
+    form: "keep",
+  },
+  {
+    invocation: "postgres link",
+    code: "CLI.V7_COMMAND",
+    prisma7: "postgres link",
+    form: "keep",
+  },
+  {
+    invocation: "migrate dev",
+    code: "CLI.V7_COMMAND",
+    prisma7: "migrate dev",
+    form: "migrations",
+  },
+  {
+    invocation: "migrate deploy",
+    code: "CLI.V7_COMMAND",
+    prisma7: "migrate deploy",
+    form: "migrations",
+  },
+  {
+    invocation: "migrate status",
+    code: "CLI.V7_COMMAND",
+    prisma7: "migrate status",
+    form: "migrations",
+  },
+  {
+    invocation: "migrate diff",
+    code: "CLI.V7_COMMAND",
+    prisma7: "migrate diff --from-config-datasource --to-schema <path>",
+    form: "keep",
+  },
+  {
+    invocation: "migrate reset",
+    code: "CLI.V7_COMMAND",
+    prisma7: "migrate reset",
+    form: "migrations",
+  },
+  {
+    invocation: "migrate resolve",
+    code: "CLI.V7_COMMAND",
+    prisma7: "migrate resolve --applied <migration>",
+    form: "migrations",
+  },
+  {
+    invocation: "generate",
+    code: "CLI.V7_COMMAND",
+    prisma7: "generate",
+    form: "keep",
+  },
+  {
+    invocation: "validate",
+    code: "CLI.V7_COMMAND",
+    prisma7: "validate",
+    form: "keep",
+  },
+  {
+    invocation: "format",
+    code: "CLI.V7_COMMAND",
+    prisma7: "format",
+    form: "keep",
+  },
+  {
+    invocation: "studio",
+    code: "CLI.V7_COMMAND",
+    prisma7: "studio",
+    form: "keep",
+  },
+  {
+    invocation: "db pull",
+    code: "CLI.V7_COMMAND",
+    prisma7: "db pull",
+    form: "keep",
+  },
+  {
+    invocation: "db push",
+    code: "CLI.V7_COMMAND",
+    prisma7: "db push",
+    form: "keep",
+  },
+  {
+    invocation: "db seed",
+    code: "CLI.V7_COMMAND",
+    prisma7: "db seed",
+    form: "keep",
+  },
+  {
+    invocation: "db execute",
+    code: "CLI.V7_COMMAND",
+    prisma7: "db execute --file <path>",
+    form: "keep",
+  },
+  {
+    invocation: "dev ls",
+    code: "CLI.V7_COMMAND",
+    prisma7: "dev ls",
+    form: "keep",
+  },
+  {
+    invocation: "dev rm",
+    code: "CLI.V7_COMMAND",
+    prisma7: "dev rm <name>",
+    form: "keep",
+  },
+  {
+    invocation: "dev start",
+    code: "CLI.V7_COMMAND",
+    prisma7: "dev start <name>",
+    form: "keep",
+  },
+  {
+    invocation: "init --db",
+    code: "CLI.V7_FLAG",
+    prisma7: "init --db",
+    form: "keep",
+  },
+  {
+    invocation: "init --no-skills",
+    code: "CLI.V7_FLAG",
+    prisma7: "init --no-skills",
+    form: "keep",
+  },
+  {
+    invocation: "init --datasource-provider x",
+    code: "CLI.V7_FLAG",
+    prisma7: "init --datasource-provider <provider>",
+    form: "keep",
+  },
+  {
+    invocation: "init --generator-provider x",
+    code: "CLI.V7_FLAG",
+    prisma7: "init --generator-provider <provider>",
+    form: "keep",
+  },
+  {
+    invocation: "init --preview-feature x",
+    code: "CLI.V7_FLAG",
+    prisma7: "init --preview-feature <feature>",
+    form: "keep",
+  },
+  {
+    invocation: "init --output x",
+    code: "CLI.V7_FLAG",
+    prisma7: "init --output <path>",
+    form: "keep",
+  },
+  {
+    invocation: "init --url x",
+    code: "CLI.V7_FLAG",
+    prisma7: "init --url <url>",
+    form: "keep",
+  },
+  {
+    invocation: "init --with-model",
+    code: "CLI.V7_FLAG",
+    prisma7: "init --with-model",
+    form: "keep",
+  },
+  {
+    invocation: "dev --port 1",
+    code: "CLI.V7_FLAG",
+    prisma7: "dev --port <port>",
+    form: "keep",
+  },
+  {
+    invocation: "dev --db-port 1",
+    code: "CLI.V7_FLAG",
+    prisma7: "dev --db-port <port>",
+    form: "keep",
+  },
+  {
+    invocation: "dev --shadow-db-port 1",
+    code: "CLI.V7_FLAG",
+    prisma7: "dev --shadow-db-port <port>",
+    form: "keep",
+  },
+  {
+    invocation: "dev --debug",
+    code: "CLI.V7_FLAG",
+    prisma7: "dev --debug",
+    form: "keep",
+  },
+  {
+    invocation: "dev stop --debug",
+    code: "CLI.V7_FLAG",
+    prisma7: "dev stop <name> --debug",
+    form: "keep",
+  },
 ];
+
+function installSentence(prisma7: string, form: InstallForm): string {
+  return form === "migrations"
+    ? `While Prisma 7 still owns this project's migrations, install its CLI with \`${INSTALL}\` and run \`prisma7 ${prisma7}\` instead.`
+    : `To keep using Prisma 7, install its CLI with \`${INSTALL}\` and run \`prisma7 ${prisma7}\`.`;
+}
 
 afterAll(() => {
   rmSync(WORK_DIR, { recursive: true, force: true });
@@ -141,15 +333,20 @@ function commandPath(command: string): string {
 }
 
 describe("every Prisma 7 command path and flag settles as the v7 error", () => {
-  it.each(CASES)("`prisma %s` settles as %s", async (invocation, code) => {
+  it.each(CASES)("`prisma $invocation` settles as $code", async ({
+    invocation,
+    code,
+    prisma7,
+    form,
+  }) => {
     const args = invocation.split(" ");
 
     const json = await run([...args, "--json"]);
     expect(json.exitCode).toBe(2);
     const error = failedEnvelope(json.stdout).error;
     expect(error.code).toBe(code);
-    expect(error.why).toContain(INSTALL);
-    expect(error.why).toContain("prisma7 ");
+    const sentence = ` ${installSentence(prisma7, form)}`;
+    expect(error.why?.slice(-sentence.length)).toBe(sentence);
     expect(error.why).not.toMatch(NPX);
     expect(error.nextActions.length).toBeGreaterThan(0);
 
