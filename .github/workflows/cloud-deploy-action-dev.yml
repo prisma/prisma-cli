@@ -1,0 +1,93 @@
+name: Cloud deploy action against the dev build
+
+# An early warning, not a blocker: the dev build must stay published so
+# prisma/cloud-deploy-action can be fixed against it. The Test check on
+# pull requests runs the same test and blocks the release instead.
+
+on:
+  workflow_run:
+    workflows: ["Publish to npm"]
+    types: [completed]
+
+permissions: {}
+
+jobs:
+  dev-build:
+    name: prisma/cloud-deploy-action@v1 can drive the dev build
+    runs-on: ubuntu-latest
+    permissions:
+      actions: read
+      contents: read
+
+    steps:
+      # publish.yml uploads this artifact only after it really published.
+      - name: Find the published dev version
+        id: dev
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PUBLISH_RUN_ID: ${{ github.event.workflow_run.id }}
+        run: |
+          artifact=$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$PUBLISH_RUN_ID/artifacts" \
+            --jq '.artifacts[] | select(.name == "dev-version") | .id')
+          if [ -z "$artifact" ]; then
+            echo "Publish run $PUBLISH_RUN_ID published no dev build. Nothing to check."
+            exit 0
+          fi
+          gh run download "$PUBLISH_RUN_ID" --repo "$GITHUB_REPOSITORY" --name dev-version --dir "$RUNNER_TEMP/dev-version"
+          version=$(cat "$RUNNER_TEMP/dev-version/version")
+          if ! [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+-[0-9A-Za-z.-]+$ ]]; then
+            echo "::error::The dev-version artifact holds \"$version\", which is not a version."
+            exit 1
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+      - name: Set up Node.js
+        if: ${{ steps.dev.outputs.version != '' }}
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
+        with:
+          node-version: 24
+
+      - name: Install prisma@${{ steps.dev.outputs.version }}
+        if: ${{ steps.dev.outputs.version != '' }}
+        env:
+          VERSION: ${{ steps.dev.outputs.version }}
+        run: npm install --prefix "$RUNNER_TEMP/prisma-dev" --no-save --no-package-lock "prisma@$VERSION"
+
+      - name: Check out prisma/cloud-deploy-action@v1
+        if: ${{ steps.dev.outputs.version != '' }}
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with:
+          repository: prisma/cloud-deploy-action
+          ref: v1
+          persist-credentials: false
+
+      - name: prisma/cloud-deploy-action@v1 can drive prisma@${{ steps.dev.outputs.version }}
+        id: drive
+        if: ${{ steps.dev.outputs.version != '' }}
+        run: |
+          bin="$RUNNER_TEMP/prisma-dev/node_modules/.bin/prisma"
+          if [ ! -x "$bin" ]; then
+            echo "::error::The installed prisma executable $bin is missing or not executable."
+            exit 1
+          fi
+          PRISMA_CLI_BINS="$bin" node --test tests/prisma-cli.test.mjs
+
+      - name: Alert Slack
+        if: ${{ failure() && steps.drive.outcome == 'failure' }}
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+          VERSION: ${{ steps.dev.outputs.version }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          if [ -z "$SLACK_WEBHOOK_URL" ]; then
+            echo "::error::SLACK_WEBHOOK_URL is not configured, so nobody was told that prisma@$VERSION breaks prisma/cloud-deploy-action@v1."
+            exit 1
+          fi
+          payload=$(jq -n \
+            --arg version "$VERSION" \
+            --arg run "$RUN_URL" \
+            '{text: "The dev build prisma@\($version) fails the prisma/cloud-deploy-action test: the released action (v1) cannot drive it. The next prisma CLI release will be blocked until the action is updated to support it.\nRun: \($run)"}')
+          curl --fail-with-body --silent --show-error \
+            -H "Content-Type: application/json" \
+            --data "$payload" \
+            "$SLACK_WEBHOOK_URL"
