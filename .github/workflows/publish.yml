@@ -104,6 +104,7 @@ jobs:
           NPM_CONFIG_PROVENANCE: "true"
         run: bash scripts/publish-packages.sh latest @prisma/cli-engine
 
+      # check-dev-build-with-cloud-deploy-action.yml reads this step's result by its name.
       - name: Publish the dev version
         if: ${{ github.event_name != 'workflow_dispatch' || github.event.inputs.dry-run != 'true' }}
         env:

@@ -41,17 +41,17 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           PUBLISH_RUN_ID: ${{ github.event.workflow_run.id }}
-          PUBLISH_EVENT: ${{ github.event.workflow_run.event }}
-          PUBLISH_CONCLUSION: ${{ github.event.workflow_run.conclusion }}
         run: |
           artifact=$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$PUBLISH_RUN_ID/artifacts" \
             --jq '.artifacts[] | select(.name == "published-dev-version") | .id')
           if [ -z "$artifact" ]; then
-            if [ "$PUBLISH_EVENT" = push ] && [ "$PUBLISH_CONCLUSION" = success ]; then
-              echo "::error::Publish run $PUBLISH_RUN_ID succeeded on a push but has no published-dev-version artifact."
+            published=$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$PUBLISH_RUN_ID/jobs" \
+              --jq '[.jobs[].steps[] | select(.name == "Publish the dev version")] | first | .conclusion')
+            if [ "$published" = success ]; then
+              echo "::error::Publish run $PUBLISH_RUN_ID published a dev build but has no published-dev-version artifact."
               exit 1
             fi
-            echo "Publish run $PUBLISH_RUN_ID ($PUBLISH_EVENT, $PUBLISH_CONCLUSION) published no dev build. Nothing to check."
+            echo "Publish run $PUBLISH_RUN_ID published no dev build (its publish step: ${published:-absent}). Nothing to check."
             exit 0
           fi
           gh run download "$PUBLISH_RUN_ID" --repo "$GITHUB_REPOSITORY" --name published-dev-version --dir "$RUNNER_TEMP/published-dev-version"
