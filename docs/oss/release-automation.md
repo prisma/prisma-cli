@@ -8,6 +8,8 @@ The unified CLI is assembled from three repositories. This page explains how a n
 | `prisma/composer` | `@prisma/composer-cli` (and the `@prisma/composer` library) | a dependency of the shell |
 | `prisma/prisma` | `@prisma/orm-toolchain` | a dependency of the shell |
 
+One more repository depends on this CLI instead of feeding it: `prisma/cloud-deploy-action`, whose test this repository runs (see [Keeping `prisma/cloud-deploy-action` working](#keeping-prismacloud-deploy-action-working)).
+
 ## The rule
 
 A **release** of the CLI depends only on **released** versions of the products. A **dev build** of the CLI depends on the products' **dev builds** (operator ruling 2026-08-17). Nothing in between, and nothing hand-maintained.
@@ -25,12 +27,35 @@ A **daily schedule** runs the same comparison, so a lost dispatch event delays a
 
 ## Keeping `prisma/cloud-deploy-action` working
 
-[`prisma/cloud-deploy-action`](https://github.com/prisma/cloud-deploy-action) runs `prisma deploy` with fixed arguments. When `prisma@8.0.0-rc.30` renamed `--stage` to `--environment`, every user's preview deploy failed for a week, because nothing here ran the action's arguments. Two checks now run the action's own test, `tests/prisma-cli.test.mjs` at its moving `v1` tag (what users run), against this CLI:
+[`prisma/cloud-deploy-action`](https://github.com/prisma/cloud-deploy-action) runs `prisma deploy` with arguments it builds itself. When `prisma@8.0.0-rc.30` renamed `--stage` to `--environment`, every user's preview deploy failed for a week, because nothing here ran the action's arguments. Two checks now run the action's own test against this CLI, both through [`scripts/check-cloud-deploy-action.mjs`](../../scripts/check-cloud-deploy-action.mjs):
 
-- **On every pull request**, the required `Test` check in [`pr-quality.yml`](../../.github/workflows/pr-quality.yml) builds `prisma` and runs the test against it. A change the released action cannot drive cannot merge, so it cannot be released.
-- **After every dev build is published**, [`cloud-deploy-action-dev.yml`](../../.github/workflows/cloud-deploy-action-dev.yml) installs that dev version from npm and runs the test. It never blocks or fails the publish, because the action has to be fixed against that dev build. A failure posts to Slack through the `SLACK_WEBHOOK_URL` secret; the job fails with an error if the secret is missing.
+- **The pull request check.** The required `Test` check in [`pr-quality.yml`](../../.github/workflows/pr-quality.yml) builds `prisma` from the pull request and runs the test against it. That CLI uses the products' released versions, which is what the next release ships. A CLI the released action cannot drive cannot merge, so it cannot be released.
+- **The dev-build check.** [`check-dev-build-with-cloud-deploy-action.yml`](../../.github/workflows/check-dev-build-with-cloud-deploy-action.yml) runs after each publish from `main`, installs the dev build that run published, and runs the test against it. That CLI uses the products' dev builds, which is what a later release will ship. It runs at the next merge to this repository's `main` after a product publishes a dev build, not at the moment the product publishes. It never holds or fails the publish. On any failure it posts to Slack through the `SLACK_WEBHOOK_URL` secret, and the message says whether the action cannot drive the dev build or the check itself could not run. Every run checks the secret in its first step and fails if it is not set.
 
-An intended breaking change to the `prisma deploy` arguments goes like this. The dev build, which depends on the products' dev builds, carries the change first, and the dev check alerts Slack. A maintainer then releases a version of the action that accepts both the old and the new arguments and moves its `v1` tag to it. Until then the release pull request that brings in the change fails its `Test` check and cannot merge; once `v1` moves, a re-run passes and it merges.
+The pull request check is part of the `Test` job because that check is already required on `main`. It should move to its own required job the next time the `main` ruleset is changed.
+
+### What this repository relies on in the action
+
+- The test is `tests/prisma-cli.test.mjs`, and it needs no install: it imports only `../cli.mjs` and Node built-ins.
+- The test reads the executable to test from the `PRISMA_CLI_BINS` environment variable.
+- The script fails unless the two deploy cases (`... accepts the deploy arguments for production` and for a named environment) ran and passed. Without an executable the test runs no cases and passes, so a renamed variable would otherwise go unnoticed. The destroy case may be skipped, because CLIs without a `destroy` command skip it.
+- The test reads this CLI's error codes: `CLI.INVALID_ARGUMENTS`, `CLI.COMMAND_MOVED` or `CLI.UNKNOWN_COMMAND` for rejected arguments, and `CLI.CREDENTIALS_REQUIRED` or `CLI.CONFIG_SECTION_INVALID` as the first check after the arguments are parsed.
+
+Both checks use the action at `v1`, its moving release tag, which is what users run. The repository variable `CLOUD_DEPLOY_ACTION_REF` replaces `v1` in both.
+
+### Changing the `deploy` arguments on purpose
+
+The action chooses the arguments from the CLI's version number. It does not ask the CLI. For example, `takesEnvironmentFlag` in its `cli.mjs` sends `--environment` to 8.0.0-rc.30 and later, and `--stage` to earlier versions. A dev build carries the version of the last release plus `-dev.N` (for example `8.0.0-rc.34-dev.812`), and the action's current rule treats it as that release. So the action cannot tell a dev build with changed arguments from the unchanged release with the same base version.
+
+When a product changes the arguments:
+
+1. The product publishes a dev build with the change. At the next merge to `main` here, the CLI's dev build picks it up, and the dev-build check fails and alerts Slack.
+2. The dev-build check stays red, and alerts again on each merge to `main`, until an action release has a rule that covers those dev builds.
+3. The product releases the change, and the release pull request bumps the CLI to a new version. It passes only once the action is released, and `v1` moved, with a rule that sends the new arguments to that version (for example "rc.35 and later"). Then re-run its `Test` check.
+
+When the change is made in this repository itself, the pull request's CLI reports the last release's version, so the action sends it the old arguments and the check fails. Release the action first with a rule for the next version, and bump the version (`pnpm bump-version`) in the same pull request.
+
+Making the action detect the arguments without relying on the version number is tracked as follow-up in `prisma/cloud-deploy-action`.
 
 ## The shared secret: `DEPLOY_GITHUB_TOKEN`
 
@@ -85,7 +110,9 @@ A workflow step that must run should fail when its secret or token is missing, n
 | Checks pass but the pull request does not merge | The `main` ruleset requires one approving review, which CodeRabbit gives; it commented or was rate-limited instead | Approve the pull request by hand |
 | `main` holds product pins no release shipped | A release took the version number before the follow pull request merged | The next run (the daily schedule at the latest) compares `main`'s pins with the last release's tag and opens a release for them; dispatch the workflow to do it now |
 | A published version never appears on the registry | npm accepted the publish but the version is not resolvable | The publish run polls for it and fails if it never appears; if that fails, re-dispatch the workflow — an already-published version is treated as done, so only the missing one publishes |
-| A release pull request fails "prisma/cloud-deploy-action@v1 can drive this CLI" | The CLI changed the arguments `prisma deploy` accepts, and the released action still sends the old ones | Release the action with support for both and move its `v1` tag, then re-run the check (see above) |
+| A pull request fails "prisma/cloud-deploy-action can drive this CLI" | The pull request changes the arguments `prisma deploy` accepts, and the released action does not send the new ones to this version | Release the action with a rule for this version and move its `v1` tag, then re-run the check (see [Changing the `deploy` arguments on purpose](#changing-the-deploy-arguments-on-purpose)) |
+| Every pull request fails "prisma/cloud-deploy-action can drive this CLI" or "Check out prisma/cloud-deploy-action" | The action's `v1` is broken, or GitHub cannot fetch `prisma/cloud-deploy-action` | Set the repository variable `CLOUD_DEPLOY_ACTION_REF` to a known-good tag of the action and re-run; delete the variable once `v1` works again. If that does not help, an administrator can bypass the `main` ruleset to merge an urgent fix |
+| The dev-build check fails at "Check that SLACK_WEBHOOK_URL is set" | The secret is absent from this repository | Add a Slack incoming-webhook URL as the `SLACK_WEBHOOK_URL` repository secret |
 | A release publish fails on the dev-build check | The committed pins are dev builds — a dev stamp was committed by mistake, or a product has no usable release | Run `node scripts/update-product-versions.mjs --channel release`; if that changes nothing, the product must publish a real release |
 
 ## The state this replaced

@@ -1,4 +1,4 @@
-name: Publish to npm
+name: Publish to npm # check-dev-build-with-cloud-deploy-action.yml finds this workflow by this name
 
 # Every run publishes a dev build. A run also publishes a release when
 # the push changed the root `version`, or a dispatch asked for one. The
@@ -121,10 +121,11 @@ jobs:
             "@prisma/cli@$DEV_VERSION" \
             "prisma@$DEV_VERSION"
 
-      # Read by cloud-deploy-action-dev.yml, which runs as its own
-      # workflow so its result never holds or fails this one.
+      # Read by check-dev-build-with-cloud-deploy-action.yml, which runs as
+      # its own workflow so its result never holds or fails this one.
       - name: Record the published dev version
         if: ${{ github.event_name != 'workflow_dispatch' || github.event.inputs.dry-run != 'true' }}
+        continue-on-error: true
         env:
           DEV_VERSION: ${{ steps.version.outputs.devVersion }}
         run: |
@@ -133,11 +134,13 @@ jobs:
 
       - name: Upload the published dev version
         if: ${{ github.event_name != 'workflow_dispatch' || github.event.inputs.dry-run != 'true' }}
+        continue-on-error: true
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: dev-version
+          name: published-dev-version
           path: ${{ runner.temp }}/dev-version/version
           if-no-files-found: error
+          overwrite: true
           retention-days: 7
 
       # --- The release: only when the committed version changed. ---
