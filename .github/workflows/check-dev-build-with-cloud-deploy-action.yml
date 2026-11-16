@@ -92,13 +92,17 @@ jobs:
       - name: prisma/cloud-deploy-action can drive prisma@${{ steps.dev.outputs.version }}
         id: drive
         if: ${{ steps.dev.outputs.version != '' }}
-        run: node scripts/check-cloud-deploy-action.mjs .reference/cloud-deploy-action "$RUNNER_TEMP/prisma-dev/node_modules/.bin/prisma"
+        run: |
+          code=0
+          node scripts/check-cloud-deploy-action.mjs .reference/cloud-deploy-action "$RUNNER_TEMP/prisma-dev/node_modules/.bin/prisma" || code=$?
+          echo "exit-code=$code" >> "$GITHUB_OUTPUT"
+          exit "$code"
 
       - name: Alert Slack
         if: ${{ failure() }}
         env:
           SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
-          DRIVE_OUTCOME: ${{ steps.drive.outcome }}
+          DRIVE_EXIT_CODE: ${{ steps.drive.outputs.exit-code }}
           VERSION: ${{ steps.dev.outputs.version }}
           PUBLISH_RUN_URL: ${{ github.event.workflow_run.html_url }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
@@ -107,11 +111,18 @@ jobs:
             echo "::error::The SLACK_WEBHOOK_URL secret is not set, so this failure was not reported."
             exit 1
           fi
-          if [ "$DRIVE_OUTCOME" = failure ]; then
-            text="The dev build prisma@$VERSION fails prisma/cloud-deploy-action's test: the released action ($ACTION_REF) cannot drive it. The next prisma CLI release will be blocked until an action release supports this build. This alert repeats on each merge to prisma-cli's main until then."
-          else
-            text="The check that prisma/cloud-deploy-action can drive the dev build could not run, so the dev build was not tested: the published dev version artifact is missing or unreadable, npm install failed, or a checkout failed. Publish run: $PUBLISH_RUN_URL"
-          fi
+          # Exit codes of scripts/check-cloud-deploy-action.mjs.
+          case "$DRIVE_EXIT_CODE" in
+            1)
+              text="The dev build prisma@$VERSION fails prisma/cloud-deploy-action's test: the released action ($ACTION_REF) cannot drive it. The fix is a prisma/cloud-deploy-action release whose rule covers these dev builds and the next CLI version. Until then the next prisma CLI release is blocked, and this alert repeats on each merge to prisma-cli's main. See docs/oss/release-automation.md#changing-the-deploy-arguments-on-purpose."
+              ;;
+            2)
+              text="The check that prisma/cloud-deploy-action can drive prisma@$VERSION could not run, so the dev build was not tested: the action's test file or the installed prisma executable is missing, or the action's deploy cases did not run. The run log says which."
+              ;;
+            *)
+              text="The check that prisma/cloud-deploy-action can drive the dev build could not run, so the dev build was not tested: the published dev version artifact is missing or unreadable, npm install failed, or a checkout failed. Publish run: $PUBLISH_RUN_URL"
+              ;;
+          esac
           payload=$(jq -n --arg text "$text" --arg run "$RUN_URL" '{text: "\($text)\nRun: \($run)"}')
           curl --fail-with-body --silent --show-error \
             -H "Content-Type: application/json" \

@@ -3,7 +3,10 @@
 // Runs prisma/cloud-deploy-action's own CLI test against one `prisma`
 // executable. The test passes with zero cases when it gets no executable
 // (for example after a rename of PRISMA_CLI_BINS in the action), so this
-// also requires the deploy cases to have run and passed.
+// also requires the deploy cases to have run.
+//
+// Exit codes: 0 the action can drive the executable, 1 it cannot,
+// 2 the check could not run.
 //
 // Usage: node scripts/check-cloud-deploy-action.mjs <action-checkout> <prisma-executable>
 
@@ -11,35 +14,13 @@ import { accessSync, constants, existsSync, statSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { run } from "node:test";
 import { spec } from "node:test/reporters";
-import { pathToFileURL } from "node:url";
+import {
+  EXIT_INCOMPATIBLE,
+  EXIT_NOT_RUN,
+  judgeRun,
+} from "./check-cloud-deploy-action-utils.mjs";
 
 const TEST_FILE = "tests/prisma-cli.test.mjs";
-const DEPLOY_CASE = /accepts the deploy arguments for (.+)$/;
-
-/**
- * Problems with a finished test run, or none when it counts as a pass.
- *
- * @param {readonly { name: string, outcome: "pass" | "fail" | "skip" }[]} results
- * @returns {string[]}
- */
-export function findProblems(results) {
-  const problems = results
-    .filter((result) => result.outcome === "fail")
-    .map((result) => `Failed: ${result.name}`);
-  const passedDeployTargets = results
-    .filter((result) => result.outcome === "pass")
-    .map((result) => DEPLOY_CASE.exec(result.name)?.[1])
-    .filter((target) => target !== undefined);
-  if (!passedDeployTargets.includes("production")) {
-    problems.push("The deploy case for production did not run and pass.");
-  }
-  if (!passedDeployTargets.some((target) => target !== "production")) {
-    problems.push(
-      "The deploy case for a named environment did not run and pass.",
-    );
-  }
-  return problems;
-}
 
 function isExecutableFile(path) {
   try {
@@ -56,21 +37,21 @@ async function main() {
     console.error(
       "Usage: node scripts/check-cloud-deploy-action.mjs <action-checkout> <prisma-executable>",
     );
-    process.exit(1);
+    process.exit(EXIT_NOT_RUN);
   }
   const testFile = resolve(actionDir, TEST_FILE);
   if (!existsSync(testFile)) {
     console.error(
-      `::error::${join(actionDir, TEST_FILE)} does not exist. prisma/cloud-deploy-action must keep its CLI test at this path.`,
+      `::error::${join(actionDir, TEST_FILE)} does not exist. prisma/cloud-deploy-action must keep its CLI test at this path. The check could not run.`,
     );
-    process.exit(1);
+    process.exit(EXIT_NOT_RUN);
   }
   const executable = resolve(bin);
   if (!isExecutableFile(executable)) {
     console.error(
-      `::error::The prisma executable ${executable} is missing or not executable.`,
+      `::error::The prisma executable ${executable} is missing or not executable. The check could not run.`,
     );
-    process.exit(1);
+    process.exit(EXIT_NOT_RUN);
   }
 
   process.env.PRISMA_CLI_BINS = executable;
@@ -87,22 +68,25 @@ async function main() {
     process.stdout.write(chunk);
   }
 
-  const problems = findProblems(results);
-  if (problems.length > 0) {
-    for (const problem of problems) {
-      console.error(`::error::${problem}`);
-    }
+  const { verdict, problems } = judgeRun(results);
+  for (const problem of problems) {
+    console.error(`::error::${problem}`);
+  }
+  if (verdict === "not-run") {
     console.error(
-      `::error::prisma/cloud-deploy-action's test did not pass against ${executable}.`,
+      `::error::The check could not run: prisma/cloud-deploy-action's deploy cases did not run against ${executable}.`,
     );
-    process.exit(1);
+    process.exit(EXIT_NOT_RUN);
+  }
+  if (verdict === "incompatible") {
+    console.error(
+      `::error::prisma/cloud-deploy-action cannot drive ${executable}: its test failed.`,
+    );
+    process.exit(EXIT_INCOMPATIBLE);
   }
   console.log(
     `prisma/cloud-deploy-action's test passes against ${executable}.`,
   );
 }
 
-const isDirectRun =
-  process.argv[1] !== undefined &&
-  import.meta.url === pathToFileURL(process.argv[1]).href;
-if (isDirectRun) await main();
+await main();

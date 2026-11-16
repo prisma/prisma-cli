@@ -126,6 +126,7 @@ jobs:
       - name: Record the published dev version
         if: ${{ github.event_name != 'workflow_dispatch' || github.event.inputs.dry-run != 'true' }}
         continue-on-error: true
+        timeout-minutes: 2
         env:
           DEV_VERSION: ${{ steps.version.outputs.devVersion }}
         run: |
@@ -135,6 +136,7 @@ jobs:
       - name: Upload the published dev version
         if: ${{ github.event_name != 'workflow_dispatch' || github.event.inputs.dry-run != 'true' }}
         continue-on-error: true
+        timeout-minutes: 2
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: published-dev-version
