@@ -1,3 +1,4 @@
+// biome-ignore-all lint/performance/noAwaitInLoops: Variable list pagination requests must run sequentially.
 /** Typed wrappers for variable-group endpoints not yet in the published SDK.
  *
  *  The @prisma/management-api-sdk v1.80.0 predates these endpoints.
@@ -109,7 +110,7 @@ export async function listVariableGroups(
   projectId: string,
   signal: AbortSignal,
 ): Promise<RawVariableGroup[]> {
-  // Cast to any because these paths are not in the published SDK yet.
+  // biome-ignore lint/suspicious/noExplicitAny: these API paths and fields are not in the published SDK yet
   const { data, error, response } = await (client as any).GET(
     "/v1/variable-groups",
     {
@@ -133,6 +134,7 @@ export async function createVariableGroup(
   },
   signal: AbortSignal,
 ): Promise<RawVariableGroup> {
+  // biome-ignore lint/suspicious/noExplicitAny: these API paths and fields are not in the published SDK yet
   const { data, error, response } = await (client as any).POST(
     "/v1/variable-groups",
     {
@@ -156,6 +158,7 @@ export async function updateVariableGroup(
   },
   signal: AbortSignal,
 ): Promise<RawVariableGroup> {
+  // biome-ignore lint/suspicious/noExplicitAny: these API paths and fields are not in the published SDK yet
   const { data, error, response } = await (client as any).PATCH(
     "/v1/variable-groups/{groupId}",
     {
@@ -197,6 +200,7 @@ export async function deleteVariableGroup(
   groupId: string,
   signal: AbortSignal,
 ): Promise<void> {
+  // biome-ignore lint/suspicious/noExplicitAny: these API paths and fields are not in the published SDK yet
   const { error, response } = await (client as any).DELETE(
     "/v1/variable-groups/{groupId}",
     {
@@ -231,6 +235,7 @@ export async function getResolvedVariables(
     query.serviceId = options.serviceId;
   }
 
+  // biome-ignore lint/suspicious/noExplicitAny: these API paths and fields are not in the published SDK yet
   const { data, error, response } = await (client as any).GET(
     "/v1/projects/{projectId}/resolved-variables",
     {
@@ -261,6 +266,7 @@ export async function createEnvVarInGroup(
   input: CreateEnvVarWithGroupInput,
   signal: AbortSignal,
 ): Promise<unknown> {
+  // biome-ignore lint/suspicious/noExplicitAny: these API paths and fields are not in the published SDK yet
   const { data, error, response } = await (client as any).POST(
     "/v1/environment-variables",
     {
@@ -289,13 +295,13 @@ export async function listEnvVarsInGroup(
   const collected: unknown[] = [];
   let cursor: string | undefined;
 
-  // eslint-disable-next-line no-constant-condition
   while (true) {
     const query: Record<string, string | undefined> = { projectId, groupId };
     if (cursor !== undefined) {
       query.cursor = cursor;
     }
 
+    // biome-ignore lint/suspicious/noExplicitAny: these API paths and fields are not in the published SDK yet
     const { data, error, response } = await (client as any).GET(
       "/v1/environment-variables",
       {

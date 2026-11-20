@@ -114,7 +114,7 @@ export const variableGroupCreateCommand = defineCommand({
     const rule =
       args.flags.equals !== undefined
         ? { type: "equals" as const, value: args.flags.equals }
-        : { type: "startsWith" as const, value: args.flags.startsWith! };
+        : { type: "startsWith" as const, value: args.flags.startsWith ?? "" };
 
     const workspace = await resolveActiveWorkspace(ctx);
     const resolved = await resolvePinnedProject(

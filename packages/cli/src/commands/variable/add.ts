@@ -6,12 +6,9 @@ import {
   positional,
 } from "@prisma/cli-engine";
 import { ok } from "@prisma/cli-engine/protocol";
-import {
-  createEnvVarInGroup,
-  listEnvVarsInGroup,
-} from "../../lib/variable/api";
-import { readEnvFileAssignments } from "../../lib/app/env-file";
 import { parseKeyValuePositional } from "../../lib/app/env-config";
+import { readEnvFileAssignments } from "../../lib/app/env-file";
+import { createEnvVarInGroup } from "../../lib/variable/api";
 import { resolvePinnedProject } from "../project/context";
 import { resolveActiveWorkspace } from "../resources-shared/workspace";
 import {
@@ -152,6 +149,7 @@ export const variableAddCommand = defineCommand({
       );
       const keys: string[] = [];
       for (const { key, value } of assignments) {
+        // biome-ignore lint/performance/noAwaitInLoops: keys are added one at a time so the import stops at the first failure.
         await createEnvVarInGroup(
           ctx.api,
           { projectId, groupId: group.id, key, value },

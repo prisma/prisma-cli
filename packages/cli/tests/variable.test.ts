@@ -93,16 +93,10 @@ interface VariableClientSpec {
   readonly routes?: Readonly<Record<string, Responder>>;
 }
 
-function apiFailure(status: number, body?: unknown) {
-  return {
-    error: body ?? { error: { message: "boom" } },
-    response: new Response(null, { status }),
-  };
-}
-
 function variableClient(spec: VariableClientSpec = {}): ManagementApiClient {
   const page = { hasMore: false, nextCursor: null };
 
+  // biome-ignore lint/complexity/noExcessiveCognitiveComplexity: one fake answers every endpoint these tests call.
   const dispatch = (method: string, apiPath: string, init: Call["init"]) => {
     const call: Call = { method, path: apiPath, init: init ?? {} };
     spec.calls?.push(call);
@@ -486,6 +480,56 @@ describe("variable update", () => {
     );
     expect(patch?.init.params?.path).toMatchObject({ envVarId: "ev_existing" });
     expect(patch?.init.body).toMatchObject({ value: "new_value" });
+  });
+
+  it("updates file keys in the custom group, looking each up by group id", async () => {
+    const cwd = await pinnedCwd();
+    await writeFile(path.join(cwd, ".env"), "API_KEY=new_value\n", "utf8");
+    const staging = {
+      id: "vg_staging",
+      name: "staging",
+      class: "custom",
+      rule: { type: "equals", value: "staging" },
+    };
+
+    const calls: Call[] = [];
+    const result = await makeCli(
+      variableClient({
+        calls,
+        groups: [...BUILT_IN_GROUPS, staging],
+        routes: {
+          "GET /v1/environment-variables": () => ({
+            data: {
+              data: [{ id: "ev_staging", key: "API_KEY" }],
+              pagination: { hasMore: false, nextCursor: null },
+            },
+          }),
+          "PATCH /v1/environment-variables/{envVarId}": () => ({
+            data: {
+              data: {
+                id: "ev_staging",
+                key: "API_KEY",
+                updatedAt: "2024-06-01T00:00:00Z",
+              },
+            },
+          }),
+        },
+      }),
+    ).run(
+      ["variable", "update", "--file", ".env", "--group", "staging", "--json"],
+      { cwd },
+    );
+
+    expect(result.exitCode).toBe(0);
+    const lookup = calls.find(
+      (c) => c.method === "GET" && c.path === "/v1/environment-variables",
+    );
+    expect(lookup?.init.params?.query).toMatchObject({
+      key: "API_KEY",
+      groupId: "vg_staging",
+    });
+    const patch = calls.find((c) => c.method === "PATCH");
+    expect(patch?.init.params?.path).toMatchObject({ envVarId: "ev_staging" });
   });
 
   it("fails with VARIABLE.NOT_FOUND when the variable does not exist in the group", async () => {

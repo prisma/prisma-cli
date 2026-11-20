@@ -7,12 +7,10 @@ import {
   positional,
 } from "@prisma/cli-engine";
 import { CliStructuredError, ok } from "@prisma/cli-engine/protocol";
-import {
-  apiCallError,
-  findVariableByNaturalKey,
-} from "../../controllers/app-env-api";
-import { readEnvFileAssignments } from "../../lib/app/env-file";
+import type { ManagementApiClient } from "@prisma/management-api-sdk";
+import { apiCallError } from "../../controllers/app-env-api";
 import { parseKeyValuePositional } from "../../lib/app/env-config";
+import { readEnvFileAssignments } from "../../lib/app/env-file";
 import { resolvePinnedProject } from "../project/context";
 import { resolveActiveWorkspace } from "../resources-shared/workspace";
 import {
@@ -157,38 +155,13 @@ export const variableUpdateCommand = defineCommand({
       );
       const keys: string[] = [];
       for (const { key, value } of assignments) {
-        const existing = await findVariableByNaturalKey(
+        // biome-ignore lint/performance/noAwaitInLoops: keys are updated one at a time so the import stops at the first failure.
+        const updated = await updateValueInGroup(
           ctx.api,
-          projectId,
-          key,
-          {
-            descriptor: {
-              kind: "role",
-              role: group.class === "production" ? "production" : "preview",
-            },
-            apiTarget: {
-              class: group.class === "production" ? "production" : "preview",
-              branchId: null,
-            },
-          },
+          { projectId, groupId: group.id, key, value },
           ctx.signal,
         );
-        if (existing) {
-          const { data, error, response } = await ctx.api.PATCH(
-            "/v1/environment-variables/{envVarId}",
-            {
-              params: { path: { envVarId: existing.id } },
-              body: { value },
-              signal: ctx.signal,
-            },
-          );
-          if (error || !data) {
-            throw apiCallError(
-              `Failed to update value for ${key}`,
-              response,
-              error,
-            );
-          }
+        if (updated) {
           keys.push(key);
         }
       }
@@ -206,31 +179,13 @@ export const variableUpdateCommand = defineCommand({
       ctx.env,
     );
 
-    // Find by groupId — use a list query filtered by groupId and key.
-    const {
-      data: listData,
-      error: listError,
-      response: listResponse,
-    } = await ctx.api.GET("/v1/environment-variables", {
-      params: {
-        // groupId is not in the published SDK types
-        query: { projectId, key, groupId: group.id } as any,
-      },
-      signal: ctx.signal,
-    });
+    const updated = await updateValueInGroup(
+      ctx.api,
+      { projectId, groupId: group.id, key, value },
+      ctx.signal,
+    );
 
-    if (listError || !listData) {
-      throw apiCallError(`Failed to look up ${key}`, listResponse, listError);
-    }
-
-    const rows = listData.data as Array<{
-      id: string;
-      key: string;
-      updatedAt: string;
-    }>;
-    const existing = rows[0];
-
-    if (!existing) {
+    if (!updated) {
       throw new CliStructuredError(
         "VARIABLE.NOT_FOUND",
         `Variable "${key}" not found in group "${group.name}"`,
@@ -246,19 +201,6 @@ export const variableUpdateCommand = defineCommand({
       );
     }
 
-    const { data, error, response } = await ctx.api.PATCH(
-      "/v1/environment-variables/{envVarId}",
-      {
-        params: { path: { envVarId: existing.id } },
-        body: { value },
-        signal: ctx.signal,
-      },
-    );
-    if (error || !data) {
-      throw apiCallError(`Failed to update value for ${key}`, response, error);
-    }
-
-    const updated = data.data as { id: string; key: string; updatedAt: string };
     const result = {
       projectId,
       groupName: group.name,
@@ -270,3 +212,54 @@ export const variableUpdateCommand = defineCommand({
     return ok(ctx.present({ data: result }, updatePresentations(result)));
   },
 });
+
+/** Replaces the value of `key` in one variable group. Returns null when the group has no such key. */
+async function updateValueInGroup(
+  api: ManagementApiClient,
+  input: { projectId: string; groupId: string; key: string; value: string },
+  signal: AbortSignal,
+): Promise<{ id: string; key: string; updatedAt: string } | null> {
+  const query = {
+    projectId: input.projectId,
+    key: input.key,
+    groupId: input.groupId,
+  };
+  const {
+    data: listData,
+    error: listError,
+    response: listResponse,
+  } = await api.GET("/v1/environment-variables", {
+    // biome-ignore lint/suspicious/noExplicitAny: these API paths and fields are not in the published SDK yet
+    params: { query: query as any },
+    signal,
+  });
+  if (listError || !listData) {
+    throw apiCallError(
+      `Failed to look up ${input.key}`,
+      listResponse,
+      listError,
+    );
+  }
+
+  const existing = (listData.data as Array<{ id: string }>)[0];
+  if (!existing) {
+    return null;
+  }
+
+  const { data, error, response } = await api.PATCH(
+    "/v1/environment-variables/{envVarId}",
+    {
+      params: { path: { envVarId: existing.id } },
+      body: { value: input.value },
+      signal,
+    },
+  );
+  if (error || !data) {
+    throw apiCallError(
+      `Failed to update value for ${input.key}`,
+      response,
+      error,
+    );
+  }
+  return data.data as { id: string; key: string; updatedAt: string };
+}

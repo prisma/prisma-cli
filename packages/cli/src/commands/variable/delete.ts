@@ -110,7 +110,7 @@ export const variableDeleteCommand = defineCommand({
       response: listResponse,
     } = await ctx.api.GET("/v1/environment-variables", {
       params: {
-        // groupId is not in the published SDK types
+        // biome-ignore lint/suspicious/noExplicitAny: these API paths and fields are not in the published SDK yet
         query: { projectId, key, groupId: group.id } as any,
       },
       signal: ctx.signal,

@@ -6,15 +6,27 @@ import {
   type Presentations,
 } from "@prisma/cli-engine";
 import { ok } from "@prisma/cli-engine/protocol";
+import { listBranches } from "../../controllers/branch";
 import {
   getResolvedVariables,
   listEnvVarsInGroup,
   listVariableGroups,
   type RawVariableGroup,
+  type ResolvedVariableSource,
 } from "../../lib/variable/api";
+
+function sourceLabel(source: ResolvedVariableSource): string {
+  if (source.type === "group") {
+    return `group:${source.groupName}`;
+  }
+  if (source.type === "branchOverride") {
+    return "branch-override";
+  }
+  return `service:${source.serviceId}`;
+}
+
 import { resolvePinnedProject } from "../project/context";
 import { resolveActiveWorkspace } from "../resources-shared/workspace";
-import { listBranches } from "../../controllers/branch";
 import { projectFlag, serviceFlag } from "./shared";
 
 interface GroupWithVariables {
@@ -32,11 +44,9 @@ function listPresentations(result: {
     keys: Array<{ key: string; source: string }>;
   };
 }): Presentations {
-  if (result.branchResolved) {
-    const rows = result.branchResolved.keys.map((item) => [
-      item.key,
-      item.source,
-    ]);
+  const branch = result.branchResolved;
+  if (branch) {
+    const rows = branch.keys.map((item) => [item.key, item.source]);
     return {
       json: () => result,
       next: () => [],
@@ -45,16 +55,16 @@ function listPresentations(result: {
         {
           kind: "summary",
           status: "info",
-          text: `Variables for branch ${result.branchResolved!.branchName}.`,
+          text: `Variables for branch ${branch.branchName}.`,
         },
         {
           kind: "fields",
           rows: [
             { label: "project", value: result.projectId },
-            { label: "branch", value: result.branchResolved!.branchName },
+            { label: "branch", value: branch.branchName },
             {
               label: "variable group",
-              value: `${result.branchResolved!.groupName} (${result.branchResolved!.groupClass})`,
+              value: `${branch.groupName} (${branch.groupClass})`,
             },
           ],
         },
@@ -204,12 +214,7 @@ export const variableListCommand = defineCommand({
 
       const keys = resolvedVars.data.map((item) => ({
         key: item.key,
-        source:
-          item.source.type === "group"
-            ? `group:${item.source.groupName}`
-            : item.source.type === "branchOverride"
-              ? "branch-override"
-              : `service:${item.source.serviceId}`,
+        source: sourceLabel(item.source),
       }));
 
       const branchResolved = {
