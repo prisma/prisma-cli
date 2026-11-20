@@ -68,6 +68,14 @@ import { serviceVersionShowCommand } from "./commands/service/version-show";
 import { serviceVersionStartCommand } from "./commands/service/version-start";
 import { serviceVersionStopCommand } from "./commands/service/version-stop";
 import { skillsCommandFamily } from "./commands/skills/family";
+import { variableAddCommand } from "./commands/variable/add";
+import { variableDeleteCommand } from "./commands/variable/delete";
+import { variableGroupCreateCommand } from "./commands/variable/group-create";
+import { variableGroupDeleteCommand } from "./commands/variable/group-delete";
+import { variableGroupListCommand } from "./commands/variable/group-list";
+import { variableGroupUpdateCommand } from "./commands/variable/group-update";
+import { variableListCommand } from "./commands/variable/list";
+import { variableUpdateCommand } from "./commands/variable/update";
 import { getCliVersion } from "./lib/version";
 import { v7CommandFamily } from "./v7-redirects";
 
@@ -129,6 +137,14 @@ export const platformCommandFamily: CommandFamily = defineCommandFamily({
     serviceDomainDelete: serviceDomainDeleteCommand,
     serviceDomainRetry: serviceDomainRetryCommand,
     serviceDomainWait: serviceDomainWaitCommand,
+    variableAdd: variableAddCommand,
+    variableUpdate: variableUpdateCommand,
+    variableDelete: variableDeleteCommand,
+    variableList: variableListCommand,
+    variableGroupList: variableGroupListCommand,
+    variableGroupCreate: variableGroupCreateCommand,
+    variableGroupUpdate: variableGroupUpdateCommand,
+    variableGroupDelete: variableGroupDeleteCommand,
   },
 });
 
@@ -361,6 +377,32 @@ export const cliGroups: Readonly<
     description:
       "An emulator runs one kind of resource locally, so 'prisma dev' needs no account or network: one runs services, one runs Postgres databases, one runs S3-compatible buckets. Each holds instances, one per service, database or bucket that a 'prisma dev' started, from any directory on this machine. Emulators keep running after 'prisma dev' ends. Instances and their data stay until 'prisma dev --fresh' removes the current app's, and a stopped instance keeps its port.",
   },
+  variable: {
+    brief:
+      "Manage project variables. Add, update, delete, and list values per group",
+    description:
+      "Variables live in groups: production, preview (shared by every branch that matches no custom rule), or a custom group. Values reach services when they deploy. Write commands require a group. For branch-level inspection, use --branch.",
+    workflow: [
+      {
+        run: "variable add API_URL=https://api.example --group production",
+        brief: "Set a variable in the production group",
+      },
+      {
+        run: "variable list --branch feature/foo",
+        brief: "See what a branch receives",
+      },
+      {
+        run: "variable group create staging --equals staging",
+        brief: "Create a custom group for the staging branch",
+      },
+    ],
+  },
+  "variable group": {
+    brief:
+      "Manage variable groups. Create, rename, change rules, and delete custom groups",
+    description:
+      "Every project has a production group and a preview group. Add up to ten custom groups, each with an equals or startsWith rule that selects which branches receive its variables.",
+  },
   skills: {
     brief:
       "Manage Prisma skills for AI coding agents. Sync and list the instruction files",
@@ -426,6 +468,14 @@ export const mountedCommands: Readonly<Record<string, AnyCommand>> = {
   "service domain delete": serviceDomainDeleteCommand,
   "service domain retry": serviceDomainRetryCommand,
   "service domain wait": serviceDomainWaitCommand,
+  "variable add": variableAddCommand,
+  "variable update": variableUpdateCommand,
+  "variable delete": variableDeleteCommand,
+  "variable list": variableListCommand,
+  "variable group list": variableGroupListCommand,
+  "variable group create": variableGroupCreateCommand,
+  "variable group update": variableGroupUpdateCommand,
+  "variable group delete": variableGroupDeleteCommand,
   // Composer's product verbs: deploy and dev at the root, their
   // children beneath them, and the local emulators under their own group.
   deploy: composerCommandFamily.commands.deploy,

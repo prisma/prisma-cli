@@ -166,6 +166,14 @@ const EXPECTED_MOUNT_PATHS: readonly string[] = [
   "telemetry disable",
   "telemetry enable",
   "telemetry status",
+  "variable add",
+  "variable delete",
+  "variable group create",
+  "variable group delete",
+  "variable group list",
+  "variable group update",
+  "variable list",
+  "variable update",
 ];
 
 const MOUNTED_FAMILIES = {
