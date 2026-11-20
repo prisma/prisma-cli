@@ -73,10 +73,10 @@ export const variableGroupUpdateCommand = defineCommand({
     description:
       "Updates a variable group: rename it with --name, replace its rule with --equals or --starts-with, or do both at once. Built-in groups (production, preview) accept --name only.",
     examples: [
-      "variable group update staging --name production-staging",
+      "variable group update staging --name staging/eu",
       "variable group update staging --equals staging-branch",
       "variable group update features --starts-with feature/",
-      "variable group update staging --name new-staging --equals new-staging",
+      "variable group update staging --name staging/new --equals staging-new",
     ],
   },
   needs: { credentials: true },
