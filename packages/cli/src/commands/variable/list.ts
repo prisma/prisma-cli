@@ -19,8 +19,8 @@ function sourceLabel(source: ResolvedVariableSource): string {
   if (source.type === "group") {
     return `group:${source.groupName}`;
   }
-  if (source.type === "branchOverride") {
-    return "branch-override";
+  if (source.type === "override") {
+    return "override";
   }
   return `service:${source.serviceId}`;
 }
@@ -153,7 +153,7 @@ export const variableListCommand = defineCommand({
     },
   },
   help: {
-    summary: "List variables: by group, or what a branch receives",
+    summary: "List branch variables by group, or what a branch receives",
     description:
       "Without flags, shows every group with its variable keys — one section per group. --group shows one group only. --branch shows the variable set a preview branch receives, including which group it sources and each key's origin. Add --service to include that service's variables too.",
     examples: [

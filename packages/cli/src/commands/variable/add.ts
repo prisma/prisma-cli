@@ -108,7 +108,7 @@ export const variableAddCommand = defineCommand({
   help: {
     summary: "Add a variable to a group",
     description:
-      "Creates a variable in the named group: production, preview, or a custom group. Use --group <name> or --role production|preview. The value comes from KEY=VALUE, from the current shell environment when only KEY is given, or from a dotenv file with --file. --branch is not accepted; use a variable group or send a service variable with the deploy.",
+      "Creates a branch variable in the named group: production, preview, or a custom group. Use --group <name> or --role production|preview. The value comes from KEY=VALUE, from the current shell environment when only KEY is given, or from a dotenv file with --file. --branch is not accepted; use a variable group or send a service variable with the deploy.",
     examples: [
       "variable add STRIPE_KEY=sk_test_xxx --group production",
       "variable add STRIPE_KEY=sk_test_xxx --role production",

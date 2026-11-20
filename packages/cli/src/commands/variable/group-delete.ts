@@ -27,7 +27,7 @@ function deletePresentations(result: {
       {
         kind: "summary",
         status: "info",
-        text: `Variable group "${result.groupName}" and all its variables deleted.`,
+        text: `Variable group "${result.groupName}" and all its branch variables deleted.`,
       },
       {
         kind: "fields",
@@ -53,7 +53,7 @@ export const variableGroupDeleteCommand = defineCommand({
     },
   },
   help: {
-    summary: "Delete a custom variable group and all its variables",
+    summary: "Delete a custom variable group and all its branch variables",
     description:
       "Permanently deletes the custom group and every variable in it. This cannot be undone. The confirmation token is the group name; pass it with --confirm to run non-interactively. Built-in groups (production, preview) cannot be deleted.",
     examples: [
@@ -111,7 +111,7 @@ export const variableGroupDeleteCommand = defineCommand({
     }
 
     await ctx.prompt.consent(
-      `Delete variable group "${groupName}" and all its variables?`,
+      `Delete variable group "${groupName}" and all its branch variables?`,
       { token: groupName },
     );
 

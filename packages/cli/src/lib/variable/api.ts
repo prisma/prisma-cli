@@ -39,7 +39,7 @@ export type ResolvedVariableSource =
       groupClass: VariableGroupClass;
     }
   | { type: "service"; serviceId: string }
-  | { type: "branchOverride" };
+  | { type: "override" };
 
 export interface ResolvedVariable {
   key: string;

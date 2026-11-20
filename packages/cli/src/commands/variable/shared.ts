@@ -167,14 +167,14 @@ export function rejectBranchWrite(
 
   throw new CliStructuredError(
     "VARIABLE.NO_BRANCH_WRITE",
-    "`prisma variable` does not manage branch overrides",
+    "`prisma variable` does not manage overrides",
     {
-      why: "Branch overrides are deprecated. The new command writes to variable groups only.",
+      why: "Overrides are being phased out. `prisma variable` sets branch variables in groups.",
       nextActions: [
         {
           kind: "user-choice",
           label:
-            "Use `prisma project env` for existing overrides. For new values, use a variable group, or send a service variable with the deploy.",
+            "Use `prisma project env` for existing overrides. For new values, set a branch variable in a group, or send a service variable with the deploy.",
         },
         {
           kind: "run-command",
