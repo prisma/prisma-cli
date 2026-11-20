@@ -68,10 +68,12 @@ succeeds; if not, stop and surface the issue.
    install with `ERR_PNPM_OUTDATED_LOCKFILE`. If it is missing from the
    diff, stop — the bump did not finish.
 
-5. **Sanity-check the diff.** Only `package.json` files and
-   `pnpm-lock.yaml`; manifests change exactly `version` +
+5. **Sanity-check the diff.** Only `package.json` files,
+   `pnpm-lock.yaml`, and the `library_version` stamp in
+   `skills/*/SKILL.md`; manifests change exactly `version` +
    `workspace:<old> → workspace:<new>`; the excluded
-   `packages/compute/package.json` is untouched.
+   `@prisma/compute` keeps its own `version` (its `@repo/tsconfig`
+   devDependency still moves).
 
 6. **Commit** everything in one commit:
 
