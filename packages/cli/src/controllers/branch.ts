@@ -6,6 +6,7 @@ export interface RawBranchRecord {
   id: string;
   gitName: string;
   role: BranchRole;
+  variableGroup?: { id: string; name: string; class: string } | null;
 }
 
 export function sortBranches(branches: BranchSummary[]): BranchSummary[] {
@@ -39,5 +40,6 @@ export function toBranchSummary(branch: RawBranchRecord): BranchSummary {
     name: branch.gitName,
     role: branch.role,
     envMap: branch.role,
+    variableGroup: branch.variableGroup?.name ?? branch.role,
   };
 }

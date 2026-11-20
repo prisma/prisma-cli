@@ -21,7 +21,7 @@ function listPresentations(result: BranchListResult): Presentations {
   const rows = result.branches.map((branch) => [
     branch.name,
     branch.role,
-    branch.envMap,
+    branch.variableGroup,
   ]);
   return {
     json: () => result,
@@ -43,7 +43,7 @@ function listPresentations(result: BranchListResult): Presentations {
         : [
             {
               kind: "table" as const,
-              columns: ["Name", "Role", "Env map"],
+              columns: ["Name", "Role", "Variable group"],
               rows,
             },
           ]),

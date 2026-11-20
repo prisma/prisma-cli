@@ -87,6 +87,12 @@ export const projectEnvAddCommand = defineCommand({
   },
   needs: { credentials: true },
   handler: async (args, ctx) => {
+    ctx.report({
+      kind: "message",
+      severity: "warn",
+      text: "Warning: `prisma project env` is deprecated and will be removed in a future major version. Use `prisma variable` instead.",
+    });
+
     const source = resolveEnvWriteSource(
       args.positionals.assignment,
       args.flags.file,
