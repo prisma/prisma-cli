@@ -158,6 +158,7 @@ function answerFromFlags<V extends string>(
 function strayFlagLines(
   state: RunState,
   subjects: readonly string[],
+  verbs: readonly string[],
 ): readonly string[] {
   const unmatched = state.statementValues.filter(
     (value) =>
@@ -167,11 +168,11 @@ function strayFlagLines(
   return [
     ...unmatched.map(
       (value) =>
-        `${flagForm(value.verb, value.values)} matches none of these: ${subjects.join(", ")}.`,
+        `${flagForm(value.verb, value.values)} does not name ${subjects.join(" or ")}.`,
     ),
     ...state.confirmValues.map(
       (token) =>
-        `${flagForm("confirm", [token])} does not make these choices; the flags below do.`,
+        `${flagForm("confirm", [token])} does not choose what happens; ${verbs.map((verb) => `--${verb}`).join(" or ")} does.`,
     ),
   ];
 }
@@ -202,7 +203,9 @@ function statementUnavailable<V extends string>(
       ...(alone
         ? [`You have to choose what happens, and ${situation}.`]
         : unanswered.map((question) => question.question)),
-      ...strayFlagLines(state, subjects),
+      ...strayFlagLines(state, subjects, [
+        ...new Set(unanswered.flatMap((question) => question.verbs)),
+      ]),
     ].join("\n"),
     nextActions: unanswered.flatMap((question) =>
       question.verbs.map((verb) => ({

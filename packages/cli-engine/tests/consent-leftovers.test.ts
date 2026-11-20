@@ -99,7 +99,7 @@ describe("an unconsumed --confirm token", () => {
     });
   });
 
-  test("is reported with a statement refusal, which says the flags it lists make the choices", async () => {
+  test("is reported with a statement refusal, which names the flags that choose", async () => {
     const result = await cliWith(askBoth).run([
       "probe",
       "--confirm",
@@ -109,7 +109,7 @@ describe("an unconsumed --confirm token", () => {
 
     expect(errorOf(result)).toMatchObject({
       code: "CLI.CONSENT_REQUIRED",
-      why: "What happens to Legacy?\nWhat happens to User.nickname?\n--confirm mydb does not make these choices; the flags below do.",
+      why: "What happens to Legacy?\nWhat happens to User.nickname?\n--confirm mydb does not choose what happens; --rename or --delete does.",
       meta: { confirm: ["mydb"] },
     });
   });
@@ -126,7 +126,7 @@ describe("a statement value that matches no question", () => {
 
     expect(errorOf(result)).toMatchObject({
       code: "CLI.CONSENT_REQUIRED",
-      why: "What happens to Legacy?\nWhat happens to User.nickname?\n--delete Legcy matches none of these: Legacy, User.nickname.",
+      why: "What happens to Legacy?\nWhat happens to User.nickname?\n--delete Legcy does not name Legacy or User.nickname.",
       meta: { unmatched: [{ verb: "delete", values: ["Legcy"] }] },
     });
   });
