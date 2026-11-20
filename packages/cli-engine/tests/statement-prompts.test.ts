@@ -179,16 +179,15 @@ describe("a verb flag answers the statement", () => {
 });
 
 describe("without a flag, a non-interactive run refuses", () => {
-  test("the refusal names the subject and one flag form per verb", async () => {
+  test("the refusal leads with the question and gives one flag form per verb", async () => {
     const result = await cliWith(askLegacy).run(["probe", "--json"]);
 
     expect(result.exitCode).toBe(2);
     expect(errorOf(result)).toEqual({
       code: "CLI.CONSENT_REQUIRED",
       severity: "error",
-      summary:
-        '"Legacy" needs a statement, and the session is not interactive.',
-      why: LEGACY_QUESTION,
+      summary: LEGACY_QUESTION,
+      why: "You have to choose what happens, and this run cannot ask you.",
       nextActions: [
         {
           kind: "user-choice",
@@ -214,9 +213,10 @@ describe("without a flag, a non-interactive run refuses", () => {
     );
 
     expect(result.exitCode).toBe(2);
-    expect(errorOf(result)?.summary).toBe(
-      '"Legacy" needs a statement, which --yes cannot give.',
-    );
+    expect(errorOf(result)).toMatchObject({
+      summary: LEGACY_QUESTION,
+      why: "You have to choose what happens, and --yes does not choose for you.",
+    });
   });
 
   test("the human refusal prints each flag form as a next action", async () => {
@@ -312,8 +312,8 @@ describe("prompt.statements asks several questions together", () => {
     expect(result.exitCode).toBe(2);
     expect(errorOf(result)).toMatchObject({
       code: "CLI.CONSENT_REQUIRED",
-      summary:
-        '"User.name" needs a statement, and the session is not interactive.',
+      summary: USER_NAME_QUESTION,
+      why: "You have to choose what happens, and this run cannot ask you.",
       nextActions: [
         {
           kind: "user-choice",
@@ -337,8 +337,7 @@ describe("prompt.statements asks several questions together", () => {
     expect(errorOf(result)).toEqual({
       code: "CLI.CONSENT_REQUIRED",
       severity: "error",
-      summary:
-        '2 subjects need a statement, and the session is not interactive: "Legacy", "User.name".',
+      summary: "2 choices are needed, and this run cannot ask you.",
       why: `${LEGACY_QUESTION}\n${USER_NAME_QUESTION}`,
       nextActions: [
         {
