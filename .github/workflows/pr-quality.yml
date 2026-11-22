@@ -182,3 +182,21 @@ jobs:
         env:
           PUBLISH_CHANNEL: dev
         run: pnpm check:conformance
+
+      # prisma/cloud-deploy-action runs `prisma deploy` with fixed
+      # arguments. `v1` is the moving tag users run, so a CLI change that
+      # breaks those arguments fails here, before it can be released. See
+      # docs/oss/release-automation.md for CLOUD_DEPLOY_ACTION_REF.
+      - name: Build the prisma package
+        run: pnpm exec turbo run build --filter=prisma
+
+      - name: Check out prisma/cloud-deploy-action
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with:
+          repository: prisma/cloud-deploy-action
+          ref: ${{ vars.CLOUD_DEPLOY_ACTION_REF || 'v1' }}
+          path: .reference/cloud-deploy-action
+          persist-credentials: false
+
+      - name: prisma/cloud-deploy-action can drive this CLI
+        run: node scripts/check-cloud-deploy-action.mjs .reference/cloud-deploy-action packages/prisma/dist/prisma.js
