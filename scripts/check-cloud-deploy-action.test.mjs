@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { after, describe, it } from "node:test";
 import { fileURLToPath } from "node:url";
-import { judgeRun } from "./check-cloud-deploy-action-utils.mjs";
+import { exitCodeOf, judgeRun } from "./check-cloud-deploy-action-utils.mjs";
 
 const production = "prisma 8.0.0 accepts the deploy arguments for production";
 const named = "prisma 8.0.0 accepts the deploy arguments for pr-7";
@@ -63,6 +63,19 @@ describe("judgeRun", () => {
       ]),
       { verdict: "incompatible", problems: [`Failed: ${destroy}`] },
     );
+  });
+});
+
+describe("exitCodeOf", () => {
+  it("returns what the check returns", async () => {
+    assert.equal(await exitCodeOf(async () => 1), 1);
+  });
+
+  it("reports a crash as a check that could not run", async () => {
+    const crash = async () => {
+      throw new Error("boom");
+    };
+    assert.equal(await exitCodeOf(crash), 2);
   });
 });
 

@@ -38,6 +38,7 @@ The pull request check is part of the `Test` job because that check is already r
 
 - The test is `tests/prisma-cli.test.mjs`, and it needs no install: it imports only `../cli.mjs` and Node built-ins.
 - The test reads the executable to test from the `PRISMA_CLI_BINS` environment variable.
+- The test reads the CLI's version from the output of `prisma --version`, which must start with the version number.
 - The script finds the two deploy cases by their titles (`... accepts the deploy arguments for production` and for a named environment) and exits 2 unless both ran. Without an executable the test runs no cases and passes, so a renamed variable or renamed titles would otherwise go unnoticed. Any failed case makes it exit 1. The destroy case may be skipped, because CLIs without a `destroy` command skip it.
 - The test reads this CLI's error codes: `CLI.INVALID_ARGUMENTS`, `CLI.COMMAND_MOVED` or `CLI.UNKNOWN_COMMAND` for rejected arguments, and `CLI.CREDENTIALS_REQUIRED` or `CLI.CONFIG_SECTION_INVALID` as the first check after the arguments are parsed.
 
@@ -55,7 +56,7 @@ When a product changes the arguments:
 
 When the change is made in this repository itself, the pull request's CLI reports the last release's version, so the action sends it the old arguments and the check fails. Release the action first with a rule for the next version, and bump the version (`pnpm bump-version`) in the same pull request.
 
-Making the action detect the arguments without relying on the version number is tracked as follow-up in `prisma/cloud-deploy-action`.
+Making the action detect the arguments without relying on the version number is tracked in [prisma/cloud-deploy-action#27](https://github.com/prisma/cloud-deploy-action/issues/27).
 
 ## The shared secret: `DEPLOY_GITHUB_TOKEN`
 

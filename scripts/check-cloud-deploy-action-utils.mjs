@@ -38,3 +38,20 @@ export function judgeRun(results) {
   if (problems.length > 0) return { verdict: "incompatible", problems };
   return { verdict: "pass", problems };
 }
+
+/**
+ * A crash of the check is not a verdict on the CLI, so it must not exit
+ * with Node's default 1, which means "incompatible" here.
+ *
+ * @param {() => Promise<number>} main
+ */
+export async function exitCodeOf(main) {
+  try {
+    return await main();
+  } catch (error) {
+    console.error(
+      `::error::The check could not run: ${error instanceof Error ? error.stack : error}`,
+    );
+    return EXIT_NOT_RUN;
+  }
+}

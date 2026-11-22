@@ -17,6 +17,7 @@ import { spec } from "node:test/reporters";
 import {
   EXIT_INCOMPATIBLE,
   EXIT_NOT_RUN,
+  exitCodeOf,
   judgeRun,
 } from "./check-cloud-deploy-action-utils.mjs";
 
@@ -37,21 +38,21 @@ async function main() {
     console.error(
       "Usage: node scripts/check-cloud-deploy-action.mjs <action-checkout> <prisma-executable>",
     );
-    process.exit(EXIT_NOT_RUN);
+    return EXIT_NOT_RUN;
   }
   const testFile = resolve(actionDir, TEST_FILE);
   if (!existsSync(testFile)) {
     console.error(
       `::error::${join(actionDir, TEST_FILE)} does not exist. prisma/cloud-deploy-action must keep its CLI test at this path. The check could not run.`,
     );
-    process.exit(EXIT_NOT_RUN);
+    return EXIT_NOT_RUN;
   }
   const executable = resolve(bin);
   if (!isExecutableFile(executable)) {
     console.error(
       `::error::The prisma executable ${executable} is missing or not executable. The check could not run.`,
     );
-    process.exit(EXIT_NOT_RUN);
+    return EXIT_NOT_RUN;
   }
 
   process.env.PRISMA_CLI_BINS = executable;
@@ -76,17 +77,18 @@ async function main() {
     console.error(
       `::error::The check could not run: prisma/cloud-deploy-action's deploy cases did not run against ${executable}.`,
     );
-    process.exit(EXIT_NOT_RUN);
+    return EXIT_NOT_RUN;
   }
   if (verdict === "incompatible") {
     console.error(
       `::error::prisma/cloud-deploy-action cannot drive ${executable}: its test failed.`,
     );
-    process.exit(EXIT_INCOMPATIBLE);
+    return EXIT_INCOMPATIBLE;
   }
   console.log(
     `prisma/cloud-deploy-action's test passes against ${executable}.`,
   );
+  return 0;
 }
 
-await main();
+process.exit(await exitCodeOf(main));
