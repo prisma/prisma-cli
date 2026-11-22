@@ -181,14 +181,9 @@ function statementUnavailable<V extends string>(
   subjects: readonly string[],
   state: RunState,
 ): CliStructuredError {
-  const quoted = unanswered.map((question) => `"${question.subject}"`);
-  const situation = state.yes
-    ? "which --yes cannot give"
-    : "and the session is not interactive";
-  const summary =
-    unanswered.length === 1
-      ? `${quoted[0]} needs a statement, ${situation}.`
-      : `${unanswered.length} subjects need a statement, ${situation}: ${quoted.join(", ")}.`;
+  const summary = state.yes
+    ? "This command requires explicit consent, and --yes does not give it."
+    : "This command requires explicit consent, but it was not provided.";
   const listed = unanswered.map(({ subject, verbs }) => ({ subject, verbs }));
   const unmatched = state.statementValues
     .filter(

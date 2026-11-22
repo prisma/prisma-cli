@@ -187,7 +187,7 @@ describe("without a flag, a non-interactive run refuses", () => {
       code: "CLI.CONSENT_REQUIRED",
       severity: "error",
       summary:
-        '"Legacy" needs a statement, and the session is not interactive.',
+        "This command requires explicit consent, but it was not provided.",
       why: LEGACY_QUESTION,
       nextActions: [
         {
@@ -215,7 +215,7 @@ describe("without a flag, a non-interactive run refuses", () => {
 
     expect(result.exitCode).toBe(2);
     expect(errorOf(result)?.summary).toBe(
-      '"Legacy" needs a statement, which --yes cannot give.',
+      "This command requires explicit consent, and --yes does not give it.",
     );
   });
 
@@ -313,7 +313,7 @@ describe("prompt.statements asks several questions together", () => {
     expect(errorOf(result)).toMatchObject({
       code: "CLI.CONSENT_REQUIRED",
       summary:
-        '"User.name" needs a statement, and the session is not interactive.',
+        "This command requires explicit consent, but it was not provided.",
       nextActions: [
         {
           kind: "user-choice",
@@ -338,7 +338,7 @@ describe("prompt.statements asks several questions together", () => {
       code: "CLI.CONSENT_REQUIRED",
       severity: "error",
       summary:
-        '2 subjects need a statement, and the session is not interactive: "Legacy", "User.name".',
+        "This command requires explicit consent, but it was not provided.",
       why: `${LEGACY_QUESTION}\n${USER_NAME_QUESTION}`,
       nextActions: [
         {
