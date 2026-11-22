@@ -216,6 +216,8 @@ export interface StatementOptions<V extends string> {
 
 export interface StatementQuestion<V extends string>
   extends StatementOptions<V> {
+  /** Shown as the prompt, and as the first line of the error when it is
+   *  the only question nobody can answer. Name what it is about. */
   readonly question: string;
 }
 
