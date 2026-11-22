@@ -109,7 +109,28 @@ async function tarball(): Promise<readonly Finding[]> {
       shellPackage: "@prisma/cli",
       enginePackage: "@prisma/cli-engine",
       familyPackages: ["@prisma/composer-cli", "@prisma/orm-toolchain"],
-      exceptions: [],
+      exceptions: [
+        {
+          familyPackage: "@prisma/composer-cli",
+          familyPin: "0.10.0",
+          shellPin: "0.10.2",
+          channel: "dev",
+          reason:
+            "engine 0.10.1 changed an error's text and 0.10.2 reverts it; composer-cli still peers 0.10.0",
+          removeWhen:
+            "composer-cli releases peering 0.10.2 and the follow-up bump PR pins that release",
+        },
+        {
+          familyPackage: "@prisma/orm-toolchain",
+          familyPin: "0.10.0",
+          shellPin: "0.10.2",
+          channel: "dev",
+          reason:
+            "engine 0.10.1 changed an error's text and 0.10.2 reverts it; orm-toolchain still peers 0.10.0",
+          removeWhen:
+            "orm-toolchain releases peering 0.10.2 and the follow-up bump PR pins that release",
+        },
+      ],
       channel: CHANNEL,
       sandboxDir: join(WORK_DIR, "sandbox"),
     },
