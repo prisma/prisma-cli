@@ -116,7 +116,7 @@ async function tarball(): Promise<readonly Finding[]> {
           shellPin: "0.10.2",
           channel: "dev",
           reason:
-            "engine 0.10.1 changed an error's text and 0.10.2 reverts it; composer-cli still peers 0.10.0",
+            "engine 0.10.2 changes the first line of the statement refusal; composer-cli still peers 0.10.0",
           removeWhen:
             "composer-cli releases peering 0.10.2 and the follow-up bump PR pins that release",
         },
@@ -126,7 +126,7 @@ async function tarball(): Promise<readonly Finding[]> {
           shellPin: "0.10.2",
           channel: "dev",
           reason:
-            "engine 0.10.1 changed an error's text and 0.10.2 reverts it; orm-toolchain still peers 0.10.0",
+            "engine 0.10.2 changes the first line of the statement refusal; orm-toolchain still peers 0.10.0",
           removeWhen:
             "orm-toolchain releases peering 0.10.2 and the follow-up bump PR pins that release",
         },
