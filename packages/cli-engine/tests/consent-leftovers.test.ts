@@ -113,6 +113,28 @@ describe("an unconsumed --confirm token", () => {
       meta: { confirm: ["mydb"] },
     });
   });
+
+  test("names only the flags of the questions still unanswered", async () => {
+    const result = await cliWith((prompt) =>
+      prompt.statements([
+        question("Legacy"),
+        { ...question("User.nickname"), verbs: ["delete"] },
+      ]),
+    ).run([
+      "probe",
+      "--rename",
+      "Legacy:Archive",
+      "--confirm",
+      "mydb",
+      "--json",
+    ]);
+
+    expect(errorOf(result)).toMatchObject({
+      code: "CLI.CONSENT_REQUIRED",
+      summary: "What happens to User.nickname?",
+      why: "You have to choose what happens, and this run cannot ask you.\n--confirm mydb does not choose what happens; --delete does.",
+    });
+  });
 });
 
 describe("a statement value that matches no question", () => {

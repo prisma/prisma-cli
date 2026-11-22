@@ -47,6 +47,10 @@ These came from the ORM's first use and the reviews of this change, all in engin
 - **A signal while a prompt waits cancels the prompt** with `CLI.PROMPT_CANCELLED`: exit 3 for SIGINT, as Ctrl-C at the prompt is the user declining, and 143 for SIGTERM, which ends the run as a delivered signal. Later prompts in the run are cancelled at once, and a further signal force-exits.
 - **`last: true`** marks a batch as the run's final ask: values still unconsumed fail with `CLI.CONSENT_UNUSED` as soon as it is answered, before the command acts on the answers.
 
+Added in engine 0.10.1:
+
+- **The question is the first line of the refusal** when it is the only question nobody can answer; with several, the first line counts them and `why` lists them. So a question is one line that names what it is about and what is at stake.
+
 ## Consequences
 
 - A product adds a consent vocabulary by declaring it on the command that uses it, and its help text with it. The engine stays free of product words.
