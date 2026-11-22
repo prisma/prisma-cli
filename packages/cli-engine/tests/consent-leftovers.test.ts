@@ -99,7 +99,7 @@ describe("an unconsumed --confirm token", () => {
     });
   });
 
-  test("is reported with a statement refusal, which names the flags that choose", async () => {
+  test("is reported with a statement refusal, which says a statement flag answers it", async () => {
     const result = await cliWith(askBoth).run([
       "probe",
       "--confirm",
@@ -109,30 +109,8 @@ describe("an unconsumed --confirm token", () => {
 
     expect(errorOf(result)).toMatchObject({
       code: "CLI.CONSENT_REQUIRED",
-      why: "What happens to Legacy?\nWhat happens to User.nickname?\n--confirm mydb does not choose what happens; --rename or --delete does.",
+      why: "What happens to Legacy?\nWhat happens to User.nickname?\n--confirm mydb answers no consent in this run; a statement flag is what answers these questions.",
       meta: { confirm: ["mydb"] },
-    });
-  });
-
-  test("names only the flags of the questions still unanswered", async () => {
-    const result = await cliWith((prompt) =>
-      prompt.statements([
-        question("Legacy"),
-        { ...question("User.nickname"), verbs: ["delete"] },
-      ]),
-    ).run([
-      "probe",
-      "--rename",
-      "Legacy:Archive",
-      "--confirm",
-      "mydb",
-      "--json",
-    ]);
-
-    expect(errorOf(result)).toMatchObject({
-      code: "CLI.CONSENT_REQUIRED",
-      summary: "What happens to User.nickname?",
-      why: "You have to choose what happens, and this run cannot ask you.\n--confirm mydb does not choose what happens; --delete does.",
     });
   });
 });
@@ -148,7 +126,7 @@ describe("a statement value that matches no question", () => {
 
     expect(errorOf(result)).toMatchObject({
       code: "CLI.CONSENT_REQUIRED",
-      why: "What happens to Legacy?\nWhat happens to User.nickname?\n--delete Legcy does not name Legacy or User.nickname.",
+      why: "What happens to Legacy?\nWhat happens to User.nickname?\n--delete Legcy answers no question; the questions are about Legacy, User.nickname.",
       meta: { unmatched: [{ verb: "delete", values: ["Legcy"] }] },
     });
   });

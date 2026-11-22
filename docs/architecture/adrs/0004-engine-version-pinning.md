@@ -47,8 +47,6 @@ The conformance checkers in both publishing repos are the mechanism, evolved fro
 - **Singleton install**: the packed shell tarball, installed into a clean sandbox, resolves exactly one engine copy — with **no exception list**. Under peers a mismatch fails at install, so the S6-era recorded exceptions are deleted the moment the first tandem release lands the peers.
 - **Engine-free libraries**: a library package's packed output names the engine in no import and in no consumer-installed dependency field.
 
-**While the products catch up to a new engine version** (added 2026-11-23). Every merge to `main` publishes the engine, so an engine change has to merge before any product can require it. The pull request that bumps the engine records one exception per product in `packages/cli/scripts/conformance.ts`, limited to the `dev` channel. Pull request CI and the development build pass; a release of the CLI is still checked without the exceptions and is refused until every product requires the engine version the shell ships. During that window a development build installs two engine copies, the shell's and the one the products require. The pull request that pins the products' new releases removes the exceptions, and it must pin every product at once: a release pull request that pins only one passes its own checks and is then refused at publish.
-
 ## Cases considered
 
 - *User installs the CLI alone* (global, `npx`, devDependency): peers guarantee one engine regardless of how the package manager arranges the tree.

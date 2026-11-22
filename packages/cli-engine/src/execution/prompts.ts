@@ -158,7 +158,6 @@ function answerFromFlags<V extends string>(
 function strayFlagLines(
   state: RunState,
   subjects: readonly string[],
-  verbs: readonly string[],
 ): readonly string[] {
   const unmatched = state.statementValues.filter(
     (value) =>
@@ -168,11 +167,11 @@ function strayFlagLines(
   return [
     ...unmatched.map(
       (value) =>
-        `${flagForm(value.verb, value.values)} does not name ${subjects.join(" or ")}.`,
+        `${flagForm(value.verb, value.values)} answers no question; the questions are about ${subjects.join(", ")}.`,
     ),
     ...state.confirmValues.map(
       (token) =>
-        `${flagForm("confirm", [token])} does not choose what happens; ${verbs.map((verb) => `--${verb}`).join(" or ")} does.`,
+        `${flagForm("confirm", [token])} answers no consent in this run; a statement flag is what answers these questions.`,
     ),
   ];
 }
@@ -182,14 +181,14 @@ function statementUnavailable<V extends string>(
   subjects: readonly string[],
   state: RunState,
 ): CliStructuredError {
+  const quoted = unanswered.map((question) => `"${question.subject}"`);
   const situation = state.yes
-    ? "--yes does not choose for you"
-    : "this run cannot ask you";
-  const [only, ...others] = unanswered;
-  const alone = others.length === 0;
-  const summary = alone
-    ? only.question
-    : `${unanswered.length} choices are needed, and ${situation}.`;
+    ? "which --yes cannot give"
+    : "and the session is not interactive";
+  const summary =
+    unanswered.length === 1
+      ? `${quoted[0]} needs a statement, ${situation}.`
+      : `${unanswered.length} subjects need a statement, ${situation}: ${quoted.join(", ")}.`;
   const listed = unanswered.map(({ subject, verbs }) => ({ subject, verbs }));
   const unmatched = state.statementValues
     .filter(
@@ -200,12 +199,8 @@ function statementUnavailable<V extends string>(
     .map(({ verb, values }) => ({ verb, values }));
   return new CliStructuredError("CLI.CONSENT_REQUIRED", summary, {
     why: [
-      ...(alone
-        ? [`You have to choose what happens, and ${situation}.`]
-        : unanswered.map((question) => question.question)),
-      ...strayFlagLines(state, subjects, [
-        ...new Set(unanswered.flatMap((question) => question.verbs)),
-      ]),
+      ...unanswered.map((question) => question.question),
+      ...strayFlagLines(state, subjects),
     ].join("\n"),
     nextActions: unanswered.flatMap((question) =>
       question.verbs.map((verb) => ({
