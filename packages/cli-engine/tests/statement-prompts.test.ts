@@ -215,7 +215,7 @@ describe("without a flag, a non-interactive run refuses", () => {
 
     expect(result.exitCode).toBe(2);
     expect(errorOf(result)?.summary).toBe(
-      "This command requires explicit consent, and --yes does not give it.",
+      "This command requires explicit consent for which --yes is not sufficient.",
     );
   });
 

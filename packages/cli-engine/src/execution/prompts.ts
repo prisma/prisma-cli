@@ -441,7 +441,7 @@ function answerWithoutAsking<T>(
 
 function consentMissing(state: RunState): string {
   return state.yes
-    ? "This command requires explicit consent, and --yes does not give it."
+    ? "This command requires explicit consent for which --yes is not sufficient."
     : "This command requires explicit consent, but it was not provided.";
 }
 
