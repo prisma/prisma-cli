@@ -23,6 +23,10 @@ const scratch = useScratchProject("service-domain");
 
 const hostname = `${scratchName("dom")}.prisma-cli-e2e.example`;
 
+/** `service create` puts the service on `main`; the domain commands
+ *  look on `production` unless told otherwise. */
+const SERVICE_BRANCH = "main";
+
 interface DomainRow {
   readonly id: string;
   readonly hostname: string;
@@ -62,6 +66,8 @@ function domainArgs(command: string): string[] {
     hostname,
     "--service",
     requireFixture().serviceName,
+    "--branch",
+    SERVICE_BRANCH,
   ];
 }
 
@@ -126,6 +132,8 @@ describeCommand("service domain add", () => {
       hostname,
       "--service",
       service.name,
+      "--branch",
+      SERVICE_BRANCH,
     ]);
     const result = run.envelope.result as {
       readonly workspace: { readonly id: string };
