@@ -368,12 +368,21 @@ describe("prisma service domain wait", () => {
       }),
       why: `The domain is still "update_failed". The hostname's last update failed, and the platform is retrying it. You can try again, or contact support.`,
       advice: "Retry wait with a longer --timeout.",
+      tryAgain: [
+        {
+          kind: "run-command",
+          label: "Try again",
+          command:
+            "prisma service domain retry shop.acme.com --service svc_1 --project proj_1 --branch production",
+        },
+      ],
     },
   ])("on timeout in $state, which the platform has to move, reports the state and what to do", async ({
     state,
     domain,
     why,
     advice,
+    tryAgain = [],
   }) => {
     const harness = await makeServiceCli({ routes: waitRoutes([domain]) });
 
@@ -409,6 +418,7 @@ describe("prisma service domain wait", () => {
         command:
           "prisma service domain show shop.acme.com --service svc_1 --project proj_1 --branch production",
       },
+      ...tryAgain,
       { kind: "user-choice", label: advice },
     ]);
     expect(JSON.stringify(frame.envelope)).not.toContain(

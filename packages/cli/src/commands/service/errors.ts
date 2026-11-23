@@ -398,6 +398,14 @@ export function domainVerificationTimeoutError(
           "Show the domain",
           domainRecoveryCommand("show", hostname, target),
         ),
+        ...(domain.state === "update_failed"
+          ? [
+              runCommandAction(
+                "Try again",
+                domainRecoveryCommand("retry", hostname, target),
+              ),
+            ]
+          : []),
         adviceAction(
           waitsForPlatform(domain) && !guidance?.failed
             ? "Retry wait with a longer --timeout. If the domain stays in this state, contact support."

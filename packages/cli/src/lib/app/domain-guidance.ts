@@ -15,22 +15,21 @@ export interface DomainStateGuidance {
 }
 
 /**
- * What a failed certificate shows: the platform's reasons as given, or,
- * when it gave none, only that it failed. See "Errors From The Systems
- * Below The API" in docs/product/error-conventions.md.
+ * What a failed certificate shows: the platform's reason as given, or,
+ * when it gave none, only that it failed. After a certificate retry the
+ * platform refuses for DNS, it stores the same text as the certificate's
+ * reason and as the DNS reason, so the DNS reason is shown only when the
+ * certificate has none. See "Errors From The Systems Below The API" in
+ * docs/product/error-conventions.md.
  */
 function certificateFailure(domain: DomainGuidanceInput): string {
-  const relayed = [
-    domain.failureReason
-      ? `The platform reported: ${domain.failureReason}`
-      : null,
-    domain.dnsDetail
-      ? `About the hostname's DNS, the platform reported: ${domain.dnsDetail}`
-      : null,
-  ].filter((sentence) => sentence !== null);
-  return relayed.length === 0
-    ? "Provisioning failed for reasons we are not sure about. You can try again, or contact support."
-    : `Provisioning failed. ${relayed.join(" ")}`;
+  if (domain.failureReason) {
+    return `Provisioning failed. The platform reported: ${domain.failureReason}`;
+  }
+  if (domain.dnsDetail) {
+    return `Provisioning failed. About the hostname's DNS, the platform reported: ${domain.dnsDetail}`;
+  }
+  return "Provisioning failed for reasons we are not sure about. You can try again, or contact support.";
 }
 
 const ENDS_A_SENTENCE = /[.!?]$/;

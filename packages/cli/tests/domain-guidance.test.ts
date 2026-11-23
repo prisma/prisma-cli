@@ -208,18 +208,19 @@ describe("domainStateGuidance", () => {
     });
   });
 
-  it("relays the platform's reason for refusing the DNS beside a failed certificate, each as given", () => {
+  it("shows a failed certificate's reason once when the platform stored the same text as the DNS reason", () => {
     expect(
       guidance(
         input({
           state: "certificate_failed",
           failureReason: "dns: no CNAME found",
-          dnsDetail: "the CNAME points at old.example.net",
+          dnsDetail: "dns: no CNAME found",
         }),
       )?.waitingOn,
-    ).toBe(
-      "Provisioning failed. The platform reported: dns: no CNAME found About the hostname's DNS, the platform reported: the CNAME points at old.example.net",
-    );
+    ).toBe("Provisioning failed. The platform reported: dns: no CNAME found");
+  });
+
+  it("relays the platform's reason for refusing the DNS when a failed certificate has no reason of its own", () => {
     expect(
       guidance(
         input({

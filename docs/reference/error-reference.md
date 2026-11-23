@@ -650,11 +650,11 @@ A `service domain` command targeted a hostname that is not attached to the resol
 
 ### SERVICE.DOMAIN_VERIFICATION_FAILED
 
-`service domain wait` saw the hostname in a state that waiting cannot get past. For `certificate_failed` (the TLS certificate could not be issued), `why` relays the platform's reason as given, or says that provisioning failed for reasons we are not sure about when the platform gave none, and the next actions point at `service domain show` and `service domain retry`. For `no_service` (the service was deleted), `why` says so, the fix is to delete the hostname and add it to the service that should serve it, and the next action points at `service domain show`. Meta: `state`.
+`service domain wait` saw the hostname in a state that waiting cannot get past. For `certificate_failed` (the TLS certificate could not be issued), `why` relays the platform's reason as given (its reason for refusing the hostname's DNS when the certificate has none), or says that provisioning failed for reasons we are not sure about when the platform gave neither, and the next actions point at `service domain show` and `service domain retry`. For `no_service` (the service was deleted), `why` says so, the fix is to delete the hostname and add it to the service that should serve it, and the next action points at `service domain show`. Meta: `state`.
 
 ### SERVICE.DOMAIN_VERIFICATION_TIMEOUT
 
-`service domain wait` ran out of time (default 15m, or `--timeout 0` for a single read) before the hostname's state became `active`. `why` reports the state the hostname is still in and what that state means. When the hostname waits on the user, the next actions carry the fix, such as the DNS records to publish. When it waits on the platform, they say to wait longer and to contact support if the hostname stays in that state. Meta: `state`.
+`service domain wait` ran out of time (default 15m, or `--timeout 0` for a single read) before the hostname's state became `active`. `why` reports the state the hostname is still in and what that state means. When the hostname waits on the user, the next actions carry the fix, such as the DNS records to publish. When the platform is still working on it, they say to wait longer and to contact support if the hostname stays in that state. After a failed platform update, `why` says the last update failed and is being retried, and the next actions add `service domain retry`. Meta: `state`.
 
 ### SERVICE.FEATURE_UNAVAILABLE
 

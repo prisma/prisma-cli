@@ -864,6 +864,27 @@ describe("prisma service domain show", () => {
 
   it.each([
     {
+      name: "a DNS refusal of a certificate retry once, though the API carries its text twice",
+      domain: {
+        ...certificateFailedRecord("dns: no CNAME found"),
+        switchboardDns: {
+          accepted: false,
+          detail: "dns: no CNAME found",
+          lastSeenAt: "2026-08-01T00:05:00.000Z",
+        },
+      },
+      failure:
+        "Provisioning failed. The platform reported: dns: no CNAME found",
+      next: [
+        {
+          kind: "run-command",
+          label: "Retry the certificate",
+          command:
+            "prisma service domain retry shop.acme.com --service svc_1 --project proj_1 --branch production",
+        },
+      ],
+    },
+    {
       name: "the platform's reason for a failed certificate, exactly as given",
       domain: certificateFailedRecord("CAA record forbids the issuer"),
       failure:
