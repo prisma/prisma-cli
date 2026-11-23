@@ -109,28 +109,7 @@ async function tarball(): Promise<readonly Finding[]> {
       shellPackage: "@prisma/cli",
       enginePackage: "@prisma/cli-engine",
       familyPackages: ["@prisma/composer-cli", "@prisma/orm-toolchain"],
-      exceptions: [
-        {
-          familyPackage: "@prisma/composer-cli",
-          familyPin: "0.10.0",
-          shellPin: "0.10.4",
-          channel: "dev",
-          reason:
-            "engines 0.10.2 to 0.10.4 change the first line of the two consent refusals; composer-cli still peers 0.10.0",
-          removeWhen:
-            "composer-cli releases peering 0.10.4 and the follow-up bump PR pins that release",
-        },
-        {
-          familyPackage: "@prisma/orm-toolchain",
-          familyPin: "0.10.0",
-          shellPin: "0.10.4",
-          channel: "dev",
-          reason:
-            "engines 0.10.2 to 0.10.4 change the first line of the two consent refusals; orm-toolchain still peers 0.10.0",
-          removeWhen:
-            "orm-toolchain releases peering 0.10.4 and the follow-up bump PR pins that release",
-        },
-      ],
+      exceptions: [],
       channel: CHANNEL,
       sandboxDir: join(WORK_DIR, "sandbox"),
     },
