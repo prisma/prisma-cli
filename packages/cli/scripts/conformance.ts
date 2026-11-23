@@ -113,20 +113,22 @@ async function tarball(): Promise<readonly Finding[]> {
         {
           familyPackage: "@prisma/composer-cli",
           familyPin: "0.10.0",
-          shellPin: "0.10.1",
+          shellPin: "0.10.2",
           channel: "dev",
-          reason: "engine 0.10.1 must publish before composer-cli can peer it",
+          reason:
+            "engine 0.10.2 changes the first line of the statement refusal; composer-cli still peers 0.10.0",
           removeWhen:
-            "composer-cli releases peering 0.10.1 and the follow-up bump PR pins that release",
+            "composer-cli releases peering 0.10.2 and the follow-up bump PR pins that release",
         },
         {
           familyPackage: "@prisma/orm-toolchain",
           familyPin: "0.10.0",
-          shellPin: "0.10.1",
+          shellPin: "0.10.2",
           channel: "dev",
-          reason: "engine 0.10.1 must publish before orm-toolchain can peer it",
+          reason:
+            "engine 0.10.2 changes the first line of the statement refusal; orm-toolchain still peers 0.10.0",
           removeWhen:
-            "orm-toolchain releases peering 0.10.1 and the follow-up bump PR pins that release",
+            "orm-toolchain releases peering 0.10.2 and the follow-up bump PR pins that release",
         },
       ],
       channel: CHANNEL,

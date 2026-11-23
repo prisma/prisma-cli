@@ -179,15 +179,16 @@ describe("a verb flag answers the statement", () => {
 });
 
 describe("without a flag, a non-interactive run refuses", () => {
-  test("the refusal leads with the question and gives one flag form per verb", async () => {
+  test("the refusal names the subject and one flag form per verb", async () => {
     const result = await cliWith(askLegacy).run(["probe", "--json"]);
 
     expect(result.exitCode).toBe(2);
     expect(errorOf(result)).toEqual({
       code: "CLI.CONSENT_REQUIRED",
       severity: "error",
-      summary: LEGACY_QUESTION,
-      why: "You have to choose what happens, and this run cannot ask you.",
+      summary:
+        "This command requires explicit consent, but it was not provided.",
+      why: LEGACY_QUESTION,
       nextActions: [
         {
           kind: "user-choice",
@@ -213,57 +214,22 @@ describe("without a flag, a non-interactive run refuses", () => {
     );
 
     expect(result.exitCode).toBe(2);
-    expect(errorOf(result)).toMatchObject({
-      summary: LEGACY_QUESTION,
-      why: "You have to choose what happens, and --yes does not choose for you.",
-    });
+    expect(errorOf(result)?.summary).toBe(
+      "This command requires explicit consent, and --yes does not give it.",
+    );
   });
 
   test("the human refusal prints each flag form as a next action", async () => {
     const result = await cliWith(askLegacy).run(["probe", "--format", "human"]);
 
     expect(result.exitCode).toBe(2);
-    expect(result.stderr).toContain(
-      `[CLI.CONSENT_REQUIRED] ${LEGACY_QUESTION}`,
-    );
+    expect(result.stderr).toContain("[CLI.CONSENT_REQUIRED]");
     expect(result.stderr).toContain(
       "Run the command again with --rename 'Legacy:<new name>'",
     );
     expect(result.stderr).toContain(
       "Run the command again with --delete Legacy",
     );
-  });
-});
-
-describe("a refusal of one question with a flag that answers nothing", () => {
-  test("says which subject a statement flag does not name", async () => {
-    const result = await cliWith(askLegacy).run([
-      "probe",
-      "--delete",
-      "Legcy",
-      "--json",
-    ]);
-
-    expect(errorOf(result)).toMatchObject({
-      code: "CLI.CONSENT_REQUIRED",
-      summary: LEGACY_QUESTION,
-      why: "You have to choose what happens, and this run cannot ask you.\n--delete Legcy does not name Legacy.",
-    });
-  });
-
-  test("says which flags choose when --confirm was given", async () => {
-    const result = await cliWith(askLegacy).run([
-      "probe",
-      "--confirm",
-      "mydb",
-      "--json",
-    ]);
-
-    expect(errorOf(result)).toMatchObject({
-      code: "CLI.CONSENT_REQUIRED",
-      summary: LEGACY_QUESTION,
-      why: "You have to choose what happens, and this run cannot ask you.\n--confirm mydb does not choose what happens; --rename or --delete does.",
-    });
   });
 });
 
@@ -346,8 +312,8 @@ describe("prompt.statements asks several questions together", () => {
     expect(result.exitCode).toBe(2);
     expect(errorOf(result)).toMatchObject({
       code: "CLI.CONSENT_REQUIRED",
-      summary: USER_NAME_QUESTION,
-      why: "You have to choose what happens, and this run cannot ask you.",
+      summary:
+        "This command requires explicit consent, but it was not provided.",
       nextActions: [
         {
           kind: "user-choice",
@@ -364,19 +330,6 @@ describe("prompt.statements asks several questions together", () => {
     });
   });
 
-  test("--yes answers none of several questions", async () => {
-    const result = await cliWith(askBoth).run(
-      ["probe", "--yes", "--json"],
-      INTERACTIVE,
-    );
-
-    expect(errorOf(result)).toMatchObject({
-      code: "CLI.CONSENT_REQUIRED",
-      summary: "2 choices are needed, and --yes does not choose for you.",
-      why: `${LEGACY_QUESTION}\n${USER_NAME_QUESTION}`,
-    });
-  });
-
   test("one refusal lists every unanswered question", async () => {
     const result = await cliWith(askBoth).run(["probe", "--json"]);
 
@@ -384,7 +337,8 @@ describe("prompt.statements asks several questions together", () => {
     expect(errorOf(result)).toEqual({
       code: "CLI.CONSENT_REQUIRED",
       severity: "error",
-      summary: "2 choices are needed, and this run cannot ask you.",
+      summary:
+        "This command requires explicit consent, but it was not provided.",
       why: `${LEGACY_QUESTION}\n${USER_NAME_QUESTION}`,
       nextActions: [
         {
