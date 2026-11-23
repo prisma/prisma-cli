@@ -391,7 +391,6 @@ export function toServiceDomainSummary(
     conditions: domain.conditions,
     firstUnmetCondition: domain.firstUnmetCondition,
     failureReason: domain.failureReason,
-    syncError: domain.syncError,
     dnsDetail: domain.dnsDetail,
     certExpiresAt: domain.certExpiresAt,
     ownershipExpiresAt: domain.ownershipExpiresAt,

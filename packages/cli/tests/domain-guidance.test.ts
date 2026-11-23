@@ -3,6 +3,7 @@ import type { DomainRecord } from "../src/lib/app/app-provider";
 import {
   cannotBecomeActive,
   domainStateGuidance,
+  waitsForPlatform,
   waitsForUserDns,
 } from "../src/lib/app/domain-guidance";
 
@@ -34,7 +35,6 @@ function input(overrides: Partial<GuidanceInput>): GuidanceInput {
     state: "active",
     dnsRecords: [],
     failureReason: null,
-    syncError: null,
     dnsDetail: null,
     heldBy: null,
     ...overrides,
@@ -53,17 +53,19 @@ describe("domainStateGuidance", () => {
     expect(guidance(input({ state: "active" }))).toBeNull();
   });
 
-  it("asks for every listed record while ownership is not verified, and says what to do if the state stays", () => {
+  it("asks for every listed record while ownership is not verified", () => {
     expect(
       guidance(input({ state: "not_verified", dnsRecords: [TXT, CNAME] })),
     ).toEqual({
+      failed: false,
       waitingOn: "Proof in DNS that this workspace owns the domain.",
-      fix: `Publish TXT _prisma-verification.shop.acme.com -> prisma-verification=3f9a and CNAME shop.acme.com -> switchboard.cdg.prisma.build at your DNS provider, then run prisma service domain retry shop.acme.com --service svc_1 --project proj_1 --branch production. ${APEX_NOTE} If the state stays not_verified long after the records are published, the workspace may have no domain ownership for this hostname: deleting the hostname and adding it again creates one.`,
+      fix: `Publish TXT _prisma-verification.shop.acme.com -> prisma-verification=3f9a and CNAME shop.acme.com -> switchboard.cdg.prisma.build at your DNS provider, then run prisma service domain retry shop.acme.com --service svc_1 --project proj_1 --branch production. ${APEX_NOTE}`,
     });
   });
 
   it("says the service is gone", () => {
     expect(guidance(input({ state: "no_service" }))).toEqual({
+      failed: false,
       waitingOn: "The service this hostname routed to was deleted.",
       fix: "Delete the hostname, then add it to the service that should serve it.",
     });
@@ -73,6 +75,7 @@ describe("domainStateGuidance", () => {
     expect(
       guidance(input({ state: "no_live_deployment", dnsRecords: [CNAME] })),
     ).toEqual({
+      failed: false,
       waitingOn: "The service has no live version.",
       fix: `Deploy the service or promote one of its versions. Also publish CNAME shop.acme.com -> switchboard.cdg.prisma.build. ${APEX_NOTE}`,
     });
@@ -81,22 +84,13 @@ describe("domainStateGuidance", () => {
     );
   });
 
-  it("explains a failed update with the platform's error and asks nothing of the user", () => {
-    expect(
-      guidance(
-        input({
-          state: "update_failed",
-          syncError: "Foundry answered HTTP 503",
-        }),
-      ),
-    ).toEqual({
+  it("reports a failed update as a failure we cannot explain, with nothing for the user to fix", () => {
+    expect(guidance(input({ state: "update_failed" }))).toEqual({
+      failed: true,
       waitingOn:
-        "The platform could not bring the hostname up to date: Foundry answered HTTP 503. It tries again on its own.",
+        "Provisioning failed for reasons we are not sure about. You can try again, or contact support.",
       fix: null,
     });
-    expect(guidance(input({ state: "update_failed" }))?.waitingOn).toBe(
-      "The platform could not bring the hostname up to date. It tries again on its own.",
-    );
   });
 
   it("names the service that holds the hostname and says to delete it there", () => {
@@ -113,6 +107,7 @@ describe("domainStateGuidance", () => {
         }),
       ),
     ).toEqual({
+      failed: false,
       waitingOn:
         "Another service holds this hostname: service svc_2. This service takes it over once that one gives it up.",
       fix: "Delete the hostname from service svc_2.",
@@ -134,6 +129,7 @@ describe("domainStateGuidance", () => {
         }),
       ),
     ).toEqual({
+      failed: false,
       waitingOn:
         "This service lists the hostname more than once, and another entry holds it.",
       fix: null,
@@ -154,6 +150,7 @@ describe("domainStateGuidance", () => {
         }),
       ),
     ).toEqual({
+      failed: false,
       waitingOn:
         "Another service holds this hostname: held by another workspace. This service takes it over once that one gives it up.",
       fix: null,
@@ -170,6 +167,7 @@ describe("domainStateGuidance", () => {
         }),
       ),
     ).toEqual({
+      failed: false,
       waitingOn:
         "The hostname's DNS does not point at Prisma: The hostname resolves to 203.0.113.9.",
       fix: `Publish CNAME shop.acme.com -> switchboard.cdg.prisma.build at your DNS provider, then run prisma service domain retry shop.acme.com --service svc_1 --project proj_1 --branch production. ${APEX_NOTE}`,
@@ -180,6 +178,7 @@ describe("domainStateGuidance", () => {
     expect(
       guidance(input({ state: "waiting_for_dns", dnsRecords: [] })),
     ).toEqual({
+      failed: false,
       waitingOn: "The hostname's DNS does not point at Prisma.",
       fix: "Point the hostname at Prisma, then run prisma service domain retry shop.acme.com --service svc_1 --project proj_1 --branch production.",
     });
@@ -187,12 +186,13 @@ describe("domainStateGuidance", () => {
 
   it("asks nothing while the certificate is issued", () => {
     expect(guidance(input({ state: "provisioning_certificate" }))).toEqual({
+      failed: false,
       waitingOn: "The TLS certificate is being issued.",
       fix: null,
     });
   });
 
-  it("gives the reason a certificate failed and says to retry", () => {
+  it("relays the platform's reason a certificate failed exactly as given, with no advice", () => {
     expect(
       guidance(
         input({
@@ -201,14 +201,25 @@ describe("domainStateGuidance", () => {
         }),
       ),
     ).toEqual({
+      failed: true,
       waitingOn:
-        "The TLS certificate could not be issued: CAA record forbids the issuer.",
-      fix: "Fix what made it fail, then run prisma service domain retry shop.acme.com --service svc_1 --project proj_1 --branch production.",
+        "Provisioning failed. The platform reported: CAA record forbids the issuer",
+      fix: null,
+    });
+  });
+
+  it("reports a certificate failure without a reason as a failure we cannot explain", () => {
+    expect(guidance(input({ state: "certificate_failed" }))).toEqual({
+      failed: true,
+      waitingOn:
+        "Provisioning failed for reasons we are not sure about. You can try again, or contact support.",
+      fix: null,
     });
   });
 
   it("asks nothing while the platform updates the hostname", () => {
     expect(guidance(input({ state: "updating" }))).toEqual({
+      failed: false,
       waitingOn: "The platform is bringing the hostname up to date.",
       fix: null,
     });
@@ -218,23 +229,78 @@ describe("domainStateGuidance", () => {
 const STATES: ReadonlyArray<{
   state: DomainRecord["state"];
   waitsForDns: boolean;
+  waitsOnPlatform: boolean;
   stuck: boolean;
 }> = [
-  { state: "not_verified", waitsForDns: true, stuck: false },
-  { state: "no_service", waitsForDns: false, stuck: true },
-  { state: "no_live_deployment", waitsForDns: false, stuck: false },
-  { state: "update_failed", waitsForDns: false, stuck: false },
-  { state: "in_use_elsewhere", waitsForDns: false, stuck: false },
-  { state: "waiting_for_dns", waitsForDns: true, stuck: false },
-  { state: "provisioning_certificate", waitsForDns: false, stuck: false },
-  { state: "certificate_failed", waitsForDns: false, stuck: true },
-  { state: "updating", waitsForDns: false, stuck: false },
-  { state: "active", waitsForDns: false, stuck: false },
+  {
+    state: "not_verified",
+    waitsForDns: true,
+    waitsOnPlatform: false,
+    stuck: false,
+  },
+  {
+    state: "no_service",
+    waitsForDns: false,
+    waitsOnPlatform: false,
+    stuck: true,
+  },
+  {
+    state: "no_live_deployment",
+    waitsForDns: false,
+    waitsOnPlatform: false,
+    stuck: false,
+  },
+  {
+    state: "update_failed",
+    waitsForDns: false,
+    waitsOnPlatform: true,
+    stuck: false,
+  },
+  {
+    state: "in_use_elsewhere",
+    waitsForDns: false,
+    waitsOnPlatform: false,
+    stuck: false,
+  },
+  {
+    state: "waiting_for_dns",
+    waitsForDns: true,
+    waitsOnPlatform: false,
+    stuck: false,
+  },
+  {
+    state: "provisioning_certificate",
+    waitsForDns: false,
+    waitsOnPlatform: true,
+    stuck: false,
+  },
+  {
+    state: "certificate_failed",
+    waitsForDns: false,
+    waitsOnPlatform: false,
+    stuck: true,
+  },
+  {
+    state: "updating",
+    waitsForDns: false,
+    waitsOnPlatform: true,
+    stuck: false,
+  },
+  { state: "active", waitsForDns: false, waitsOnPlatform: false, stuck: false },
 ];
 
 describe("waitsForUserDns", () => {
   it.each(STATES)("is $waitsForDns for $state", ({ state, waitsForDns }) => {
     expect(waitsForUserDns({ state })).toBe(waitsForDns);
+  });
+});
+
+describe("waitsForPlatform", () => {
+  it.each(STATES)("is $waitsOnPlatform for $state", ({
+    state,
+    waitsOnPlatform,
+  }) => {
+    expect(waitsForPlatform({ state })).toBe(waitsOnPlatform);
   });
 });
 

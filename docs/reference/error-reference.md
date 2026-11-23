@@ -646,15 +646,15 @@ A `service domain` command targeted a hostname that is not attached to the resol
 
 ### SERVICE.DOMAIN_RETRY_RATE_LIMITED
 
-`service domain retry` got HTTP 429, and nothing was retried. The API answers that for its request rate limit, and, when the hostname's TLS certificate had failed, for the workspace's hourly limit of new certificates, because the retry orders one. `why` carries the API's message, which says which limit it was. The fix is to run the retry again after the wait the error names, which comes from the API's `Retry-After` header. Meta: `status`, `apiCode`, `hint`, `retryAfterSeconds`, `certificateFailed`.
+`service domain retry` got HTTP 429, and nothing was retried. The API answers that for its request rate limit and for the workspace's hourly limit of new certificates. `why` carries the API's message, which says which limit it was, and the API's hint follows when it sent one. The fix is to run the retry again after the wait the error names, which comes from the API's `Retry-After` header. Meta: `status`, `apiCode`, `hint`, `retryAfterSeconds`.
 
 ### SERVICE.DOMAIN_VERIFICATION_FAILED
 
-`service domain wait` saw the hostname in a state that waiting cannot get past: `certificate_failed` (the TLS certificate could not be issued) or `no_service` (the service was deleted). `why` says what happened, with the platform's failure reason when it reported one, and a fix line follows. Next actions point at `service domain show`, and at `service domain retry` for a failed certificate. Meta: `state`.
+`service domain wait` saw the hostname in a state that waiting cannot get past: `certificate_failed` (the TLS certificate could not be issued) or `no_service` (the service was deleted). For a failed certificate, `why` relays the platform's reason as given, or says that provisioning failed for reasons we are not sure about when the platform gave none. Next actions point at `service domain show`, and at `service domain retry` for a failed certificate. Meta: `state`.
 
 ### SERVICE.DOMAIN_VERIFICATION_TIMEOUT
 
-`service domain wait` ran out of time (default 15m, or `--timeout 0` for a single read) before the hostname's state became `active`; `why` reports the state the hostname was last seen in and what it waits on, and the next actions carry the fix when the user has to act, such as the DNS records to publish. Meta: `state`.
+`service domain wait` ran out of time (default 15m, or `--timeout 0` for a single read) before the hostname's state became `active`. When the hostname waits on the user, `why` reports its state and what it waits on, and the next actions carry the fix, such as the DNS records to publish. When it waits on the platform, `why` says that provisioning did not finish in time for reasons we are not sure about, and that the user can try again or contact support. Meta: `state`.
 
 ### SERVICE.FEATURE_UNAVAILABLE
 

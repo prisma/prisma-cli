@@ -172,6 +172,26 @@ Two rules govern codes:
 
 Adding a code means adding its entry to the registry in the same change.
 
+## Errors From The Systems Below The API
+
+Many resources the CLI shows are kept by a system below the Management API: a custom domain and its certificate live in Foundry, a TXT record in DNS. When one of those systems fails, the failure reaches the user through the API and then the CLI. The rule for every layer is in the control plane's [Modeling errors across system boundaries](https://github.com/prisma/pdp-control-plane/blob/main/docs/ErrorsAcrossSystemBoundaries.md) (the link works once that document has merged). It is the one source; this section says only what the rule means for a command.
+
+Will Madden, 2026-11-23: "Anytime we're modeling a resource which is maintained in a lower-level system like this, we should be treating this the same way." On why a failure happened: "This is not something we care about. We only care if we've been given instructions for the user or not."
+
+Such a failure is one of three kinds, and the system that reports it decides which, by how it answers. The CLI does not sort failures by reading message text.
+
+| Kind | How it reaches the CLI | What the command says |
+| --- | --- | --- |
+| Internal | A 5xx answer, or a resource that says it failed or is still being brought up to date, with no detail | That the operation failed for reasons we are not sure about, and that the user can try again or contact support |
+| Relayed | A 4xx answer with a message, or a field that holds the lower system's message, such as a hostname's `failureReason` | The message as given. The command does not interpret it and adds no advice of its own, such as "fix it and retry" or "try again, it may work" |
+| Modelled | A state, condition or error code the API defines for the case | The command's own message, with the specific thing the user must do |
+
+The reasoning: a user cannot act on an internal error, and printing it turns another system's internals into an interface nobody designed. The lower system knows more about its own refusals than the CLI does, so when it marks a message as fit for the user, passing it on unchanged gives the user something to act on without tying the CLI to that system's wording. A message of the CLI's own costs design and upkeep, and earns it only when the CLI knows exactly what the user must fix.
+
+A command gives a failure handling of its own only when the API models it. It does not turn a lower system's fault, such as a hung job, into a state or message of its own: that fault reaches the user as a timeout or an internal failure.
+
+For `service domain`, the modelled cases are the ones the API reports on the hostname: ownership not verified, DNS not pointing at Prisma, no live version, the service deleted, the hostname held elsewhere, and a limit reached on `retry`. A failed certificate is relayed: "Provisioning failed. The platform reported: …". A failed certificate with no reason, a failed platform update, and a `wait` that times out while the platform is still working are internal.
+
 ## Exit Codes
 
 The MVP should use these process exit codes:

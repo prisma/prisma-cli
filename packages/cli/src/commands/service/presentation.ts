@@ -2,7 +2,10 @@ import type { Block, Presentations } from "@prisma/cli-engine";
 import { noDataLines } from "@prisma/cli-engine";
 import type { NextAction } from "@prisma/cli-engine/protocol";
 import { CLI_NAME } from "../../cli-name";
-import { domainStateGuidance } from "../../lib/app/domain-guidance";
+import {
+  cannotBecomeActive,
+  domainStateGuidance,
+} from "../../lib/app/domain-guidance";
 import { fieldLines } from "../../output/data-lines";
 import {
   adviceAction,
@@ -101,7 +104,14 @@ function domainStateRows(
   return [
     { label: "status", value: domain.status },
     { label: "state", value: domain.state },
-    ...(guidance ? [{ label: "waiting on", value: guidance.waitingOn }] : []),
+    ...(guidance
+      ? [
+          {
+            label: guidance.failed ? "failure" : "waiting on",
+            value: guidance.waitingOn,
+          },
+        ]
+      : []),
   ];
 }
 
@@ -114,14 +124,32 @@ function domainFixActions(
   return fix ? [adviceAction(fix)] : [];
 }
 
-function waitAction(
+/**
+ * The command that moves a hostname that is not serving yet forward. A
+ * wait cannot get past a failed certificate, which only a retry moves,
+ * or a deleted service, which no command here moves.
+ */
+function progressActions(
   domain: ServiceDomainSummary,
   target: ServiceDomainTarget,
-): NextAction {
-  return runCommandAction(
-    "Wait for activation",
-    domainRecoveryCommand("wait", domain.hostname, target),
-  );
+): NextAction[] {
+  if (domain.state === "certificate_failed") {
+    return [
+      runCommandAction(
+        "Retry the certificate",
+        domainRecoveryCommand("retry", domain.hostname, target),
+      ),
+    ];
+  }
+  if (cannotBecomeActive(domain)) {
+    return [];
+  }
+  return [
+    runCommandAction(
+      "Wait for activation",
+      domainRecoveryCommand("wait", domain.hostname, target),
+    ),
+  ];
 }
 
 export function listPresentations(result: ServiceListResult): Presentations {
@@ -579,7 +607,7 @@ export function domainAddPresentations(
         ? []
         : [
             ...domainFixActions(result.domain, result),
-            waitAction(result.domain, result),
+            ...progressActions(result.domain, result),
             runCommandAction(
               "Show the domain",
               domainRecoveryCommand("show", result.domain.hostname, result),
@@ -632,7 +660,7 @@ export function domainShowPresentations(
         ? []
         : [
             ...domainFixActions(result.domain, result),
-            waitAction(result.domain, result),
+            ...progressActions(result.domain, result),
           ],
   };
 }
@@ -677,7 +705,7 @@ export function domainRetryPresentations(
         ? []
         : [
             ...domainFixActions(result.domain, result),
-            waitAction(result.domain, result),
+            ...progressActions(result.domain, result),
           ],
   };
 }

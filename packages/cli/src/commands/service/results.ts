@@ -144,7 +144,6 @@ export interface ServiceDomainSummary {
   conditions: Record<ServiceDomainCondition, "met" | "unmet" | "unknown">;
   firstUnmetCondition: ServiceDomainCondition | null;
   failureReason: string | null;
-  syncError: string | null;
   dnsDetail: string | null;
   certExpiresAt: string | null;
   ownershipExpiresAt: string | null;

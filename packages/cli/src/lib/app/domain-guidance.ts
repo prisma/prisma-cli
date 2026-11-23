@@ -2,21 +2,28 @@ import type { DomainRecord } from "./app-provider";
 
 type DomainGuidanceInput = { serviceId: string | null } & Pick<
   DomainRecord,
-  | "hostname"
-  | "state"
-  | "dnsRecords"
-  | "failureReason"
-  | "syncError"
-  | "dnsDetail"
-  | "heldBy"
+  "hostname" | "state" | "dnsRecords" | "failureReason" | "dnsDetail" | "heldBy"
 >;
 
 export interface DomainStateGuidance {
-  /** What the hostname still needs, or what the platform is doing. */
+  /** Whether `waitingOn` reports a failure, not something still awaited. */
+  failed: boolean;
+  /** What the hostname still needs, what the platform is doing, or what failed. */
   waitingOn: string;
   /** What the user has to do. Null when nobody has to act. */
   fix: string | null;
 }
+
+/**
+ * For a failure the platform gave us nothing about that a user can act
+ * on. See "Errors from the systems below the API" in
+ * docs/product/error-conventions.md.
+ */
+export const UNEXPLAINED_FAILURE =
+  "Provisioning failed for reasons we are not sure about. You can try again, or contact support.";
+
+export const UNEXPLAINED_DELAY =
+  "Provisioning did not finish in time, for reasons we are not sure about. You can try again, or contact support.";
 
 const ENDS_A_SENTENCE = /[.!?]$/;
 
@@ -39,12 +46,14 @@ function inUseElsewhereGuidance(
   const holder = domain.heldBy?.serviceId ?? null;
   if (holder !== null && holder === domain.serviceId) {
     return {
+      failed: false,
       waitingOn:
         "This service lists the hostname more than once, and another entry holds it.",
       fix: null,
     };
   }
   return {
+    failed: false,
     waitingOn: `${withDetail(
       "Another service holds this hostname",
       holder ? `service ${holder}` : (domain.heldBy?.message ?? null),
@@ -90,28 +99,29 @@ export function domainStateGuidance(
       return null;
     case "not_verified":
       return {
+        failed: false,
         waitingOn: "Proof in DNS that this workspace owns the domain.",
-        fix: `Publish ${records} at your DNS provider, then run ${retry}. ${apexNote} If the state stays not_verified long after the records are published, the workspace may have no domain ownership for this hostname: deleting the hostname and adding it again creates one.`,
+        fix: `Publish ${records} at your DNS provider, then run ${retry}. ${apexNote}`,
       };
     case "no_service":
       return {
+        failed: false,
         waitingOn: "The service this hostname routed to was deleted.",
         fix: "Delete the hostname, then add it to the service that should serve it.",
       };
     case "no_live_deployment":
       return {
+        failed: false,
         waitingOn: "The service has no live version.",
         fix: `Deploy the service or promote one of its versions.${routingRecords ? ` Also publish ${routingRecords}. ${apexNote}` : ""}`,
       };
     case "update_failed":
-      return {
-        waitingOn: `${withDetail("The platform could not bring the hostname up to date", domain.syncError)} It tries again on its own.`,
-        fix: null,
-      };
+      return { failed: true, waitingOn: UNEXPLAINED_FAILURE, fix: null };
     case "in_use_elsewhere":
       return inUseElsewhereGuidance(domain);
     case "waiting_for_dns":
       return {
+        failed: false,
         waitingOn: withDetail(
           "The hostname's DNS does not point at Prisma",
           domain.dnsDetail,
@@ -122,21 +132,32 @@ export function domainStateGuidance(
       };
     case "provisioning_certificate":
       return {
+        failed: false,
         waitingOn: "The TLS certificate is being issued.",
         fix: null,
       };
     case "certificate_failed":
       return {
-        waitingOn: withDetail(
-          "The TLS certificate could not be issued",
-          domain.failureReason,
-        ),
-        fix: `Fix what made it fail, then run ${retry}.`,
+        failed: true,
+        waitingOn: domain.failureReason
+          ? `Provisioning failed. The platform reported: ${domain.failureReason}`
+          : UNEXPLAINED_FAILURE,
+        fix: null,
       };
     case "updating":
       return {
+        failed: false,
         waitingOn: "The platform is bringing the hostname up to date.",
         fix: null,
       };
   }
+}
+
+/** States in which the platform, not the user, has to act next. */
+export function waitsForPlatform(domain: Pick<DomainRecord, "state">): boolean {
+  return (
+    domain.state === "provisioning_certificate" ||
+    domain.state === "updating" ||
+    domain.state === "update_failed"
+  );
 }

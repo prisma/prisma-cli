@@ -3,7 +3,11 @@ import { CliStructuredError } from "@prisma/cli-engine/protocol";
 import { CLI_NAME } from "../../cli-name";
 import { formatCommandArgument } from "../../command-arguments";
 import { DomainApiError, type DomainRecord } from "../../lib/app/app-provider";
-import { domainStateGuidance } from "../../lib/app/domain-guidance";
+import {
+  domainStateGuidance,
+  UNEXPLAINED_DELAY,
+  waitsForPlatform,
+} from "../../lib/app/domain-guidance";
 import type { ServiceDomainTarget } from "./results";
 
 export type DomainCommand = "add" | "show" | "delete" | "retry" | "wait";
@@ -379,22 +383,35 @@ export function domainVerificationTimeoutError(
   domain: DomainRecord,
   target: ServiceDomainTarget,
 ): CliStructuredError {
+  const showAction = runCommandAction(
+    "Show the domain",
+    domainRecoveryCommand("show", hostname, target),
+  );
+  const summary = `Timed out waiting for "${hostname}" to become active`;
+  if (waitsForPlatform(domain)) {
+    return new CliStructuredError(
+      "SERVICE.DOMAIN_VERIFICATION_TIMEOUT",
+      summary,
+      {
+        why: UNEXPLAINED_DELAY,
+        meta: { state: domain.state },
+        nextActions: [showAction],
+      },
+    );
+  }
   const guidance = domainStateGuidance(
     { ...domain, serviceId: domain.appId },
     `${CLI_NAME} ${domainRecoveryCommand("retry", hostname, target)}`,
   );
   return new CliStructuredError(
     "SERVICE.DOMAIN_VERIFICATION_TIMEOUT",
-    `Timed out waiting for "${hostname}" to become active`,
+    summary,
     {
       why: `The domain is still "${domain.state}".${guidance ? ` ${guidance.waitingOn}` : ""}`,
       meta: { state: domain.state },
       nextActions: [
         ...(guidance?.fix ? [adviceAction(guidance.fix)] : []),
-        runCommandAction(
-          "Show the domain",
-          domainRecoveryCommand("show", hostname, target),
-        ),
+        showAction,
         adviceAction("Retry wait with a longer --timeout."),
       ],
     },
@@ -534,14 +551,13 @@ function domainQuotaExceededError(
 }
 
 /**
- * `service domain retry` got HTTP 429. The API answers that for its
- * request rate limit, and for a failed certificate when the workspace
- * has used its hourly limit of new certificates. Its message says which.
+ * `service domain retry` got HTTP 429: the API's request rate limit, or
+ * the workspace's hourly limit of new certificates. The API's message
+ * says which, and `Retry-After` says when to run it again.
  */
 export function domainRetryRateLimitedError(
   hostname: string,
   error: DomainApiError,
-  certificateFailed: boolean,
   target: ServiceDomainTarget,
 ): CliStructuredError {
   const wait =
@@ -556,14 +572,10 @@ export function domainRetryRateLimitedError(
       meta: {
         ...debugMeta(error),
         retryAfterSeconds: error.retryAfterSeconds,
-        certificateFailed,
       },
       nextActions: [
-        adviceAction(
-          certificateFailed
-            ? `This hostname's certificate failed, so a retry orders a new one, and a workspace can order a limited number of new certificates per hour. Run the retry again ${wait}.`
-            : `Run the retry again ${wait}.`,
-        ),
+        ...(error.hint ? [adviceAction(error.hint)] : []),
+        adviceAction(`Run the retry again ${wait}.`),
         runCommandAction(
           "Retry the domain",
           domainRecoveryCommand("retry", hostname, target),

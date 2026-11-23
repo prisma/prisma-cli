@@ -126,7 +126,6 @@ export interface DomainRecord {
   conditions: Record<DomainCondition, DomainConditionValue>;
   firstUnmetCondition: DomainCondition | null;
   failureReason: string | null;
-  syncError: string | null;
   dnsDetail: string | null;
   certExpiresAt: string | null;
   ownershipExpiresAt: string | null;
@@ -1039,7 +1038,6 @@ function toDomainRecord(url: RawRoutingUrl): DomainRecord {
     conditions: url.conditions,
     firstUnmetCondition: url.firstUnmetCondition,
     failureReason: url.customDomain?.failureReason ?? null,
-    syncError: url.customDomainSyncError,
     dnsDetail: url.switchboardDns?.detail ?? null,
     certExpiresAt: url.customDomain?.certExpiresAt ?? null,
     ownershipExpiresAt: url.ownershipExpiry?.expiresAt ?? null,

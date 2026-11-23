@@ -33,7 +33,7 @@ const TARGET_ROWS = [
 const APEX_NOTE =
   "At an apex domain, publish the CNAME as an ALIAS, ANAME or flattened CNAME with the same target.";
 
-const PUBLISH_BOTH_RECORDS = `Publish TXT _prisma-verification.shop.acme.com -> prisma-verification=3f9a and CNAME shop.acme.com -> switchboard.cdg.prisma.build at your DNS provider, then run prisma service domain retry shop.acme.com --service svc_1 --project proj_1 --branch production. ${APEX_NOTE} If the state stays not_verified long after the records are published, the workspace may have no domain ownership for this hostname: deleting the hostname and adding it again creates one.`;
+const PUBLISH_BOTH_RECORDS = `Publish TXT _prisma-verification.shop.acme.com -> prisma-verification=3f9a and CNAME shop.acme.com -> switchboard.cdg.prisma.build at your DNS provider, then run prisma service domain retry shop.acme.com --service svc_1 --project proj_1 --branch production. ${APEX_NOTE}`;
 
 const PUBLISH_CNAME = `Publish CNAME shop.acme.com -> switchboard.cdg.prisma.build at your DNS provider, then run prisma service domain retry shop.acme.com --service svc_1 --project proj_1 --branch production. ${APEX_NOTE}`;
 
@@ -292,7 +292,6 @@ describe("prisma service domain add", () => {
         },
         firstUnmetCondition: "ownershipVerified",
         failureReason: "CAA record forbids the issuer",
-        syncError: "Foundry answered HTTP 503",
         dnsDetail: "The hostname resolves to 203.0.113.9.",
         certExpiresAt: "2026-11-01T00:00:00.000Z",
         ownershipExpiresAt: "2026-09-01T00:00:00.000Z",
@@ -324,9 +323,10 @@ describe("prisma service domain add", () => {
         ],
       },
     });
-    expect(JSON.stringify(frame.envelope.result)).not.toContain(
-      "holdsHostname",
-    );
+    const serialized = JSON.stringify(frame.envelope.result);
+    expect(serialized).not.toContain("holdsHostname");
+    expect(serialized).not.toContain("syncError");
+    expect(serialized).not.toContain("Foundry answered HTTP 503");
   });
 
   it("shows the entry that holds the hostname when the service lists it more than once, without adding it again", async () => {
@@ -873,6 +873,67 @@ describe("prisma service domain show", () => {
     expect(result.presented?.presentation.next).toEqual([]);
   });
 
+  it.each([
+    {
+      name: "the platform's reason for a failed certificate, exactly as given",
+      domain: domainRecord({
+        state: "certificate_failed",
+        records: [],
+        customDomain: customDomain({
+          status: "failed",
+          failureReason: "CAA record forbids the issuer",
+          certExpiresAt: null,
+        }),
+      }),
+      failure:
+        "Provisioning failed. The platform reported: CAA record forbids the issuer",
+      next: [
+        {
+          kind: "run-command",
+          label: "Retry the certificate",
+          command:
+            "prisma service domain retry shop.acme.com --service svc_1 --project proj_1 --branch production",
+        },
+      ],
+    },
+    {
+      name: "a failure it cannot explain when the platform's update failed, without the platform's error",
+      domain: domainRecord({
+        state: "update_failed",
+        records: [],
+        customDomainSyncError: "Foundry answered HTTP 503",
+      }),
+      failure:
+        "Provisioning failed for reasons we are not sure about. You can try again, or contact support.",
+      next: [
+        {
+          kind: "run-command",
+          label: "Wait for activation",
+          command:
+            "prisma service domain wait shop.acme.com --service svc_1 --project proj_1 --branch production",
+        },
+      ],
+    },
+  ])("labels $name as the failure", async ({ domain, failure, next }) => {
+    const harness = await makeServiceCli({ routes: showRoutes([domain]) });
+
+    const result = await harness.cli.run(
+      ["service", "domain", "show", "shop.acme.com", ...TARGET_ARGS],
+      { cwd: harness.cwd, env: harness.env, isTty: { stdout: true } },
+    );
+
+    expect(result.exitCode).toBe(0);
+    const rows = fieldRows(result.presented);
+    expect(rows).toContainEqual({ label: "failure", value: failure });
+    expect(rows).not.toContainEqual(
+      expect.objectContaining({ label: "waiting on" }),
+    );
+    expect(result.presented?.presentation.next).toEqual(next);
+    expect(JSON.stringify(result.presented?.presentation)).not.toContain(
+      "Foundry answered HTTP 503",
+    );
+  });
+
   it("emits the completed json envelope with commandId service.domain.show", async () => {
     const harness = await makeServiceCli({
       routes: showRoutes([activeRecord()]),
@@ -1176,13 +1237,23 @@ describe("prisma service domain retry", () => {
     expect(checkedIds).toEqual(["url_2"]);
   });
 
-  it("explains the hourly certificate limit when retrying a failed certificate is rate limited", async () => {
+  it("relays the API's message and hint when a retry is rate limited", async () => {
     const harness = await makeServiceCli({
-      routes: rateLimitedRoutes(
-        certificateFailed(),
-        { "Retry-After": "120" },
-        "This workspace has ordered its 50 certificates for this hour.",
-      ),
+      routes: domainRoutes({
+        ...listing([certificateFailed()]),
+        "POST /v1/urls/{id}/check": () => ({
+          status: 429,
+          headers: { "Retry-After": "120" },
+          error: {
+            error: {
+              code: "rate-limited",
+              message:
+                "This workspace has ordered its 50 certificates for this hour.",
+              hint: "Certificates are counted per workspace.",
+            },
+          },
+        }),
+      }),
     });
 
     const result = await harness.cli.run(
@@ -1199,19 +1270,12 @@ describe("prisma service domain retry", () => {
       code: "SERVICE.DOMAIN_RETRY_RATE_LIMITED",
       summary: '"shop.acme.com" was not retried: a limit was reached',
       why: "This workspace has ordered its 50 certificates for this hour.",
-      meta: {
-        status: 429,
-        apiCode: "rate-limited",
-        retryAfterSeconds: 120,
-        certificateFailed: true,
-      },
+      meta: { status: 429, apiCode: "rate-limited", retryAfterSeconds: 120 },
     });
+    expect(frame.envelope.error.meta).not.toHaveProperty("certificateFailed");
     expect(frame.envelope.nextActions).toEqual([
-      {
-        kind: "user-choice",
-        label:
-          "This hostname's certificate failed, so a retry orders a new one, and a workspace can order a limited number of new certificates per hour. Run the retry again in 2 minute(s).",
-      },
+      { kind: "user-choice", label: "Certificates are counted per workspace." },
+      { kind: "user-choice", label: "Run the retry again in 2 minute(s)." },
       {
         kind: "run-command",
         label: "Retry the domain",
@@ -1221,7 +1285,7 @@ describe("prisma service domain retry", () => {
     ]);
   });
 
-  it("passes on the API's own reason when a check of a hostname without a failed certificate is rate limited", async () => {
+  it("relays the API's message without advice of its own when a rate limit gives no hint", async () => {
     const harness = await makeServiceCli({
       routes: rateLimitedRoutes(waitingForDnsRecord(), { "Retry-After": "30" }),
     });
@@ -1239,7 +1303,7 @@ describe("prisma service domain retry", () => {
       code: "SERVICE.DOMAIN_RETRY_RATE_LIMITED",
       summary: '"shop.acme.com" was not retried: a limit was reached',
       why: "Too many checks for this hostname.",
-      meta: { retryAfterSeconds: 30, certificateFailed: false },
+      meta: { retryAfterSeconds: 30 },
     });
     expect(frame.envelope.nextActions).toEqual([
       { kind: "user-choice", label: "Run the retry again in 1 minute(s)." },
@@ -1254,7 +1318,7 @@ describe("prisma service domain retry", () => {
 
   it("says to retry later when a rate limit gives no Retry-After", async () => {
     const harness = await makeServiceCli({
-      routes: rateLimitedRoutes(waitingForDnsRecord(), {}),
+      routes: rateLimitedRoutes(certificateFailed(), {}),
     });
 
     const result = await harness.cli.run(
@@ -1269,10 +1333,15 @@ describe("prisma service domain retry", () => {
     expect(frame.envelope.error.meta).toMatchObject({
       retryAfterSeconds: null,
     });
-    expect(frame.envelope.nextActions).toContainEqual({
-      kind: "user-choice",
-      label: "Run the retry again later.",
-    });
+    expect(frame.envelope.nextActions).toEqual([
+      { kind: "user-choice", label: "Run the retry again later." },
+      {
+        kind: "run-command",
+        label: "Retry the domain",
+        command:
+          "prisma service domain retry shop.acme.com --service svc_1 --project proj_1 --branch production",
+      },
+    ]);
   });
 
   it("settles a hostname the check cannot find as SERVICE.DOMAIN_NOT_FOUND", async () => {

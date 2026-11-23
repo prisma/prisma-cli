@@ -191,7 +191,7 @@ describe("prisma service domain wait", () => {
     expect(result.presented?.data).toMatchObject({ state: "active" });
   });
 
-  it("fails at once when the certificate failed, with the reason and the retry", async () => {
+  it("fails at once when the certificate failed, relaying the platform's reason and offering the retry", async () => {
     const reads: Read[] = [];
     const harness = await makeServiceCli({
       routes: waitRoutes(
@@ -229,15 +229,10 @@ describe("prisma service domain wait", () => {
     expect(frame.envelope.error).toMatchObject({
       code: "SERVICE.DOMAIN_VERIFICATION_FAILED",
       summary: 'Custom domain "shop.acme.com" cannot become active',
-      why: "The TLS certificate could not be issued: CAA record forbids the issuer.",
+      why: "Provisioning failed. The platform reported: CAA record forbids the issuer",
       meta: { state: "certificate_failed" },
     });
     expect(frame.envelope.error.nextActions).toEqual([
-      {
-        kind: "user-choice",
-        label:
-          "Fix what made it fail, then run prisma service domain retry shop.acme.com --service svc_1 --project proj_1 --branch production.",
-      },
       {
         kind: "run-command",
         label: "Show the domain",
@@ -360,7 +355,51 @@ describe("prisma service domain wait", () => {
     expect(reads).toEqual([]);
   });
 
-  it("times out after polling a hostname that needs no action from the user", async () => {
+  it.each([
+    "provisioning_certificate",
+    "updating",
+    "update_failed",
+  ] as const)("says on timeout that it cannot explain the delay while the platform has to act (%s)", async (state) => {
+    const harness = await makeServiceCli({
+      routes: waitRoutes([domainRecord({ state, records: [] })]),
+    });
+
+    const result = await harness.cli.run(
+      [
+        "service",
+        "domain",
+        "wait",
+        "shop.acme.com",
+        ...TARGET_ARGS,
+        "--timeout",
+        "0",
+        "--json",
+      ],
+      { cwd: harness.cwd, env: waitEnv(harness.env) },
+    );
+
+    expect(result.exitCode).toBe(2);
+    const frame = result.json[result.json.length - 1];
+    if (frame?.kind !== "result" || frame.envelope.ok) {
+      throw new Error("expected an errored envelope");
+    }
+    expect(frame.envelope.error).toMatchObject({
+      code: "SERVICE.DOMAIN_VERIFICATION_TIMEOUT",
+      summary: 'Timed out waiting for "shop.acme.com" to become active',
+      why: "Provisioning did not finish in time, for reasons we are not sure about. You can try again, or contact support.",
+      meta: { state },
+    });
+    expect(frame.envelope.error.nextActions).toEqual([
+      {
+        kind: "run-command",
+        label: "Show the domain",
+        command:
+          "prisma service domain show shop.acme.com --service svc_1 --project proj_1 --branch production",
+      },
+    ]);
+  });
+
+  it("times out after polling a hostname the platform is still provisioning", async () => {
     const harness = await makeServiceCli({
       routes: waitRoutes([provisioning()]),
     });
@@ -386,17 +425,8 @@ describe("prisma service domain wait", () => {
     }
     expect(frame.envelope.error).toMatchObject({
       code: "SERVICE.DOMAIN_VERIFICATION_TIMEOUT",
-      why: 'The domain is still "provisioning_certificate". The TLS certificate is being issued.',
+      why: "Provisioning did not finish in time, for reasons we are not sure about. You can try again, or contact support.",
     });
-    expect(frame.envelope.error.nextActions).toEqual([
-      {
-        kind: "run-command",
-        label: "Show the domain",
-        command:
-          "prisma service domain show shop.acme.com --service svc_1 --project proj_1 --branch production",
-      },
-      { kind: "user-choice", label: "Retry wait with a longer --timeout." },
-    ]);
   });
 
   it("rejects an invalid --timeout as SERVICE.TIMEOUT_INVALID", async () => {
