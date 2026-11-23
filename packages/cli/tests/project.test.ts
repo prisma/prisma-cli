@@ -3128,7 +3128,7 @@ describe("project commands given an address", () => {
       ok: false,
       error: {
         code: "CLI.CONSENT_REQUIRED",
-        summary: expect.stringContaining('Project "Billing" (proj_1)'),
+        why: expect.stringContaining('Project "Billing" (proj_1)'),
         meta: { consentToken: "@billing" },
       },
     });

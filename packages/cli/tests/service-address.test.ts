@@ -185,7 +185,7 @@ describe("service commands given an address", () => {
     if (frame?.kind !== "result" || frame.envelope.ok) {
       throw new Error("expected an errored envelope");
     }
-    expect(frame.envelope.error.summary).toContain(
+    expect(frame.envelope.error.why).toContain(
       '"hello-world" (svc_1) in production (branch main)',
     );
   });

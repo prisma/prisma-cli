@@ -274,7 +274,8 @@ describe("consent", () => {
       code: "CLI.CONSENT_REQUIRED",
       severity: "error",
       summary:
-        '"Delete everything?" requires explicit consent, which --yes cannot grant.',
+        "This command requires explicit consent, and --yes does not give it.",
+      why: "Delete everything?",
       nextActions: [
         {
           kind: "user-choice",

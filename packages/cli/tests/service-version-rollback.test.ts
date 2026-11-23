@@ -279,10 +279,12 @@ describe("prisma service version rollback", () => {
       throw new Error("expected an errored envelope");
     }
     expect(frame.envelope.error.code).toBe("CLI.CONSENT_REQUIRED");
-    expect(frame.envelope.error.summary).toContain(
+    expect(frame.envelope.error.why).toBe(
       'Roll back Service "hello-world" to version dep_1 and make it live?',
     );
-    expect(frame.envelope.error.summary).toContain("--confirm dep_1");
+    expect(frame.envelope.error.nextActions?.[0]?.label).toContain(
+      "--confirm dep_1",
+    );
     expect(frame.envelope.error.meta).toMatchObject({
       consentToken: "dep_1",
     });

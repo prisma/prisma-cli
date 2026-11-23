@@ -153,8 +153,18 @@ describe("consent tokens", () => {
     ]);
 
     expect(result.exitCode).toBe(2);
-    expect(errorOf(result)?.code).toBe("CLI.CONSENT_REQUIRED");
-    expect(errorOf(result)?.summary).toContain("--confirm prod-db");
+    expect(errorOf(result)).toMatchObject({
+      code: "CLI.CONSENT_REQUIRED",
+      summary:
+        "This command requires explicit consent, but it was not provided.",
+      nextActions: [
+        {
+          label:
+            "Run the command interactively and type prod-db, or pass --confirm prod-db.",
+        },
+      ],
+      meta: { consentToken: "prod-db" },
+    });
   });
 
   test("no --confirm at all halts the same way", async () => {
@@ -179,7 +189,11 @@ describe("consent tokens", () => {
       INTERACTIVE,
     );
     expect(withoutConfirm.exitCode).toBe(2);
-    expect(errorOf(withoutConfirm)?.summary).toContain("--yes cannot grant");
+    expect(errorOf(withoutConfirm)).toMatchObject({
+      summary:
+        "This command requires explicit consent, and --yes does not give it.",
+      meta: { consentToken: "prod-db" },
+    });
 
     const withConfirm = await cli.run(
       ["probe", "--yes", "--confirm", "prod-db"],

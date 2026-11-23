@@ -1045,7 +1045,9 @@ describe("prisma service domain delete", () => {
       throw new Error("expected an errored envelope");
     }
     expect(frame.envelope.error.code).toBe("CLI.CONSENT_REQUIRED");
-    expect(frame.envelope.error.summary).toContain("--confirm shop.acme.com");
+    expect(frame.envelope.error.nextActions?.[0]?.label).toContain(
+      "--confirm shop.acme.com",
+    );
     expect(frame.envelope.error.meta).toMatchObject({
       consentToken: "shop.acme.com",
     });

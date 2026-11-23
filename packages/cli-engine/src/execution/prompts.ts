@@ -181,9 +181,7 @@ function statementUnavailable<V extends string>(
   subjects: readonly string[],
   state: RunState,
 ): CliStructuredError {
-  const summary = state.yes
-    ? "This command requires explicit consent, and --yes does not give it."
-    : "This command requires explicit consent, but it was not provided.";
+  const summary = consentMissing(state);
   const listed = unanswered.map(({ subject, verbs }) => ({ subject, verbs }));
   const unmatched = state.statementValues
     .filter(
@@ -441,38 +439,43 @@ function answerWithoutAsking<T>(
   return fallback;
 }
 
+function consentMissing(state: RunState): string {
+  return state.yes
+    ? "This command requires explicit consent, and --yes does not give it."
+    : "This command requires explicit consent, but it was not provided.";
+}
+
 function consentUnavailable(
   question: string,
   state: RunState,
   token: string | undefined,
 ): CliStructuredError {
-  const situation = state.yes
-    ? `"${question}" requires explicit consent, which --yes cannot grant.`
-    : `"${question}" requires explicit consent, and the session is not interactive.`;
   if (token === undefined) {
-    return new CliStructuredError("CLI.CONSENT_REQUIRED", situation, {
-      nextActions: [
-        {
-          kind: "user-choice",
-          label:
-            "Run the command interactively. Consent can only be granted outside an interactive terminal when the command declares a consent token.",
-        },
-      ],
-    });
+    return new CliStructuredError(
+      "CLI.CONSENT_REQUIRED",
+      consentMissing(state),
+      {
+        why: question,
+        nextActions: [
+          {
+            kind: "user-choice",
+            label:
+              "Run the command interactively. Consent can only be granted outside an interactive terminal when the command declares a consent token.",
+          },
+        ],
+      },
+    );
   }
-  return new CliStructuredError(
-    "CLI.CONSENT_REQUIRED",
-    `${situation} Grant it by passing --confirm ${token}.`,
-    {
-      nextActions: [
-        {
-          kind: "user-choice",
-          label: `Run the command interactively and type ${token}, or pass --confirm ${token}.`,
-        },
-      ],
-      meta: { consentToken: token },
-    },
-  );
+  return new CliStructuredError("CLI.CONSENT_REQUIRED", consentMissing(state), {
+    why: question,
+    nextActions: [
+      {
+        kind: "user-choice",
+        label: `Run the command interactively and type ${token}, or pass --confirm ${token}.`,
+      },
+    ],
+    meta: { consentToken: token },
+  });
 }
 
 function promptInvalid(question: string, raw: string): CliStructuredError {

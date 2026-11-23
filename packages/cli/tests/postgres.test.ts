@@ -2776,7 +2776,7 @@ describe("postgres commands given an address", () => {
       ok: false,
       error: {
         code: "CLI.CONSENT_REQUIRED",
-        summary: expect.stringContaining(
+        why: expect.stringContaining(
           "database db_catalog_pr42 in environment pr-42 (branch pr-42)",
         ),
         meta: { consentToken: "@pr-42:shop.catalog" },
@@ -2796,7 +2796,7 @@ describe("postgres commands given an address", () => {
       ok: false,
       error: {
         code: "CLI.CONSENT_REQUIRED",
-        summary: expect.stringContaining(
+        why: expect.stringContaining(
           "database db_catalog_main in production (branch main)",
         ),
         meta: { consentToken: "@shop.catalog" },
