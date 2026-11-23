@@ -192,7 +192,7 @@ describe("consent tokens", () => {
     expect(withoutConfirm.exitCode).toBe(2);
     expect(errorOf(withoutConfirm)).toMatchObject({
       summary:
-        "This command requires explicit consent, and --yes does not give it.",
+        "This command requires explicit consent for which --yes is not sufficient.",
       why: "Delete the production database?",
       meta: { consentToken: "prod-db" },
     });
