@@ -157,6 +157,7 @@ describe("consent tokens", () => {
       code: "CLI.CONSENT_REQUIRED",
       summary:
         "This command requires explicit consent, but it was not provided.",
+      why: "Delete the production database?",
       nextActions: [
         {
           label:
@@ -192,6 +193,7 @@ describe("consent tokens", () => {
     expect(errorOf(withoutConfirm)).toMatchObject({
       summary:
         "This command requires explicit consent, and --yes does not give it.",
+      why: "Delete the production database?",
       meta: { consentToken: "prod-db" },
     });
 
