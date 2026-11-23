@@ -274,7 +274,8 @@ describe("consent", () => {
       code: "CLI.CONSENT_REQUIRED",
       severity: "error",
       summary:
-        '"Delete everything?" requires explicit consent, which --yes cannot grant.',
+        "This command requires explicit consent, and --yes does not give it.",
+      why: "Delete everything?",
       nextActions: [
         {
           kind: "user-choice",
@@ -291,8 +292,13 @@ describe("consent", () => {
     expect(result.exitCode).toBe(2);
     const last = result.json[result.json.length - 1];
     expect(
-      last.kind === "result" && !last.envelope.ok && last.envelope.error.code,
-    ).toBe("CLI.CONSENT_REQUIRED");
+      last.kind === "result" && !last.envelope.ok && last.envelope.error,
+    ).toMatchObject({
+      code: "CLI.CONSENT_REQUIRED",
+      summary:
+        "This command requires explicit consent, but it was not provided.",
+      why: "Delete everything?",
+    });
   });
 
   test("an explicit interactive yes grants consent", async () => {

@@ -1070,7 +1070,7 @@ describe("bucket commands given an address", () => {
       ok: false,
       error: {
         code: "CLI.CONSENT_REQUIRED",
-        summary: expect.stringContaining(
+        why: expect.stringContaining(
           "bucket bkt_files_main in production (branch main)",
         ),
         meta: { consentToken: "@billing.files" },

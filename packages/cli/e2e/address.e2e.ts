@@ -363,7 +363,7 @@ describeCommands(["postgres show", "postgres delete"], () => {
     );
 
     expect(result.envelope.error?.code).toBe("CLI.CONSENT_REQUIRED");
-    expect(result.envelope.error?.summary).toContain(
+    expect(result.envelope.error?.why).toContain(
       `database ${previewDatabase.id} in environment ${environment} (branch ${environment})`,
     );
     const after = await run([

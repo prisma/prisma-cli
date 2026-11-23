@@ -153,8 +153,19 @@ describe("consent tokens", () => {
     ]);
 
     expect(result.exitCode).toBe(2);
-    expect(errorOf(result)?.code).toBe("CLI.CONSENT_REQUIRED");
-    expect(errorOf(result)?.summary).toContain("--confirm prod-db");
+    expect(errorOf(result)).toMatchObject({
+      code: "CLI.CONSENT_REQUIRED",
+      summary:
+        "This command requires explicit consent, but it was not provided.",
+      why: "Delete the production database?",
+      nextActions: [
+        {
+          label:
+            "Run the command interactively and type prod-db, or pass --confirm prod-db.",
+        },
+      ],
+      meta: { consentToken: "prod-db" },
+    });
   });
 
   test("no --confirm at all halts the same way", async () => {
@@ -179,7 +190,12 @@ describe("consent tokens", () => {
       INTERACTIVE,
     );
     expect(withoutConfirm.exitCode).toBe(2);
-    expect(errorOf(withoutConfirm)?.summary).toContain("--yes cannot grant");
+    expect(errorOf(withoutConfirm)).toMatchObject({
+      summary:
+        "This command requires explicit consent, and --yes does not give it.",
+      why: "Delete the production database?",
+      meta: { consentToken: "prod-db" },
+    });
 
     const withConfirm = await cli.run(
       ["probe", "--yes", "--confirm", "prod-db"],
@@ -234,8 +250,20 @@ describe("consent tokens", () => {
       "Delete everything?",
     ]);
     expect(confirmed.exitCode).toBe(2);
-    expect(errorOf(confirmed)?.code).toBe("CLI.CONSENT_REQUIRED");
-    expect(errorOf(confirmed)?.summary).not.toContain("--confirm");
+    expect(errorOf(confirmed)).toEqual({
+      code: "CLI.CONSENT_REQUIRED",
+      severity: "error",
+      summary:
+        "This command requires explicit consent, but it was not provided.",
+      why: "Delete everything?",
+      nextActions: [
+        {
+          kind: "user-choice",
+          label:
+            "Run the command interactively. Consent can only be granted outside an interactive terminal when the command declares a consent token.",
+        },
+      ],
+    });
   });
 
   test("--confirm shows up in help as part of the shared flag family", async () => {

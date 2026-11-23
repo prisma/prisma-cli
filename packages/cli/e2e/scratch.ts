@@ -51,7 +51,10 @@ export async function removeScratchProject(
     if (!removal.envelope.ok) {
       stranded(
         `${removal.envelope.error?.code ?? "(no code)"} — ` +
-          `${removal.envelope.error?.summary ?? "(no summary)"}`,
+          `${removal.envelope.error?.summary ?? "(no summary)"}` +
+          (removal.envelope.error?.why === undefined
+            ? ""
+            : ` (${removal.envelope.error.why})`),
       );
     }
   } catch (failure) {
