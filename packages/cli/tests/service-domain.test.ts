@@ -884,7 +884,7 @@ describe("prisma service domain show", () => {
         customDomainSyncError: "Foundry answered HTTP 503",
       }),
       failure:
-        "Updating the hostname failed for reasons we are not sure about. You can try again, or contact support.",
+        "The hostname's last update failed, and the platform is retrying it. You can try again, or contact support.",
       next: [
         {
           kind: "run-command",

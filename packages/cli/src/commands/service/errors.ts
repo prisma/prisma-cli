@@ -399,7 +399,7 @@ export function domainVerificationTimeoutError(
           domainRecoveryCommand("show", hostname, target),
         ),
         adviceAction(
-          waitsForPlatform(domain)
+          waitsForPlatform(domain) && !guidance?.failed
             ? "Retry wait with a longer --timeout. If the domain stays in this state, contact support."
             : "Retry wait with a longer --timeout.",
         ),

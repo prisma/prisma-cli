@@ -15,12 +15,23 @@ export interface DomainStateGuidance {
 }
 
 /**
- * For a failure the platform gave us nothing about that a user can act
- * on. See "Errors from the systems below the API" in
- * docs/product/error-conventions.md.
+ * What a failed certificate shows: the platform's reasons as given, or,
+ * when it gave none, only that it failed. See "Errors From The Systems
+ * Below The API" in docs/product/error-conventions.md.
  */
-export const UNEXPLAINED_FAILURE =
-  "Provisioning failed for reasons we are not sure about. You can try again, or contact support.";
+function certificateFailure(domain: DomainGuidanceInput): string {
+  const relayed = [
+    domain.failureReason
+      ? `The platform reported: ${domain.failureReason}`
+      : null,
+    domain.dnsDetail
+      ? `About the hostname's DNS, the platform reported: ${domain.dnsDetail}`
+      : null,
+  ].filter((sentence) => sentence !== null);
+  return relayed.length === 0
+    ? "Provisioning failed for reasons we are not sure about. You can try again, or contact support."
+    : `Provisioning failed. ${relayed.join(" ")}`;
+}
 
 const ENDS_A_SENTENCE = /[.!?]$/;
 
@@ -116,7 +127,7 @@ export function domainStateGuidance(
       return {
         failed: true,
         waitingOn:
-          "Updating the hostname failed for reasons we are not sure about. You can try again, or contact support.",
+          "The hostname's last update failed, and the platform is retrying it. You can try again, or contact support.",
         fix: null,
       };
     case "in_use_elsewhere":
@@ -138,13 +149,7 @@ export function domainStateGuidance(
         fix: null,
       };
     case "certificate_failed":
-      return {
-        failed: true,
-        waitingOn: domain.failureReason
-          ? `Provisioning failed. The platform reported: ${domain.failureReason}`
-          : UNEXPLAINED_FAILURE,
-        fix: null,
-      };
+      return { failed: true, waitingOn: certificateFailure(domain), fix: null };
     case "updating":
       return {
         failed: false,

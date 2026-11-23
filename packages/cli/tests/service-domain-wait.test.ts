@@ -350,11 +350,15 @@ describe("prisma service domain wait", () => {
       state: "provisioning_certificate",
       domain: provisioning(),
       why: 'The domain is still "provisioning_certificate". The TLS certificate is being issued.',
+      advice:
+        "Retry wait with a longer --timeout. If the domain stays in this state, contact support.",
     },
     {
       state: "updating",
       domain: platformWorkRecord({ state: "updating" }),
       why: 'The domain is still "updating". The platform is bringing the hostname up to date.',
+      advice:
+        "Retry wait with a longer --timeout. If the domain stays in this state, contact support.",
     },
     {
       state: "update_failed",
@@ -362,12 +366,14 @@ describe("prisma service domain wait", () => {
         state: "update_failed",
         customDomainSyncError: "Foundry answered HTTP 503",
       }),
-      why: 'The domain is still "update_failed". Updating the hostname failed for reasons we are not sure about. You can try again, or contact support.',
+      why: `The domain is still "update_failed". The hostname's last update failed, and the platform is retrying it. You can try again, or contact support.`,
+      advice: "Retry wait with a longer --timeout.",
     },
-  ])("on timeout in $state, which the platform has to move, says to contact support if it stays", async ({
+  ])("on timeout in $state, which the platform has to move, reports the state and what to do", async ({
     state,
     domain,
     why,
+    advice,
   }) => {
     const harness = await makeServiceCli({ routes: waitRoutes([domain]) });
 
@@ -403,11 +409,7 @@ describe("prisma service domain wait", () => {
         command:
           "prisma service domain show shop.acme.com --service svc_1 --project proj_1 --branch production",
       },
-      {
-        kind: "user-choice",
-        label:
-          "Retry wait with a longer --timeout. If the domain stays in this state, contact support.",
-      },
+      { kind: "user-choice", label: advice },
     ]);
     expect(JSON.stringify(frame.envelope)).not.toContain(
       "Foundry answered HTTP 503",

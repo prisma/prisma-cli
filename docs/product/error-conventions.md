@@ -168,7 +168,7 @@ Every user-facing error carries a dotted `NAMESPACE.SUBCODE` code, assigned wher
 Two rules govern codes:
 
 - **Assign at origin.** The site that detects the failure names the code. No boundary rewrites a code on the way out, and no code is built by concatenation — a code assembled from a prefix and a variable is a code the registry cannot list and a caller cannot rely on.
-- **A server's code is data, not your code.** When a Management API request fails, raise the domain's registered `*.API_ERROR` and put the API's own code and status in `meta.apiCode` and `meta.status`.
+- **A server's code is data, not your code.** When a Management API request fails, raise the domain's registered `*.API_ERROR` and put the API's own code and status in `meta.apiCode` and `meta.status`. For a 5xx answer, [carry the status only](#errors-from-the-systems-below-the-api).
 
 Adding a code means adding its entry to the registry in the same change.
 
@@ -178,19 +178,19 @@ Many resources the CLI shows are kept by a system below the Management API: a cu
 
 Will Madden, 2026-11-23: "Anytime we're modeling a resource which is maintained in a lower-level system like this, we should be treating this the same way." On why a failure happened: "This is not something we care about. We only care if we've been given instructions for the user or not."
 
-Such a failure is one of three kinds, and the system that reports it decides which, by how it answers. The CLI does not sort failures by reading message text.
+Such a failure is one of three kinds. The CLI does not decide the kind, and does not sort failures by reading message text: the Management API has already decided, and the CLI reads the kind from how the API answers.
 
 | Kind | How it reaches the CLI | What the command says |
 | --- | --- | --- |
 | Internal | A 5xx answer, or a resource that says it failed, with no detail | That the operation failed for reasons we are not sure about, and that the user can try again or contact support. Nothing from the answer is shown |
-| Relayed | A 4xx answer with a message, or a field that holds the lower system's message, such as a hostname's `failureReason` (why a certificate failed) or `dnsDetail` (why its DNS was refused) | The message as given. The command does not interpret it and adds no advice of its own, such as "fix it and retry" or "try again, it may work" |
+| Relayed | A field the API documents as holding a lower system's message, such as a hostname's `failureReason` (why a certificate failed) or `dnsDetail` (why its DNS was refused), often beside a modelled state. Also a 4xx answer from the Management API that the command has no handling for: the API writes its own error messages for its callers | The message as given. The command does not interpret it and adds no advice of its own, such as "fix it and retry" or "try again, it may work" |
 | Modelled | A state, condition or error code the API defines for the case | The command's own message, with the specific thing the user must do |
 
 The reasoning: a user cannot act on an internal error, and printing it turns another system's internals into an interface nobody designed. The lower system knows more about its own refusals than the CLI does, so when it marks a message as fit for the user, passing it on unchanged gives the user something to act on without tying the CLI to that system's wording. A message of the CLI's own costs design and upkeep, and earns it only when the CLI knows exactly what the user must fix.
 
 A command gives a failure handling of its own only when the API models it. It does not turn a lower system's fault, such as a hung job, into a state or message of its own: that fault reaches the user as a timeout or an internal failure.
 
-For `service domain`, the modelled cases are the ones the API reports on the hostname: ownership not verified, DNS not pointing at Prisma, no live version, the service deleted, the hostname held elsewhere, and a limit reached on `retry`. A failed certificate is relayed: "Provisioning failed. The platform reported: …". A failed certificate with no reason, a failed platform update, and a 5xx answer to one of these commands are internal. A resource the platform is still bringing up to date has not failed: the command says it is in progress, and a `wait` that times out in that state reports the state and adds that the user can contact support if it stays there.
+For `service domain`, the modelled cases are the ones the API reports on the hostname: ownership not verified, DNS not pointing at Prisma, no live version, the service deleted, the hostname held elsewhere, and a limit reached on `retry`. A failed certificate is a modelled state that carries relayed detail: "Provisioning failed. The platform reported: …", and the platform's reason for refusing the hostname's DNS when it gave one. A failed certificate with no reason and a 5xx answer to one of these commands are internal. So is a failed platform update, where the command says only that the last update failed and is being retried. A resource the platform is still bringing up to date has not failed: the command says it is in progress, and a `wait` that times out in that state reports the state and adds that the user can contact support if it stays there.
 
 The `service domain` commands are the first to follow this section. Commands written before it still print a 5xx answer's message, as the example under [JSON Error Shape](#json-error-shape) shows; bring them in line when you next change them.
 

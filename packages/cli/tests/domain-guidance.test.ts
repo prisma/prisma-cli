@@ -88,7 +88,7 @@ describe("domainStateGuidance", () => {
     expect(guidance(input({ state: "update_failed" }))).toEqual({
       failed: true,
       waitingOn:
-        "Updating the hostname failed for reasons we are not sure about. You can try again, or contact support.",
+        "The hostname's last update failed, and the platform is retrying it. You can try again, or contact support.",
       fix: null,
     });
   });
@@ -206,6 +206,30 @@ describe("domainStateGuidance", () => {
         "Provisioning failed. The platform reported: CAA record forbids the issuer",
       fix: null,
     });
+  });
+
+  it("relays the platform's reason for refusing the DNS beside a failed certificate, each as given", () => {
+    expect(
+      guidance(
+        input({
+          state: "certificate_failed",
+          failureReason: "dns: no CNAME found",
+          dnsDetail: "the CNAME points at old.example.net",
+        }),
+      )?.waitingOn,
+    ).toBe(
+      "Provisioning failed. The platform reported: dns: no CNAME found About the hostname's DNS, the platform reported: the CNAME points at old.example.net",
+    );
+    expect(
+      guidance(
+        input({
+          state: "certificate_failed",
+          dnsDetail: "the CNAME points at old.example.net",
+        }),
+      )?.waitingOn,
+    ).toBe(
+      "Provisioning failed. About the hostname's DNS, the platform reported: the CNAME points at old.example.net",
+    );
   });
 
   it("reports a certificate failure without a reason as a failure we cannot explain", () => {

@@ -650,7 +650,7 @@ A `service domain` command targeted a hostname that is not attached to the resol
 
 ### SERVICE.DOMAIN_VERIFICATION_FAILED
 
-`service domain wait` saw the hostname in a state that waiting cannot get past. For `certificate_failed` (the TLS certificate could not be issued), `why` relays the platform's reason as given, or says that provisioning failed for reasons we are not sure about when the platform gave none, and the next actions point at `service domain show` and `service domain retry`. For `no_service` (the service was deleted), `why` says so, the fix is to add the hostname to the service that should serve it, and the next action points at `service domain show`. Meta: `state`.
+`service domain wait` saw the hostname in a state that waiting cannot get past. For `certificate_failed` (the TLS certificate could not be issued), `why` relays the platform's reason as given, or says that provisioning failed for reasons we are not sure about when the platform gave none, and the next actions point at `service domain show` and `service domain retry`. For `no_service` (the service was deleted), `why` says so, the fix is to delete the hostname and add it to the service that should serve it, and the next action points at `service domain show`. Meta: `state`.
 
 ### SERVICE.DOMAIN_VERIFICATION_TIMEOUT
 

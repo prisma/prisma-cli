@@ -16,7 +16,7 @@ export const serviceDomainRetryCommand = defineCommand({
   help: {
     summary: "Check a custom domain's DNS again and retry a failed certificate",
     description:
-      "Run it after publishing or fixing the DNS records that 'service domain show' reports. It looks the records up again, and when the TLS certificate failed it orders a new one. When the API answers that a limit is reached, the command fails and says when to run it again.",
+      "Run it after publishing or fixing the DNS records that 'service domain show' reports. It looks the records up again, has the platform try a failed update again, and when the TLS certificate failed it orders a new one. When the API answers that a limit is reached, the command fails and says when to run it again.",
     examples: ["service domain retry shop.acme.com --service my-service"],
   },
   args: domainTargetArgs(),
