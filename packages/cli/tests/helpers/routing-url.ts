@@ -138,3 +138,62 @@ export function duplicateEntries(): [RawDomain, RawDomain] {
     }),
   ];
 }
+
+/**
+ * A hostname past every step the user takes: ownership proven, service
+ * live, DNS pointing at Prisma. What is left is the platform's work.
+ */
+export function platformWorkRecord(
+  overrides: Partial<RawDomain> = {},
+): RawDomain {
+  return domainRecord({
+    state: "updating",
+    conditions: {
+      ownershipVerified: "met",
+      servicePresent: "met",
+      liveDeployment: "met",
+      dnsPointsAtSwitchboard: "met",
+      customDomainBound: "unmet",
+      certificateActive: "unmet",
+    },
+    firstUnmetCondition: "customDomainBound",
+    records: [],
+    ...overrides,
+  });
+}
+
+/** A hostname bound to a custom domain whose certificate is being issued. */
+export function provisioningRecord(
+  overrides: Partial<RawDomain> = {},
+): RawDomain {
+  return platformWorkRecord({
+    state: "provisioning_certificate",
+    conditions: {
+      ownershipVerified: "met",
+      servicePresent: "met",
+      liveDeployment: "met",
+      dnsPointsAtSwitchboard: "met",
+      customDomainBound: "met",
+      certificateActive: "unmet",
+    },
+    firstUnmetCondition: "certificateActive",
+    customDomain: customDomain({ status: "provisioning", certExpiresAt: null }),
+    ...overrides,
+  });
+}
+
+/** A hostname whose certificate could not be issued. */
+export function certificateFailedRecord(
+  failureReason: string | null,
+  overrides: Partial<RawDomain> = {},
+): RawDomain {
+  return provisioningRecord({
+    state: "certificate_failed",
+    customDomain: customDomain({
+      status: "failed",
+      failureReason,
+      certExpiresAt: null,
+    }),
+    ...overrides,
+  });
+}

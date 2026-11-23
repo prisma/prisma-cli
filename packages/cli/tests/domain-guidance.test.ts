@@ -88,7 +88,7 @@ describe("domainStateGuidance", () => {
     expect(guidance(input({ state: "update_failed" }))).toEqual({
       failed: true,
       waitingOn:
-        "Provisioning failed for reasons we are not sure about. You can try again, or contact support.",
+        "Updating the hostname failed for reasons we are not sure about. You can try again, or contact support.",
       fix: null,
     });
   });
@@ -163,13 +163,13 @@ describe("domainStateGuidance", () => {
         input({
           state: "waiting_for_dns",
           dnsRecords: [CNAME],
-          dnsDetail: "The hostname resolves to 203.0.113.9.",
+          dnsDetail: "the CNAME points at old.example.net",
         }),
       ),
     ).toEqual({
       failed: false,
       waitingOn:
-        "The hostname's DNS does not point at Prisma: The hostname resolves to 203.0.113.9.",
+        "The hostname's DNS does not point at Prisma. The platform reported: the CNAME points at old.example.net",
       fix: `Publish CNAME shop.acme.com -> switchboard.cdg.prisma.build at your DNS provider, then run prisma service domain retry shop.acme.com --service svc_1 --project proj_1 --branch production. ${APEX_NOTE}`,
     });
   });

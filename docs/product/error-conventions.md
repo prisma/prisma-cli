@@ -182,15 +182,17 @@ Such a failure is one of three kinds, and the system that reports it decides whi
 
 | Kind | How it reaches the CLI | What the command says |
 | --- | --- | --- |
-| Internal | A 5xx answer, or a resource that says it failed or is still being brought up to date, with no detail | That the operation failed for reasons we are not sure about, and that the user can try again or contact support |
-| Relayed | A 4xx answer with a message, or a field that holds the lower system's message, such as a hostname's `failureReason` | The message as given. The command does not interpret it and adds no advice of its own, such as "fix it and retry" or "try again, it may work" |
+| Internal | A 5xx answer, or a resource that says it failed, with no detail | That the operation failed for reasons we are not sure about, and that the user can try again or contact support. Nothing from the answer is shown |
+| Relayed | A 4xx answer with a message, or a field that holds the lower system's message, such as a hostname's `failureReason` (why a certificate failed) or `dnsDetail` (why its DNS was refused) | The message as given. The command does not interpret it and adds no advice of its own, such as "fix it and retry" or "try again, it may work" |
 | Modelled | A state, condition or error code the API defines for the case | The command's own message, with the specific thing the user must do |
 
 The reasoning: a user cannot act on an internal error, and printing it turns another system's internals into an interface nobody designed. The lower system knows more about its own refusals than the CLI does, so when it marks a message as fit for the user, passing it on unchanged gives the user something to act on without tying the CLI to that system's wording. A message of the CLI's own costs design and upkeep, and earns it only when the CLI knows exactly what the user must fix.
 
 A command gives a failure handling of its own only when the API models it. It does not turn a lower system's fault, such as a hung job, into a state or message of its own: that fault reaches the user as a timeout or an internal failure.
 
-For `service domain`, the modelled cases are the ones the API reports on the hostname: ownership not verified, DNS not pointing at Prisma, no live version, the service deleted, the hostname held elsewhere, and a limit reached on `retry`. A failed certificate is relayed: "Provisioning failed. The platform reported: …". A failed certificate with no reason, a failed platform update, and a `wait` that times out while the platform is still working are internal.
+For `service domain`, the modelled cases are the ones the API reports on the hostname: ownership not verified, DNS not pointing at Prisma, no live version, the service deleted, the hostname held elsewhere, and a limit reached on `retry`. A failed certificate is relayed: "Provisioning failed. The platform reported: …". A failed certificate with no reason, a failed platform update, and a 5xx answer to one of these commands are internal. A resource the platform is still bringing up to date has not failed: the command says it is in progress, and a `wait` that times out in that state reports the state and adds that the user can contact support if it stays there.
+
+The `service domain` commands are the first to follow this section. Commands written before it still print a 5xx answer's message, as the example under [JSON Error Shape](#json-error-shape) shows; bring them in line when you next change them.
 
 ## Exit Codes
 

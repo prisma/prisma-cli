@@ -147,7 +147,7 @@ export const serviceDomainWaitCommand = defineCommand({
   help: {
     summary: "Wait until a custom domain is active or failed",
     description:
-      "Blocks until the hostname's state is 'active', looking its DNS records up again while it waits for them, then exits with the outcome; useful in scripts and CI after 'service domain add'. It fails at once when the TLS certificate failed, and on timeout it says what the hostname still waits on.",
+      "Blocks until the hostname's state is 'active', looking its DNS records up again while it waits for them, then exits with the outcome; useful in scripts and CI after 'service domain add'. It fails at once when the TLS certificate failed, and on timeout it reports the state the hostname is still in.",
     examples: [
       "service domain wait shop.acme.com --service my-service",
       "service domain wait shop.acme.com --service my-service --timeout 30m",

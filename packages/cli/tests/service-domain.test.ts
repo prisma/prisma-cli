@@ -2,9 +2,12 @@ import type { PresentedResult } from "@prisma/cli-engine";
 import { describe, expect, it } from "vitest";
 import {
   activeRecord,
+  certificateFailedRecord,
   customDomain,
   domainRecord,
   duplicateEntries,
+  platformWorkRecord,
+  provisioningRecord,
   type RawDomain,
   waitingForDnsRecord,
 } from "./helpers/routing-url";
@@ -232,31 +235,29 @@ describe("prisma service domain add", () => {
     const harness = await makeServiceCli({
       routes: addRoutes(
         [],
-        domainRecord({
+        certificateFailedRecord("CAA record forbids the issuer", {
           id: "url_42",
-          state: "certificate_failed",
-          customDomain: {
-            id: "cd_1",
+          customDomain: customDomain({
             status: "failed",
             failureReason: "CAA record forbids the issuer",
             certExpiresAt: "2026-11-01T00:00:00.000Z",
-            lastSeenAt: "2026-08-01T00:05:00.000Z",
-            certificateRetryRequestedAt: null,
-            certificateIssuanceStuck: false,
-          },
+          }),
           customDomainSyncError: "Foundry answered HTTP 503",
           switchboardDns: {
-            accepted: false,
-            detail: "The hostname resolves to 203.0.113.9.",
+            accepted: true,
+            detail: "the CNAME points at switchboard.cdg.prisma.build",
             lastSeenAt: "2026-08-01T00:05:00.000Z",
           },
           ownershipExpiry: { expiresAt: "2026-09-01T00:00:00.000Z" },
-          heldBy: {
-            workspaceId: "wksp_ws_1",
-            projectId: "proj_2",
-            serviceId: "svc_2",
-            message: null,
-          },
+          records: [
+            {
+              condition: "ownershipVerified",
+              type: "TXT",
+              name: "_prisma-verification.shop.acme.com",
+              value: "prisma-verification=3f9a",
+              ttl: 300,
+            },
+          ],
           updatedAt: "2026-08-01T00:05:00.000Z",
         }),
       ),
@@ -283,24 +284,19 @@ describe("prisma service domain add", () => {
         status: "pending",
         state: "certificate_failed",
         conditions: {
-          ownershipVerified: "unmet",
+          ownershipVerified: "met",
           servicePresent: "met",
           liveDeployment: "met",
-          dnsPointsAtSwitchboard: "unknown",
-          customDomainBound: "unmet",
+          dnsPointsAtSwitchboard: "met",
+          customDomainBound: "met",
           certificateActive: "unmet",
         },
-        firstUnmetCondition: "ownershipVerified",
+        firstUnmetCondition: "certificateActive",
         failureReason: "CAA record forbids the issuer",
-        dnsDetail: "The hostname resolves to 203.0.113.9.",
+        dnsDetail: "the CNAME points at switchboard.cdg.prisma.build",
         certExpiresAt: "2026-11-01T00:00:00.000Z",
         ownershipExpiresAt: "2026-09-01T00:00:00.000Z",
-        heldBy: {
-          workspaceId: "wksp_ws_1",
-          projectId: "proj_2",
-          serviceId: "svc_2",
-          message: null,
-        },
+        heldBy: null,
         setupUrl:
           "https://console.prisma.io/ws_1/proj_1/compute/svc_1/domains?setup=shop.acme.com",
         createdAt: "2026-08-01T00:00:00.000Z",
@@ -311,13 +307,6 @@ describe("prisma service domain add", () => {
             type: "TXT",
             name: "_prisma-verification.shop.acme.com",
             value: "prisma-verification=3f9a",
-            ttl: 300,
-          },
-          {
-            condition: "dnsPointsAtSwitchboard",
-            type: "CNAME",
-            name: "shop.acme.com",
-            value: "switchboard.cdg.prisma.build",
             ttl: 300,
           },
         ],
@@ -457,7 +446,7 @@ describe("prisma service domain add", () => {
       status: 500,
       body: { error: { code: "internal", message: "Boom." } },
       code: "SERVICE.DEPLOY_FAILED",
-      why: "Failed to add custom domain: Boom.",
+      why: "The operation failed for reasons we are not sure about. You can try again, or contact support.",
     },
   ])("settles $name as $code", async ({ status, body, code, why }) => {
     const harness = await makeServiceCli({
@@ -773,7 +762,7 @@ describe("prisma service domain show", () => {
         waitingForDnsRecord({
           switchboardDns: {
             accepted: false,
-            detail: "The hostname resolves to 203.0.113.9.",
+            detail: "the CNAME points at old.example.net",
             lastSeenAt: "2026-08-01T00:05:00.000Z",
           },
         }),
@@ -792,7 +781,7 @@ describe("prisma service domain show", () => {
         hostname: "shop.acme.com",
         status: "pending",
         state: "waiting_for_dns",
-        dnsDetail: "The hostname resolves to 203.0.113.9.",
+        dnsDetail: "the CNAME points at old.example.net",
       },
     });
     // A command that only reports keeps the informational heading; the
@@ -810,7 +799,7 @@ describe("prisma service domain show", () => {
       {
         label: "waiting on",
         value:
-          "The hostname's DNS does not point at Prisma: The hostname resolves to 203.0.113.9.",
+          "The hostname's DNS does not point at Prisma. The platform reported: the CNAME points at old.example.net",
       },
       { label: "cert expires", value: "not yet issued" },
       { label: "created", value: "2026-08-01T00:00:00.000Z" },
@@ -876,15 +865,7 @@ describe("prisma service domain show", () => {
   it.each([
     {
       name: "the platform's reason for a failed certificate, exactly as given",
-      domain: domainRecord({
-        state: "certificate_failed",
-        records: [],
-        customDomain: customDomain({
-          status: "failed",
-          failureReason: "CAA record forbids the issuer",
-          certExpiresAt: null,
-        }),
-      }),
+      domain: certificateFailedRecord("CAA record forbids the issuer"),
       failure:
         "Provisioning failed. The platform reported: CAA record forbids the issuer",
       next: [
@@ -898,19 +879,18 @@ describe("prisma service domain show", () => {
     },
     {
       name: "a failure it cannot explain when the platform's update failed, without the platform's error",
-      domain: domainRecord({
+      domain: platformWorkRecord({
         state: "update_failed",
-        records: [],
         customDomainSyncError: "Foundry answered HTTP 503",
       }),
       failure:
-        "Provisioning failed for reasons we are not sure about. You can try again, or contact support.",
+        "Updating the hostname failed for reasons we are not sure about. You can try again, or contact support.",
       next: [
         {
           kind: "run-command",
-          label: "Wait for activation",
+          label: "Try again",
           command:
-            "prisma service domain wait shop.acme.com --service svc_1 --project proj_1 --branch production",
+            "prisma service domain retry shop.acme.com --service svc_1 --project proj_1 --branch production",
         },
       ],
     },
@@ -932,6 +912,75 @@ describe("prisma service domain show", () => {
     expect(JSON.stringify(result.presented?.presentation)).not.toContain(
       "Foundry answered HTTP 503",
     );
+  });
+
+  it("offers no wait when the hostname's service is gone, only the fix", async () => {
+    const harness = await makeServiceCli({
+      routes: showRoutes([
+        domainRecord({ state: "no_service", serviceId: null, setupUrl: null }),
+      ]),
+    });
+
+    const result = await harness.cli.run(
+      ["service", "domain", "show", "shop.acme.com", ...TARGET_ARGS],
+      { cwd: harness.cwd, env: harness.env, isTty: { stdout: true } },
+    );
+
+    expect(result.exitCode).toBe(0);
+    expect(result.presented?.presentation.next).toEqual([
+      {
+        kind: "user-choice",
+        label:
+          "Delete the hostname, then add it to the service that should serve it.",
+      },
+    ]);
+  });
+
+  it("reports which service holds the hostname in --json", async () => {
+    const harness = await makeServiceCli({
+      routes: showRoutes([
+        domainRecord({
+          state: "in_use_elsewhere",
+          conditions: {
+            ownershipVerified: "met",
+            servicePresent: "met",
+            liveDeployment: "met",
+            dnsPointsAtSwitchboard: "met",
+            customDomainBound: "unmet",
+            certificateActive: "unmet",
+          },
+          firstUnmetCondition: "customDomainBound",
+          records: [],
+          heldBy: {
+            workspaceId: "wksp_ws_1",
+            projectId: "proj_2",
+            serviceId: "svc_2",
+            message: null,
+          },
+        }),
+      ]),
+    });
+
+    const result = await harness.cli.run(
+      ["service", "domain", "show", "shop.acme.com", ...TARGET_ARGS, "--json"],
+      { cwd: harness.cwd, env: harness.env },
+    );
+
+    const frame = result.json[result.json.length - 1];
+    if (frame?.kind !== "result" || !frame.envelope.ok) {
+      throw new Error("expected a completed envelope");
+    }
+    expect(frame.envelope.result).toMatchObject({
+      domain: {
+        state: "in_use_elsewhere",
+        heldBy: {
+          workspaceId: "wksp_ws_1",
+          projectId: "proj_2",
+          serviceId: "svc_2",
+          message: null,
+        },
+      },
+    });
   });
 
   it("emits the completed json envelope with commandId service.domain.show", async () => {
@@ -1107,27 +1156,11 @@ describe("prisma service domain show", () => {
 
 describe("prisma service domain retry", () => {
   function certificateFailed(): RawDomain {
-    return domainRecord({
-      state: "certificate_failed",
-      records: [],
-      customDomain: {
-        id: "cd_1",
-        status: "failed",
-        failureReason: "CAA record forbids the issuer",
-        certExpiresAt: null,
-        lastSeenAt: "2026-08-01T00:05:00.000Z",
-        certificateRetryRequestedAt: null,
-        certificateIssuanceStuck: false,
-      },
-    });
+    return certificateFailedRecord("CAA record forbids the issuer");
   }
 
   function provisioning(): RawDomain {
-    return domainRecord({
-      state: "provisioning_certificate",
-      firstUnmetCondition: "certificateActive",
-      records: [],
-    });
+    return provisioningRecord();
   }
 
   function rateLimitedRoutes(
@@ -1905,33 +1938,60 @@ it.each([
   });
 });
 
-it("keeps the selected target in the recovery command of an unexpected domain failure", async () => {
+it.each([
+  "add",
+  "show",
+  "retry",
+  "wait",
+  "delete",
+])("hides every detail of a server error behind one plain sentence in %s", async (command) => {
+  const serverError = () => ({
+    status: 502,
+    error: {
+      error: {
+        code: "foundry-unavailable",
+        message: "Foundry upstream timed out after 30s.",
+        hint: "Check the Foundry status page.",
+      },
+    },
+  });
   const harness = await makeServiceCli({
     routes: domainRoutes({
-      "GET /v1/urls/{id}": () => ({
-        status: 500,
-        error: { error: { code: "internal", message: "Boom." } },
-      }),
+      ...listing(command === "add" ? [] : [waitingForDnsRecord()]),
+      "POST /v1/services/{serviceId}/urls": serverError,
+      "GET /v1/urls/{id}": serverError,
+      "POST /v1/urls/{id}/check": serverError,
+      "DELETE /v1/urls/{id}": serverError,
     }),
   });
+
   const result = await harness.cli.run(
     [
       "service",
       "domain",
-      "show",
+      command,
       "shop.acme.com",
       ...TARGET_ARGS,
       "--branch",
       "feature/customer's-test",
       "--json",
+      ...(command === "delete" ? ["--confirm", "shop.acme.com"] : []),
     ],
-    { cwd: harness.cwd, env: harness.env },
+    {
+      cwd: harness.cwd,
+      env: { ...harness.env, PRISMA_CLI_DOMAIN_WAIT_POLL_MS: "1" },
+    },
   );
+
   expect(result.exitCode).not.toBe(0);
   const frame = result.json[result.json.length - 1];
   if (frame?.kind !== "result" || frame.envelope.ok)
     throw new Error("expected an errored envelope");
-  expect(frame.envelope.error.code).toBe("SERVICE.DEPLOY_FAILED");
+  expect(frame.envelope.error).toMatchObject({
+    code: "SERVICE.DEPLOY_FAILED",
+    why: "The operation failed for reasons we are not sure about. You can try again, or contact support.",
+  });
+  expect(frame.envelope.error.meta).toEqual({ status: 502 });
   expect(frame.envelope.nextActions).toEqual([
     {
       kind: "run-command",
@@ -1940,4 +2000,39 @@ it("keeps the selected target in the recovery command of an unexpected domain fa
         "prisma service domain show shop.acme.com --service svc_1 --project proj_1 --branch 'feature/customer'\\''s-test'",
     },
   ]);
+  const serialized = JSON.stringify(frame.envelope);
+  expect(serialized).not.toContain("Foundry upstream timed out");
+  expect(serialized).not.toContain("foundry-unavailable");
+  expect(serialized).not.toContain("Check the Foundry status page");
+});
+
+it("shows the API's message for a client error the CLI does not handle on its own", async () => {
+  const harness = await makeServiceCli({
+    routes: domainRoutes({
+      "GET /v1/urls/{id}": () => ({
+        status: 403,
+        error: {
+          error: {
+            code: "forbidden",
+            message: "This token cannot read hostnames.",
+          },
+        },
+      }),
+    }),
+  });
+
+  const result = await harness.cli.run(
+    ["service", "domain", "show", "shop.acme.com", ...TARGET_ARGS, "--json"],
+    { cwd: harness.cwd, env: harness.env },
+  );
+
+  expect(result.exitCode).not.toBe(0);
+  const frame = result.json[result.json.length - 1];
+  if (frame?.kind !== "result" || frame.envelope.ok)
+    throw new Error("expected an errored envelope");
+  expect(frame.envelope.error).toMatchObject({
+    code: "SERVICE.DEPLOY_FAILED",
+    why: "Failed to show custom domain: This token cannot read hostnames.",
+    meta: { status: 403, apiCode: "forbidden" },
+  });
 });

@@ -1,8 +1,10 @@
 import { describe, expect, it } from "vitest";
 import {
   activeRecord,
+  certificateFailedRecord,
   customDomain,
   domainRecord,
+  platformWorkRecord,
   type RawDomain,
   waitingForDnsRecord,
 } from "./helpers/routing-url";
@@ -197,19 +199,7 @@ describe("prisma service domain wait", () => {
       routes: waitRoutes(
         [
           provisioning(),
-          domainRecord({
-            state: "certificate_failed",
-            records: [],
-            customDomain: {
-              id: "cd_1",
-              status: "failed",
-              failureReason: "CAA record forbids the issuer",
-              certExpiresAt: null,
-              lastSeenAt: "2026-08-01T00:05:00.000Z",
-              certificateRetryRequestedAt: null,
-              certificateIssuanceStuck: false,
-            },
-          }),
+          certificateFailedRecord("CAA record forbids the issuer"),
           activeRecord(),
         ],
         reads,
@@ -306,7 +296,7 @@ describe("prisma service domain wait", () => {
           waitingForDnsRecord({
             switchboardDns: {
               accepted: false,
-              detail: "The hostname resolves to 203.0.113.9.",
+              detail: "the CNAME points at old.example.net",
               lastSeenAt: "2026-08-01T00:05:00.000Z",
             },
           }),
@@ -336,7 +326,7 @@ describe("prisma service domain wait", () => {
     }
     expect(frame.envelope.error).toMatchObject({
       code: "SERVICE.DOMAIN_VERIFICATION_TIMEOUT",
-      why: 'The domain is still "waiting_for_dns". The hostname\'s DNS does not point at Prisma: The hostname resolves to 203.0.113.9.',
+      why: 'The domain is still "waiting_for_dns". The hostname\'s DNS does not point at Prisma. The platform reported: the CNAME points at old.example.net',
       meta: { state: "waiting_for_dns" },
     });
     expect(frame.envelope.error.nextActions).toEqual([
@@ -356,13 +346,30 @@ describe("prisma service domain wait", () => {
   });
 
   it.each([
-    "provisioning_certificate",
-    "updating",
-    "update_failed",
-  ] as const)("says on timeout that it cannot explain the delay while the platform has to act (%s)", async (state) => {
-    const harness = await makeServiceCli({
-      routes: waitRoutes([domainRecord({ state, records: [] })]),
-    });
+    {
+      state: "provisioning_certificate",
+      domain: provisioning(),
+      why: 'The domain is still "provisioning_certificate". The TLS certificate is being issued.',
+    },
+    {
+      state: "updating",
+      domain: platformWorkRecord({ state: "updating" }),
+      why: 'The domain is still "updating". The platform is bringing the hostname up to date.',
+    },
+    {
+      state: "update_failed",
+      domain: platformWorkRecord({
+        state: "update_failed",
+        customDomainSyncError: "Foundry answered HTTP 503",
+      }),
+      why: 'The domain is still "update_failed". Updating the hostname failed for reasons we are not sure about. You can try again, or contact support.',
+    },
+  ])("on timeout in $state, which the platform has to move, says to contact support if it stays", async ({
+    state,
+    domain,
+    why,
+  }) => {
+    const harness = await makeServiceCli({ routes: waitRoutes([domain]) });
 
     const result = await harness.cli.run(
       [
@@ -386,7 +393,7 @@ describe("prisma service domain wait", () => {
     expect(frame.envelope.error).toMatchObject({
       code: "SERVICE.DOMAIN_VERIFICATION_TIMEOUT",
       summary: 'Timed out waiting for "shop.acme.com" to become active',
-      why: "Provisioning did not finish in time, for reasons we are not sure about. You can try again, or contact support.",
+      why,
       meta: { state },
     });
     expect(frame.envelope.error.nextActions).toEqual([
@@ -396,12 +403,21 @@ describe("prisma service domain wait", () => {
         command:
           "prisma service domain show shop.acme.com --service svc_1 --project proj_1 --branch production",
       },
+      {
+        kind: "user-choice",
+        label:
+          "Retry wait with a longer --timeout. If the domain stays in this state, contact support.",
+      },
     ]);
+    expect(JSON.stringify(frame.envelope)).not.toContain(
+      "Foundry answered HTTP 503",
+    );
   });
 
   it("times out after polling a hostname the platform is still provisioning", async () => {
+    const reads: Read[] = [];
     const harness = await makeServiceCli({
-      routes: waitRoutes([provisioning()]),
+      routes: waitRoutes([provisioning()], reads),
     });
 
     const result = await harness.cli.run(
@@ -425,8 +441,9 @@ describe("prisma service domain wait", () => {
     }
     expect(frame.envelope.error).toMatchObject({
       code: "SERVICE.DOMAIN_VERIFICATION_TIMEOUT",
-      why: "Provisioning did not finish in time, for reasons we are not sure about. You can try again, or contact support.",
+      why: 'The domain is still "provisioning_certificate". The TLS certificate is being issued.',
     });
+    expect(reads.length).toBeGreaterThan(0);
   });
 
   it("rejects an invalid --timeout as SERVICE.TIMEOUT_INVALID", async () => {

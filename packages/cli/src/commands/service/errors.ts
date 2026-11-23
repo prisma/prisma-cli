@@ -5,7 +5,6 @@ import { formatCommandArgument } from "../../command-arguments";
 import { DomainApiError, type DomainRecord } from "../../lib/app/app-provider";
 import {
   domainStateGuidance,
-  UNEXPLAINED_DELAY,
   waitsForPlatform,
 } from "../../lib/app/domain-guidance";
 import type { ServiceDomainTarget } from "./results";
@@ -383,36 +382,27 @@ export function domainVerificationTimeoutError(
   domain: DomainRecord,
   target: ServiceDomainTarget,
 ): CliStructuredError {
-  const showAction = runCommandAction(
-    "Show the domain",
-    domainRecoveryCommand("show", hostname, target),
-  );
-  const summary = `Timed out waiting for "${hostname}" to become active`;
-  if (waitsForPlatform(domain)) {
-    return new CliStructuredError(
-      "SERVICE.DOMAIN_VERIFICATION_TIMEOUT",
-      summary,
-      {
-        why: UNEXPLAINED_DELAY,
-        meta: { state: domain.state },
-        nextActions: [showAction],
-      },
-    );
-  }
   const guidance = domainStateGuidance(
     { ...domain, serviceId: domain.appId },
     `${CLI_NAME} ${domainRecoveryCommand("retry", hostname, target)}`,
   );
   return new CliStructuredError(
     "SERVICE.DOMAIN_VERIFICATION_TIMEOUT",
-    summary,
+    `Timed out waiting for "${hostname}" to become active`,
     {
       why: `The domain is still "${domain.state}".${guidance ? ` ${guidance.waitingOn}` : ""}`,
       meta: { state: domain.state },
       nextActions: [
         ...(guidance?.fix ? [adviceAction(guidance.fix)] : []),
-        showAction,
-        adviceAction("Retry wait with a longer --timeout."),
+        runCommandAction(
+          "Show the domain",
+          domainRecoveryCommand("show", hostname, target),
+        ),
+        adviceAction(
+          waitsForPlatform(domain)
+            ? "Retry wait with a longer --timeout. If the domain stays in this state, contact support."
+            : "Retry wait with a longer --timeout.",
+        ),
       ],
     },
   );
@@ -457,19 +447,37 @@ export function domainCommandError(
     }
   }
 
+  if (error instanceof DomainApiError && error.status >= 500) {
+    return domainCommandFailed(command, hostname, target, error, {
+      why: "The operation failed for reasons we are not sure about. You can try again, or contact support.",
+      meta: { status: error.status },
+    });
+  }
+  return domainCommandFailed(command, hostname, target, error, {
+    why: error instanceof Error ? error.message : String(error),
+    meta: debugMeta(error),
+  });
+}
+
+function domainCommandFailed(
+  command: DomainCommand,
+  hostname: string,
+  target: ServiceDomainTarget,
+  cause: unknown,
+  detail: { why: string; meta: Record<string, unknown> },
+): CliStructuredError {
   return new CliStructuredError(
     "SERVICE.DEPLOY_FAILED",
     `Custom domain ${command} failed`,
     {
-      why: error instanceof Error ? error.message : String(error),
-      meta: debugMeta(error),
+      ...detail,
       nextActions: [
         runCommandAction(
           "Show the domain",
           domainRecoveryCommand("show", hostname, target),
         ),
       ],
-      cause: error,
+      cause,
     },
   );
 }

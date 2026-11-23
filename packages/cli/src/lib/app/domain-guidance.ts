@@ -22,9 +22,6 @@ export interface DomainStateGuidance {
 export const UNEXPLAINED_FAILURE =
   "Provisioning failed for reasons we are not sure about. You can try again, or contact support.";
 
-export const UNEXPLAINED_DELAY =
-  "Provisioning did not finish in time, for reasons we are not sure about. You can try again, or contact support.";
-
 const ENDS_A_SENTENCE = /[.!?]$/;
 
 function formatRecords(records: DomainGuidanceInput["dnsRecords"]): string {
@@ -116,16 +113,20 @@ export function domainStateGuidance(
         fix: `Deploy the service or promote one of its versions.${routingRecords ? ` Also publish ${routingRecords}. ${apexNote}` : ""}`,
       };
     case "update_failed":
-      return { failed: true, waitingOn: UNEXPLAINED_FAILURE, fix: null };
+      return {
+        failed: true,
+        waitingOn:
+          "Updating the hostname failed for reasons we are not sure about. You can try again, or contact support.",
+        fix: null,
+      };
     case "in_use_elsewhere":
       return inUseElsewhereGuidance(domain);
     case "waiting_for_dns":
       return {
         failed: false,
-        waitingOn: withDetail(
-          "The hostname's DNS does not point at Prisma",
-          domain.dnsDetail,
-        ),
+        waitingOn: domain.dnsDetail
+          ? `The hostname's DNS does not point at Prisma. The platform reported: ${domain.dnsDetail}`
+          : "The hostname's DNS does not point at Prisma.",
         fix: routingRecords
           ? `Publish ${routingRecords} at your DNS provider, then run ${retry}. ${apexNote}`
           : `Point the hostname at Prisma, then run ${retry}.`,

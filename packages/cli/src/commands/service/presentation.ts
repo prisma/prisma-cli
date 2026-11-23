@@ -127,7 +127,8 @@ function domainFixActions(
 /**
  * The command that moves a hostname that is not serving yet forward. A
  * wait cannot get past a failed certificate, which only a retry moves,
- * or a deleted service, which no command here moves.
+ * or a deleted service, which no command here moves. After a failed
+ * update, a retry is how the user tries again.
  */
 function progressActions(
   domain: ServiceDomainSummary,
@@ -137,6 +138,14 @@ function progressActions(
     return [
       runCommandAction(
         "Retry the certificate",
+        domainRecoveryCommand("retry", domain.hostname, target),
+      ),
+    ];
+  }
+  if (domain.state === "update_failed") {
+    return [
+      runCommandAction(
+        "Try again",
         domainRecoveryCommand("retry", domain.hostname, target),
       ),
     ];

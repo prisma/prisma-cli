@@ -630,7 +630,7 @@ A `--branch` flag was passed with an empty or whitespace-only value to a service
 
 ### SERVICE.DEPLOY_FAILED
 
-The general "Management API call failed" wrapper for the `service` command family — despite the name there is no deploy command here: it wraps failures to create a service, list services or versions, show/promote/roll back/delete/start/stop a version, resolve a service URL, and unrecognized custom-domain API failures. The underlying error's message becomes `why` and the original error is carried in `cause`; each raise site attaches its own next actions. On the domain fallback path only, a `DomainApiError` adds debug meta. Meta: `status`, `apiCode`, `hint` (domain fallback path only; otherwise none).
+The general "Management API call failed" wrapper for the `service` command family — despite the name there is no deploy command here: it wraps failures to create a service, list services or versions, show/promote/roll back/delete/start/stop a version, resolve a service URL, and unrecognized custom-domain API failures. The underlying error's message becomes `why` and the original error is carried in `cause`; each raise site attaches its own next actions. On the domain fallback path only, a `DomainApiError` adds debug meta, and a 5xx answer is treated as internal: `why` says only that the operation failed for reasons we are not sure about and that the user can try again or contact support, and meta carries the status alone. Meta: `status`, `apiCode`, `hint` (domain fallback path only; otherwise none).
 
 ### SERVICE.DOMAIN_HOSTNAME_INVALID
 
@@ -650,11 +650,11 @@ A `service domain` command targeted a hostname that is not attached to the resol
 
 ### SERVICE.DOMAIN_VERIFICATION_FAILED
 
-`service domain wait` saw the hostname in a state that waiting cannot get past: `certificate_failed` (the TLS certificate could not be issued) or `no_service` (the service was deleted). For a failed certificate, `why` relays the platform's reason as given, or says that provisioning failed for reasons we are not sure about when the platform gave none. Next actions point at `service domain show`, and at `service domain retry` for a failed certificate. Meta: `state`.
+`service domain wait` saw the hostname in a state that waiting cannot get past. For `certificate_failed` (the TLS certificate could not be issued), `why` relays the platform's reason as given, or says that provisioning failed for reasons we are not sure about when the platform gave none, and the next actions point at `service domain show` and `service domain retry`. For `no_service` (the service was deleted), `why` says so, the fix is to add the hostname to the service that should serve it, and the next action points at `service domain show`. Meta: `state`.
 
 ### SERVICE.DOMAIN_VERIFICATION_TIMEOUT
 
-`service domain wait` ran out of time (default 15m, or `--timeout 0` for a single read) before the hostname's state became `active`. When the hostname waits on the user, `why` reports its state and what it waits on, and the next actions carry the fix, such as the DNS records to publish. When it waits on the platform, `why` says that provisioning did not finish in time for reasons we are not sure about, and that the user can try again or contact support. Meta: `state`.
+`service domain wait` ran out of time (default 15m, or `--timeout 0` for a single read) before the hostname's state became `active`. `why` reports the state the hostname is still in and what that state means. When the hostname waits on the user, the next actions carry the fix, such as the DNS records to publish. When it waits on the platform, they say to wait longer and to contact support if the hostname stays in that state. Meta: `state`.
 
 ### SERVICE.FEATURE_UNAVAILABLE
 
