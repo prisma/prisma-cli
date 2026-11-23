@@ -121,11 +121,11 @@ A Project, service, database or bucket that Prisma Composer deployed can also be
 
 ### `wait`
 
-Block until a remote resource reaches a terminal state.
+Block until a remote resource reaches a terminal state. A wait may ask the platform to look again at something it does not watch on its own, as `service domain wait` does for DNS, but it never starts work that costs the user anything or that the user has to approve.
 
 Example:
 
-- `app domain wait`
+- `service domain wait`
 
 ### `promote`
 
@@ -158,7 +158,7 @@ A hostname can be added before its DNS exists and before the service has a live 
 
 The platform looks DNS up when a hostname is added or checked, not on a timer. So `retry` asks for a check, and `wait` asks for one periodically while the hostname waits for records the user publishes. A check also retries a failed TLS certificate, which counts against the workspace's hourly limit of new certificates; `wait` therefore stops at a failed certificate and leaves the retry to the user.
 
-`add` is idempotent in the CLI: the API accepts the same hostname on a service more than once, so `add` first looks for it and shows the existing entry. `delete` removes every entry the service lists for the hostname.
+A hostname on a service is one thing to the CLI, although the API accepts the same hostname on a service more than once. So `add` first looks for the hostname and shows the existing entry; `show`, `retry` and `wait` follow the entry the platform routes the hostname through; and `delete` removes every entry the service lists for it. Adding a hostname also creates the workspace's domain ownership for it, which no CLI command shows or removes.
 
 ## Shared Flag Conventions
 

@@ -116,9 +116,10 @@ export interface DomainHolder {
 /** A hostname on a service, as the Management API's RoutingUrl reports it. */
 export interface DomainRecord {
   id: string;
-  type: "routingUrl";
   hostname: string;
   appId: string | null;
+  /** Whether this entry is the one the platform routes the hostname through. */
+  holdsHostname: boolean;
   status: DomainStatus;
   state: DomainState;
   conditions: Record<DomainCondition, DomainConditionValue>;
@@ -140,6 +141,8 @@ export class DomainApiError extends Error {
   readonly code: string | null;
   readonly hint: string | null;
   readonly retryAfterSeconds: number | null;
+  /** The API's own message, without the CLI's summary in front. */
+  readonly apiMessage: string;
 
   constructor(options: {
     summary: string;
@@ -157,6 +160,7 @@ export class DomainApiError extends Error {
     this.code = options.code ?? null;
     this.hint = options.hint ?? null;
     this.retryAfterSeconds = options.retryAfterSeconds ?? null;
+    this.apiMessage = options.message;
   }
 }
 
@@ -227,7 +231,7 @@ export interface AppProvider {
     appId: string;
     hostname: string;
     signal?: AbortSignal;
-  }): Promise<{ domain: DomainRecord; existing: boolean }>;
+  }): Promise<DomainRecord>;
   showDomain(
     domainId: string,
     options?: { signal?: AbortSignal },
@@ -411,20 +415,13 @@ export function createAppProvider(
     },
 
     async addDomain(options) {
-      const existing = (
-        await listServiceHostnames(client, options.appId, options.signal)
-      ).filter((domain) => sameHostname(domain.hostname, options.hostname));
-      const alreadyAdded = preferredDomain(existing);
-      if (alreadyAdded) {
-        return { domain: alreadyAdded, existing: true };
-      }
-
       const result = await client.POST("/v1/services/{serviceId}/urls", {
         params: {
           path: { serviceId: options.appId },
         },
         body: {
           hostname: options.hostname,
+          createDomainOwnership: true,
         },
         signal: options.signal,
       });
@@ -437,10 +434,7 @@ export function createAppProvider(
         );
       }
 
-      return {
-        domain: toDomainRecord(result.data.data),
-        existing: false,
-      };
+      return toDomainRecord(result.data.data);
     },
 
     async showDomain(domainId, options) {
@@ -1033,29 +1027,12 @@ async function listServiceHostnames(
   return result.data.data.map(toDomainRecord);
 }
 
-/**
- * A service can list one hostname in several entries, and at most one of
- * them holds the hostname. That one says what the hostname does; without
- * it, the oldest entry stands for the hostname.
- */
-export function preferredDomain(
-  entries: readonly DomainRecord[],
-): DomainRecord | undefined {
-  const oldestFirst = [...entries].sort((left, right) =>
-    left.createdAt.localeCompare(right.createdAt),
-  );
-  return (
-    oldestFirst.find((entry) => entry.state !== "in_use_elsewhere") ??
-    oldestFirst[0]
-  );
-}
-
 function toDomainRecord(url: RawRoutingUrl): DomainRecord {
   return {
     id: url.id,
-    type: url.type,
     hostname: url.hostname,
     appId: url.serviceId,
+    holdsHostname: url.customDomain !== null,
     status: url.status,
     state: url.state,
     conditions: url.conditions,
@@ -1071,17 +1048,6 @@ function toDomainRecord(url: RawRoutingUrl): DomainRecord {
     updatedAt: url.updatedAt,
     dnsRecords: url.records,
   };
-}
-
-function sameHostname(left: string, right: string): boolean {
-  return (
-    normalizeHostnameForComparison(left) ===
-    normalizeHostnameForComparison(right)
-  );
-}
-
-function normalizeHostnameForComparison(hostname: string): string {
-  return hostname.trim().replace(/\.$/, "").toLowerCase();
 }
 
 function apiCallError(

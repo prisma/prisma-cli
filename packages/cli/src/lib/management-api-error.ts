@@ -15,5 +15,7 @@ export interface ApiErrorBody {
 
 export function apiErrorDetail(body: ApiErrorBody | undefined): ApiErrorDetail {
   const error = body?.error;
-  return error === undefined || Array.isArray(error) ? {} : error;
+  return typeof error === "object" && error !== null && !Array.isArray(error)
+    ? error
+    : {};
 }

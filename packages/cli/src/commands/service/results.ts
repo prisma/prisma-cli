@@ -137,7 +137,6 @@ export interface ServiceDomainDnsRecord {
 
 export interface ServiceDomainSummary {
   id: string;
-  type: "routingUrl";
   hostname: string;
   serviceId: string | null;
   status: ServiceDomainStatus;

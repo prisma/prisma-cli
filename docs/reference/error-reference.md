@@ -642,11 +642,11 @@ A `service domain` command targeted a hostname that is not attached to the resol
 
 ### SERVICE.DOMAIN_QUOTA_EXCEEDED
 
-`service domain add` was refused with the API code `quota-exceeded`: the service already has as many hostnames as it may have. The CLI uses the API's recovery hint when supplied. Without a hint, it advises deleting an existing custom domain before adding another. Meta: `status`, `apiCode`, `hint`.
+`service domain add` was refused with the API code `quota-exceeded`: the service already has as many hostnames as it may have. HTTP 429 no longer raises this code. The CLI uses the API's recovery hint when supplied. Without a hint, it advises deleting an existing custom domain before adding another. Meta: `status`, `apiCode`, `hint`.
 
 ### SERVICE.DOMAIN_RETRY_RATE_LIMITED
 
-`service domain retry` got HTTP 429. When the hostname's TLS certificate had failed, the retry orders a new certificate, and the workspace has used its hourly limit of new certificates; otherwise requests arrived too fast. Nothing was retried. The fix is to run the retry again after the wait the error names, which comes from the API's `Retry-After` header. Meta: `status`, `apiCode`, `hint`, `retryAfterSeconds`.
+`service domain retry` got HTTP 429, and nothing was retried. The API answers that for its request rate limit, and, when the hostname's TLS certificate had failed, for the workspace's hourly limit of new certificates, because the retry orders one. `why` carries the API's message, which says which limit it was. The fix is to run the retry again after the wait the error names, which comes from the API's `Retry-After` header. Meta: `status`, `apiCode`, `hint`, `retryAfterSeconds`, `certificateFailed`.
 
 ### SERVICE.DOMAIN_VERIFICATION_FAILED
 

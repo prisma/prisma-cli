@@ -1,14 +1,24 @@
 import { defineCommand } from "@prisma/cli-engine";
 import { ok } from "@prisma/cli-engine/protocol";
+import { DomainApiError } from "../../lib/app/app-provider";
 import { domainTargetArgs } from "./domain-shared";
-import { domainCommandError, userCancelledError } from "./errors";
+import {
+  domainCommandError,
+  domainNotFoundError,
+  userCancelledError,
+} from "./errors";
 import { domainDeletePresentations } from "./presentation";
 import type { ServiceDomainDeleteResult } from "./results";
 import {
+  listDomainEntries,
   normalizeDomainHostname,
-  resolveDomainEntriesByHostname,
   resolveServiceDomainTarget,
 } from "./target";
+
+/** Someone else deleted the entry between the listing and this delete. */
+function isAlreadyDeleted(error: unknown): boolean {
+  return error instanceof DomainApiError && error.status === 404;
+}
 
 export const serviceDomainDeleteCommand = defineCommand({
   help: {
@@ -33,13 +43,16 @@ export const serviceDomainDeleteCommand = defineCommand({
       branchName: args.flags.branch,
       commandName: `service domain delete ${hostname}`,
     });
-    const entries = await resolveDomainEntriesByHostname(
+    const entries = await listDomainEntries(
       target.provider,
       target.resultTarget,
       hostname,
       "delete",
       ctx.signal,
     );
+    if (entries.length === 0) {
+      throw domainNotFoundError(hostname, target.resultTarget);
+    }
 
     const granted = await ctx.prompt.consent(
       `Delete ${hostname} from Service "${target.resultTarget.service.name}"?`,
@@ -54,10 +67,13 @@ export const serviceDomainDeleteCommand = defineCommand({
     }
 
     for (const entry of entries) {
-      // biome-ignore lint/performance/noAwaitInLoops: a service lists a hostname more than once only when entries were added outside the CLI, and deleting them one at a time keeps the first failure from hiding which entries are gone.
+      // biome-ignore lint/performance/noAwaitInLoops: a service lists a hostname more than once only when entries were added outside the CLI, so this is almost always one request.
       await target.provider
         .removeDomain(entry.id, { signal: ctx.signal })
         .catch((error) => {
+          if (isAlreadyDeleted(error)) {
+            return;
+          }
           throw domainCommandError(
             "delete",
             error,

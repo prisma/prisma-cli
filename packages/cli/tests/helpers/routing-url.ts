@@ -103,3 +103,38 @@ export function activeRecord(overrides: Partial<RawDomain> = {}): RawDomain {
     ...overrides,
   });
 }
+
+type RawCustomDomain = NonNullable<RawDomain["customDomain"]>;
+
+/** The Foundry custom domain an entry holds once it holds the hostname. */
+export function customDomain(
+  overrides: Partial<RawCustomDomain> = {},
+): RawCustomDomain {
+  return {
+    id: "cd_1",
+    status: "active",
+    failureReason: null,
+    certExpiresAt: "2026-11-01T00:00:00.000Z",
+    lastSeenAt: "2026-08-02T00:05:00.000Z",
+    certificateRetryRequestedAt: null,
+    certificateIssuanceStuck: false,
+    ...overrides,
+  };
+}
+
+/**
+ * Two entries a service can list for one hostname: an older one that
+ * never proved ownership, and a newer one that holds the hostname and
+ * serves it.
+ */
+export function duplicateEntries(): [RawDomain, RawDomain] {
+  return [
+    domainRecord({ id: "url_1", createdAt: "2026-08-01T00:00:00.000Z" }),
+    activeRecord({
+      id: "url_2",
+      customDomain: customDomain(),
+      createdAt: "2026-08-02T00:00:00.000Z",
+      updatedAt: "2026-08-02T00:00:00.000Z",
+    }),
+  ];
+}

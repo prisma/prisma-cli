@@ -345,7 +345,7 @@ export function domainVerificationFailedError(
   target: ServiceDomainTarget,
 ): CliStructuredError {
   const guidance = domainStateGuidance(
-    domain,
+    { ...domain, serviceId: domain.appId },
     `${CLI_NAME} ${domainRecoveryCommand("retry", hostname, target)}`,
   );
   return new CliStructuredError(
@@ -380,7 +380,7 @@ export function domainVerificationTimeoutError(
   target: ServiceDomainTarget,
 ): CliStructuredError {
   const guidance = domainStateGuidance(
-    domain,
+    { ...domain, serviceId: domain.appId },
     `${CLI_NAME} ${domainRecoveryCommand("retry", hostname, target)}`,
   );
   return new CliStructuredError(
@@ -534,8 +534,9 @@ function domainQuotaExceededError(
 }
 
 /**
- * `service domain retry` got HTTP 429. For a failed certificate that is
- * the workspace's hourly limit of new certificates: a retry orders one.
+ * `service domain retry` got HTTP 429. The API answers that for its
+ * request rate limit, and for a failed certificate when the workspace
+ * has used its hourly limit of new certificates. Its message says which.
  */
 export function domainRetryRateLimitedError(
   hostname: string,
@@ -549,19 +550,20 @@ export function domainRetryRateLimitedError(
       : `in ${Math.max(1, Math.ceil(error.retryAfterSeconds / 60))} minute(s)`;
   return new CliStructuredError(
     "SERVICE.DOMAIN_RETRY_RATE_LIMITED",
-    certificateFailed
-      ? `The hourly certificate limit is used up, so "${hostname}" was not retried`
-      : `Too many requests, so "${hostname}" was not checked`,
+    `"${hostname}" was not retried: a limit was reached`,
     {
-      why: certificateFailed
-        ? "Retrying a failed certificate orders a new one, and this workspace has used its hourly limit of new certificates."
-        : error.message,
+      why: error.apiMessage,
       meta: {
         ...debugMeta(error),
         retryAfterSeconds: error.retryAfterSeconds,
+        certificateFailed,
       },
       nextActions: [
-        adviceAction(`Run the retry again ${wait}.`),
+        adviceAction(
+          certificateFailed
+            ? `This hostname's certificate failed, so a retry orders a new one, and a workspace can order a limited number of new certificates per hour. Run the retry again ${wait}.`
+            : `Run the retry again ${wait}.`,
+        ),
         runCommandAction(
           "Retry the domain",
           domainRecoveryCommand("retry", hostname, target),

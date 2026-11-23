@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 import type { DomainRecord } from "../src/lib/app/app-provider";
-import { domainStateGuidance } from "../src/lib/app/domain-guidance";
+import {
+  cannotBecomeActive,
+  domainStateGuidance,
+  waitsForUserDns,
+} from "../src/lib/app/domain-guidance";
 
 type GuidanceInput = Parameters<typeof domainStateGuidance>[0];
 
@@ -26,6 +30,7 @@ const APEX_NOTE =
 function input(overrides: Partial<GuidanceInput>): GuidanceInput {
   return {
     hostname: "shop.acme.com",
+    serviceId: "svc_1",
     state: "active",
     dnsRecords: [],
     failureReason: null,
@@ -48,19 +53,12 @@ describe("domainStateGuidance", () => {
     expect(guidance(input({ state: "active" }))).toBeNull();
   });
 
-  it("asks for every listed record while ownership is not verified", () => {
+  it("asks for every listed record while ownership is not verified, and says what to do if the state stays", () => {
     expect(
       guidance(input({ state: "not_verified", dnsRecords: [TXT, CNAME] })),
     ).toEqual({
       waitingOn: "Proof in DNS that this workspace owns the domain.",
-      fix: `Publish TXT _prisma-verification.shop.acme.com -> prisma-verification=3f9a and CNAME shop.acme.com -> switchboard.cdg.prisma.build at your DNS provider, then run prisma service domain retry shop.acme.com --service svc_1 --project proj_1 --branch production. ${APEX_NOTE}`,
-    });
-  });
-
-  it("says to add the hostname again when no record proves ownership", () => {
-    expect(guidance(input({ state: "not_verified", dnsRecords: [] }))).toEqual({
-      waitingOn: "Proof in DNS that this workspace owns the domain.",
-      fix: "No domain ownership in this workspace covers shop.acme.com. Delete the hostname and add it again to create one.",
+      fix: `Publish TXT _prisma-verification.shop.acme.com -> prisma-verification=3f9a and CNAME shop.acme.com -> switchboard.cdg.prisma.build at your DNS provider, then run prisma service domain retry shop.acme.com --service svc_1 --project proj_1 --branch production. ${APEX_NOTE} If the state stays not_verified with the records published, the workspace has no domain ownership for this hostname: delete the hostname and add it again to create one.`,
     });
   });
 
@@ -107,7 +105,7 @@ describe("domainStateGuidance", () => {
         input({
           state: "in_use_elsewhere",
           heldBy: {
-            workspaceId: "ws_1",
+            workspaceId: "wksp_ws_1",
             projectId: "proj_2",
             serviceId: "svc_2",
             message: null,
@@ -118,6 +116,27 @@ describe("domainStateGuidance", () => {
       waitingOn:
         "Another service holds this hostname: service svc_2. This service takes it over once that one gives it up.",
       fix: "Delete the hostname from service svc_2.",
+    });
+  });
+
+  it("says the service lists the hostname more than once when its own other entry holds it", () => {
+    expect(
+      guidance(
+        input({
+          state: "in_use_elsewhere",
+          serviceId: "svc_1",
+          heldBy: {
+            workspaceId: "wksp_ws_1",
+            projectId: "proj_1",
+            serviceId: "svc_1",
+            message: null,
+          },
+        }),
+      ),
+    ).toEqual({
+      waitingOn:
+        "This service lists the hostname more than once, and another entry holds it.",
+      fix: null,
     });
   });
 
@@ -193,5 +212,34 @@ describe("domainStateGuidance", () => {
       waitingOn: "The platform is bringing the hostname up to date.",
       fix: null,
     });
+  });
+});
+
+const STATES: ReadonlyArray<{
+  state: DomainRecord["state"];
+  waitsForDns: boolean;
+  stuck: boolean;
+}> = [
+  { state: "not_verified", waitsForDns: true, stuck: false },
+  { state: "no_service", waitsForDns: false, stuck: true },
+  { state: "no_live_deployment", waitsForDns: false, stuck: false },
+  { state: "update_failed", waitsForDns: false, stuck: false },
+  { state: "in_use_elsewhere", waitsForDns: false, stuck: false },
+  { state: "waiting_for_dns", waitsForDns: true, stuck: false },
+  { state: "provisioning_certificate", waitsForDns: false, stuck: false },
+  { state: "certificate_failed", waitsForDns: false, stuck: true },
+  { state: "updating", waitsForDns: false, stuck: false },
+  { state: "active", waitsForDns: false, stuck: false },
+];
+
+describe("waitsForUserDns", () => {
+  it.each(STATES)("is $waitsForDns for $state", ({ state, waitsForDns }) => {
+    expect(waitsForUserDns({ state })).toBe(waitsForDns);
+  });
+});
+
+describe("cannotBecomeActive", () => {
+  it.each(STATES)("is $stuck for $state", ({ state, stuck }) => {
+    expect(cannotBecomeActive({ state })).toBe(stuck);
   });
 });

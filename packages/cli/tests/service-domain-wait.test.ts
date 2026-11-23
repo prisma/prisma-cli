@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   activeRecord,
+  customDomain,
   domainRecord,
   type RawDomain,
   waitingForDnsRecord,
@@ -449,6 +450,56 @@ describe("prisma service domain wait", () => {
       state: "active",
       liveUrl: "https://shop.acme.com",
     });
+  });
+
+  it("waits on the entry that holds the hostname when the service lists it more than once", async () => {
+    const readIds: string[] = [];
+    const holding = domainRecord({
+      id: "url_2",
+      state: "provisioning_certificate",
+      records: [],
+      customDomain: customDomain({
+        status: "provisioning",
+        certExpiresAt: null,
+      }),
+      createdAt: "2026-08-02T00:00:00.000Z",
+    });
+    const harness = await makeServiceCli({
+      routes: readFlowRoutes({
+        "GET /v1/services/{serviceId}/urls": () => ({
+          data: {
+            data: [
+              domainRecord({
+                id: "url_1",
+                createdAt: "2026-08-01T00:00:00.000Z",
+              }),
+              holding,
+            ],
+          },
+        }),
+        "GET /v1/urls/{id}": (init) => {
+          readIds.push(String(init.params?.path?.id));
+          return {
+            data: {
+              data: activeRecord({
+                id: "url_2",
+                customDomain: customDomain(),
+                createdAt: "2026-08-02T00:00:00.000Z",
+              }),
+            },
+          };
+        },
+      }),
+    });
+
+    const result = await harness.cli.run(
+      ["service", "domain", "wait", "shop.acme.com", ...TARGET_ARGS],
+      { cwd: harness.cwd, env: waitEnv(harness.env) },
+    );
+
+    expect(result.exitCode).toBe(0);
+    expect(readIds).toEqual(["url_2"]);
+    expect(result.presented?.data).toMatchObject({ state: "active" });
   });
 
   it("fails early with the engine sign-in error when unauthenticated", async () => {

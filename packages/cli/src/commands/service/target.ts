@@ -9,7 +9,6 @@ import {
   createAppProvider,
   type DeploymentRecord,
   type DomainRecord,
-  preferredDomain,
 } from "../../lib/app/app-provider";
 import { resolveReadBranch } from "../../lib/app/read-branch";
 import { projectApiError } from "../../lib/project/provider";
@@ -382,8 +381,25 @@ export function toServiceListEntry(service: AppRecord): ServiceListEntry {
 export function toServiceDomainSummary(
   domain: DomainRecord,
 ): ServiceDomainSummary {
-  const { appId, ...rest } = domain;
-  return { ...rest, serviceId: appId };
+  return {
+    id: domain.id,
+    hostname: domain.hostname,
+    serviceId: domain.appId,
+    status: domain.status,
+    state: domain.state,
+    conditions: domain.conditions,
+    firstUnmetCondition: domain.firstUnmetCondition,
+    failureReason: domain.failureReason,
+    syncError: domain.syncError,
+    dnsDetail: domain.dnsDetail,
+    certExpiresAt: domain.certExpiresAt,
+    ownershipExpiresAt: domain.ownershipExpiresAt,
+    heldBy: domain.heldBy,
+    setupUrl: domain.setupUrl,
+    createdAt: domain.createdAt,
+    updatedAt: domain.updatedAt,
+    dnsRecords: domain.dnsRecords,
+  };
 }
 
 export function normalizeDomainHostname(
@@ -423,44 +439,57 @@ export function sameDomainHostname(left: string, right: string): boolean {
   );
 }
 
-/** Every entry the service lists for the hostname. A service can list
- *  one hostname more than once, when entries were added outside the CLI. */
-export async function resolveDomainEntriesByHostname(
+type DomainCommandName = "add" | "show" | "delete" | "retry" | "wait";
+
+/**
+ * Every entry the service lists for the hostname. The API accepts one
+ * hostname on a service more than once, and the CLI treats those
+ * entries as one hostname: this is the only place that finds them.
+ */
+export async function listDomainEntries(
   provider: AppProvider,
   target: ServiceDomainTarget,
   hostname: string,
-  command: "show" | "delete" | "retry" | "wait",
+  command: DomainCommandName,
   signal: AbortSignal,
-): Promise<[DomainRecord, ...DomainRecord[]]> {
+): Promise<DomainRecord[]> {
   const domains = await provider
     .listDomains(target.service.id, { signal })
     .catch((error) => {
       throw domainCommandError(command, error, hostname, target);
     });
-  const [first, ...rest] = domains.filter((domain) =>
+  return domains.filter((domain) =>
     sameDomainHostname(domain.hostname, hostname),
   );
-  if (first === undefined) {
-    throw domainNotFoundError(hostname, target);
-  }
-  return [first, ...rest];
+}
+
+/**
+ * The entry that says what the hostname does: the one the platform
+ * routes the hostname through, or the oldest while none is.
+ */
+export function representativeDomain(
+  entries: readonly DomainRecord[],
+): DomainRecord | undefined {
+  const oldestFirst = [...entries].sort((left, right) =>
+    left.createdAt.localeCompare(right.createdAt),
+  );
+  return oldestFirst.find((entry) => entry.holdsHostname) ?? oldestFirst[0];
 }
 
 export async function resolveDomainByHostname(
   provider: AppProvider,
   target: ServiceDomainTarget,
   hostname: string,
-  command: "show" | "delete" | "retry" | "wait",
+  command: DomainCommandName,
   signal: AbortSignal,
 ): Promise<DomainRecord> {
-  const entries = await resolveDomainEntriesByHostname(
-    provider,
-    target,
-    hostname,
-    command,
-    signal,
+  const domain = representativeDomain(
+    await listDomainEntries(provider, target, hostname, command, signal),
   );
-  return preferredDomain(entries) ?? entries[0];
+  if (domain === undefined) {
+    throw domainNotFoundError(hostname, target);
+  }
+  return domain;
 }
 
 interface ServiceProjectState {

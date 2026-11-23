@@ -2,7 +2,9 @@ import type { PresentedResult } from "@prisma/cli-engine";
 import { describe, expect, it } from "vitest";
 import {
   activeRecord,
+  customDomain,
   domainRecord,
+  duplicateEntries,
   type RawDomain,
   waitingForDnsRecord,
 } from "./helpers/routing-url";
@@ -31,7 +33,7 @@ const TARGET_ROWS = [
 const APEX_NOTE =
   "At an apex domain, publish the CNAME as an ALIAS, ANAME or flattened CNAME with the same target.";
 
-const PUBLISH_BOTH_RECORDS = `Publish TXT _prisma-verification.shop.acme.com -> prisma-verification=3f9a and CNAME shop.acme.com -> switchboard.cdg.prisma.build at your DNS provider, then run prisma service domain retry shop.acme.com --service svc_1 --project proj_1 --branch production. ${APEX_NOTE}`;
+const PUBLISH_BOTH_RECORDS = `Publish TXT _prisma-verification.shop.acme.com -> prisma-verification=3f9a and CNAME shop.acme.com -> switchboard.cdg.prisma.build at your DNS provider, then run prisma service domain retry shop.acme.com --service svc_1 --project proj_1 --branch production. ${APEX_NOTE} If the state stays not_verified with the records published, the workspace has no domain ownership for this hostname: delete the hostname and add it again to create one.`;
 
 const PUBLISH_CNAME = `Publish CNAME shop.acme.com -> switchboard.cdg.prisma.build at your DNS provider, then run prisma service domain retry shop.acme.com --service svc_1 --project proj_1 --branch production. ${APEX_NOTE}`;
 
@@ -165,7 +167,10 @@ describe("prisma service domain add", () => {
 
     expect(result.exitCode).toBe(0);
     expect(posted).toEqual([
-      { path: { serviceId: "svc_1" }, body: { hostname: "shop.acme.com" } },
+      {
+        path: { serviceId: "svc_1" },
+        body: { hostname: "shop.acme.com", createDomainOwnership: true },
+      },
     ]);
     expect(result.presented?.data).toMatchObject({
       ...EXPECTED_TARGET,
@@ -247,7 +252,7 @@ describe("prisma service domain add", () => {
           },
           ownershipExpiry: { expiresAt: "2026-09-01T00:00:00.000Z" },
           heldBy: {
-            workspaceId: "ws_1",
+            workspaceId: "wksp_ws_1",
             projectId: "proj_2",
             serviceId: "svc_2",
             message: null,
@@ -273,7 +278,6 @@ describe("prisma service domain add", () => {
       existing: false,
       domain: {
         id: "url_42",
-        type: "routingUrl",
         hostname: "shop.acme.com",
         serviceId: "svc_1",
         status: "pending",
@@ -293,7 +297,7 @@ describe("prisma service domain add", () => {
         certExpiresAt: "2026-11-01T00:00:00.000Z",
         ownershipExpiresAt: "2026-09-01T00:00:00.000Z",
         heldBy: {
-          workspaceId: "ws_1",
+          workspaceId: "wksp_ws_1",
           projectId: "proj_2",
           serviceId: "svc_2",
           message: null,
@@ -319,6 +323,38 @@ describe("prisma service domain add", () => {
           },
         ],
       },
+    });
+    expect(JSON.stringify(frame.envelope.result)).not.toContain(
+      "holdsHostname",
+    );
+  });
+
+  it("shows the entry that holds the hostname when the service lists it more than once, without adding it again", async () => {
+    const posted: unknown[] = [];
+    const harness = await makeServiceCli({
+      routes: domainRoutes({
+        ...listing(duplicateEntries()),
+        "POST /v1/services/{serviceId}/urls": (init) => {
+          posted.push(init.body);
+          return { data: { data: domainRecord() } };
+        },
+      }),
+    });
+
+    const result = await harness.cli.run(
+      ["service", "domain", "add", "shop.acme.com", ...TARGET_ARGS, "--json"],
+      { cwd: harness.cwd, env: harness.env },
+    );
+
+    expect(result.exitCode).toBe(0);
+    expect(posted).toEqual([]);
+    const frame = result.json[result.json.length - 1];
+    if (frame?.kind !== "result" || !frame.envelope.ok) {
+      throw new Error("expected a completed envelope");
+    }
+    expect(frame.envelope.result).toMatchObject({
+      existing: true,
+      domain: { id: "url_2", state: "active" },
     });
   });
 
@@ -621,7 +657,10 @@ describe("prisma service domain add", () => {
 
     expect(result.exitCode).toBe(0);
     expect(posted).toEqual([
-      { path: { serviceId: "svc_1" }, body: { hostname: "shop.acme.com" } },
+      {
+        path: { serviceId: "svc_1" },
+        body: { hostname: "shop.acme.com", createDomainOwnership: true },
+      },
     ]);
   });
 
@@ -854,7 +893,6 @@ describe("prisma service domain show", () => {
       ...EXPECTED_TARGET,
       domain: {
         id: "url_1",
-        type: "routingUrl",
         hostname: "shop.acme.com",
         status: "active",
         state: "active",
@@ -883,41 +921,42 @@ describe("prisma service domain show", () => {
 
   it.each([
     {
-      name: "the entry that is not held elsewhere",
+      name: "the newer entry that holds the hostname over an older one that never proved ownership",
+      entries: duplicateEntries(),
+      expected: "url_2",
+    },
+    {
+      name: "the entry that holds the hostname whatever order the service lists them in",
+      entries: [...duplicateEntries()].reverse(),
+      expected: "url_2",
+    },
+    {
+      name: "the older entry that holds the hostname over a newer one waiting to take it over",
       entries: [
-        domainRecord({
+        activeRecord({
           id: "url_1",
-          state: "in_use_elsewhere",
+          customDomain: customDomain(),
           createdAt: "2026-08-01T00:00:00.000Z",
         }),
-        waitingForDnsRecord({
+        domainRecord({
           id: "url_2",
+          state: "in_use_elsewhere",
+          heldBy: {
+            workspaceId: "wksp_ws_1",
+            projectId: "proj_1",
+            serviceId: "svc_1",
+            message: null,
+          },
           createdAt: "2026-08-02T00:00:00.000Z",
         }),
       ],
-      expected: "url_2",
+      expected: "url_1",
     },
     {
-      name: "the oldest entry when every one is held elsewhere",
+      name: "the oldest entry when none holds the hostname",
       entries: [
+        domainRecord({ id: "url_1", createdAt: "2026-08-03T00:00:00.000Z" }),
         domainRecord({
-          id: "url_1",
-          state: "in_use_elsewhere",
-          createdAt: "2026-08-03T00:00:00.000Z",
-        }),
-        domainRecord({
-          id: "url_2",
-          state: "in_use_elsewhere",
-          createdAt: "2026-08-01T00:00:00.000Z",
-        }),
-      ],
-      expected: "url_2",
-    },
-    {
-      name: "the oldest entry when none is held elsewhere",
-      entries: [
-        activeRecord({ id: "url_1", createdAt: "2026-08-03T00:00:00.000Z" }),
-        waitingForDnsRecord({
           id: "url_2",
           hostname: "SHOP.acme.com",
           createdAt: "2026-08-01T00:00:00.000Z",
@@ -1033,18 +1072,14 @@ describe("prisma service domain retry", () => {
   function rateLimitedRoutes(
     listed: RawDomain,
     headers: Record<string, string>,
+    message = "Too many checks for this hostname.",
   ): Routes {
     return domainRoutes({
       ...listing([listed]),
       "POST /v1/urls/{id}/check": () => ({
         status: 429,
         headers,
-        error: {
-          error: {
-            code: "rate-limited",
-            message: "Too many checks for this hostname.",
-          },
-        },
+        error: { error: { code: "rate-limited", message } },
       }),
     });
   }
@@ -1120,9 +1155,34 @@ describe("prisma service domain retry", () => {
     });
   });
 
+  it("checks the entry that holds the hostname when the service lists it more than once", async () => {
+    const checkedIds: string[] = [];
+    const harness = await makeServiceCli({
+      routes: domainRoutes({
+        ...listing(duplicateEntries()),
+        "POST /v1/urls/{id}/check": (init) => {
+          checkedIds.push(String(init.params?.path?.id));
+          return { data: { data: duplicateEntries()[1] } };
+        },
+      }),
+    });
+
+    const result = await harness.cli.run(
+      ["service", "domain", "retry", "shop.acme.com", ...TARGET_ARGS, "--json"],
+      { cwd: harness.cwd, env: harness.env },
+    );
+
+    expect(result.exitCode).toBe(0);
+    expect(checkedIds).toEqual(["url_2"]);
+  });
+
   it("explains the hourly certificate limit when retrying a failed certificate is rate limited", async () => {
     const harness = await makeServiceCli({
-      routes: rateLimitedRoutes(certificateFailed(), { "Retry-After": "120" }),
+      routes: rateLimitedRoutes(
+        certificateFailed(),
+        { "Retry-After": "120" },
+        "This workspace has ordered its 50 certificates for this hour.",
+      ),
     });
 
     const result = await harness.cli.run(
@@ -1137,13 +1197,21 @@ describe("prisma service domain retry", () => {
     }
     expect(frame.envelope.error).toMatchObject({
       code: "SERVICE.DOMAIN_RETRY_RATE_LIMITED",
-      summary:
-        'The hourly certificate limit is used up, so "shop.acme.com" was not retried',
-      why: "Retrying a failed certificate orders a new one, and this workspace has used its hourly limit of new certificates.",
-      meta: { status: 429, apiCode: "rate-limited", retryAfterSeconds: 120 },
+      summary: '"shop.acme.com" was not retried: a limit was reached',
+      why: "This workspace has ordered its 50 certificates for this hour.",
+      meta: {
+        status: 429,
+        apiCode: "rate-limited",
+        retryAfterSeconds: 120,
+        certificateFailed: true,
+      },
     });
     expect(frame.envelope.nextActions).toEqual([
-      { kind: "user-choice", label: "Run the retry again in 2 minute(s)." },
+      {
+        kind: "user-choice",
+        label:
+          "This hostname's certificate failed, so a retry orders a new one, and a workspace can order a limited number of new certificates per hour. Run the retry again in 2 minute(s).",
+      },
       {
         kind: "run-command",
         label: "Retry the domain",
@@ -1153,7 +1221,7 @@ describe("prisma service domain retry", () => {
     ]);
   });
 
-  it("passes on the API's reason when a check of a hostname without a failed certificate is rate limited", async () => {
+  it("passes on the API's own reason when a check of a hostname without a failed certificate is rate limited", async () => {
     const harness = await makeServiceCli({
       routes: rateLimitedRoutes(waitingForDnsRecord(), { "Retry-After": "30" }),
     });
@@ -1169,19 +1237,24 @@ describe("prisma service domain retry", () => {
     }
     expect(frame.envelope.error).toMatchObject({
       code: "SERVICE.DOMAIN_RETRY_RATE_LIMITED",
-      summary: 'Too many requests, so "shop.acme.com" was not checked',
-      why: "Failed to check custom domain: Too many checks for this hostname.",
-      meta: { retryAfterSeconds: 30 },
+      summary: '"shop.acme.com" was not retried: a limit was reached',
+      why: "Too many checks for this hostname.",
+      meta: { retryAfterSeconds: 30, certificateFailed: false },
     });
-    expect(frame.envelope.nextActions).toContainEqual({
-      kind: "user-choice",
-      label: "Run the retry again in 1 minute(s).",
-    });
+    expect(frame.envelope.nextActions).toEqual([
+      { kind: "user-choice", label: "Run the retry again in 1 minute(s)." },
+      {
+        kind: "run-command",
+        label: "Retry the domain",
+        command:
+          "prisma service domain retry shop.acme.com --service svc_1 --project proj_1 --branch production",
+      },
+    ]);
   });
 
   it("says to retry later when a rate limit gives no Retry-After", async () => {
     const harness = await makeServiceCli({
-      routes: rateLimitedRoutes(certificateFailed(), {}),
+      routes: rateLimitedRoutes(waitingForDnsRecord(), {}),
     });
 
     const result = await harness.cli.run(
@@ -1321,6 +1394,87 @@ describe("prisma service domain delete", () => {
 
     expect(result.exitCode).toBe(0);
     expect(deletedIds).toEqual(["url_1", "url_2"]);
+  });
+
+  it("skips an entry someone else deleted meanwhile and still deletes the rest", async () => {
+    const deleteAttempts: string[] = [];
+    const harness = await makeServiceCli({
+      routes: domainRoutes({
+        ...listing(duplicateEntries()),
+        "DELETE /v1/urls/{id}": (init) => {
+          const id = String(init.params?.path?.id);
+          deleteAttempts.push(id);
+          return id === "url_1"
+            ? {
+                status: 404,
+                error: {
+                  error: { code: "not-found", message: "No such URL." },
+                },
+              }
+            : { data: undefined };
+        },
+      }),
+    });
+
+    const result = await harness.cli.run(
+      [
+        "service",
+        "domain",
+        "delete",
+        "shop.acme.com",
+        ...TARGET_ARGS,
+        "--confirm",
+        "shop.acme.com",
+        "--json",
+      ],
+      { cwd: harness.cwd, env: harness.env },
+    );
+
+    expect(result.exitCode).toBe(0);
+    expect(deleteAttempts).toEqual(["url_1", "url_2"]);
+    const frame = result.json[result.json.length - 1];
+    if (frame?.kind !== "result" || !frame.envelope.ok) {
+      throw new Error("expected a completed envelope");
+    }
+    expect(frame.envelope.result).toMatchObject({ deleted: true });
+  });
+
+  it("stops at a delete that fails for another reason", async () => {
+    const deleteAttempts: string[] = [];
+    const harness = await makeServiceCli({
+      routes: domainRoutes({
+        ...listing(duplicateEntries()),
+        "DELETE /v1/urls/{id}": (init) => {
+          deleteAttempts.push(String(init.params?.path?.id));
+          return {
+            status: 500,
+            error: { error: { code: "internal", message: "Boom." } },
+          };
+        },
+      }),
+    });
+
+    const result = await harness.cli.run(
+      [
+        "service",
+        "domain",
+        "delete",
+        "shop.acme.com",
+        ...TARGET_ARGS,
+        "--confirm",
+        "shop.acme.com",
+        "--json",
+      ],
+      { cwd: harness.cwd, env: harness.env },
+    );
+
+    expect(result.exitCode).not.toBe(0);
+    expect(deleteAttempts).toEqual(["url_1"]);
+    const frame = result.json[result.json.length - 1];
+    if (frame?.kind !== "result" || frame.envelope.ok) {
+      throw new Error("expected an errored envelope");
+    }
+    expect(frame.envelope.error.code).toBe("SERVICE.DEPLOY_FAILED");
   });
 
   it("settles an unknown hostname as SERVICE.DOMAIN_NOT_FOUND without deleting anything", async () => {

@@ -5,6 +5,10 @@ import {
   DomainApiError,
   type DomainRecord,
 } from "../../lib/app/app-provider";
+import {
+  cannotBecomeActive,
+  waitsForUserDns,
+} from "../../lib/app/domain-guidance";
 import { domainTargetArgs } from "./domain-shared";
 import {
   domainCommandError,
@@ -88,15 +92,6 @@ const DURATION = /^(\d+)(ms|s|m|h)$/;
  * fetch what is stored.
  */
 const READS_PER_DNS_CHECK = 6;
-
-function waitsForUserDns(domain: DomainRecord): boolean {
-  return domain.state === "not_verified" || domain.state === "waiting_for_dns";
-}
-
-/** Waiting cannot get past these: the user has to act, and then retry. */
-function cannotBecomeActive(domain: DomainRecord): boolean {
-  return domain.state === "certificate_failed" || domain.state === "no_service";
-}
 
 async function checkOrShow(
   provider: AppProvider,

@@ -1,6 +1,6 @@
 import type { DomainRecord } from "./app-provider";
 
-type DomainGuidanceInput = Pick<
+type DomainGuidanceInput = { serviceId: string | null } & Pick<
   DomainRecord,
   | "hostname"
   | "state"
@@ -33,6 +33,39 @@ function withDetail(sentence: string, detail: string | null): string {
   return `${sentence}: ${detail}${ENDS_A_SENTENCE.test(detail) ? "" : "."}`;
 }
 
+function inUseElsewhereGuidance(
+  domain: DomainGuidanceInput,
+): DomainStateGuidance {
+  const holder = domain.heldBy?.serviceId ?? null;
+  if (holder !== null && holder === domain.serviceId) {
+    return {
+      waitingOn:
+        "This service lists the hostname more than once, and another entry holds it.",
+      fix: null,
+    };
+  }
+  return {
+    waitingOn: `${withDetail(
+      "Another service holds this hostname",
+      holder ? `service ${holder}` : (domain.heldBy?.message ?? null),
+    )} This service takes it over once that one gives it up.`,
+    fix: holder ? `Delete the hostname from service ${holder}.` : null,
+  };
+}
+
+/** While the hostname waits for records the user publishes, only a check
+ *  makes the platform look DNS up again. */
+export function waitsForUserDns(domain: Pick<DomainRecord, "state">): boolean {
+  return domain.state === "not_verified" || domain.state === "waiting_for_dns";
+}
+
+/** Waiting cannot get a hostname past these states: the user has to act. */
+export function cannotBecomeActive(
+  domain: Pick<DomainRecord, "state">,
+): boolean {
+  return domain.state === "certificate_failed" || domain.state === "no_service";
+}
+
 /** What a hostname that is not serving yet waits on. Null once it serves. */
 export function domainStateGuidance(
   domain: DomainGuidanceInput,
@@ -52,9 +85,7 @@ export function domainStateGuidance(
     case "not_verified":
       return {
         waitingOn: "Proof in DNS that this workspace owns the domain.",
-        fix: records
-          ? `Publish ${records} at your DNS provider, then run ${retry}. ${apexNote}`
-          : `No domain ownership in this workspace covers ${domain.hostname}. Delete the hostname and add it again to create one.`,
+        fix: `Publish ${records} at your DNS provider, then run ${retry}. ${apexNote} If the state stays not_verified with the records published, the workspace has no domain ownership for this hostname: delete the hostname and add it again to create one.`,
       };
     case "no_service":
       return {
@@ -72,17 +103,7 @@ export function domainStateGuidance(
         fix: null,
       };
     case "in_use_elsewhere":
-      return {
-        waitingOn: `${withDetail(
-          "Another service holds this hostname",
-          domain.heldBy?.serviceId
-            ? `service ${domain.heldBy.serviceId}`
-            : (domain.heldBy?.message ?? null),
-        )} This service takes it over once that one gives it up.`,
-        fix: domain.heldBy?.serviceId
-          ? `Delete the hostname from service ${domain.heldBy.serviceId}.`
-          : null,
-      };
+      return inUseElsewhereGuidance(domain);
     case "waiting_for_dns":
       return {
         waitingOn: withDetail(

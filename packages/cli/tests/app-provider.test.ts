@@ -48,52 +48,9 @@ describe("preview app provider", () => {
     expect(client.POST).not.toHaveBeenCalled();
   });
 
-  it("returns the listed entry for a hostname the service already has, without adding it again", async () => {
+  it("adds the hostname with a domain ownership and returns it pending with the records to publish", async () => {
     const client = {
-      GET: vi.fn().mockImplementation((pathName: string) => {
-        if (pathName === "/v1/services/{serviceId}/urls") {
-          return {
-            data: {
-              data: [
-                activeRecord({ id: "url_9", hostname: "other.acme.com" }),
-                activeRecord({ id: "url_123", hostname: "shop.acme.com" }),
-              ],
-              pagination: { hasMore: false, nextCursor: null },
-            },
-            response: { status: 200, headers: new Headers() },
-          };
-        }
-        throw new Error(`Unexpected path ${pathName}`);
-      }),
-      POST: vi.fn(),
-    };
-    const { createAppProvider } = await importProvider();
-
-    const result = await createAppProvider(client as never).addDomain({
-      appId: "svc_1",
-      hostname: "Shop.Acme.com",
-    });
-
-    expect(result).toMatchObject({
-      existing: true,
-      domain: { id: "url_123", hostname: "shop.acme.com", state: "active" },
-    });
-    expect(client.GET).toHaveBeenCalledWith(
-      "/v1/services/{serviceId}/urls",
-      expect.objectContaining({ params: { path: { serviceId: "svc_1" } } }),
-    );
-    expect(client.POST).not.toHaveBeenCalled();
-  });
-
-  it("adds a hostname the service does not have, and returns it pending with the records to publish", async () => {
-    const client = {
-      GET: vi.fn().mockResolvedValue({
-        data: {
-          data: [activeRecord({ id: "url_9", hostname: "other.acme.com" })],
-          pagination: { hasMore: false, nextCursor: null },
-        },
-        response: { status: 200, headers: new Headers() },
-      }),
+      GET: vi.fn(),
       POST: vi.fn().mockImplementation((pathName: string) => {
         if (pathName === "/v1/services/{serviceId}/urls") {
           return {
@@ -106,43 +63,75 @@ describe("preview app provider", () => {
     };
     const { createAppProvider } = await importProvider();
 
-    const result = await createAppProvider(client as never).addDomain({
+    const domain = await createAppProvider(client as never).addDomain({
       appId: "svc_1",
       hostname: "shop.acme.com",
     });
 
-    expect(result).toMatchObject({
-      existing: false,
-      domain: {
-        id: "url_123",
-        appId: "svc_1",
-        status: "pending",
-        state: "not_verified",
-        firstUnmetCondition: "ownershipVerified",
-        dnsRecords: [
-          { condition: "ownershipVerified", type: "TXT" },
-          { condition: "dnsPointsAtSwitchboard", type: "CNAME" },
-        ],
-      },
+    expect(domain).toMatchObject({
+      id: "url_123",
+      appId: "svc_1",
+      status: "pending",
+      state: "not_verified",
+      firstUnmetCondition: "ownershipVerified",
+      holdsHostname: false,
+      dnsRecords: [
+        { condition: "ownershipVerified", type: "TXT" },
+        { condition: "dnsPointsAtSwitchboard", type: "CNAME" },
+      ],
     });
     expect(client.POST).toHaveBeenCalledWith(
       "/v1/services/{serviceId}/urls",
       expect.objectContaining({
         params: { path: { serviceId: "svc_1" } },
-        body: { hostname: "shop.acme.com" },
+        body: { hostname: "shop.acme.com", createDomainOwnership: true },
       }),
     );
+    expect(client.GET).not.toHaveBeenCalled();
   });
 
-  it("rejects a refused add with the API's status and code", async () => {
+  it("marks an entry that has a custom domain as the one holding the hostname", async () => {
     const client = {
       GET: vi.fn().mockResolvedValue({
         data: {
-          data: [],
+          data: [
+            domainRecord({ id: "url_1" }),
+            activeRecord({
+              id: "url_2",
+              customDomain: {
+                id: "cd_1",
+                status: "active",
+                failureReason: null,
+                certExpiresAt: "2026-11-01T00:00:00.000Z",
+                lastSeenAt: "2026-08-01T00:05:00.000Z",
+                certificateRetryRequestedAt: null,
+                certificateIssuanceStuck: false,
+              },
+            }),
+          ],
           pagination: { hasMore: false, nextCursor: null },
         },
         response: { status: 200, headers: new Headers() },
       }),
+      POST: vi.fn(),
+    };
+    const { createAppProvider } = await importProvider();
+
+    const domains = await createAppProvider(client as never).listDomains(
+      "svc_1",
+    );
+
+    expect(
+      domains.map(({ id, holdsHostname }) => ({ id, holdsHostname })),
+    ).toEqual([
+      { id: "url_1", holdsHostname: false },
+      { id: "url_2", holdsHostname: true },
+    ]);
+  });
+
+  it("rejects a refused add with the API's status and code", async () => {
+    const client = {
+      GET: vi.fn(),
       POST: vi.fn().mockResolvedValue({
         error: {
           error: {
@@ -164,6 +153,7 @@ describe("preview app provider", () => {
     await expect(rejection).rejects.toMatchObject({
       status: 409,
       code: "quota-exceeded",
+      apiMessage: "This workspace has 100 custom domains.",
     });
   });
 
