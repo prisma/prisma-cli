@@ -39,8 +39,8 @@ importers:
         specifier: 1.101.0
         version: 1.101.0
       '@prisma/orm-toolchain':
-        specifier: 8.0.0-rc.24
-        version: 8.0.0-rc.24(@prisma/cli-engine@packages+cli-engine)(magicast@0.5.3)(typanion@3.14.0)(typescript@6.0.3)(vite@7.3.5(@types/node@22.19.19)(jiti@2.7.0)(tsx@4.22.4)(yaml@2.9.1))
+        specifier: 8.0.0-rc.25
+        version: 8.0.0-rc.25(@prisma/cli-engine@packages+cli-engine)(magicast@0.5.3)(typanion@3.14.0)(typescript@6.0.3)(vite@7.3.5(@types/node@22.19.19)(jiti@2.7.0)(tsx@4.22.4)(yaml@2.9.1))
       '@vercel/detect-agent':
         specifier: ^1.2.3
         version: 1.2.4
@@ -67,13 +67,13 @@ importers:
         specifier: ^7.8.0
         version: 7.8.0
       '@repo/cli-conformance':
-        specifier: workspace:8.0.0-rc.34
+        specifier: workspace:8.0.0-rc.35
         version: link:../cli-conformance
       '@repo/cli-telemetry':
-        specifier: workspace:8.0.0-rc.34
+        specifier: workspace:8.0.0-rc.35
         version: link:../cli-telemetry
       '@repo/tsconfig':
-        specifier: workspace:8.0.0-rc.34
+        specifier: workspace:8.0.0-rc.35
         version: link:../tsconfig
       '@types/cross-spawn':
         specifier: ^6.0.6
@@ -97,7 +97,7 @@ importers:
   packages/cli-conformance:
     devDependencies:
       '@repo/tsconfig':
-        specifier: workspace:8.0.0-rc.34
+        specifier: workspace:8.0.0-rc.35
         version: link:../tsconfig
       '@types/node':
         specifier: ^22.19.19
@@ -143,10 +143,10 @@ importers:
         specifier: 1.101.0
         version: 1.101.0
       '@repo/cli-conformance':
-        specifier: workspace:8.0.0-rc.34
+        specifier: workspace:8.0.0-rc.35
         version: link:../cli-conformance
       '@repo/tsconfig':
-        specifier: workspace:8.0.0-rc.34
+        specifier: workspace:8.0.0-rc.35
         version: link:../tsconfig
       '@types/node':
         specifier: ^22.19.19
@@ -171,7 +171,7 @@ importers:
         version: 1.2.4
     devDependencies:
       '@repo/tsconfig':
-        specifier: workspace:8.0.0-rc.34
+        specifier: workspace:8.0.0-rc.35
         version: link:../tsconfig
       '@types/node':
         specifier: ^22.19.19
@@ -189,7 +189,7 @@ importers:
   packages/compute:
     devDependencies:
       '@repo/tsconfig':
-        specifier: workspace:8.0.0-rc.34
+        specifier: workspace:8.0.0-rc.35
         version: link:../tsconfig
       '@types/node':
         specifier: ^22.19.19
@@ -214,7 +214,7 @@ importers:
         version: link:../cli-engine
       '@prisma/composer-cli':
         specifier: 0.39.0
-        version: 0.39.0(@prisma/cli-engine@packages+cli-engine)(arktype@2.2.7)(vite@7.3.5(@types/node@22.19.19)(jiti@2.7.0)(tsx@4.22.4)(yaml@2.9.1))(ws@8.21.0)
+        version: 0.39.0(@prisma/cli-engine@packages+cli-engine)(arktype@2.2.10)(vite@7.3.5(@types/node@22.19.19)(jiti@2.7.0)(tsx@4.22.4)(yaml@2.9.1))(ws@8.21.0)
       '@prisma/compute-sdk':
         specifier: 0.43.0
         version: 0.43.0(@prisma/management-api-sdk@1.101.0)(rollup@4.62.2)
@@ -222,8 +222,8 @@ importers:
         specifier: 1.101.0
         version: 1.101.0
       '@prisma/orm-toolchain':
-        specifier: 8.0.0-rc.24
-        version: 8.0.0-rc.24(@prisma/cli-engine@packages+cli-engine)(magicast@0.5.3)(typanion@3.14.0)(typescript@6.0.3)(vite@7.3.5(@types/node@22.19.19)(jiti@2.7.0)(tsx@4.22.4)(yaml@2.9.1))
+        specifier: 8.0.0-rc.25
+        version: 8.0.0-rc.25(@prisma/cli-engine@packages+cli-engine)(magicast@0.5.3)(typanion@3.14.0)(typescript@6.0.3)(vite@7.3.5(@types/node@22.19.19)(jiti@2.7.0)(tsx@4.22.4)(yaml@2.9.1))
       '@vercel/detect-agent':
         specifier: ^1.2.3
         version: 1.2.4
@@ -244,16 +244,16 @@ importers:
         version: 11.0.0
     devDependencies:
       '@prisma/cli':
-        specifier: workspace:8.0.0-rc.34
+        specifier: workspace:8.0.0-rc.35
         version: link:../cli
       '@prisma/credentials-store':
         specifier: ^7.8.0
         version: 7.8.0
       '@repo/cli-telemetry':
-        specifier: workspace:8.0.0-rc.34
+        specifier: workspace:8.0.0-rc.35
         version: link:../cli-telemetry
       '@repo/tsconfig':
-        specifier: workspace:8.0.0-rc.34
+        specifier: workspace:8.0.0-rc.35
         version: link:../tsconfig
       '@types/node':
         specifier: ^22.19.19
@@ -290,8 +290,14 @@ packages:
   '@ark/schema@0.56.6':
     resolution: {integrity: sha512-OmLv80BCF2ib+zjecrXDosip/CSnZSYBGjblhqWYZWFOzdLQka6QymHToE9u7Z/HZW2KA8Hwc8MCNXoI3uGSIA==}
 
+  '@ark/schema@0.56.9':
+    resolution: {integrity: sha512-3kFUweE9PagqzEC9FEOirBRrVxBj0D6o8UiZDDrCyrcaBepRFHjUezf6MuTk8mKfJ4NKzSsaUCOVK+jzcm+dPw==}
+
   '@ark/util@0.56.6':
     resolution: {integrity: sha512-mHqq0f0HyDd9YadpFl25w0QECAP7d8HGIUpEC85duD+L+xr4i/CwfOid/Z7zJFFF/47oLt6+pZB9RbqWpBYTYg==}
+
+  '@ark/util@0.56.9':
+    resolution: {integrity: sha512-/yA1me+AMmI75VaQ5owz1A1owopAJ0ZZFXy9SI1Q69kErJfxuglQBYjGeOTFyygJjZ9Rf4UjCtD5XTuEiNiGHw==}
 
   '@babel/generator@8.0.0-rc.3':
     resolution: {integrity: sha512-em37/13/nR320G4jab/nIIHZgc2Wz2y/D39lxnTyxB4/D/omPQncl/lSdlnJY1OhQcRGugTSIF2l/69o31C9dA==}
@@ -793,18 +799,18 @@ packages:
   '@prisma/management-api-sdk@1.80.0':
     resolution: {integrity: sha512-pQN6hBqR2pgaF3S5sMCe3iZIlThIOgUXoDcinB6/AxXO3qM6oWnirSUAJlhFQ/Hr5A2PmdxScOuCB1dJYHZ4KQ==}
 
-  '@prisma/orm-framework@8.0.0-rc.24':
-    resolution: {integrity: sha512-uBgavR0KhIoAAjtJ0su7C5rGivcO6I5TG/GZgkYH5J6XZh5psLlRqOrVoqUZLytji8YPBV6ZG7u200ZaQMLf2w==}
+  '@prisma/orm-framework@8.0.0-rc.25':
+    resolution: {integrity: sha512-i8NuQpAYqhh5sqEQvPqw3wvQlAgqLr0qusd+cYyGUC2NMa/BLC2KkyvMg+gdCo9UOO35gZUORwLpPbXJVpVVwg==}
     peerDependencies:
       typescript: '>=5.9'
     peerDependenciesMeta:
       typescript:
         optional: true
 
-  '@prisma/orm-toolchain@8.0.0-rc.24':
-    resolution: {integrity: sha512-Rj/JLJ4AWoCV7GxQksV8BOIJkuUJzZGBj1cfKZ56oFXUUZPIge48KreK3Eyb8is3/TGupWyuWYz9phssaCP4kA==}
+  '@prisma/orm-toolchain@8.0.0-rc.25':
+    resolution: {integrity: sha512-85KcvRwZQTstuORE9zw3SvOna7J2zWvQIpVN8xZNqNxTnYsSvtGWDEHr6AwmDFMVQdqZG6qgEVAlRBCCef5FLA==}
     peerDependencies:
-      '@prisma/cli-engine': 0.10.0
+      '@prisma/cli-engine': 0.10.4
       typescript: '>=5.9'
       vite: ^7.0.0 || ^8.0.0
     peerDependenciesMeta:
@@ -1317,6 +1323,12 @@ packages:
   arkregex@0.0.12:
     resolution: {integrity: sha512-sOxL0eX50pnRYO4OyajKZChGuuj/iHwC5tysiAaGOPBu+zJwJQckWn7/DRH2++ol5uaKpyRn7N0hKT7nDqGmgg==}
 
+  arkregex@0.0.15:
+    resolution: {integrity: sha512-mu9vS4b8kTipqr2AfVIL1NYhGH47CZgPdYFzB762lu4/dsxm7hmNsN3ayDahcM9OhepOpTQc+W744yh4KE+mAw==}
+
+  arktype@2.2.10:
+    resolution: {integrity: sha512-xfum3++1RGjULFBeeXph3XrejEhAfswZlpH/V5m324j8aZ/53tHUd8OPCXE1v5iU/2UEkn/ZDFUT0Exkjv96xA==}
+
   arktype@2.2.7:
     resolution: {integrity: sha512-AbgM5SQvwCTURSR+ENfPtOG7cL5VZ0hqOVtoWyXKw2SviFddZhCBEUAjjVJYKCNFlPPR1VX5LGUKxsSqqc4Kdw==}
 
@@ -1745,6 +1757,9 @@ packages:
   package-manager-detector@1.8.0:
     resolution: {integrity: sha512-yQA4H19AmPEoMUeavPMDIe1higySl/gH/yaQrkT/s07Qp+7pp2hYz30N3z2l5BkjVkF9Ow6o0wjJamm2y7Sn0A==}
 
+  package-manager-detector@1.9.0:
+    resolution: {integrity: sha512-zAMfbta9nPA8AKkA4WdmNAT8R8s6Dk0/xwPsqNnRidMFcLo1YkLuPDTgs2f64XdzS8vbLNnoJ+uUIkgbz7oRHA==}
+
   parse-ms@4.0.0:
     resolution: {integrity: sha512-TXfryirbmq34y8QBwgqCVLi+8oA3oWx2eAnSn62ITyEhEYaWRlVZ2DvMM9eZbMs/RfxPu/PK/aBLyGj4IrqMHw==}
     engines: {node: '>=18'}
@@ -1793,8 +1808,8 @@ packages:
     resolution: {integrity: sha512-dM0jVuXJPsDN6DvRpea484tCUaMiXWjuCn++HGTqUWzGDjv5tZkEZldAJ/UMlqRYGFrD/etByo4/xOuC/snX2A==}
     engines: {node: '>=20'}
 
-  prettier@3.9.6:
-    resolution: {integrity: sha512-OpN0zzVdiaiAhxpuuj5efpIS4sY9j7bY6uR5mnj5yPzGkdkjNKSJeUThPb60Jw29QuAZgA4o+/iB49kFiaBX6g==}
+  prettier@3.10.1:
+    resolution: {integrity: sha512-70vp3ZUYoPlFbF9uiTdXHUUCGEIp7d4+6p+8DYbkm2jP7x/3i/paXVF6dopSI3zd/CEitrZN1rc4i85xWmmXlg==}
     engines: {node: '>=14'}
     hasBin: true
 
@@ -1895,6 +1910,10 @@ packages:
 
   string-width@8.2.2:
     resolution: {integrity: sha512-GaPUh5gfdrYzqeVNZvUfT23vYYxXzKYidUcnMtJg/3rxRV63EFZy3k6xfKlmfeJD0176lnUV/Usr3XcwSvFzpg==}
+    engines: {node: '>=20'}
+
+  string-width@8.3.0:
+    resolution: {integrity: sha512-ZbmZM0JCihQN91dWnxoipT2KOEyHqEyfRXUyjuRhW8b/xnqPDoq4gWEVApTVa9db2wN8mmoikgFBbjh71+cGeQ==}
     engines: {node: '>=20'}
 
   strip-ansi@7.2.0:
@@ -2004,8 +2023,8 @@ packages:
     resolution: {integrity: sha512-+QBBXBCvifc56fsbuxZQ6Sic3wqqc3WWaqxs58gvJrcOuN83HGTCwz3oS5phzU9LthRNE9VrJCFCLUgHeeFnfA==}
     engines: {node: '>=18'}
 
-  uniku@0.5.0:
-    resolution: {integrity: sha512-giSrg7xqM5YWkSlyheulHgTTInhYh/m0cFZOOuChi/TO87hKlxmZLllETlvDw/lPB54NIs1iW/x2rr0y2yFXHg==}
+  uniku@0.6.0:
+    resolution: {integrity: sha512-E3xUyw5lfyTOW1GD0B06Y+vXVq6HkS6fUoWR+41aiRHPgeLS4h7dkXINbIGyUra4kubsO6Z407ZGKyMbqh2RQg==}
     engines: {node: '>=20.19.0'}
 
   unrun@0.2.39:
@@ -2017,6 +2036,10 @@ packages:
     peerDependenciesMeta:
       synckit:
         optional: true
+
+  validate-npm-package-name@7.0.2:
+    resolution: {integrity: sha512-hVDIBwsRruT73PbK7uP5ebUt+ezEtCmzZz3F59BSr2F6OVFnJ/6h8liuvdLrQ88Xmnk6/+xGGuq+pG9WwTuy3A==}
+    engines: {node: ^20.17.0 || >=22.9.0}
 
   vite@7.3.5:
     resolution: {integrity: sha512-KuOaNhcnGFN2zIPGA7wRmzF+lJA1sea7rHq17aiJ++9lzY1WWG6Jpwqwe1KNbRVPIqHmr8GLYx7jbrQcN/7/ww==}
@@ -2099,21 +2122,21 @@ packages:
       jsdom:
         optional: true
 
-  vscode-jsonrpc@9.0.1:
-    resolution: {integrity: sha512-rfuA6T75H6m5EkbhtEPzre9pT0HPcDI2MMy4+nPFIBks5J8JBAUHD4tRYSgaBOijIEC7SRkC1kKyXTLqbmh9jw==}
+  vscode-jsonrpc@9.0.3:
+    resolution: {integrity: sha512-qETYf9PCl1lVfwR+oBmMfc4vP2nqLNA35ABxorw3j06+xlKRgDVxbLgKm4Y/xPL0YWdeDjLoI4ImICIT3nB0zQ==}
     engines: {node: '>=14.0.0'}
 
-  vscode-languageserver-protocol@3.18.2:
-    resolution: {integrity: sha512-XRyDbT0Pp3sSNti3JmxVEUMySWCSi1hhM+/KUlCy1hV1zmrqpM1OwO12EAki8blhmLuIMpaJrYbo0OzGVfK2Qg==}
+  vscode-languageserver-protocol@3.18.4:
+    resolution: {integrity: sha512-CCXbyr99dafRJzJH/0Ryk7ly5T8XPmSR0//OuF2w4m+9JiOin7zcAT5iET8GRE7Z9taFBejb3GbM0a0mbjdbrg==}
 
-  vscode-languageserver-textdocument@1.0.12:
-    resolution: {integrity: sha512-cxWNPesCnQCcMPeenjKKsOCKQZ/L6Tv19DTRIGuLWe32lyzWhihGVJ/rcckZXJxfdKCFvRLS3fpBIsV/ZGX4zA==}
+  vscode-languageserver-textdocument@1.0.16:
+    resolution: {integrity: sha512-qeNEuOi9a3qkqRf7Gfez2WL2VwlBTLCNekHBGO9kxPVUp9XuY15yfTJ9jwvOwKI0I2MhUUfZq95NSp+LK1CLQg==}
 
-  vscode-languageserver-types@3.18.0:
-    resolution: {integrity: sha512-8TsGPNMIMiiBdkORgRSvLjuiEIiAFtO+KssmYWxQ+uSVvlf7RjK8YKCOjPzZ+YA04jXEV7+7LvkSmHkhpNS99g==}
+  vscode-languageserver-types@3.18.4:
+    resolution: {integrity: sha512-nQsacoiijvl0fRf2q28uFDrAVwRhdCa3QveiF7/CX0r18mLR5FU/1WskSsCKOjmEbtteKUnY8x8Yzxop+k0zwg==}
 
-  vscode-languageserver@10.1.0:
-    resolution: {integrity: sha512-9gEWpXkYGXoqG7pBnE8O8hx/yP7+Aabn4+peQ3KDicQv6qunHSWyLTud3OF0w4S2+HfDD+5HqYKiXQW9HAU6mA==}
+  vscode-languageserver@10.1.2:
+    resolution: {integrity: sha512-pXPWde3RytdeBVEs6PulOOT5OpeXC5GkWRpcT11f5rNn41jviQsAYPyAqJ/0oVGETQLKPJtYbHNiMPlfLb0NTQ==}
     hasBin: true
 
   webidl-conversions@3.0.1:
@@ -2132,8 +2155,8 @@ packages:
     engines: {node: '>=8'}
     hasBin: true
 
-  wrap-ansi@10.0.0:
-    resolution: {integrity: sha512-SGcvg80f0wUy2/fXES19feHMz8E0JoXv2uNgHOu4Dgi2OrCy1lqwFYEJz1BLbDI0exjPMe/ZdzZ/YpGECBG/aQ==}
+  wrap-ansi@10.0.2:
+    resolution: {integrity: sha512-6OLRNZqRntVGBm26ghZ5eZhCuWWyOkRCSn8XsOIuq5stpCE/tjLbdozd93naILZig0lmD8ANfRwnhn0DLeXGlg==}
     engines: {node: '>=20'}
 
   ws@8.21.0:
@@ -2191,7 +2214,13 @@ snapshots:
     dependencies:
       '@ark/util': 0.56.6
 
+  '@ark/schema@0.56.9':
+    dependencies:
+      '@ark/util': 0.56.9
+
   '@ark/util@0.56.6': {}
+
+  '@ark/util@0.56.9': {}
 
   '@babel/generator@8.0.0-rc.3':
     dependencies:
@@ -2497,6 +2526,26 @@ snapshots:
 
   '@oxc-project/types@0.153.0': {}
 
+  '@prisma/composer-cli@0.39.0(@prisma/cli-engine@packages+cli-engine)(arktype@2.2.10)(vite@7.3.5(@types/node@22.19.19)(jiti@2.7.0)(tsx@4.22.4)(yaml@2.9.1))(ws@8.21.0)':
+    dependencies:
+      '@prisma/cli-engine': link:packages/cli-engine
+      '@prisma/composer': 0.39.0(arktype@2.2.10)(vite@7.3.5(@types/node@22.19.19)(jiti@2.7.0)(tsx@4.22.4)(yaml@2.9.1))(ws@8.21.0)
+      '@prisma/management-api-sdk': 1.80.0
+      alchemy: 2.0.0-beta.85(effect@4.1.0)(vite@7.3.5(@types/node@22.19.19)(jiti@2.7.0)(tsx@4.22.4)(yaml@2.9.1))(ws@8.21.0)
+      cross-spawn: 7.0.6
+      effect: 4.1.0
+      esbuild: 0.28.2
+    transitivePeerDependencies:
+      - '@alchemy.run/frontend-frameworks'
+      - '@effect/platform-bun'
+      - '@effect/platform-node'
+      - '@types/react'
+      - arktype
+      - react-devtools-core
+      - vite
+      - ws
+      - zod
+
   '@prisma/composer-cli@0.39.0(@prisma/cli-engine@packages+cli-engine)(arktype@2.2.7)(vite@7.3.5(@types/node@22.19.19)(jiti@2.7.0)(tsx@4.22.4)(yaml@2.9.1))(ws@8.21.0)':
     dependencies:
       '@prisma/cli-engine': link:packages/cli-engine
@@ -2516,6 +2565,26 @@ snapshots:
       - vite
       - ws
       - zod
+
+  '@prisma/composer@0.39.0(arktype@2.2.10)(vite@7.3.5(@types/node@22.19.19)(jiti@2.7.0)(tsx@4.22.4)(yaml@2.9.1))(ws@8.21.0)':
+    dependencies:
+      '@prisma/management-api-sdk': 1.80.0
+      '@standard-schema/spec': 1.1.0
+      alchemy: 2.0.0-beta.85(effect@4.1.0)(vite@7.3.5(@types/node@22.19.19)(jiti@2.7.0)(tsx@4.22.4)(yaml@2.9.1))(ws@8.21.0)
+      cross-spawn: 7.0.6
+      dotenv-flow: 4.1.0
+      effect: 4.1.0
+      esbuild: 0.28.2
+    optionalDependencies:
+      arktype: 2.2.10
+    transitivePeerDependencies:
+      - '@alchemy.run/frontend-frameworks'
+      - '@effect/platform-bun'
+      - '@effect/platform-node'
+      - '@types/react'
+      - react-devtools-core
+      - vite
+      - ws
 
   '@prisma/composer@0.39.0(arktype@2.2.7)(vite@7.3.5(@types/node@22.19.19)(jiti@2.7.0)(tsx@4.22.4)(yaml@2.9.1))(ws@8.21.0)':
     dependencies:
@@ -2571,23 +2640,23 @@ snapshots:
     dependencies:
       openapi-fetch: 0.14.0
 
-  '@prisma/orm-framework@8.0.0-rc.24(typescript@6.0.3)':
+  '@prisma/orm-framework@8.0.0-rc.25(typescript@6.0.3)':
     dependencies:
       '@standard-schema/spec': 1.1.0
-      arktype: 2.2.7
+      arktype: 2.2.10
       pathe: 2.0.3
       temporal-spec: 1.0.1
       tinyglobby: 0.2.17
-      uniku: 0.5.0
+      uniku: 0.6.0
     optionalDependencies:
       typescript: 6.0.3
 
-  '@prisma/orm-toolchain@8.0.0-rc.24(@prisma/cli-engine@packages+cli-engine)(magicast@0.5.3)(typanion@3.14.0)(typescript@6.0.3)(vite@7.3.5(@types/node@22.19.19)(jiti@2.7.0)(tsx@4.22.4)(yaml@2.9.1))':
+  '@prisma/orm-toolchain@8.0.0-rc.25(@prisma/cli-engine@packages+cli-engine)(magicast@0.5.3)(typanion@3.14.0)(typescript@6.0.3)(vite@7.3.5(@types/node@22.19.19)(jiti@2.7.0)(tsx@4.22.4)(yaml@2.9.1))':
     dependencies:
       '@prisma/cli-engine': link:packages/cli-engine
-      '@prisma/orm-framework': 8.0.0-rc.24(typescript@6.0.3)
+      '@prisma/orm-framework': 8.0.0-rc.25(typescript@6.0.3)
       '@vercel/detect-agent': 1.2.4
-      arktype: 2.2.7
+      arktype: 2.2.10
       c12: 3.3.4(magicast@0.5.3)
       ci-info: 4.4.0
       clipanion: 4.0.0-rc.4(typanion@3.14.0)
@@ -2595,15 +2664,16 @@ snapshots:
       colorette: 2.0.20
       esbuild: 0.28.2
       jsonc-parser: 3.3.1
-      package-manager-detector: 1.8.0
+      package-manager-detector: 1.9.0
       pathe: 2.0.3
-      prettier: 3.9.6
-      string-width: 8.2.2
+      prettier: 3.10.1
+      string-width: 8.3.0
       strip-ansi: 7.2.0
       tinyglobby: 0.2.17
-      vscode-languageserver: 10.1.0
-      vscode-languageserver-textdocument: 1.0.12
-      wrap-ansi: 10.0.0
+      validate-npm-package-name: 7.0.2
+      vscode-languageserver: 10.1.2
+      vscode-languageserver-textdocument: 1.0.16
+      wrap-ansi: 10.0.2
     optionalDependencies:
       typescript: 6.0.3
       vite: 7.3.5(@types/node@22.19.19)(jiti@2.7.0)(tsx@4.22.4)(yaml@2.9.1)
@@ -2946,6 +3016,16 @@ snapshots:
   arkregex@0.0.12:
     dependencies:
       '@ark/util': 0.56.6
+
+  arkregex@0.0.15:
+    dependencies:
+      '@ark/util': 0.56.9
+
+  arktype@2.2.10:
+    dependencies:
+      '@ark/schema': 0.56.9
+      '@ark/util': 0.56.9
+      arkregex: 0.0.15
 
   arktype@2.2.7:
     dependencies:
@@ -3346,6 +3426,8 @@ snapshots:
 
   package-manager-detector@1.8.0: {}
 
+  package-manager-detector@1.9.0: {}
+
   parse-ms@4.0.0: {}
 
   path-key@3.1.1: {}
@@ -3383,7 +3465,7 @@ snapshots:
 
   powershell-utils@0.1.0: {}
 
-  prettier@3.9.6: {}
+  prettier@3.10.1: {}
 
   pretty-ms@9.3.0:
     dependencies:
@@ -3529,6 +3611,11 @@ snapshots:
       get-east-asian-width: 1.6.0
       strip-ansi: 7.2.0
 
+  string-width@8.3.0:
+    dependencies:
+      get-east-asian-width: 1.6.0
+      strip-ansi: 7.2.0
+
   strip-ansi@7.2.0:
     dependencies:
       ansi-regex: 6.2.2
@@ -3644,13 +3731,15 @@ snapshots:
 
   unicorn-magic@0.3.0: {}
 
-  uniku@0.5.0:
+  uniku@0.6.0:
     dependencies:
       '@noble/hashes': 2.3.0
 
   unrun@0.2.39:
     dependencies:
       rolldown: 1.0.0-rc.17
+
+  validate-npm-package-name@7.0.2: {}
 
   vite@7.3.5(@types/node@22.19.19)(jiti@2.7.0)(tsx@4.22.4)(yaml@2.9.1):
     dependencies:
@@ -3694,20 +3783,20 @@ snapshots:
     transitivePeerDependencies:
       - msw
 
-  vscode-jsonrpc@9.0.1: {}
+  vscode-jsonrpc@9.0.3: {}
 
-  vscode-languageserver-protocol@3.18.2:
+  vscode-languageserver-protocol@3.18.4:
     dependencies:
-      vscode-jsonrpc: 9.0.1
-      vscode-languageserver-types: 3.18.0
+      vscode-jsonrpc: 9.0.3
+      vscode-languageserver-types: 3.18.4
 
-  vscode-languageserver-textdocument@1.0.12: {}
+  vscode-languageserver-textdocument@1.0.16: {}
 
-  vscode-languageserver-types@3.18.0: {}
+  vscode-languageserver-types@3.18.4: {}
 
-  vscode-languageserver@10.1.0:
+  vscode-languageserver@10.1.2:
     dependencies:
-      vscode-languageserver-protocol: 3.18.2
+      vscode-languageserver-protocol: 3.18.4
 
   webidl-conversions@3.0.1: {}
 
@@ -3725,11 +3814,10 @@ snapshots:
       siginfo: 2.0.0
       stackback: 0.0.2
 
-  wrap-ansi@10.0.0:
+  wrap-ansi@10.0.2:
     dependencies:
       ansi-styles: 6.2.3
       string-width: 8.2.2
-      strip-ansi: 7.2.0
 
   ws@8.21.0: {}
 
