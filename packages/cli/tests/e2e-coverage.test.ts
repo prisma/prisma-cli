@@ -132,19 +132,15 @@ const EXCLUSIONS: Readonly<Record<string, string>> = {
  * in order is more run time and more teardown, and is the next thing to
  * write.
  *
- * The five `service domain *` commands need a hostname whose DNS we
- * control. With a promoted deployment in place, `service domain add`
- * gets all the way to `SERVICE.DOMAIN_DNS_NOT_CONFIGURED` — "DNS
- * verification failed: ensure the hostname CNAMEs to
- * switchboard.ewr.prisma.build." No fixture inside this repo can satisfy
- * that; it needs a domain the test account owns and a DNS record.
+ * `service domain wait` succeeds only once a hostname serves, which
+ * needs DNS records for a domain the test account owns. The other four
+ * domain commands are covered in `e2e/service-domain.e2e.ts`, because
+ * the platform keeps a hostname before its DNS exists; that file also
+ * runs `wait --timeout 0`, which proves its read but is not a happy
+ * path.
  */
 const AWAITING_COVERAGE: readonly string[] = [
   "service version rollback",
-  "service domain add",
-  "service domain show",
-  "service domain delete",
-  "service domain retry",
   "service domain wait",
 ];
 

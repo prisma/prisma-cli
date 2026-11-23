@@ -1,6 +1,10 @@
 import { defineCommand, flag } from "@prisma/cli-engine";
 import { ok } from "@prisma/cli-engine/protocol";
-import type { DomainRecord } from "../../lib/app/app-provider";
+import {
+  type AppProvider,
+  DomainApiError,
+  type DomainRecord,
+} from "../../lib/app/app-provider";
 import { domainTargetArgs } from "./domain-shared";
 import {
   domainCommandError,
@@ -77,11 +81,59 @@ async function sleep(milliseconds: number, signal: AbortSignal): Promise<void> {
 
 const DURATION = /^(\d+)(ms|s|m|h)$/;
 
+/**
+ * The platform looks a hostname's DNS up when it is added and when it is
+ * checked, not on a timer. So while the hostname waits for records the
+ * user publishes, every sixth read is a check; the reads between only
+ * fetch what is stored.
+ */
+const READS_PER_DNS_CHECK = 6;
+
+function waitsForUserDns(domain: DomainRecord): boolean {
+  return domain.state === "not_verified" || domain.state === "waiting_for_dns";
+}
+
+/** Waiting cannot get past these: the user has to act, and then retry. */
+function cannotBecomeActive(domain: DomainRecord): boolean {
+  return domain.state === "certificate_failed" || domain.state === "no_service";
+}
+
+async function checkOrShow(
+  provider: AppProvider,
+  domainId: string,
+  signal: AbortSignal,
+): Promise<DomainRecord> {
+  try {
+    return await provider.checkDomain(domainId, { signal });
+  } catch (error) {
+    if (error instanceof DomainApiError && error.status === 429) {
+      return provider.showDomain(domainId, { signal });
+    }
+    throw error;
+  }
+}
+
+/** Reads the hostname again, as a DNS check when one is due. */
+function domainReader(
+  provider: AppProvider,
+  signal: AbortSignal,
+): (current: DomainRecord) => Promise<DomainRecord> {
+  let readsSinceDnsCheck = READS_PER_DNS_CHECK;
+  return (current) => {
+    const checksDns =
+      waitsForUserDns(current) && readsSinceDnsCheck >= READS_PER_DNS_CHECK;
+    readsSinceDnsCheck = checksDns ? 1 : readsSinceDnsCheck + 1;
+    return checksDns
+      ? checkOrShow(provider, current.id, signal)
+      : provider.showDomain(current.id, { signal });
+  };
+}
+
 export const serviceDomainWaitCommand = defineCommand({
   help: {
     summary: "Wait until a custom domain is active or failed",
     description:
-      "Blocks while DNS verification and TLS provisioning run, then exits with the outcome; useful in scripts and CI after 'service domain add'.",
+      "Blocks until the hostname's state is 'active', looking its DNS records up again while it waits for them, then exits with the outcome; useful in scripts and CI after 'service domain add'. It fails at once when the TLS certificate failed, and on timeout it says what the hostname still waits on.",
     examples: [
       "service domain wait shop.acme.com --service my-service",
       "service domain wait shop.acme.com --service my-service --timeout 30m",
@@ -122,29 +174,31 @@ export const serviceDomainWaitCommand = defineCommand({
     const start = Date.now();
     const deadline = start + timeoutMs;
     const interval = pollIntervalMs(ctx);
-    let previousStatus: DomainRecord["status"] | null = null;
+    let previousState: DomainRecord["state"] | null = null;
+    const readAgain = domainReader(target.provider, ctx.signal);
     let current = domain;
 
     for (;;) {
-      if (previousStatus !== current.status) {
+      if (previousState !== current.state) {
         ctx.report({
           kind: "status",
           subject: hostname,
-          status: current.status,
-          ...(previousStatus === null ? {} : { from: previousStatus }),
+          status: current.state,
+          ...(previousState === null ? {} : { from: previousState }),
           data: {
             domainId: current.id,
             elapsedMs: Date.now() - start,
           },
         });
       }
-      previousStatus = current.status;
+      previousState = current.state;
 
-      if (current.status === "active") {
+      if (current.state === "active") {
         const result: ServiceDomainWaitResult = {
           ...target.resultTarget,
           hostname,
           status: current.status,
+          state: current.state,
           liveUrl: `https://${hostname}`,
         };
         return ok(
@@ -152,7 +206,7 @@ export const serviceDomainWaitCommand = defineCommand({
         );
       }
 
-      if (current.status === "failed") {
+      if (cannotBecomeActive(current)) {
         throw domainVerificationFailedError(
           hostname,
           current,
@@ -163,7 +217,7 @@ export const serviceDomainWaitCommand = defineCommand({
       if (timeoutMs === 0 || Date.now() >= deadline) {
         throw domainVerificationTimeoutError(
           hostname,
-          current.status,
+          current,
           target.resultTarget,
         );
       }
@@ -173,16 +227,9 @@ export const serviceDomainWaitCommand = defineCommand({
         Math.min(interval, Math.max(deadline - Date.now(), 0)),
         ctx.signal,
       );
-      current = await target.provider
-        .showDomain(current.id, { signal: ctx.signal })
-        .catch((error) => {
-          throw domainCommandError(
-            "wait",
-            error,
-            hostname,
-            target.resultTarget,
-          );
-        });
+      current = await readAgain(current).catch((error) => {
+        throw domainCommandError("wait", error, hostname, target.resultTarget);
+      });
     }
   },
 });

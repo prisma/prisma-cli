@@ -1,8 +1,14 @@
 import type { Block, Presentations } from "@prisma/cli-engine";
 import { noDataLines } from "@prisma/cli-engine";
 import type { NextAction } from "@prisma/cli-engine/protocol";
+import { CLI_NAME } from "../../cli-name";
+import { domainStateGuidance } from "../../lib/app/domain-guidance";
 import { fieldLines } from "../../output/data-lines";
-import { adviceAction, runCommandAction } from "./errors";
+import {
+  adviceAction,
+  domainRecoveryCommand,
+  runCommandAction,
+} from "./errors";
 import type {
   ServiceCreateResult,
   ServiceDeleteResult,
@@ -66,7 +72,7 @@ function domainTargetRows(target: ServiceDomainTarget): FieldRow[] {
 function domainDnsRows(domain: ServiceDomainSummary): FieldRow[] {
   return domain.dnsRecords.map((record) => ({
     label: `dns ${record.type}`,
-    value: `${record.name} -> ${record.value}${record.ttl === null ? "" : ` (ttl ${record.ttl})`}`,
+    value: `${record.name} -> ${record.value} (ttl ${record.ttl})`,
   }));
 }
 
@@ -77,18 +83,45 @@ function dnsRecordFields(
   return [record.type, record.name, record.value];
 }
 
-function domainFailureRows(domain: ServiceDomainSummary): FieldRow[] {
-  if (!domain.failureReason) {
-    return [];
-  }
+function domainGuidance(
+  domain: ServiceDomainSummary,
+  target: ServiceDomainTarget,
+) {
+  return domainStateGuidance(
+    domain,
+    `${CLI_NAME} ${domainRecoveryCommand("retry", domain.hostname, target)}`,
+  );
+}
+
+function domainStateRows(
+  domain: ServiceDomainSummary,
+  target: ServiceDomainTarget,
+): FieldRow[] {
+  const guidance = domainGuidance(domain, target);
   return [
-    {
-      label: "failure",
-      value: domain.failureCategory
-        ? `${domain.failureCategory}: ${domain.failureReason}`
-        : domain.failureReason,
-    },
+    { label: "status", value: domain.status },
+    { label: "state", value: domain.state },
+    ...(guidance ? [{ label: "waiting on", value: guidance.waitingOn }] : []),
   ];
+}
+
+/** What the user has to do before the hostname can serve, if anything. */
+function domainFixActions(
+  domain: ServiceDomainSummary,
+  target: ServiceDomainTarget,
+): NextAction[] {
+  const fix = domainGuidance(domain, target)?.fix;
+  return fix ? [adviceAction(fix)] : [];
+}
+
+function waitAction(
+  domain: ServiceDomainSummary,
+  target: ServiceDomainTarget,
+): NextAction {
+  return runCommandAction(
+    "Wait for activation",
+    domainRecoveryCommand("wait", domain.hostname, target),
+  );
 }
 
 export function listPresentations(result: ServiceListResult): Presentations {
@@ -537,20 +570,21 @@ export function domainAddPresentations(
       fields([
         ...domainTargetRows(result),
         { label: "hostname", value: result.domain.hostname },
-        { label: "status", value: result.domain.status },
+        ...domainStateRows(result.domain, result),
         ...domainDnsRows(result.domain),
       ]),
     ],
-    next: () => [
-      runCommandAction(
-        "Wait for activation",
-        `service domain wait ${result.domain.hostname}`,
-      ),
-      runCommandAction(
-        "Show the domain",
-        `service domain show ${result.domain.hostname}`,
-      ),
-    ],
+    next: () =>
+      result.domain.state === "active"
+        ? []
+        : [
+            ...domainFixActions(result.domain, result),
+            waitAction(result.domain, result),
+            runCommandAction(
+              "Show the domain",
+              domainRecoveryCommand("show", result.domain.hostname, result),
+            ),
+          ],
   };
 }
 
@@ -562,7 +596,7 @@ export function domainShowPresentations(
       ...fieldLines([
         { label: "hostname", value: result.domain.hostname },
         { label: "status", value: result.domain.status },
-        ...domainFailureRows(result.domain),
+        { label: "state", value: result.domain.state },
         { label: "cert expires", value: result.domain.certExpiresAt ?? "" },
         { label: "created", value: result.domain.createdAt },
       ]),
@@ -576,35 +610,30 @@ export function domainShowPresentations(
       fields([
         ...domainTargetRows(result),
         { label: "hostname", value: result.domain.hostname },
-        { label: "status", value: result.domain.status },
-        ...domainFailureRows(result.domain),
+        ...domainStateRows(result.domain, result),
         {
           label: "cert expires",
           value: result.domain.certExpiresAt ?? "not yet issued",
         },
+        ...(result.domain.ownershipExpiresAt
+          ? [
+              {
+                label: "ownership expires",
+                value: result.domain.ownershipExpiresAt,
+              },
+            ]
+          : []),
         { label: "created", value: result.domain.createdAt },
         ...domainDnsRows(result.domain),
       ]),
     ],
-    next: () => {
-      if (result.domain.status === "active") {
-        return [];
-      }
-      if (result.domain.status === "failed") {
-        return [
-          runCommandAction(
-            "Retry verification",
-            `service domain retry ${result.domain.hostname}`,
-          ),
-        ];
-      }
-      return [
-        runCommandAction(
-          "Wait for activation",
-          `service domain wait ${result.domain.hostname}`,
-        ),
-      ];
-    },
+    next: () =>
+      result.domain.state === "active"
+        ? []
+        : [
+            ...domainFixActions(result.domain, result),
+            waitAction(result.domain, result),
+          ],
   };
 }
 
@@ -631,25 +660,25 @@ export function domainRetryPresentations(
 ): Presentations {
   return {
     stdout: noDataLines(
-      "A retry restarts verification and has no data; domain wait reports the outcome.",
+      "A retry checks the domain again and has no data; domain wait reports the outcome.",
     ),
     json: () => result,
     human: () => [
-      completed(`Retried verification for ${result.domain.hostname}.`),
+      completed(`Checked ${result.domain.hostname} again.`),
       fields([
         ...domainTargetRows(result),
         { label: "hostname", value: result.domain.hostname },
-        { label: "status", value: result.domain.status },
-        ...domainFailureRows(result.domain),
+        ...domainStateRows(result.domain, result),
         ...domainDnsRows(result.domain),
       ]),
     ],
-    next: () => [
-      runCommandAction(
-        "Wait for activation",
-        `service domain wait ${result.domain.hostname}`,
-      ),
-    ],
+    next: () =>
+      result.domain.state === "active"
+        ? []
+        : [
+            ...domainFixActions(result.domain, result),
+            waitAction(result.domain, result),
+          ],
   };
 }
 
@@ -666,6 +695,7 @@ export function domainWaitPresentations(
         ...domainTargetRows(result),
         { label: "hostname", value: result.hostname },
         { label: "status", value: result.status },
+        { label: "state", value: result.state },
       ]),
     ],
   };

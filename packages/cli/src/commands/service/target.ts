@@ -9,6 +9,7 @@ import {
   createAppProvider,
   type DeploymentRecord,
   type DomainRecord,
+  preferredDomain,
 } from "../../lib/app/app-provider";
 import { resolveReadBranch } from "../../lib/app/read-branch";
 import { projectApiError } from "../../lib/project/provider";
@@ -381,26 +382,8 @@ export function toServiceListEntry(service: AppRecord): ServiceListEntry {
 export function toServiceDomainSummary(
   domain: DomainRecord,
 ): ServiceDomainSummary {
-  return {
-    id: domain.id,
-    type: domain.type,
-    url: domain.url,
-    hostname: domain.hostname,
-    serviceId: domain.appId,
-    status: domain.status,
-    foundryStatus: domain.foundryStatus,
-    failureReason: domain.failureReason,
-    failureCategory: domain.failureCategory,
-    certExpiresAt: domain.certExpiresAt,
-    createdAt: domain.createdAt,
-    updatedAt: domain.updatedAt,
-    dnsRecords: domain.dnsRecords.map((record) => ({
-      type: record.type,
-      name: record.name,
-      value: record.value,
-      ttl: record.ttl,
-    })),
-  };
+  const { appId, ...rest } = domain;
+  return { ...rest, serviceId: appId };
 }
 
 export function normalizeDomainHostname(
@@ -440,25 +423,44 @@ export function sameDomainHostname(left: string, right: string): boolean {
   );
 }
 
-export async function resolveDomainByHostname(
+/** Every entry the service lists for the hostname. A service can list
+ *  one hostname more than once, when entries were added outside the CLI. */
+export async function resolveDomainEntriesByHostname(
   provider: AppProvider,
   target: ServiceDomainTarget,
   hostname: string,
-  command: "add" | "show" | "delete" | "retry" | "wait",
+  command: "show" | "delete" | "retry" | "wait",
   signal: AbortSignal,
-): Promise<DomainRecord> {
+): Promise<[DomainRecord, ...DomainRecord[]]> {
   const domains = await provider
     .listDomains(target.service.id, { signal })
     .catch((error) => {
       throw domainCommandError(command, error, hostname, target);
     });
-  const matched = domains.find((domain) =>
+  const [first, ...rest] = domains.filter((domain) =>
     sameDomainHostname(domain.hostname, hostname),
   );
-  if (matched) {
-    return matched;
+  if (first === undefined) {
+    throw domainNotFoundError(hostname, target);
   }
-  throw domainNotFoundError(hostname, target);
+  return [first, ...rest];
+}
+
+export async function resolveDomainByHostname(
+  provider: AppProvider,
+  target: ServiceDomainTarget,
+  hostname: string,
+  command: "show" | "delete" | "retry" | "wait",
+  signal: AbortSignal,
+): Promise<DomainRecord> {
+  const entries = await resolveDomainEntriesByHostname(
+    provider,
+    target,
+    hostname,
+    command,
+    signal,
+  );
+  return preferredDomain(entries) ?? entries[0];
 }
 
 interface ServiceProjectState {

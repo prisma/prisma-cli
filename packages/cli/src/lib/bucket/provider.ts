@@ -7,6 +7,7 @@ import type { ManagementApiClient } from "@prisma/management-api-sdk";
 
 import { CLI_NAME } from "../../cli-name";
 import type { BucketKeySummary, BucketSummary } from "../../types/bucket";
+import { type ApiErrorBody, apiErrorDetail } from "../management-api-error";
 
 export interface BucketCreateInput {
   projectId: string;
@@ -51,14 +52,6 @@ export interface BucketProvider {
     keyId: string,
     options?: { signal?: AbortSignal },
   ): Promise<void>;
-}
-
-interface RawApiErrorBody {
-  error?: {
-    code?: string;
-    message?: string;
-    hint?: string;
-  };
 }
 
 interface RawBucketRecord {
@@ -108,7 +101,7 @@ export function createManagementBucketProvider(
           throw bucketApiError(
             "Failed to list buckets",
             result.response,
-            result.error as RawApiErrorBody | undefined,
+            result.error as ApiErrorBody | undefined,
           );
         }
 
@@ -142,7 +135,7 @@ export function createManagementBucketProvider(
         throw bucketApiError(
           "Failed to create bucket",
           result.response,
-          result.error as RawApiErrorBody | undefined,
+          result.error as ApiErrorBody | undefined,
         );
       }
 
@@ -161,7 +154,7 @@ export function createManagementBucketProvider(
         throw bucketApiError(
           "Failed to delete bucket",
           result.response,
-          result.error as RawApiErrorBody | undefined,
+          result.error as ApiErrorBody | undefined,
         );
       }
     },
@@ -183,7 +176,7 @@ export function createManagementBucketProvider(
           throw bucketApiError(
             "Failed to list bucket keys",
             result.response,
-            result.error as RawApiErrorBody | undefined,
+            result.error as ApiErrorBody | undefined,
           );
         }
 
@@ -217,7 +210,7 @@ export function createManagementBucketProvider(
         throw bucketApiError(
           "Failed to create bucket key",
           result.response,
-          result.error as RawApiErrorBody | undefined,
+          result.error as ApiErrorBody | undefined,
         );
       }
 
@@ -256,7 +249,7 @@ export function createManagementBucketProvider(
         throw bucketApiError(
           "Failed to delete bucket key",
           result.response,
-          result.error as RawApiErrorBody | undefined,
+          result.error as ApiErrorBody | undefined,
         );
       }
     },
@@ -363,14 +356,14 @@ function apiErrorActions(
 function bucketApiError(
   summary: string,
   response: Response | undefined,
-  error: RawApiErrorBody | undefined,
+  error: ApiErrorBody | undefined,
 ): CliStructuredError {
   const status = response?.status ?? 0;
-  const meta = apiErrorMeta(status, error?.error?.code);
+  const meta = apiErrorMeta(status, apiErrorDetail(error).code);
 
   return new CliStructuredError("BUCKET.API_ERROR", summary, {
-    why: apiErrorWhy(status, error?.error?.message),
+    why: apiErrorWhy(status, apiErrorDetail(error).message),
     ...(meta === undefined ? {} : { meta }),
-    nextActions: apiErrorActions(status, error?.error?.hint),
+    nextActions: apiErrorActions(status, apiErrorDetail(error).hint),
   });
 }

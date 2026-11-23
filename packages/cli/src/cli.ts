@@ -293,13 +293,13 @@ export const cliGroups: Readonly<
   },
   "service domain": {
     brief:
-      "Manage custom domains for a service. Register hostnames, drive DNS and TLS verification, inspect status",
+      "Manage custom domains for a service. Add hostnames, see the DNS records to publish, wait until they serve",
     description:
-      "Custom domains point hostnames you own at a service on any branch. Commands default to production; use --branch to select another branch. After add, create the DNS record the platform reports; wait and retry drive DNS verification and TLS provisioning to done.",
+      "Custom domains point hostnames you own at a service on any branch. Commands default to production; use --branch to select another branch. Add succeeds before DNS is set up and prints the records to publish. Once they are published, wait blocks until the hostname serves, and retry checks the records again or retries a failed certificate.",
     workflow: [
       {
         run: "service domain add shop.acme.com --service my-api",
-        brief: "Register the hostname",
+        brief: "Add the hostname and print its DNS records",
       },
       {
         run: "service domain wait shop.acme.com --service my-api",
@@ -307,7 +307,7 @@ export const cliGroups: Readonly<
       },
       {
         run: "service domain show shop.acme.com --service my-api",
-        brief: "Inspect status and certificate",
+        brief: "Inspect state, DNS records and certificate",
       },
     ],
   },

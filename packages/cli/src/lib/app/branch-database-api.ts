@@ -1,5 +1,6 @@
 // biome-ignore-all lint/performance/noAwaitInLoops: Environment variable pagination must run sequentially.
 import type { ManagementApiClient } from "@prisma/management-api-sdk";
+import { type ApiErrorBody, apiErrorDetail } from "../management-api-error";
 
 export interface EnvironmentVariableRecord {
   id: string;
@@ -40,14 +41,6 @@ interface RawDatabaseRecord {
       accelerate?: RawDatabaseConnectionEndpoint;
     };
   }>;
-}
-
-interface RawApiErrorBody {
-  error?: {
-    code?: string;
-    message?: string;
-    hint?: string;
-  };
 }
 
 export async function createBranchDatabase(
@@ -275,14 +268,17 @@ function normalizeBranchDatabaseRecord(
 function apiCallError(
   summary: string,
   response: Response,
-  error: RawApiErrorBody,
+  error: ApiErrorBody,
 ): Error {
   if (response.status === 404) {
     return new Error("Resource Not Found");
   }
 
   const message =
-    error.error?.message ?? `Management API returned HTTP ${response.status}.`;
-  const hint = error.error?.hint ? ` ${error.error.hint}` : "";
+    apiErrorDetail(error).message ??
+    `Management API returned HTTP ${response.status}.`;
+  const hint = apiErrorDetail(error).hint
+    ? ` ${apiErrorDetail(error).hint}`
+    : "";
   return new Error(`${summary}: ${message}${hint}`);
 }

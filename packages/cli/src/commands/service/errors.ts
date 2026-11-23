@@ -3,12 +3,12 @@ import { CliStructuredError } from "@prisma/cli-engine/protocol";
 import { CLI_NAME } from "../../cli-name";
 import { formatCommandArgument } from "../../command-arguments";
 import { DomainApiError, type DomainRecord } from "../../lib/app/app-provider";
-import { formatDomainFailureFix } from "../../lib/app/domain-guidance";
+import { domainStateGuidance } from "../../lib/app/domain-guidance";
 import type { ServiceDomainTarget } from "./results";
 
 type DomainCommand = "add" | "show" | "delete" | "retry" | "wait";
 
-function domainRecoveryCommand(
+export function domainRecoveryCommand(
   command: DomainCommand,
   hostname: string,
   target: ServiceDomainTarget,
@@ -23,9 +23,6 @@ export function runCommandAction(label: string, command: string): NextAction {
 export function adviceAction(label: string): NextAction {
   return { kind: "user-choice", label };
 }
-
-const CNAME_HINT = /\bcname(?:s)?\s+to\b/;
-const PRISMA_BUILD_HOST = /\b((?:[a-z0-9-]+\.)+prisma\.build)\b/i;
 
 /**
  * Consent declined interactively. The engine settles this code as a
@@ -341,38 +338,37 @@ export function domainNotFoundError(
   );
 }
 
-function formatDomainFailureWhy(domain: DomainRecord): string {
-  if (!domain.failureReason) {
-    return "The platform reported a terminal failed state for this custom domain.";
-  }
-  if (!domain.failureCategory) {
-    return domain.failureReason;
-  }
-  return `${domain.failureCategory}: ${domain.failureReason}`;
-}
-
+/** `service domain wait` saw a state that waiting cannot get past. */
 export function domainVerificationFailedError(
   hostname: string,
   domain: DomainRecord,
   target: ServiceDomainTarget,
 ): CliStructuredError {
-  const why = formatDomainFailureWhy(domain);
-  const guidance = formatDomainFailureFix(domain);
+  const guidance = domainStateGuidance(
+    domain,
+    `${CLI_NAME} ${domainRecoveryCommand("retry", hostname, target)}`,
+  );
   return new CliStructuredError(
     "SERVICE.DOMAIN_VERIFICATION_FAILED",
-    `Custom domain "${hostname}" failed verification`,
+    `Custom domain "${hostname}" cannot become active`,
     {
-      why,
+      why:
+        guidance?.waitingOn ?? `The domain is in the state "${domain.state}".`,
+      meta: { state: domain.state },
       nextActions: [
-        ...(guidance ? [adviceAction(guidance)] : []),
+        ...(guidance?.fix ? [adviceAction(guidance.fix)] : []),
         runCommandAction(
           "Show the domain",
           domainRecoveryCommand("show", hostname, target),
         ),
-        runCommandAction(
-          "Retry verification",
-          domainRecoveryCommand("retry", hostname, target),
-        ),
+        ...(domain.state === "certificate_failed"
+          ? [
+              runCommandAction(
+                "Retry the certificate",
+                domainRecoveryCommand("retry", hostname, target),
+              ),
+            ]
+          : []),
       ],
     },
   );
@@ -380,15 +376,21 @@ export function domainVerificationFailedError(
 
 export function domainVerificationTimeoutError(
   hostname: string,
-  lastStatus: string,
+  domain: DomainRecord,
   target: ServiceDomainTarget,
 ): CliStructuredError {
+  const guidance = domainStateGuidance(
+    domain,
+    `${CLI_NAME} ${domainRecoveryCommand("retry", hostname, target)}`,
+  );
   return new CliStructuredError(
     "SERVICE.DOMAIN_VERIFICATION_TIMEOUT",
     `Timed out waiting for "${hostname}" to become active`,
     {
-      why: `The domain is still "${lastStatus}".`,
+      why: `The domain is still "${domain.state}".${guidance ? ` ${guidance.waitingOn}` : ""}`,
+      meta: { state: domain.state },
       nextActions: [
+        ...(guidance?.fix ? [adviceAction(guidance.fix)] : []),
         runCommandAction(
           "Show the domain",
           domainRecoveryCommand("show", hostname, target),
@@ -467,9 +469,6 @@ function domainApiFailure(
   if (error.status === 404) {
     return domainNotFoundError(hostname, target);
   }
-  if (command === "retry" && error.status === 409) {
-    return domainRetryNotEligibleError(hostname, error, target);
-  }
   return null;
 }
 
@@ -478,65 +477,11 @@ function domainAddFailure(
   hostname: string,
   target: ServiceDomainTarget,
 ): CliStructuredError | null {
-  if (error.code === "domain-cloudflare-proxy") {
-    return new CliStructuredError(
-      "SERVICE.DOMAIN_CLOUDFLARE_PROXY",
-      `Turn off Cloudflare's proxy to connect ${hostname}`,
-      {
-        why: error.message,
-        meta: debugMeta(error),
-        nextActions: [
-          adviceAction(
-            error.hint ??
-              "Set this DNS record to DNS only (gray cloud), then retry. After the domain is Active, you can turn Proxied back on with Full (strict) SSL/TLS. Keep /.well-known/acme-challenge/* accessible for certificate renewal.",
-          ),
-          runCommandAction(
-            "Verify and connect",
-            domainRecoveryCommand("add", hostname, target),
-          ),
-        ],
-        cause: error,
-      },
-    );
-  }
-  if (error.code === "domain-ownership-required") {
-    return new CliStructuredError(
-      "SERVICE.DOMAIN_OWNERSHIP_REQUIRED",
-      `Verify ownership of ${hostname}`,
-      {
-        why: "DNS does not contain the TXT proof for this workspace.",
-        meta: debugMeta(error),
-        nextActions: [
-          adviceAction(
-            error.hint ??
-              "Add the workspace TXT record shown in Console's domain setup.",
-          ),
-          runCommandAction(
-            "Verify and connect",
-            domainRecoveryCommand("add", hostname, target),
-          ),
-        ],
-        cause: error,
-      },
-    );
-  }
-  if (
-    (error.status === 400 || error.status === 422) &&
-    isDomainDnsError(error)
-  ) {
-    return domainDnsNotConfiguredError(hostname, error, target);
-  }
-  if (error.status === 400) {
+  if (error.code === "invalid-hostname" || error.status === 400) {
     return domainHostnameRejectedError(hostname, error, target);
   }
-  if (error.status === 429 || isDomainQuotaError(error)) {
+  if (error.code === "quota-exceeded") {
     return domainQuotaExceededError(error, target);
-  }
-  if (error.status === 409) {
-    return domainAlreadyRegisteredError(hostname, error);
-  }
-  if (error.status === 422) {
-    return domainRequiresDeploymentError(hostname, error, target);
   }
   return null;
 }
@@ -553,9 +498,7 @@ function domainHostnameRejectedError(
       why: error.message,
       meta: debugMeta(error),
       nextActions: [
-        adviceAction(
-          "Pass a valid hostname like shop.acme.com and make sure DNS can be verified.",
-        ),
+        adviceAction("Pass a hostname like shop.acme.com."),
         runCommandAction(
           "Add a domain",
           domainRecoveryCommand("add", hostname, target),
@@ -590,133 +533,41 @@ function domainQuotaExceededError(
   );
 }
 
-function domainAlreadyRegisteredError(
+/**
+ * `service domain retry` got HTTP 429. For a failed certificate that is
+ * the workspace's hourly limit of new certificates: a retry orders one.
+ */
+export function domainRetryRateLimitedError(
   hostname: string,
   error: DomainApiError,
-): CliStructuredError {
-  return new CliStructuredError(
-    "SERVICE.DOMAIN_ALREADY_REGISTERED",
-    `Custom domain "${hostname}" is already registered`,
-    {
-      why: error.hint ?? error.message,
-      meta: debugMeta(error),
-      nextActions: [
-        adviceAction(
-          "Select the service that owns this hostname and delete it there, or contact Prisma support if you cannot access it.",
-        ),
-      ],
-    },
-  );
-}
-
-function domainRequiresDeploymentError(
-  hostname: string,
-  error: DomainApiError,
+  certificateFailed: boolean,
   target: ServiceDomainTarget,
 ): CliStructuredError {
+  const wait =
+    error.retryAfterSeconds === null
+      ? "later"
+      : `in ${Math.max(1, Math.ceil(error.retryAfterSeconds / 60))} minute(s)`;
   return new CliStructuredError(
-    "SERVICE.NO_VERSIONS",
-    "Custom domain requires a live version",
+    "SERVICE.DOMAIN_RETRY_RATE_LIMITED",
+    certificateFailed
+      ? `The hourly certificate limit is used up, so "${hostname}" was not retried`
+      : `Too many requests, so "${hostname}" was not checked`,
     {
-      why: "The selected service does not have a promoted version that can receive a custom domain.",
-      meta: debugMeta(error),
+      why: certificateFailed
+        ? "Retrying a failed certificate orders a new one, and this workspace has used its hourly limit of new certificates."
+        : error.message,
+      meta: {
+        ...debugMeta(error),
+        retryAfterSeconds: error.retryAfterSeconds,
+      },
       nextActions: [
-        // Legacy paired "rerun the domain command" with the fix line
-        // that told the user what to do first. The deploy action went
-        // with the dropped command; without the advice the only thing
-        // left told the user to rerun what had just failed.
-        adviceAction(
-          "Promote a version on the selected branch, then add the domain again.",
-        ),
+        adviceAction(`Run the retry again ${wait}.`),
         runCommandAction(
-          "Add the domain",
-          domainRecoveryCommand("add", hostname, target),
+          "Retry the domain",
+          domainRecoveryCommand("retry", hostname, target),
         ),
       ],
+      cause: error,
     },
   );
-}
-
-function domainRetryNotEligibleError(
-  hostname: string,
-  error: DomainApiError,
-  target: ServiceDomainTarget,
-): CliStructuredError {
-  return new CliStructuredError(
-    "SERVICE.DOMAIN_RETRY_NOT_ELIGIBLE",
-    `Custom domain "${hostname}" is not eligible for retry`,
-    {
-      why: error.message,
-      meta: debugMeta(error),
-      nextActions: [
-        adviceAction(
-          "Wait for the current verification or TLS step to finish, then rerun retry if the domain fails.",
-        ),
-        runCommandAction(
-          "Show the domain",
-          domainRecoveryCommand("show", hostname, target),
-        ),
-      ],
-    },
-  );
-}
-
-function isDomainQuotaError(error: DomainApiError): boolean {
-  if (error.status !== 409) {
-    return false;
-  }
-  const text = `${error.message} ${error.hint ?? ""}`.toLowerCase();
-  return (
-    text.includes("quota") || text.includes("maximum") || text.includes("limit")
-  );
-}
-
-function isDomainDnsError(error: DomainApiError): boolean {
-  const text = `${error.message} ${error.hint ?? ""}`.toLowerCase();
-  return (
-    text.includes("dns is not configured") ||
-    text.includes("dns verification failed") ||
-    text.includes("no cname") ||
-    text.includes("cname record") ||
-    text.includes("no a/aaaa") ||
-    CNAME_HINT.test(text)
-  );
-}
-
-function domainDnsNotConfiguredError(
-  hostname: string,
-  error: DomainApiError,
-  target: ServiceDomainTarget,
-): CliStructuredError {
-  const dnsTarget = extractDomainDnsTarget(error);
-  const record = dnsTarget ? `CNAME ${hostname} -> ${dnsTarget}` : null;
-  return new CliStructuredError(
-    "SERVICE.DOMAIN_DNS_NOT_CONFIGURED",
-    `DNS is not configured for "${hostname}"`,
-    {
-      why: error.hint ?? error.message,
-      meta: { ...debugMeta(error), ...(record ? { dnsRecord: record } : {}) },
-      nextActions: record
-        ? [
-            adviceAction(
-              `Add ${record} at your DNS provider, then rerun the domain command.`,
-            ),
-            runCommandAction(
-              "Add the domain",
-              domainRecoveryCommand("add", hostname, target),
-            ),
-          ]
-        : [
-            adviceAction(
-              "The platform did not return the required DNS target. Re-run with --log-level verbose for the underlying API response details.",
-            ),
-          ],
-    },
-  );
-}
-
-function extractDomainDnsTarget(error: DomainApiError): string | null {
-  const text = `${error.hint ?? ""} ${error.message}`;
-  const match = PRISMA_BUILD_HOST.exec(text);
-  return match?.[1]?.toLowerCase() ?? null;
 }

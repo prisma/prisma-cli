@@ -14,7 +14,7 @@ export const serviceDomainAddCommand = defineCommand({
   help: {
     summary: "Register a custom domain on the selected service branch",
     description:
-      "Points a hostname you own at the service instead of its generated URL. Add the routing CNAME and workspace TXT record shown by Console or the verification error, then rerun this command. Keep the TXT record for future attachments in this workspace. Use 'service domain wait' to wait for TLS provisioning.",
+      "Points a hostname you own at the service, alongside its generated URL. The command succeeds before DNS is set up and prints the records to publish: a TXT record that proves this workspace owns the domain, and a CNAME that routes the hostname. Publish them, then run 'service domain wait'. Keep the TXT record for other hostnames in this workspace. Adding a hostname the service already has shows it as it stands.",
     examples: [
       "service domain add shop.acme.com --service my-service",
       "service domain add staging.acme.com --service my-service --branch staging",

@@ -102,33 +102,60 @@ export interface ServiceDeleteResult {
   deleted: true;
 }
 
-export type ServiceDomainStatus =
-  | "pending_dns"
-  | "verifying"
-  | "verified_routing_blocked"
-  | "provisioning_tls"
-  | "active"
-  | "failed"
-  | "removing";
+/** Whether the hostname has gone live. `state` says what it does now. */
+export type ServiceDomainStatus = "pending" | "active";
 
+/** What the hostname is doing now. `active` means it serves the service. */
+export type ServiceDomainState =
+  | "not_verified"
+  | "no_service"
+  | "no_live_deployment"
+  | "update_failed"
+  | "in_use_elsewhere"
+  | "waiting_for_dns"
+  | "provisioning_certificate"
+  | "certificate_failed"
+  | "updating"
+  | "active";
+
+export type ServiceDomainCondition =
+  | "ownershipVerified"
+  | "servicePresent"
+  | "liveDeployment"
+  | "dnsPointsAtSwitchboard"
+  | "customDomainBound"
+  | "certificateActive";
+
+/** A DNS record still to publish, and the condition it satisfies. */
 export interface ServiceDomainDnsRecord {
-  type: string;
+  condition: "ownershipVerified" | "dnsPointsAtSwitchboard";
+  type: "TXT" | "CNAME";
   name: string;
   value: string;
-  ttl: number | null;
+  ttl: number;
 }
 
 export interface ServiceDomainSummary {
   id: string;
-  type: "custom-domain";
-  url: string;
+  type: "routingUrl";
   hostname: string;
-  serviceId: string;
+  serviceId: string | null;
   status: ServiceDomainStatus;
-  foundryStatus: string;
+  state: ServiceDomainState;
+  conditions: Record<ServiceDomainCondition, "met" | "unmet" | "unknown">;
+  firstUnmetCondition: ServiceDomainCondition | null;
   failureReason: string | null;
-  failureCategory: "dns" | "acme" | "storage" | "unknown" | null;
+  syncError: string | null;
+  dnsDetail: string | null;
   certExpiresAt: string | null;
+  ownershipExpiresAt: string | null;
+  heldBy: {
+    workspaceId: string | null;
+    projectId: string | null;
+    serviceId: string | null;
+    message: string | null;
+  } | null;
+  setupUrl: string | null;
   createdAt: string;
   updatedAt: string;
   dnsRecords: ServiceDomainDnsRecord[];
@@ -165,5 +192,6 @@ export interface ServiceDomainRetryResult extends ServiceDomainTarget {
 export interface ServiceDomainWaitResult extends ServiceDomainTarget {
   hostname: string;
   status: ServiceDomainStatus;
+  state: "active";
   liveUrl: string;
 }

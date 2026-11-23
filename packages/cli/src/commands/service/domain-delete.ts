@@ -6,7 +6,7 @@ import { domainDeletePresentations } from "./presentation";
 import type { ServiceDomainDeleteResult } from "./results";
 import {
   normalizeDomainHostname,
-  resolveDomainByHostname,
+  resolveDomainEntriesByHostname,
   resolveServiceDomainTarget,
 } from "./target";
 
@@ -14,7 +14,7 @@ export const serviceDomainDeleteCommand = defineCommand({
   help: {
     summary: "Delete a custom domain from the service",
     description:
-      "The hostname stops routing to the service immediately; the service itself and its generated URL keep working. Pass the hostname with --confirm to run non-interactively.",
+      "The hostname stops routing to the service; the service itself and its generated URL keep working. Pass the hostname with --confirm to run non-interactively.",
     examples: [
       "service domain delete shop.acme.com --service my-service",
       "service domain delete shop.acme.com --service my-service --confirm shop.acme.com",
@@ -33,7 +33,7 @@ export const serviceDomainDeleteCommand = defineCommand({
       branchName: args.flags.branch,
       commandName: `service domain delete ${hostname}`,
     });
-    const domain = await resolveDomainByHostname(
+    const entries = await resolveDomainEntriesByHostname(
       target.provider,
       target.resultTarget,
       hostname,
@@ -53,16 +53,19 @@ export const serviceDomainDeleteCommand = defineCommand({
       throw userCancelledError("Custom domain deletion canceled");
     }
 
-    await target.provider
-      .removeDomain(domain.id, { signal: ctx.signal })
-      .catch((error) => {
-        throw domainCommandError(
-          "delete",
-          error,
-          hostname,
-          target.resultTarget,
-        );
-      });
+    for (const entry of entries) {
+      // biome-ignore lint/performance/noAwaitInLoops: a service lists a hostname more than once only when entries were added outside the CLI, and deleting them one at a time keeps the first failure from hiding which entries are gone.
+      await target.provider
+        .removeDomain(entry.id, { signal: ctx.signal })
+        .catch((error) => {
+          throw domainCommandError(
+            "delete",
+            error,
+            hostname,
+            target.resultTarget,
+          );
+        });
+    }
 
     const result: ServiceDomainDeleteResult = {
       ...target.resultTarget,

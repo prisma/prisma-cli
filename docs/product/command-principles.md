@@ -152,20 +152,13 @@ That is still one action in the command grammar. It is preferable to inventing a
 
 ## Custom domains
 
-`service domain` commands manage domains for the service on the selected branch.
-They default to `production`; `--branch <name>` selects a preview or staging
-branch. The service must have a promoted, running version before a domain can
-be added. Domain lookup, retry, waiting, and deletion stay within that service.
+`service domain` commands manage hostnames for the service on the selected branch. They default to `production`; `--branch <name>` selects a preview or staging branch. Lookup, retry, waiting, and deletion stay within that service.
 
-New domain attachments require a persistent workspace TXT ownership record as
-well as the routing CNAME. Missing proof returns the exact DNS instructions and
-a command to retry on the same branch. Existing connected domains keep working;
-recreating a branch in the same workspace reuses its TXT record.
+A hostname can be added before its DNS exists and before the service has a live version. `add` succeeds and prints the DNS records to publish: a TXT record that proves the workspace owns the domain, and a CNAME that routes the hostname. Each hostname reports a `status` (`pending` until it has gone live, then `active`) and a `state` that says what it does now. The state `active` means the hostname serves the service; every other state names what is still missing, and the CLI turns it into a "waiting on" line and, when the user has to act, a fix.
 
-Cloudflare proxy detection returns `SERVICE.DOMAIN_CLOUDFLARE_PROXY` with DNS-only
-instructions and a retry command for the same target. The customer can turn the
-proxy back on after the domain is Active, with Full (strict) SSL/TLS and the
-ACME challenge path accessible for certificate renewal.
+The platform looks DNS up when a hostname is added or checked, not on a timer. So `retry` asks for a check, and `wait` asks for one periodically while the hostname waits for records the user publishes. A check also retries a failed TLS certificate, which counts against the workspace's hourly limit of new certificates; `wait` therefore stops at a failed certificate and leaves the retry to the user.
+
+`add` is idempotent in the CLI: the API accepts the same hostname on a service more than once, so `add` first looks for it and shows the existing entry. `delete` removes every entry the service lists for the hostname.
 
 ## Shared Flag Conventions
 

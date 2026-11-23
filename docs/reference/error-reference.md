@@ -632,54 +632,29 @@ A `--branch` flag was passed with an empty or whitespace-only value to a service
 
 The general "Management API call failed" wrapper for the `service` command family — despite the name there is no deploy command here: it wraps failures to create a service, list services or versions, show/promote/roll back/delete/start/stop a version, resolve a service URL, and unrecognized custom-domain API failures. The underlying error's message becomes `why` and the original error is carried in `cause`; each raise site attaches its own next actions. On the domain fallback path only, a `DomainApiError` adds debug meta. Meta: `status`, `apiCode`, `hint` (domain fallback path only; otherwise none).
 
-### SERVICE.DOMAIN_ALREADY_REGISTERED
-
-`service domain add` got HTTP 409 from the domain API because the hostname is already registered, to this or another service. The fix is to delete the domain on the service that owns it, or contact Prisma support if that service is not accessible. Meta: `status`, `apiCode`, `hint`.
-
-### SERVICE.DOMAIN_DNS_NOT_CONFIGURED
-
-`service domain add` got HTTP 400 or 422 whose message the CLI recognizes as a DNS problem (no CNAME, DNS verification failed, and similar). When the API's text names a `*.prisma.build` target, the CLI composes the exact CNAME record to add and carries it in `meta.dnsRecord` and in the advice action; without a target it advises rerunning with `--log-level verbose` to see the API response. Meta: `status`, `apiCode`, `hint`, `dnsRecord` (when the DNS target could be extracted).
-
 ### SERVICE.DOMAIN_HOSTNAME_INVALID
 
-The hostname given to a `service domain` command is not a usable custom domain — raised either by local validation before any API call (protocol, path, port, wildcard, single label, or bad DNS labels) or when `service domain add` gets a plain HTTP 400 rejection from the domain API. The fix is to pass a bare hostname such as `shop.acme.com`. Meta: `status`, `apiCode`, `hint` (API-rejection path only; none for local validation).
-
-### SERVICE.DOMAIN_OWNERSHIP_REQUIRED
-
-The API could not find the TXT record proving that this workspace may attach the
-hostname. Add the exact name and value in the API hint, keep the TXT record for
-future attachments in this workspace, and rerun the suggested command. Recovery
-preserves the selected service, project, and branch. This does not mean that the
-service needs another deployment. Meta: `status`, `apiCode`, `hint`.
-
-### SERVICE.DOMAIN_CLOUDFLARE_PROXY
-
-The API found Cloudflare proxy addresses while the hostname's routing check
-failed. Set that DNS record to DNS only (gray cloud) and rerun the suggested
-command. After the domain is Active, Proxied can be enabled again with Full
-(strict) SSL/TLS. Keep `/.well-known/acme-challenge/*` accessible without caching
-or security challenges so Prisma can renew the certificate. Meta: `status`,
-`apiCode`, `hint`.
+The hostname given to a `service domain` command is not a usable custom domain — raised either by local validation before any API call (protocol, path, port, wildcard, single label, or bad DNS labels) or when `service domain add` is refused by the API with the code `invalid-hostname` or a plain HTTP 400. The fix is to pass a bare hostname such as `shop.acme.com`. Meta: `status`, `apiCode`, `hint` (API-rejection path only; none for local validation).
 
 ### SERVICE.DOMAIN_NOT_FOUND
 
-A `service domain` command targeted a hostname that is not attached to the resolved service — raised when the service's domain listing has no matching hostname, or when a show/delete/retry/wait call gets HTTP 404. The fix is to check the hostname and service, or add the domain first. Meta: none.
+A `service domain` command targeted a hostname that is not attached to the resolved service — raised when the service's hostname listing has no matching hostname, or when a show/delete/retry/wait call gets HTTP 404. The fix is to check the hostname and service, or add the domain first. Meta: none.
 
 ### SERVICE.DOMAIN_QUOTA_EXCEEDED
 
-`service domain add` was refused because the custom-domain quota is reached — HTTP 429, or a 409 whose text mentions a quota, maximum, or limit. The CLI uses the API's recovery hint when supplied, including waiting for an hourly creation budget. Without a hint, it advises deleting an existing custom domain before adding another. Meta: `status`, `apiCode`, `hint`.
+`service domain add` was refused with the API code `quota-exceeded`: the service already has as many hostnames as it may have. The CLI uses the API's recovery hint when supplied. Without a hint, it advises deleting an existing custom domain before adding another. Meta: `status`, `apiCode`, `hint`.
 
-### SERVICE.DOMAIN_RETRY_NOT_ELIGIBLE
+### SERVICE.DOMAIN_RETRY_RATE_LIMITED
 
-`service domain retry` got HTTP 409: the domain is not in a state that can be retried, typically because a verification or TLS step is still in progress. The fix is to wait for the current step to finish and retry only if the domain then fails. Meta: `status`, `apiCode`, `hint`.
+`service domain retry` got HTTP 429. When the hostname's TLS certificate had failed, the retry orders a new certificate, and the workspace has used its hourly limit of new certificates; otherwise requests arrived too fast. Nothing was retried. The fix is to run the retry again after the wait the error names, which comes from the API's `Retry-After` header. Meta: `status`, `apiCode`, `hint`, `retryAfterSeconds`.
 
 ### SERVICE.DOMAIN_VERIFICATION_FAILED
 
-`service domain wait` observed the domain reach the terminal `failed` status; `why` carries the platform's failure category and reason when reported, and a failure-specific fix line is attached when the CLI can derive one from the domain record. Next actions point at `service domain show` and `service domain retry`. Meta: none.
+`service domain wait` saw the hostname in a state that waiting cannot get past: `certificate_failed` (the TLS certificate could not be issued) or `no_service` (the service was deleted). `why` says what happened, with the platform's failure reason when it reported one, and a fix line follows. Next actions point at `service domain show`, and at `service domain retry` for a failed certificate. Meta: `state`.
 
 ### SERVICE.DOMAIN_VERIFICATION_TIMEOUT
 
-`service domain wait` ran out of time (default 15m, or `--timeout 0` for a single check) before the domain became active; `why` reports the status the domain was last seen in. The fix is to inspect the domain with `service domain show` or rerun the wait with a longer `--timeout`. Meta: none.
+`service domain wait` ran out of time (default 15m, or `--timeout 0` for a single read) before the hostname's state became `active`; `why` reports the state the hostname was last seen in and what it waits on, and the next actions carry the fix when the user has to act, such as the DNS records to publish. Meta: `state`.
 
 ### SERVICE.FEATURE_UNAVAILABLE
 
@@ -715,7 +690,7 @@ A `service logs` response body ended without the terminal record that closes a p
 
 ### SERVICE.NO_VERSIONS
 
-The resolved service has no usable version for the command — raised by `service open` when the service has no versions, by `service logs` when it has no live version, and by `service domain add` when the API answers 422 because the selected service has no promoted version that can receive a custom domain. The fix on the domain path is to promote a version on the selected branch first, then add the domain again. Meta: `status`, `apiCode`, `hint` (domain-add path only; otherwise none).
+The resolved service has no usable version for the command — raised by `service open` when the service has no versions, and by `service logs` when it has no live version. Meta: none.
 
 ### SERVICE.SELECTION_INVALID
 

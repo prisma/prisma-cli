@@ -2,6 +2,7 @@ import { CliStructuredError } from "@prisma/cli-engine/protocol";
 import type { ManagementApiClient } from "@prisma/management-api-sdk";
 import type { EnvVarRole } from "../lib/app/env-config";
 import { runCommand, userChoice } from "../lib/app/env-errors";
+import { type ApiErrorBody, apiErrorDetail } from "../lib/management-api-error";
 import type { EnvScopeDescriptor, EnvVariableMetadata } from "../types/app-env";
 
 export interface ResolvedEnvApiScope {
@@ -16,14 +17,6 @@ export interface RawEnvironmentVariable {
   class: "production" | "preview";
   isManagedBySystem: boolean;
   updatedAt: string;
-}
-
-interface ApiErrorBody {
-  error?: {
-    code?: string;
-    message?: string;
-    hint?: string;
-  };
 }
 
 export async function findVariableByNaturalKey(
@@ -95,9 +88,9 @@ export function apiCallError(
   error: ApiErrorBody | undefined,
 ): CliStructuredError {
   const status = response?.status ?? 0;
-  const apiCode = error?.error?.code;
-  const apiMessage = error?.error?.message;
-  const apiHint = error?.error?.hint;
+  const apiCode = apiErrorDetail(error).code;
+  const apiMessage = apiErrorDetail(error).message;
+  const apiHint = apiErrorDetail(error).hint;
 
   if (status === 401 || status === 403) {
     return new CliStructuredError("PROJECT.ENV_API_ERROR", summary, {

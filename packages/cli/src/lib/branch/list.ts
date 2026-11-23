@@ -1,6 +1,7 @@
 import { CliStructuredError } from "@prisma/cli-engine/protocol";
 import type { ManagementApiClient } from "@prisma/management-api-sdk";
 import type { BranchRole } from "../../types/branch";
+import { type ApiErrorBody, apiErrorDetail } from "../management-api-error";
 
 export interface BranchRecord {
   readonly id: string;
@@ -56,24 +57,16 @@ export async function listProjectBranches(
   return collected;
 }
 
-interface ApiErrorBody {
-  error?: {
-    code?: string;
-    message?: string;
-    hint?: string;
-  };
-}
-
 function branchApiError(
   summary: string,
   response: Response | undefined,
   error: ApiErrorBody | undefined,
 ): CliStructuredError {
   const status = response?.status ?? 0;
-  const apiCode = error?.error?.code;
+  const apiCode = apiErrorDetail(error).code;
   return new CliStructuredError("BRANCH.API_ERROR", summary, {
     why:
-      error?.error?.message ??
+      apiErrorDetail(error).message ??
       `The Management API returned status ${status || "unknown"}.`,
     ...(status || apiCode !== undefined
       ? {
@@ -87,7 +80,7 @@ function branchApiError(
       {
         kind: "user-choice",
         label:
-          error?.error?.hint ??
+          apiErrorDetail(error).hint ??
           "Re-run with --log-level verbose for the underlying API response details.",
       },
     ],

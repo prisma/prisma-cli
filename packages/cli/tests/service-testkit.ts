@@ -14,6 +14,7 @@ import {
 } from "@prisma/cli-engine/testing";
 import { onTestFinished } from "vitest";
 import { mountedCommands } from "../src/cli";
+import type { ApiErrorBody } from "../src/lib/management-api-error";
 import type { AuthStateResult } from "../src/types/auth";
 
 export const WORKSPACE = { id: "ws_1", name: "Acme Inc" };
@@ -73,32 +74,12 @@ export interface RawDeployment {
   previewDomain: string | null;
 }
 
-export interface RawDomain {
-  id: string;
-  type: "custom-domain";
-  url: string;
-  hostname: string;
-  appId: string;
-  status: string;
-  foundryStatus: string;
-  failureReason: string | null;
-  failureCategory: string | null;
-  certExpiresAt: string | null;
-  createdAt: string;
-  updatedAt: string;
-  dnsRecords: Array<{
-    type: string;
-    name: string;
-    value: string;
-    ttl: number | null;
-  }>;
-}
-
 type RouteResult =
   | { data: unknown }
   | {
-      error: { error?: { message?: string; hint?: string; code?: string } };
+      error: ApiErrorBody;
       status: number;
+      headers?: Record<string, string>;
     };
 
 export type RouteHandler = (init: {
@@ -132,7 +113,11 @@ export function fakeManagementClient(routes: Routes): ManagementApiClient {
       return Promise.resolve({
         data: undefined,
         error: result.error,
-        response: { status: result.status, ok: false, headers: new Headers() },
+        response: {
+          status: result.status,
+          ok: false,
+          headers: new Headers(result.headers),
+        },
       });
     }
     return Promise.resolve({
@@ -192,32 +177,6 @@ export const DEPLOYMENTS: RawDeployment[] = [
     previewDomain: "dep2.prisma.app",
   },
 ];
-
-export function domainRecord(overrides: Partial<RawDomain> = {}): RawDomain {
-  return {
-    id: "dom_1",
-    type: "custom-domain",
-    url: "https://shop.acme.com",
-    hostname: "shop.acme.com",
-    appId: "svc_1",
-    status: "pending_dns",
-    foundryStatus: "pending",
-    failureReason: null,
-    failureCategory: null,
-    certExpiresAt: null,
-    createdAt: "2026-08-01T00:00:00.000Z",
-    updatedAt: "2026-08-01T00:00:00.000Z",
-    dnsRecords: [
-      {
-        type: "CNAME",
-        name: "shop.acme.com",
-        value: "edge.prisma.build",
-        ttl: 300,
-      },
-    ],
-    ...overrides,
-  };
-}
 
 /** Routes shared by the read-flow commands: project listing, branch
  *  resolution, service listing, and deployments for SERVICE. */

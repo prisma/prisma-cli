@@ -1,7 +1,8 @@
 import { defineCommand } from "@prisma/cli-engine";
 import { ok } from "@prisma/cli-engine/protocol";
+import { DomainApiError } from "../../lib/app/app-provider";
 import { domainTargetArgs } from "./domain-shared";
-import { domainCommandError } from "./errors";
+import { domainCommandError, domainRetryRateLimitedError } from "./errors";
 import { domainRetryPresentations } from "./presentation";
 import type { ServiceDomainRetryResult } from "./results";
 import {
@@ -13,9 +14,9 @@ import {
 
 export const serviceDomainRetryCommand = defineCommand({
   help: {
-    summary: "Retry custom domain DNS verification and TLS provisioning",
+    summary: "Check a custom domain's DNS again and retry a failed certificate",
     description:
-      "Run it after fixing what made the domain fail, typically a missing or wrong DNS record reported by 'service domain show'.",
+      "Run it after publishing or fixing the DNS records that 'service domain show' reports. It looks the records up again, and when the TLS certificate failed it orders a new one. A workspace can order a limited number of certificates per hour; when that limit is used up the command fails and says when to run it again.",
     examples: ["service domain retry shop.acme.com --service my-service"],
   },
   args: domainTargetArgs(),
@@ -39,8 +40,16 @@ export const serviceDomainRetryCommand = defineCommand({
       ctx.signal,
     );
     const retried = await target.provider
-      .retryDomain(domain.id, { signal: ctx.signal })
+      .checkDomain(domain.id, { signal: ctx.signal })
       .catch((error) => {
+        if (error instanceof DomainApiError && error.status === 429) {
+          throw domainRetryRateLimitedError(
+            hostname,
+            error,
+            domain.state === "certificate_failed",
+            target.resultTarget,
+          );
+        }
         throw domainCommandError("retry", error, hostname, target.resultTarget);
       });
 
