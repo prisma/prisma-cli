@@ -8,8 +8,9 @@ import {
   ComputeClient,
   streamLogs,
 } from "@prisma/compute-sdk";
-import type { ManagementApiClient } from "@prisma/management-api-sdk";
+import type { ManagementApiClient, paths } from "@prisma/management-api-sdk";
 import type { BranchKind } from "../../types/branch";
+import { type ApiErrorBody, apiErrorDetail } from "../management-api-error";
 import {
   type BranchDatabaseRecord,
   createBranchDatabase,
@@ -73,33 +74,63 @@ export interface RemovedAppRecord {
   name: string;
 }
 
-export type DomainStatus =
-  | "pending_dns"
-  | "verifying"
-  | "verified_routing_blocked"
-  | "provisioning_tls"
-  | "active"
-  | "failed"
-  | "removing";
+export type DomainStatus = "pending" | "active";
+
+export type DomainState =
+  | "not_verified"
+  | "no_service"
+  | "no_live_deployment"
+  | "update_failed"
+  | "in_use_elsewhere"
+  | "waiting_for_dns"
+  | "provisioning_certificate"
+  | "certificate_failed"
+  | "updating"
+  | "active";
+
+export type DomainCondition =
+  | "ownershipVerified"
+  | "servicePresent"
+  | "liveDeployment"
+  | "dnsPointsAtSwitchboard"
+  | "customDomainBound"
+  | "certificateActive";
+
+export type DomainConditionValue = "met" | "unmet" | "unknown";
 
 export interface DomainDnsRecord {
-  type: string;
+  condition: "ownershipVerified" | "dnsPointsAtSwitchboard";
+  type: "TXT" | "CNAME";
   name: string;
   value: string;
-  ttl: number | null;
+  ttl: number;
 }
 
+export interface DomainHolder {
+  workspaceId: string | null;
+  projectId: string | null;
+  serviceId: string | null;
+  message: string | null;
+}
+
+/** A hostname on a service, as the Management API's RoutingUrl reports it. */
 export interface DomainRecord {
   id: string;
-  type: "custom-domain";
-  url: string;
   hostname: string;
-  appId: string;
+  appId: string | null;
+  /** Whether this entry holds the hostname. At most one entry on the
+   *  platform does, and only that one serves it or can come to. */
+  holdsHostname: boolean;
   status: DomainStatus;
-  foundryStatus: string;
+  state: DomainState;
+  conditions: Record<DomainCondition, DomainConditionValue>;
+  firstUnmetCondition: DomainCondition | null;
   failureReason: string | null;
-  failureCategory: "dns" | "acme" | "storage" | "unknown" | null;
+  dnsDetail: string | null;
   certExpiresAt: string | null;
+  ownershipExpiresAt: string | null;
+  heldBy: DomainHolder | null;
+  setupUrl: string | null;
   createdAt: string;
   updatedAt: string;
   dnsRecords: DomainDnsRecord[];
@@ -109,6 +140,9 @@ export class DomainApiError extends Error {
   readonly status: number;
   readonly code: string | null;
   readonly hint: string | null;
+  readonly retryAfterSeconds: number | null;
+  /** The API's own message, without the CLI's summary in front. */
+  readonly apiMessage: string;
 
   constructor(options: {
     summary: string;
@@ -116,6 +150,7 @@ export class DomainApiError extends Error {
     message: string;
     code?: string | null;
     hint?: string | null;
+    retryAfterSeconds?: number | null;
   }) {
     super(
       `${options.summary}: ${options.message}${options.hint ? ` ${options.hint}` : ""}`,
@@ -124,6 +159,8 @@ export class DomainApiError extends Error {
     this.status = options.status;
     this.code = options.code ?? null;
     this.hint = options.hint ?? null;
+    this.retryAfterSeconds = options.retryAfterSeconds ?? null;
+    this.apiMessage = options.message;
   }
 }
 
@@ -194,7 +231,7 @@ export interface AppProvider {
     appId: string;
     hostname: string;
     signal?: AbortSignal;
-  }): Promise<{ domain: DomainRecord; existing: boolean }>;
+  }): Promise<DomainRecord>;
   showDomain(
     domainId: string,
     options?: { signal?: AbortSignal },
@@ -203,7 +240,7 @@ export interface AppProvider {
     domainId: string,
     options?: { signal?: AbortSignal },
   ): Promise<void>;
-  retryDomain(
+  checkDomain(
     domainId: string,
     options?: { signal?: AbortSignal },
   ): Promise<DomainRecord>;
@@ -374,37 +411,22 @@ export function createAppProvider(
     },
 
     async listDomains(appId, options) {
-      return listComputeServiceDomains(client, appId, options?.signal);
+      return listServiceHostnames(client, appId, options?.signal);
     },
 
     async addDomain(options) {
-      const result = await client.POST("/v1/apps/{appId}/domains", {
+      const result = await client.POST("/v1/services/{serviceId}/urls", {
         params: {
-          path: { appId: options.appId },
+          path: { serviceId: options.appId },
         },
         body: {
           hostname: options.hostname,
+          createDomainOwnership: true,
         },
         signal: options.signal,
       });
 
       if (result.error || !result.data) {
-        if (result.response.status === 409) {
-          const existing = (
-            await listComputeServiceDomains(
-              client,
-              options.appId,
-              options.signal,
-            )
-          ).find((domain) => sameHostname(domain.hostname, options.hostname));
-          if (existing) {
-            return {
-              domain: existing,
-              existing: true,
-            };
-          }
-        }
-
         throw domainApiCallError(
           "Failed to add custom domain",
           result.response,
@@ -412,16 +434,13 @@ export function createAppProvider(
         );
       }
 
-      return {
-        domain: normalizeDomainRecord(result.data.data),
-        existing: false,
-      };
+      return toDomainRecord(result.data.data);
     },
 
     async showDomain(domainId, options) {
-      const result = await client.GET("/v1/domains/{domainId}", {
+      const result = await client.GET("/v1/urls/{id}", {
         params: {
-          path: { domainId },
+          path: { id: domainId },
         },
         signal: options?.signal,
       });
@@ -434,13 +453,13 @@ export function createAppProvider(
         );
       }
 
-      return normalizeDomainRecord(result.data.data);
+      return toDomainRecord(result.data.data);
     },
 
     async removeDomain(domainId, options) {
-      const result = await client.DELETE("/v1/domains/{domainId}", {
+      const result = await client.DELETE("/v1/urls/{id}", {
         params: {
-          path: { domainId },
+          path: { id: domainId },
         },
         signal: options?.signal,
       });
@@ -454,23 +473,23 @@ export function createAppProvider(
       }
     },
 
-    async retryDomain(domainId, options) {
-      const result = await client.POST("/v1/domains/{domainId}/retry", {
+    async checkDomain(domainId, options) {
+      const result = await client.POST("/v1/urls/{id}/check", {
         params: {
-          path: { domainId },
+          path: { id: domainId },
         },
         signal: options?.signal,
       });
 
       if (result.error || !result.data) {
         throw domainApiCallError(
-          "Failed to retry custom domain",
+          "Failed to check custom domain",
           result.response,
           result.error,
         );
       }
 
-      return normalizeDomainRecord(result.data.data);
+      return toDomainRecord(result.data.data);
     },
 
     async promoteDeployment(options) {
@@ -774,36 +793,8 @@ interface RawAppRecord {
   appEndpointDomain: string | null;
 }
 
-interface RawApiErrorBody {
-  error?: {
-    code?: string;
-    message?: string;
-    hint?: string;
-  };
-}
-
-interface RawDomainDnsRecord {
-  type?: unknown;
-  name?: unknown;
-  value?: unknown;
-  ttl?: unknown;
-}
-
-interface RawDomainRecord {
-  id: string;
-  type: "custom-domain";
-  url: string;
-  hostname: string;
-  appId: string;
-  status: DomainStatus;
-  foundryStatus: string;
-  failureReason: string | null;
-  failureCategory: "dns" | "acme" | "storage" | "unknown" | null;
-  certExpiresAt: string | null;
-  createdAt: string;
-  updatedAt: string;
-  dnsRecords?: RawDomainDnsRecord[] | null;
-}
+type RawRoutingUrl =
+  paths["/v1/urls/{id}"]["get"]["responses"][200]["content"]["application/json"]["data"];
 
 async function listBranches(
   client: ManagementApiClient,
@@ -1013,14 +1004,14 @@ async function createComputeService(
   };
 }
 
-async function listComputeServiceDomains(
+async function listServiceHostnames(
   client: ManagementApiClient,
-  appId: string,
+  serviceId: string,
   signal?: AbortSignal,
 ): Promise<DomainRecord[]> {
-  const result = await client.GET("/v1/apps/{appId}/domains", {
+  const result = await client.GET("/v1/services/{serviceId}/urls", {
     params: {
-      path: { appId: appId },
+      path: { serviceId },
     },
     signal,
   });
@@ -1033,94 +1024,72 @@ async function listComputeServiceDomains(
     );
   }
 
-  return result.data.data.map((domain) => normalizeDomainRecord(domain));
+  return result.data.data.map(toDomainRecord);
 }
 
-function normalizeDomainRecord(domain: RawDomainRecord): DomainRecord {
+function toDomainRecord(url: RawRoutingUrl): DomainRecord {
   return {
-    id: domain.id,
-    type: domain.type,
-    url: domain.url,
-    hostname: domain.hostname,
-    appId: domain.appId,
-    status: domain.status,
-    foundryStatus: domain.foundryStatus,
-    failureReason: domain.failureReason,
-    failureCategory: domain.failureCategory,
-    certExpiresAt: domain.certExpiresAt,
-    createdAt: domain.createdAt,
-    updatedAt: domain.updatedAt,
-    dnsRecords: normalizeDomainDnsRecords(domain.dnsRecords),
+    id: url.id,
+    hostname: url.hostname,
+    appId: url.serviceId,
+    holdsHostname: url.customDomain !== null,
+    status: url.status,
+    state: url.state,
+    conditions: url.conditions,
+    firstUnmetCondition: url.firstUnmetCondition,
+    failureReason: url.customDomain?.failureReason ?? null,
+    dnsDetail: url.switchboardDns?.detail ?? null,
+    certExpiresAt: url.customDomain?.certExpiresAt ?? null,
+    ownershipExpiresAt: url.ownershipExpiry?.expiresAt ?? null,
+    heldBy: url.heldBy,
+    setupUrl: url.setupUrl,
+    createdAt: url.createdAt,
+    updatedAt: url.updatedAt,
+    dnsRecords: url.records,
   };
-}
-
-function normalizeDomainDnsRecords(
-  records: RawDomainDnsRecord[] | null | undefined,
-): DomainDnsRecord[] {
-  if (!Array.isArray(records)) {
-    return [];
-  }
-
-  return records
-    .map((record) => {
-      if (
-        typeof record.type !== "string" ||
-        typeof record.name !== "string" ||
-        typeof record.value !== "string"
-      ) {
-        return null;
-      }
-
-      return {
-        type: record.type,
-        name: record.name,
-        value: record.value,
-        ttl: typeof record.ttl === "number" ? record.ttl : null,
-      };
-    })
-    .filter((record): record is DomainDnsRecord => Boolean(record));
-}
-
-function sameHostname(left: string, right: string): boolean {
-  return (
-    normalizeHostnameForComparison(left) ===
-    normalizeHostnameForComparison(right)
-  );
-}
-
-function normalizeHostnameForComparison(hostname: string): string {
-  return hostname.trim().replace(/\.$/, "").toLowerCase();
 }
 
 function apiCallError(
   summary: string,
   response: Response,
-  error: RawApiErrorBody,
+  error: ApiErrorBody,
 ): Error {
   if (response.status === 404) {
     return new Error("Resource Not Found");
   }
 
   const message =
-    error.error?.message ?? `Management API returned HTTP ${response.status}.`;
-  const hint = error.error?.hint ? ` ${error.error.hint}` : "";
+    apiErrorDetail(error).message ??
+    `Management API returned HTTP ${response.status}.`;
+  const hint = apiErrorDetail(error).hint
+    ? ` ${apiErrorDetail(error).hint}`
+    : "";
   return new Error(`${summary}: ${message}${hint}`);
 }
 
 function domainApiCallError(
   summary: string,
   response: Response,
-  error: RawApiErrorBody,
+  error: ApiErrorBody,
 ): DomainApiError {
   return new DomainApiError({
     summary,
     status: response.status,
-    code: error.error?.code ?? null,
+    code: apiErrorDetail(error).code ?? null,
     message:
-      error.error?.message ??
+      apiErrorDetail(error).message ??
       `Management API returned HTTP ${response.status}.`,
-    hint: error.error?.hint ?? null,
+    hint: apiErrorDetail(error).hint ?? null,
+    retryAfterSeconds: retryAfterSeconds(response),
   });
+}
+
+function retryAfterSeconds(response: Response): number | null {
+  const seconds = Number.parseInt(
+    response.headers.get("retry-after") ?? "",
+    10,
+  );
+  return Number.isInteger(seconds) && seconds >= 0 ? seconds : null;
 }
 
 function toAbsoluteUrl(url: string | null): string | null {

@@ -121,11 +121,11 @@ A Project, service, database or bucket that Prisma Composer deployed can also be
 
 ### `wait`
 
-Block until a remote resource reaches a terminal state.
+Block until a remote resource reaches a terminal state. A wait may ask the platform to look again at something it does not watch on its own, as `service domain wait` does for DNS, but it does not retry work that failed: that stays with the user.
 
 Example:
 
-- `app domain wait`
+- `service domain wait`
 
 ### `promote`
 
@@ -152,20 +152,13 @@ That is still one action in the command grammar. It is preferable to inventing a
 
 ## Custom domains
 
-`service domain` commands manage domains for the service on the selected branch.
-They default to `production`; `--branch <name>` selects a preview or staging
-branch. The service must have a promoted, running version before a domain can
-be added. Domain lookup, retry, waiting, and deletion stay within that service.
+`service domain` commands manage hostnames for the service on the selected branch. They default to `production`; `--branch <name>` selects a preview or staging branch. Lookup, retry, waiting, and deletion stay within that service.
 
-New domain attachments require a persistent workspace TXT ownership record as
-well as the routing CNAME. Missing proof returns the exact DNS instructions and
-a command to retry on the same branch. Existing connected domains keep working;
-recreating a branch in the same workspace reuses its TXT record.
+A hostname can be added before its DNS exists and before the service has a live version. `add` succeeds and prints the DNS records to publish: a TXT record that proves the workspace owns the domain, and a CNAME that routes the hostname. Each hostname reports a `status` (`pending` until it has gone live, then `active`) and a `state` that says what it does now. The state `active` means the hostname serves the service; every other state names what is still missing, and the CLI turns it into a "waiting on" or "failure" line and, when the API says what the user has to do, a fix. How a failure is worded follows [Errors From The Systems Below The API](error-conventions.md#errors-from-the-systems-below-the-api).
 
-Cloudflare proxy detection returns `SERVICE.DOMAIN_CLOUDFLARE_PROXY` with DNS-only
-instructions and a retry command for the same target. The customer can turn the
-proxy back on after the domain is Active, with Full (strict) SSL/TLS and the
-ACME challenge path accessible for certificate renewal.
+The platform looks DNS up when a hostname is added or checked, not on a timer. So `retry` asks for a check, which also has the platform try a failed update again, and `wait` asks for one periodically while the hostname waits for records the user publishes. A check also retries a failed TLS certificate, which counts against the workspace's hourly limit of new certificates; `wait` therefore stops at a failed certificate and leaves the retry to the user.
+
+A hostname on a service is one thing to the CLI, although the API accepts the same hostname on a service more than once. So `add` first looks for the hostname and shows the existing entry; `show`, `retry` and `wait` follow the entry that holds the hostname, which is the one that serves it or will; and `delete` removes every entry the service lists for it. Adding a hostname also creates the workspace's domain ownership for it, which no CLI command shows or removes.
 
 ## Shared Flag Conventions
 

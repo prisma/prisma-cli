@@ -16,9 +16,8 @@
 import { credentialWorkspaceId } from "@prisma/cli-engine";
 import { mintTestJwt } from "@prisma/cli-engine/testing";
 import { describe, expect, it } from "vitest";
-
+import { domainRecord } from "./helpers/routing-url";
 import {
-  domainRecord,
   makeServiceCli,
   PROJECT,
   page,
@@ -78,10 +77,10 @@ const UNSCOPED_SERVICE_TOKEN = mintTestJwt({ sub: "usr_1" });
 
 function domainRoutes(): Routes {
   return readFlowRoutes({
-    "GET /v1/apps/{appId}/domains": () => ({
+    "GET /v1/services/{serviceId}/urls": () => ({
       data: { data: [domainRecord()] },
     }),
-    "GET /v1/domains/{domainId}": () => ({ data: { data: domainRecord() } }),
+    "GET /v1/urls/{id}": () => ({ data: { data: domainRecord() } }),
   });
 }
 

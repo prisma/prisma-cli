@@ -14,6 +14,7 @@ import type { ManagementApiClient } from "@prisma/management-api-sdk";
 import { CLI_NAME } from "../../cli-name";
 import { formatCommandArgument } from "../../command-arguments";
 import { listProjectBranches } from "../branch/list";
+import { type ApiErrorBody, apiErrorDetail } from "../management-api-error";
 
 const PRODUCTION_ENVIRONMENT = "production";
 const WHITESPACE = /\s/;
@@ -263,14 +264,6 @@ interface Page<T> {
   readonly pagination: {
     readonly hasMore: boolean;
     readonly nextCursor: string | null;
-  };
-}
-
-interface ApiErrorBody {
-  readonly error?: {
-    readonly code?: string;
-    readonly message?: string;
-    readonly hint?: string;
   };
 }
 
@@ -589,10 +582,10 @@ function addressApiError(
   error: ApiErrorBody | undefined,
 ): CliStructuredError {
   const status = response.status;
-  const apiCode = error?.error?.code;
+  const apiCode = apiErrorDetail(error).code;
   return new CliStructuredError("ADDRESS.API_ERROR", summary, {
     why:
-      error?.error?.message ??
+      apiErrorDetail(error).message ??
       `The Management API returned status ${status || "unknown"}.`,
     meta: {
       ...(status ? { status } : {}),
@@ -600,7 +593,7 @@ function addressApiError(
     },
     nextActions: [
       userChoice(
-        error?.error?.hint ??
+        apiErrorDetail(error).hint ??
           "Re-run with --log-level verbose for the underlying API response details.",
       ),
     ],

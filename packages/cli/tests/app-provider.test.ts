@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { activeRecord, domainRecord } from "./helpers/routing-url";
 
 afterEach(() => {
   vi.doUnmock("@prisma/compute-sdk");
@@ -47,161 +48,162 @@ describe("preview app provider", () => {
     expect(client.POST).not.toHaveBeenCalled();
   });
 
-  it("treats re-adding an existing custom domain as idempotent", async () => {
+  it("adds the hostname with a domain ownership and returns it pending with the records to publish", async () => {
     const client = {
-      GET: vi.fn().mockImplementation((pathName: string) => {
-        if (pathName === "/v1/apps/{appId}/domains") {
-          return {
-            data: {
-              data: [
-                {
-                  id: "dom_123",
-                  type: "custom-domain",
-                  url: "https://api.prisma.io/v1/domains/dom_123",
-                  hostname: "shop.acme.com",
-                  appId: "app_1",
-                  status: "active",
-                  foundryStatus: "active",
-                  failureReason: null,
-                  failureCategory: null,
-                  certExpiresAt: null,
-                  createdAt: "2026-05-22T09:14:00.000Z",
-                  updatedAt: "2026-05-22T09:14:00.000Z",
-                },
-              ],
-              pagination: { hasMore: false, nextCursor: null },
-            },
-            response: { status: 200 },
-          };
-        }
-
-        throw new Error(`Unexpected path ${pathName}`);
-      }),
+      GET: vi.fn(),
       POST: vi.fn().mockImplementation((pathName: string) => {
-        if (pathName === "/v1/apps/{appId}/domains") {
+        if (pathName === "/v1/services/{serviceId}/urls") {
           return {
-            error: {
-              error: {
-                code: "CONFLICT",
-                message: "Hostname already registered.",
-              },
-            },
-            response: { status: 409 },
+            data: { data: domainRecord({ id: "url_123" }) },
+            response: { status: 201, headers: new Headers() },
           };
         }
-
         throw new Error(`Unexpected path ${pathName}`);
       }),
     };
+    const { createAppProvider } = await importProvider();
 
-    vi.doMock("@prisma/compute-sdk", async (importOriginal) => ({
-      ...(await importOriginal<typeof import("@prisma/compute-sdk")>()),
-      ApiError: { is: () => false },
-      ComputeClient: class {},
-    }));
-
-    const { createAppProvider } = await import("../src/lib/app/app-provider");
-
-    const provider = createAppProvider(client as never);
-    const result = await provider.addDomain({
-      appId: "app_1",
-      hostname: "Shop.Acme.com",
+    const domain = await createAppProvider(client as never).addDomain({
+      appId: "svc_1",
+      hostname: "shop.acme.com",
     });
 
-    expect(result).toMatchObject({
-      existing: true,
-      domain: {
-        id: "dom_123",
-        hostname: "shop.acme.com",
-        status: "active",
-      },
+    expect(domain).toMatchObject({
+      id: "url_123",
+      appId: "svc_1",
+      status: "pending",
+      state: "not_verified",
+      firstUnmetCondition: "ownershipVerified",
+      holdsHostname: false,
+      dnsRecords: [
+        { condition: "ownershipVerified", type: "TXT" },
+        { condition: "dnsPointsAtSwitchboard", type: "CNAME" },
+      ],
     });
     expect(client.POST).toHaveBeenCalledWith(
-      "/v1/apps/{appId}/domains",
+      "/v1/services/{serviceId}/urls",
       expect.objectContaining({
-        params: {
-          path: { appId: "app_1" },
-        },
-        body: {
-          hostname: "Shop.Acme.com",
-        },
+        params: { path: { serviceId: "svc_1" } },
+        body: { hostname: "shop.acme.com", createDomainOwnership: true },
       }),
     );
-    expect(client.GET).toHaveBeenCalledWith(
-      "/v1/apps/{appId}/domains",
-      expect.objectContaining({
-        params: {
-          path: { appId: "app_1" },
-        },
-      }),
-    );
+    expect(client.GET).not.toHaveBeenCalled();
   });
 
-  it("surfaces domain conflicts when the hostname is not on the selected app", async () => {
+  it("marks an entry that has a custom domain as the one holding the hostname", async () => {
     const client = {
-      GET: vi.fn().mockImplementation((pathName: string) => {
-        if (pathName === "/v1/apps/{appId}/domains") {
-          return {
-            data: {
-              data: [
-                {
-                  id: "dom_123",
-                  type: "custom-domain",
-                  url: "https://api.prisma.io/v1/domains/dom_123",
-                  hostname: "other.acme.com",
-                  appId: "app_1",
-                  status: "active",
-                  foundryStatus: "active",
-                  failureReason: null,
-                  failureCategory: null,
-                  certExpiresAt: null,
-                  createdAt: "2026-05-22T09:14:00.000Z",
-                  updatedAt: "2026-05-22T09:14:00.000Z",
-                },
-              ],
-              pagination: { hasMore: false, nextCursor: null },
-            },
-            response: { status: 200 },
-          };
-        }
-
-        throw new Error(`Unexpected path ${pathName}`);
+      GET: vi.fn().mockResolvedValue({
+        data: {
+          data: [
+            domainRecord({ id: "url_1" }),
+            activeRecord({
+              id: "url_2",
+              customDomain: {
+                id: "cd_1",
+                status: "active",
+                failureReason: null,
+                certExpiresAt: "2026-11-01T00:00:00.000Z",
+                lastSeenAt: "2026-08-01T00:05:00.000Z",
+                certificateRetryRequestedAt: null,
+                certificateIssuanceStuck: false,
+              },
+            }),
+          ],
+          pagination: { hasMore: false, nextCursor: null },
+        },
+        response: { status: 200, headers: new Headers() },
       }),
+      POST: vi.fn(),
+    };
+    const { createAppProvider } = await importProvider();
+
+    const domains = await createAppProvider(client as never).listDomains(
+      "svc_1",
+    );
+
+    expect(
+      domains.map(({ id, holdsHostname }) => ({ id, holdsHostname })),
+    ).toEqual([
+      { id: "url_1", holdsHostname: false },
+      { id: "url_2", holdsHostname: true },
+    ]);
+  });
+
+  it("rejects a refused add with the API's status and code", async () => {
+    const client = {
+      GET: vi.fn(),
+      POST: vi.fn().mockResolvedValue({
+        error: {
+          error: {
+            code: "quota-exceeded",
+            message: "This workspace has 100 custom domains.",
+          },
+        },
+        response: { status: 409, headers: new Headers() },
+      }),
+    };
+    const { createAppProvider, DomainApiError } = await importProvider();
+
+    const rejection = createAppProvider(client as never).addDomain({
+      appId: "svc_1",
+      hostname: "shop.acme.com",
+    });
+
+    await expect(rejection).rejects.toBeInstanceOf(DomainApiError);
+    await expect(rejection).rejects.toMatchObject({
+      status: 409,
+      code: "quota-exceeded",
+      apiMessage: "This workspace has 100 custom domains.",
+    });
+  });
+
+  it.each([
+    { header: "90", retryAfterSeconds: 90 },
+    { header: undefined, retryAfterSeconds: null },
+    { header: "Wed, 21 Oct 2026 07:28:00 GMT", retryAfterSeconds: null },
+  ])("carries Retry-After $header from a 429 check as $retryAfterSeconds seconds", async ({
+    header,
+    retryAfterSeconds,
+  }) => {
+    const client = {
+      GET: vi.fn(),
       POST: vi.fn().mockImplementation((pathName: string) => {
-        if (pathName === "/v1/apps/{appId}/domains") {
+        if (pathName === "/v1/urls/{id}/check") {
           return {
             error: {
               error: {
-                code: "CONFLICT",
-                message: "Hostname already registered.",
+                code: "rate-limited",
+                message: "Too many certificate orders.",
               },
             },
-            response: { status: 409 },
+            response: {
+              status: 429,
+              headers: new Headers(
+                header === undefined ? {} : { "Retry-After": header },
+              ),
+            },
           };
         }
-
         throw new Error(`Unexpected path ${pathName}`);
       }),
     };
-
-    vi.doMock("@prisma/compute-sdk", async (importOriginal) => ({
-      ...(await importOriginal<typeof import("@prisma/compute-sdk")>()),
-      ApiError: { is: () => false },
-      ComputeClient: class {},
-    }));
-
-    const { createAppProvider } = await import("../src/lib/app/app-provider");
-
-    const provider = createAppProvider(client as never);
+    const { createAppProvider } = await importProvider();
 
     await expect(
-      provider.addDomain({
-        appId: "app_1",
-        hostname: "shop.acme.com",
-      }),
-    ).rejects.toMatchObject({
-      status: 409,
-      code: "CONFLICT",
-    });
+      createAppProvider(client as never).checkDomain("url_123"),
+    ).rejects.toMatchObject({ status: 429, retryAfterSeconds });
+    expect(client.POST).toHaveBeenCalledWith(
+      "/v1/urls/{id}/check",
+      expect.objectContaining({ params: { path: { id: "url_123" } } }),
+    );
   });
 });
+
+async function importProvider() {
+  vi.doMock("@prisma/compute-sdk", async (importOriginal) => ({
+    ...(await importOriginal<typeof import("@prisma/compute-sdk")>()),
+    ApiError: { is: () => false },
+    ComputeClient: class {},
+  }));
+  return import("../src/lib/app/app-provider");
+}

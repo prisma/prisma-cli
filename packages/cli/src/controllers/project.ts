@@ -11,6 +11,7 @@ import { matchError } from "better-result";
 
 import type { GitHubRepositoryReference } from "../adapters/git";
 import type { PrismaCliPackageCommandFormatter } from "../lib/agent/cli-command";
+import { type ApiErrorBody, apiErrorDetail } from "../lib/management-api-error";
 import {
   LOCAL_RESOLUTION_PIN_RELATIVE_PATH,
   type LocalResolutionPinReadError,
@@ -306,13 +307,7 @@ interface InstallationRepositoryLookup {
   inspectableInstallationCount: number;
 }
 
-export interface SourceRepositoryApiError {
-  error?: {
-    code?: string;
-    message?: string;
-    hint?: string;
-  };
-}
+export type SourceRepositoryApiError = ApiErrorBody;
 
 export async function findRepositoryInInstallations(
   api: ManagementApiClient,
@@ -718,9 +713,9 @@ export function repoConnectionApiError(
   error: SourceRepositoryApiError | undefined,
 ): CliStructuredError {
   const status = response?.status ?? 0;
-  const apiCode = error?.error?.code;
-  const apiMessage = error?.error?.message;
-  const apiHint = error?.error?.hint;
+  const apiCode = apiErrorDetail(error).code;
+  const apiMessage = apiErrorDetail(error).message;
+  const apiHint = apiErrorDetail(error).hint;
   const unauthorized = status === 401 || status === 403;
 
   return new CliStructuredError("GIT.REPO_CONNECTION_FAILED", summary, {

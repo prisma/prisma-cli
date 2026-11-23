@@ -15,7 +15,7 @@ export const serviceDomainShowCommand = defineCommand({
   help: {
     summary: "Show custom domain status and certificate details",
     description:
-      "Reports where the domain is in its lifecycle: DNS verification, TLS certificate issuance, active, or failed with the fix to apply. Check here first when a domain is not serving.",
+      "Reports what the hostname does now: its state, what it still waits on, and the DNS records still to publish. The state 'active' means it serves the service. Check here first when a domain is not serving.",
     examples: ["service domain show shop.acme.com --service my-service"],
   },
   args: domainTargetArgs(),

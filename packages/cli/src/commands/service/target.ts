@@ -24,6 +24,7 @@ import type { BranchKind } from "../../types/branch";
 import type { ProjectResolution, ProjectSummary } from "../../types/project";
 import {
   branchValueEmptyError,
+  type DomainCommand,
   deployFailedError,
   domainCommandError,
   domainHostnameInvalidError,
@@ -383,23 +384,21 @@ export function toServiceDomainSummary(
 ): ServiceDomainSummary {
   return {
     id: domain.id,
-    type: domain.type,
-    url: domain.url,
     hostname: domain.hostname,
     serviceId: domain.appId,
     status: domain.status,
-    foundryStatus: domain.foundryStatus,
+    state: domain.state,
+    conditions: domain.conditions,
+    firstUnmetCondition: domain.firstUnmetCondition,
     failureReason: domain.failureReason,
-    failureCategory: domain.failureCategory,
+    dnsDetail: domain.dnsDetail,
     certExpiresAt: domain.certExpiresAt,
+    ownershipExpiresAt: domain.ownershipExpiresAt,
+    heldBy: domain.heldBy,
+    setupUrl: domain.setupUrl,
     createdAt: domain.createdAt,
     updatedAt: domain.updatedAt,
-    dnsRecords: domain.dnsRecords.map((record) => ({
-      type: record.type,
-      name: record.name,
-      value: record.value,
-      ttl: record.ttl,
-    })),
+    dnsRecords: domain.dnsRecords,
   };
 }
 
@@ -440,25 +439,55 @@ export function sameDomainHostname(left: string, right: string): boolean {
   );
 }
 
-export async function resolveDomainByHostname(
+/**
+ * Every entry the service lists for the hostname. The API accepts one
+ * hostname on a service more than once, and the CLI treats those
+ * entries as one hostname: this is the only place that finds them.
+ */
+export async function listDomainEntries(
   provider: AppProvider,
   target: ServiceDomainTarget,
   hostname: string,
-  command: "add" | "show" | "delete" | "retry" | "wait",
+  command: DomainCommand,
   signal: AbortSignal,
-): Promise<DomainRecord> {
+): Promise<DomainRecord[]> {
   const domains = await provider
     .listDomains(target.service.id, { signal })
     .catch((error) => {
       throw domainCommandError(command, error, hostname, target);
     });
-  const matched = domains.find((domain) =>
+  return domains.filter((domain) =>
     sameDomainHostname(domain.hostname, hostname),
   );
-  if (matched) {
-    return matched;
+}
+
+/**
+ * The entry that says what the hostname does: the one that holds the
+ * hostname, which serves it or will, or the oldest while none holds it.
+ */
+export function representativeDomain(
+  entries: readonly DomainRecord[],
+): DomainRecord | undefined {
+  const oldestFirst = [...entries].sort((left, right) =>
+    left.createdAt.localeCompare(right.createdAt),
+  );
+  return oldestFirst.find((entry) => entry.holdsHostname) ?? oldestFirst[0];
+}
+
+export async function resolveDomainByHostname(
+  provider: AppProvider,
+  target: ServiceDomainTarget,
+  hostname: string,
+  command: DomainCommand,
+  signal: AbortSignal,
+): Promise<DomainRecord> {
+  const domain = representativeDomain(
+    await listDomainEntries(provider, target, hostname, command, signal),
+  );
+  if (domain === undefined) {
+    throw domainNotFoundError(hostname, target);
   }
-  throw domainNotFoundError(hostname, target);
+  return domain;
 }
 
 interface ServiceProjectState {

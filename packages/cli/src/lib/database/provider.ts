@@ -13,6 +13,7 @@ import type {
   DatabaseUsageMetrics,
   DatabaseUsagePeriod,
 } from "../../types/database";
+import { type ApiErrorBody, apiErrorDetail } from "../management-api-error";
 
 export interface DatabaseCreateInput {
   projectId: string;
@@ -128,14 +129,6 @@ export interface DatabaseProvider {
   ): Promise<DatabaseConnectionRotateRecord>;
 }
 
-interface RawApiErrorBody {
-  error?: {
-    code?: string;
-    message?: string;
-    hint?: string;
-  };
-}
-
 interface RawRegion {
   id?: string | null;
   name?: string | null;
@@ -230,7 +223,7 @@ export function createManagementDatabaseProvider(
   const toDatabaseApiError = (
     summary: string,
     response: Response | undefined,
-    error: RawApiErrorBody | undefined,
+    error: ApiErrorBody | undefined,
     signal?: AbortSignal,
   ) =>
     databaseApiError({
@@ -755,14 +748,14 @@ export function normalizeRotatedConnection(
 
 function backupsUnsupportedError(
   databaseId: string,
-  error: RawApiErrorBody | undefined,
+  error: ApiErrorBody | undefined,
 ): CliStructuredError {
   return new CliStructuredError(
     "POSTGRES.BACKUPS_UNSUPPORTED",
     "Backups are not available for this database",
     {
       why:
-        error?.error?.message ??
+        apiErrorDetail(error).message ??
         `The platform does not manage backups for database "${databaseId}", for example because it is a remote/BYO database.`,
       nextActions: [
         userChoice(
@@ -775,7 +768,7 @@ function backupsUnsupportedError(
 
 function restoreBackupNotFoundError(
   options: { backupId: string; sourceDatabaseId: string },
-  error: RawApiErrorBody | undefined,
+  error: ApiErrorBody | undefined,
 ): CliStructuredError {
   const listCommand = `${CLI_NAME} postgres backup list ${options.sourceDatabaseId}`;
   return new CliStructuredError(
@@ -783,7 +776,7 @@ function restoreBackupNotFoundError(
     "Database backup not found",
     {
       why:
-        error?.error?.message ??
+        apiErrorDetail(error).message ??
         `No backup matched "${options.backupId}" for database "${options.sourceDatabaseId}".`,
       nextActions: [
         userChoice(`Pass a backup id from ${listCommand}.`),
@@ -795,14 +788,14 @@ function restoreBackupNotFoundError(
 
 function restoreConflictError(
   targetDatabaseId: string,
-  error: RawApiErrorBody | undefined,
+  error: ApiErrorBody | undefined,
 ): CliStructuredError {
   return new CliStructuredError(
     "POSTGRES.RESTORE_CONFLICT",
     "Database cannot be restored right now",
     {
       why:
-        error?.error?.message ??
+        apiErrorDetail(error).message ??
         `Database "${targetDatabaseId}" is provisioning or already recovering.`,
       nextActions: [
         userChoice(
@@ -870,7 +863,7 @@ async function databaseApiError(options: {
   workspaceId?: string;
   summary: string;
   response: Response | undefined;
-  error: RawApiErrorBody | undefined;
+  error: ApiErrorBody | undefined;
   signal?: AbortSignal;
 }): Promise<CliStructuredError> {
   if (isPlanLimitApiError(options.error)) {
@@ -878,12 +871,12 @@ async function databaseApiError(options: {
   }
 
   const status = options.response?.status ?? 0;
-  const meta = apiErrorMeta(status, options.error?.error?.code);
+  const meta = apiErrorMeta(status, apiErrorDetail(options.error).code);
 
   return new CliStructuredError("POSTGRES.API_ERROR", options.summary, {
-    why: apiErrorWhy(status, options.error?.error?.message),
+    why: apiErrorWhy(status, apiErrorDetail(options.error).message),
     ...(meta === undefined ? {} : { meta }),
-    nextActions: apiErrorActions(status, options.error?.error?.hint),
+    nextActions: apiErrorActions(status, apiErrorDetail(options.error).hint),
   });
 }
 
@@ -928,8 +921,8 @@ async function planLimitReachedError(options: {
   );
 }
 
-function isPlanLimitApiError(error: RawApiErrorBody | undefined): boolean {
-  return error?.error?.code === "planLimitReached";
+function isPlanLimitApiError(error: ApiErrorBody | undefined): boolean {
+  return apiErrorDetail(error).code === "planLimitReached";
 }
 
 async function readWorkspaceSubscription(

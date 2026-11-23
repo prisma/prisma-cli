@@ -1,20 +1,41 @@
 import { defineCommand } from "@prisma/cli-engine";
 import { ok } from "@prisma/cli-engine/protocol";
+import { DomainApiError, type DomainRecord } from "../../lib/app/app-provider";
 import { domainTargetArgs } from "./domain-shared";
-import { domainCommandError, userCancelledError } from "./errors";
+import {
+  domainCommandError,
+  domainNotFoundError,
+  userCancelledError,
+} from "./errors";
 import { domainDeletePresentations } from "./presentation";
 import type { ServiceDomainDeleteResult } from "./results";
 import {
+  listDomainEntries,
   normalizeDomainHostname,
-  resolveDomainByHostname,
   resolveServiceDomainTarget,
 } from "./target";
+
+/** Someone else deleted the entry between the listing and this delete. */
+function isAlreadyDeleted(error: unknown): boolean {
+  return error instanceof DomainApiError && error.status === 404;
+}
+
+/**
+ * When the entry that holds the hostname is deleted while another entry
+ * remains, the platform moves the hostname onto that one. Deleting the
+ * holder last avoids the move.
+ */
+function holderLast(entries: readonly DomainRecord[]): DomainRecord[] {
+  return [...entries].sort(
+    (left, right) => Number(left.holdsHostname) - Number(right.holdsHostname),
+  );
+}
 
 export const serviceDomainDeleteCommand = defineCommand({
   help: {
     summary: "Delete a custom domain from the service",
     description:
-      "The hostname stops routing to the service immediately; the service itself and its generated URL keep working. Pass the hostname with --confirm to run non-interactively.",
+      "The hostname stops routing to the service; the service itself and its generated URL keep working. Pass the hostname with --confirm to run non-interactively.",
     examples: [
       "service domain delete shop.acme.com --service my-service",
       "service domain delete shop.acme.com --service my-service --confirm shop.acme.com",
@@ -33,13 +54,16 @@ export const serviceDomainDeleteCommand = defineCommand({
       branchName: args.flags.branch,
       commandName: `service domain delete ${hostname}`,
     });
-    const domain = await resolveDomainByHostname(
+    const entries = await listDomainEntries(
       target.provider,
       target.resultTarget,
       hostname,
       "delete",
       ctx.signal,
     );
+    if (entries.length === 0) {
+      throw domainNotFoundError(hostname, target.resultTarget);
+    }
 
     const granted = await ctx.prompt.consent(
       `Delete ${hostname} from Service "${target.resultTarget.service.name}"?`,
@@ -53,16 +77,22 @@ export const serviceDomainDeleteCommand = defineCommand({
       throw userCancelledError("Custom domain deletion canceled");
     }
 
-    await target.provider
-      .removeDomain(domain.id, { signal: ctx.signal })
-      .catch((error) => {
-        throw domainCommandError(
-          "delete",
-          error,
-          hostname,
-          target.resultTarget,
-        );
-      });
+    for (const entry of holderLast(entries)) {
+      // biome-ignore lint/performance/noAwaitInLoops: a service lists a hostname more than once only when entries were added outside the CLI, so this is almost always one request.
+      await target.provider
+        .removeDomain(entry.id, { signal: ctx.signal })
+        .catch((error) => {
+          if (isAlreadyDeleted(error)) {
+            return;
+          }
+          throw domainCommandError(
+            "delete",
+            error,
+            hostname,
+            target.resultTarget,
+          );
+        });
+    }
 
     const result: ServiceDomainDeleteResult = {
       ...target.resultTarget,

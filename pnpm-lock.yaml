@@ -34,10 +34,10 @@ importers:
         version: 0.39.0(@prisma/cli-engine@packages+cli-engine)(arktype@2.2.7)(vite@7.3.5(@types/node@22.19.19)(jiti@2.7.0)(tsx@4.22.4)(yaml@2.9.1))(ws@8.21.0)
       '@prisma/compute-sdk':
         specifier: 0.43.0
-        version: 0.43.0(@prisma/management-api-sdk@1.80.0)(rollup@4.62.2)
+        version: 0.43.0(@prisma/management-api-sdk@1.101.0)(rollup@4.62.2)
       '@prisma/management-api-sdk':
-        specifier: 1.80.0
-        version: 1.80.0
+        specifier: 1.101.0
+        version: 1.101.0
       '@prisma/orm-toolchain':
         specifier: 8.0.0-rc.24
         version: 8.0.0-rc.24(@prisma/cli-engine@packages+cli-engine)(magicast@0.5.3)(typanion@3.14.0)(typescript@6.0.3)(vite@7.3.5(@types/node@22.19.19)(jiti@2.7.0)(tsx@4.22.4)(yaml@2.9.1))
@@ -140,8 +140,8 @@ importers:
         version: 8.2.2
     devDependencies:
       '@prisma/management-api-sdk':
-        specifier: 1.80.0
-        version: 1.80.0
+        specifier: 1.101.0
+        version: 1.101.0
       '@repo/cli-conformance':
         specifier: workspace:8.0.0-rc.34
         version: link:../cli-conformance
@@ -217,10 +217,10 @@ importers:
         version: 0.39.0(@prisma/cli-engine@packages+cli-engine)(arktype@2.2.7)(vite@7.3.5(@types/node@22.19.19)(jiti@2.7.0)(tsx@4.22.4)(yaml@2.9.1))(ws@8.21.0)
       '@prisma/compute-sdk':
         specifier: 0.43.0
-        version: 0.43.0(@prisma/management-api-sdk@1.80.0)(rollup@4.62.2)
+        version: 0.43.0(@prisma/management-api-sdk@1.101.0)(rollup@4.62.2)
       '@prisma/management-api-sdk':
-        specifier: 1.80.0
-        version: 1.80.0
+        specifier: 1.101.0
+        version: 1.101.0
       '@prisma/orm-toolchain':
         specifier: 8.0.0-rc.24
         version: 8.0.0-rc.24(@prisma/cli-engine@packages+cli-engine)(magicast@0.5.3)(typanion@3.14.0)(typescript@6.0.3)(vite@7.3.5(@types/node@22.19.19)(jiti@2.7.0)(tsx@4.22.4)(yaml@2.9.1))
@@ -786,6 +786,9 @@ packages:
 
   '@prisma/credentials-store@7.8.0':
     resolution: {integrity: sha512-T9yp5uYSowV2ZRkBeCZrqWFP4REUlxd5WEYgOFJDjZBRRV+zx3VFCBf0zJI7Z3/PYFF9o3+ZzLwokQ9nY5EbqA==}
+
+  '@prisma/management-api-sdk@1.101.0':
+    resolution: {integrity: sha512-q06lds4gANEm78l4kZxjMxJcIXAEjj6IeC/9DzASnubaEZuaf1rgvBIpyaK5//iEx6L2gsEHbzQzY4d/p87SZw==}
 
   '@prisma/management-api-sdk@1.80.0':
     resolution: {integrity: sha512-pQN6hBqR2pgaF3S5sMCe3iZIlThIOgUXoDcinB6/AxXO3qM6oWnirSUAJlhFQ/Hr5A2PmdxScOuCB1dJYHZ4KQ==}
@@ -2534,9 +2537,9 @@ snapshots:
       - vite
       - ws
 
-  '@prisma/compute-sdk@0.43.0(@prisma/management-api-sdk@1.80.0)(rollup@4.62.2)':
+  '@prisma/compute-sdk@0.43.0(@prisma/management-api-sdk@1.101.0)(rollup@4.62.2)':
     dependencies:
-      '@prisma/management-api-sdk': 1.80.0
+      '@prisma/management-api-sdk': 1.101.0
       '@vercel/nft': 1.10.2(rollup@4.62.2)
       better-result: 2.9.2
       jiti: 2.7.0
@@ -2559,6 +2562,10 @@ snapshots:
   '@prisma/credentials-store@7.8.0':
     dependencies:
       xdg-app-paths: 8.3.0
+
+  '@prisma/management-api-sdk@1.101.0':
+    dependencies:
+      openapi-fetch: 0.14.0
 
   '@prisma/management-api-sdk@1.80.0':
     dependencies:
