@@ -248,8 +248,20 @@ describe("consent tokens", () => {
       "Delete everything?",
     ]);
     expect(confirmed.exitCode).toBe(2);
-    expect(errorOf(confirmed)?.code).toBe("CLI.CONSENT_REQUIRED");
-    expect(errorOf(confirmed)?.summary).not.toContain("--confirm");
+    expect(errorOf(confirmed)).toEqual({
+      code: "CLI.CONSENT_REQUIRED",
+      severity: "error",
+      summary:
+        "This command requires explicit consent, but it was not provided.",
+      why: "Delete everything?",
+      nextActions: [
+        {
+          kind: "user-choice",
+          label:
+            "Run the command interactively. Consent can only be granted outside an interactive terminal when the command declares a consent token.",
+        },
+      ],
+    });
   });
 
   test("--confirm shows up in help as part of the shared flag family", async () => {

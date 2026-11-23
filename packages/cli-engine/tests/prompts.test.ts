@@ -292,8 +292,13 @@ describe("consent", () => {
     expect(result.exitCode).toBe(2);
     const last = result.json[result.json.length - 1];
     expect(
-      last.kind === "result" && !last.envelope.ok && last.envelope.error.code,
-    ).toBe("CLI.CONSENT_REQUIRED");
+      last.kind === "result" && !last.envelope.ok && last.envelope.error,
+    ).toMatchObject({
+      code: "CLI.CONSENT_REQUIRED",
+      summary:
+        "This command requires explicit consent, but it was not provided.",
+      why: "Delete everything?",
+    });
   });
 
   test("an explicit interactive yes grants consent", async () => {
