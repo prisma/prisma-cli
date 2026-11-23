@@ -638,11 +638,11 @@ The hostname given to a `service domain` command is not a usable custom domain �
 
 ### SERVICE.DOMAIN_NOT_FOUND
 
-A `service domain` command targeted a hostname that is not attached to the resolved service — raised when the service's hostname listing has no matching hostname, or when a show/delete/retry/wait call gets HTTP 404. The fix is to check the hostname and service, or add the domain first. Meta: none.
+A `service domain` command targeted a hostname that is not attached to the resolved service — raised when the service's hostname listing has no matching hostname, or when a show/retry/wait call gets HTTP 404. `service domain delete` treats a 404 for an entry it listed as already deleted. The fix is to check the hostname and service, or add the domain first. Meta: none.
 
 ### SERVICE.DOMAIN_QUOTA_EXCEEDED
 
-`service domain add` was refused with the API code `quota-exceeded`: the service already has as many hostnames as it may have. HTTP 429 no longer raises this code. The CLI uses the API's recovery hint when supplied. Without a hint, it advises deleting an existing custom domain before adding another. Meta: `status`, `apiCode`, `hint`.
+`service domain add` was refused with the API code `quota-exceeded`: the service already has as many hostnames as it may have. The CLI uses the API's recovery hint when supplied. Without a hint, it advises deleting an existing custom domain before adding another. Meta: `status`, `apiCode`, `hint`.
 
 ### SERVICE.DOMAIN_RETRY_RATE_LIMITED
 

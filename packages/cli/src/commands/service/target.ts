@@ -24,6 +24,7 @@ import type { BranchKind } from "../../types/branch";
 import type { ProjectResolution, ProjectSummary } from "../../types/project";
 import {
   branchValueEmptyError,
+  type DomainCommand,
   deployFailedError,
   domainCommandError,
   domainHostnameInvalidError,
@@ -439,8 +440,6 @@ export function sameDomainHostname(left: string, right: string): boolean {
   );
 }
 
-type DomainCommandName = "add" | "show" | "delete" | "retry" | "wait";
-
 /**
  * Every entry the service lists for the hostname. The API accepts one
  * hostname on a service more than once, and the CLI treats those
@@ -450,7 +449,7 @@ export async function listDomainEntries(
   provider: AppProvider,
   target: ServiceDomainTarget,
   hostname: string,
-  command: DomainCommandName,
+  command: DomainCommand,
   signal: AbortSignal,
 ): Promise<DomainRecord[]> {
   const domains = await provider
@@ -464,8 +463,8 @@ export async function listDomainEntries(
 }
 
 /**
- * The entry that says what the hostname does: the one the platform
- * routes the hostname through, or the oldest while none is.
+ * The entry that says what the hostname does: the one that holds the
+ * hostname, which serves it or will, or the oldest while none holds it.
  */
 export function representativeDomain(
   entries: readonly DomainRecord[],
@@ -480,7 +479,7 @@ export async function resolveDomainByHostname(
   provider: AppProvider,
   target: ServiceDomainTarget,
   hostname: string,
-  command: DomainCommandName,
+  command: DomainCommand,
   signal: AbortSignal,
 ): Promise<DomainRecord> {
   const domain = representativeDomain(

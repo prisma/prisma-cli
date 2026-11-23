@@ -1,6 +1,6 @@
 import { defineCommand } from "@prisma/cli-engine";
 import { ok } from "@prisma/cli-engine/protocol";
-import { DomainApiError } from "../../lib/app/app-provider";
+import { DomainApiError, type DomainRecord } from "../../lib/app/app-provider";
 import { domainTargetArgs } from "./domain-shared";
 import {
   domainCommandError,
@@ -18,6 +18,17 @@ import {
 /** Someone else deleted the entry between the listing and this delete. */
 function isAlreadyDeleted(error: unknown): boolean {
   return error instanceof DomainApiError && error.status === 404;
+}
+
+/**
+ * When the entry that holds the hostname is deleted while another entry
+ * remains, the platform moves the hostname onto that one. Deleting the
+ * holder last avoids the move.
+ */
+function holderLast(entries: readonly DomainRecord[]): DomainRecord[] {
+  return [...entries].sort(
+    (left, right) => Number(left.holdsHostname) - Number(right.holdsHostname),
+  );
 }
 
 export const serviceDomainDeleteCommand = defineCommand({
@@ -66,7 +77,7 @@ export const serviceDomainDeleteCommand = defineCommand({
       throw userCancelledError("Custom domain deletion canceled");
     }
 
-    for (const entry of entries) {
+    for (const entry of holderLast(entries)) {
       // biome-ignore lint/performance/noAwaitInLoops: a service lists a hostname more than once only when entries were added outside the CLI, so this is almost always one request.
       await target.provider
         .removeDomain(entry.id, { signal: ctx.signal })

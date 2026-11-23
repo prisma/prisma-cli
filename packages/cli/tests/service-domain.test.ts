@@ -33,7 +33,7 @@ const TARGET_ROWS = [
 const APEX_NOTE =
   "At an apex domain, publish the CNAME as an ALIAS, ANAME or flattened CNAME with the same target.";
 
-const PUBLISH_BOTH_RECORDS = `Publish TXT _prisma-verification.shop.acme.com -> prisma-verification=3f9a and CNAME shop.acme.com -> switchboard.cdg.prisma.build at your DNS provider, then run prisma service domain retry shop.acme.com --service svc_1 --project proj_1 --branch production. ${APEX_NOTE} If the state stays not_verified with the records published, the workspace has no domain ownership for this hostname: delete the hostname and add it again to create one.`;
+const PUBLISH_BOTH_RECORDS = `Publish TXT _prisma-verification.shop.acme.com -> prisma-verification=3f9a and CNAME shop.acme.com -> switchboard.cdg.prisma.build at your DNS provider, then run prisma service domain retry shop.acme.com --service svc_1 --project proj_1 --branch production. ${APEX_NOTE} If the state stays not_verified long after the records are published, the workspace may have no domain ownership for this hostname: deleting the hostname and adding it again creates one.`;
 
 const PUBLISH_CNAME = `Publish CNAME shop.acme.com -> switchboard.cdg.prisma.build at your DNS provider, then run prisma service domain retry shop.acme.com --service svc_1 --project proj_1 --branch production. ${APEX_NOTE}`;
 
@@ -1364,11 +1364,11 @@ describe("prisma service domain delete", () => {
     expect(deletedIds).toEqual(["url_1"]);
   });
 
-  it("deletes every entry the service lists for the hostname, and no other", async () => {
+  it("deletes every entry the service lists for the hostname and no other, the one that holds it last", async () => {
     const deletedIds: string[] = [];
     const harness = await makeServiceCli({
       routes: deleteRoutes(deletedIds, [
-        activeRecord({ id: "url_1" }),
+        activeRecord({ id: "url_1", customDomain: customDomain() }),
         activeRecord({ id: "url_9", hostname: "other.acme.com" }),
         domainRecord({
           id: "url_2",
@@ -1393,7 +1393,7 @@ describe("prisma service domain delete", () => {
     );
 
     expect(result.exitCode).toBe(0);
-    expect(deletedIds).toEqual(["url_1", "url_2"]);
+    expect(deletedIds).toEqual(["url_2", "url_1"]);
   });
 
   it("skips an entry someone else deleted meanwhile and still deletes the rest", async () => {

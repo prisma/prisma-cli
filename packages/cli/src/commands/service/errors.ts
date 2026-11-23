@@ -6,7 +6,7 @@ import { DomainApiError, type DomainRecord } from "../../lib/app/app-provider";
 import { domainStateGuidance } from "../../lib/app/domain-guidance";
 import type { ServiceDomainTarget } from "./results";
 
-type DomainCommand = "add" | "show" | "delete" | "retry" | "wait";
+export type DomainCommand = "add" | "show" | "delete" | "retry" | "wait";
 
 export function domainRecoveryCommand(
   command: DomainCommand,

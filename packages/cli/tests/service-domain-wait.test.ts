@@ -454,16 +454,15 @@ describe("prisma service domain wait", () => {
 
   it("waits on the entry that holds the hostname when the service lists it more than once", async () => {
     const readIds: string[] = [];
-    const holding = domainRecord({
+    const holding: RawDomain = {
+      ...provisioning(),
       id: "url_2",
-      state: "provisioning_certificate",
-      records: [],
       customDomain: customDomain({
         status: "provisioning",
         certExpiresAt: null,
       }),
       createdAt: "2026-08-02T00:00:00.000Z",
-    });
+    };
     const harness = await makeServiceCli({
       routes: readFlowRoutes({
         "GET /v1/services/{serviceId}/urls": () => ({
@@ -500,6 +499,119 @@ describe("prisma service domain wait", () => {
     expect(result.exitCode).toBe(0);
     expect(readIds).toEqual(["url_2"]);
     expect(result.presented?.data).toMatchObject({ state: "active" });
+  });
+
+  it("moves to the entry that takes the hostname when the one it followed loses it", async () => {
+    const older = waitingForDnsRecord({ id: "url_1" });
+    const newer = waitingForDnsRecord({
+      id: "url_2",
+      createdAt: "2026-08-02T00:00:00.000Z",
+    });
+    const heldByNewer: RawDomain = {
+      ...older,
+      state: "in_use_elsewhere",
+      heldBy: {
+        workspaceId: "wksp_ws_1",
+        projectId: "proj_1",
+        serviceId: "svc_1",
+        message: null,
+      },
+    };
+    const listings: RawDomain[][] = [
+      [older, newer],
+      [
+        heldByNewer,
+        activeRecord({
+          id: "url_2",
+          customDomain: customDomain(),
+          createdAt: "2026-08-02T00:00:00.000Z",
+        }),
+      ],
+    ];
+    const requests: string[] = [];
+    const harness = await makeServiceCli({
+      routes: readFlowRoutes({
+        "GET /v1/services/{serviceId}/urls": () => {
+          requests.push("list");
+          return { data: { data: listings.shift() ?? [] } };
+        },
+        "POST /v1/urls/{id}/check": (init) => {
+          requests.push(`check ${String(init.params?.path?.id)}`);
+          return { data: { data: heldByNewer } };
+        },
+      }),
+    });
+
+    const result = await harness.cli.run(
+      ["service", "domain", "wait", "shop.acme.com", ...TARGET_ARGS],
+      { cwd: harness.cwd, env: waitEnv(harness.env) },
+    );
+
+    expect(result.exitCode).toBe(0);
+    expect(requests).toEqual(["list", "check url_1", "list"]);
+    expect(
+      result.events
+        .filter((event) => event.kind === "status")
+        .map((event) => event.status),
+    ).toEqual(["waiting_for_dns", "in_use_elsewhere", "active"]);
+  });
+
+  it.each([
+    {
+      holder: "svc_1",
+      why: 'The domain is still "in_use_elsewhere". This service lists the hostname more than once, and another entry holds it.',
+      fix: [],
+    },
+    {
+      holder: "svc_2",
+      why: 'The domain is still "in_use_elsewhere". Another service holds this hostname: service svc_2. This service takes it over once that one gives it up.',
+      fix: [
+        {
+          kind: "user-choice",
+          label: "Delete the hostname from service svc_2.",
+        },
+      ],
+    },
+  ])("says on timeout who holds a hostname held by $holder", async ({
+    holder,
+    why,
+    fix,
+  }) => {
+    const harness = await makeServiceCli({
+      routes: waitRoutes([
+        domainRecord({
+          state: "in_use_elsewhere",
+          heldBy: {
+            workspaceId: "wksp_ws_1",
+            projectId: "proj_1",
+            serviceId: holder,
+            message: null,
+          },
+        }),
+      ]),
+    });
+
+    const result = await harness.cli.run(
+      [
+        "service",
+        "domain",
+        "wait",
+        "shop.acme.com",
+        ...TARGET_ARGS,
+        "--timeout",
+        "0",
+        "--json",
+      ],
+      { cwd: harness.cwd, env: waitEnv(harness.env) },
+    );
+
+    const frame = result.json[result.json.length - 1];
+    if (frame?.kind !== "result" || frame.envelope.ok) {
+      throw new Error("expected an errored envelope");
+    }
+    expect(frame.envelope.error.why).toBe(why);
+    expect(frame.envelope.error.nextActions.slice(0, fix.length)).toEqual(fix);
+    expect(frame.envelope.error.nextActions).toHaveLength(fix.length + 2);
   });
 
   it("fails early with the engine sign-in error when unauthenticated", async () => {

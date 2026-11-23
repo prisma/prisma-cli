@@ -17,7 +17,7 @@ import {
   timeoutInvalidError,
 } from "./errors";
 import { domainWaitPresentations } from "./presentation";
-import type { ServiceDomainWaitResult } from "./results";
+import type { ServiceDomainTarget, ServiceDomainWaitResult } from "./results";
 import type { ServiceContext } from "./target";
 import {
   normalizeDomainHostname,
@@ -108,19 +108,38 @@ async function checkOrShow(
   }
 }
 
-/** Reads the hostname again, as a DNS check when one is due. */
+/**
+ * Reads the hostname again, as a DNS check when one is due. An entry
+ * that another entry holds the hostname from can never become active
+ * itself, so the hostname is looked up afresh and the holder followed.
+ */
 function domainReader(
   provider: AppProvider,
+  target: ServiceDomainTarget,
+  hostname: string,
   signal: AbortSignal,
 ): (current: DomainRecord) => Promise<DomainRecord> {
   let readsSinceDnsCheck = READS_PER_DNS_CHECK;
   return (current) => {
+    if (current.state === "in_use_elsewhere") {
+      return resolveDomainByHostname(
+        provider,
+        target,
+        hostname,
+        "wait",
+        signal,
+      );
+    }
     const checksDns =
       waitsForUserDns(current) && readsSinceDnsCheck >= READS_PER_DNS_CHECK;
     readsSinceDnsCheck = checksDns ? 1 : readsSinceDnsCheck + 1;
-    return checksDns
-      ? checkOrShow(provider, current.id, signal)
-      : provider.showDomain(current.id, { signal });
+    return (
+      checksDns
+        ? checkOrShow(provider, current.id, signal)
+        : provider.showDomain(current.id, { signal })
+    ).catch((error) => {
+      throw domainCommandError("wait", error, hostname, target);
+    });
   };
 }
 
@@ -170,7 +189,12 @@ export const serviceDomainWaitCommand = defineCommand({
     const deadline = start + timeoutMs;
     const interval = pollIntervalMs(ctx);
     let previousState: DomainRecord["state"] | null = null;
-    const readAgain = domainReader(target.provider, ctx.signal);
+    const readAgain = domainReader(
+      target.provider,
+      target.resultTarget,
+      hostname,
+      ctx.signal,
+    );
     let current = domain;
 
     for (;;) {
@@ -182,6 +206,7 @@ export const serviceDomainWaitCommand = defineCommand({
           ...(previousState === null ? {} : { from: previousState }),
           data: {
             domainId: current.id,
+            domainStatus: current.status,
             elapsedMs: Date.now() - start,
           },
         });
@@ -222,9 +247,7 @@ export const serviceDomainWaitCommand = defineCommand({
         Math.min(interval, Math.max(deadline - Date.now(), 0)),
         ctx.signal,
       );
-      current = await readAgain(current).catch((error) => {
-        throw domainCommandError("wait", error, hostname, target.resultTarget);
-      });
+      current = await readAgain(current);
     }
   },
 });

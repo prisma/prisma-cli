@@ -118,7 +118,8 @@ export interface DomainRecord {
   id: string;
   hostname: string;
   appId: string | null;
-  /** Whether this entry is the one the platform routes the hostname through. */
+  /** Whether this entry holds the hostname. At most one entry on the
+   *  platform does, and only that one serves it or can come to. */
   holdsHostname: boolean;
   status: DomainStatus;
   state: DomainState;

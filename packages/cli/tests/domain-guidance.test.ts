@@ -58,7 +58,7 @@ describe("domainStateGuidance", () => {
       guidance(input({ state: "not_verified", dnsRecords: [TXT, CNAME] })),
     ).toEqual({
       waitingOn: "Proof in DNS that this workspace owns the domain.",
-      fix: `Publish TXT _prisma-verification.shop.acme.com -> prisma-verification=3f9a and CNAME shop.acme.com -> switchboard.cdg.prisma.build at your DNS provider, then run prisma service domain retry shop.acme.com --service svc_1 --project proj_1 --branch production. ${APEX_NOTE} If the state stays not_verified with the records published, the workspace has no domain ownership for this hostname: delete the hostname and add it again to create one.`,
+      fix: `Publish TXT _prisma-verification.shop.acme.com -> prisma-verification=3f9a and CNAME shop.acme.com -> switchboard.cdg.prisma.build at your DNS provider, then run prisma service domain retry shop.acme.com --service svc_1 --project proj_1 --branch production. ${APEX_NOTE} If the state stays not_verified long after the records are published, the workspace may have no domain ownership for this hostname: deleting the hostname and adding it again creates one.`,
     });
   });
 

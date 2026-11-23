@@ -59,7 +59,13 @@ export function waitsForUserDns(domain: Pick<DomainRecord, "state">): boolean {
   return domain.state === "not_verified" || domain.state === "waiting_for_dns";
 }
 
-/** Waiting cannot get a hostname past these states: the user has to act. */
+/**
+ * States a wait stops at. A failed certificate is only retried when the
+ * user asks, and a hostname whose service is deleted has to be added
+ * again. In the other states where the user has to act, such as
+ * publishing DNS or deploying, the hostname goes on by itself once they
+ * have, so a wait keeps going.
+ */
 export function cannotBecomeActive(
   domain: Pick<DomainRecord, "state">,
 ): boolean {
@@ -85,7 +91,7 @@ export function domainStateGuidance(
     case "not_verified":
       return {
         waitingOn: "Proof in DNS that this workspace owns the domain.",
-        fix: `Publish ${records} at your DNS provider, then run ${retry}. ${apexNote} If the state stays not_verified with the records published, the workspace has no domain ownership for this hostname: delete the hostname and add it again to create one.`,
+        fix: `Publish ${records} at your DNS provider, then run ${retry}. ${apexNote} If the state stays not_verified long after the records are published, the workspace may have no domain ownership for this hostname: deleting the hostname and adding it again creates one.`,
       };
     case "no_service":
       return {
