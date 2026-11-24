@@ -146,7 +146,7 @@ it.each([
   ]);
 });
 
-/** A project whose default branch is neither `main` nor `production`. */
+/** A project whose default branch is `trunk`, with a preview branch named `main`. */
 function trunkDefaultBranchRoutes(
   askedBranches: unknown[],
   overrides: Routes,
@@ -155,8 +155,8 @@ function trunkDefaultBranchRoutes(
     "GET /v1/projects/{projectId}/branches": () => ({
       data: page([
         {
-          id: "br_feature",
-          gitName: "feature/login",
+          id: "br_main_preview",
+          gitName: "main",
           isDefault: false,
           role: "preview",
         },

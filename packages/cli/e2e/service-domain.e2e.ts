@@ -187,7 +187,7 @@ describeCommand("service domain show", () => {
     expect(shown.dnsRecords.map((record) => record.type)).toContain("TXT");
   });
 
-  it("finds the hostname without --branch, on the branch named main", async () => {
+  it("finds the hostname without --branch, on the default branch", async () => {
     const run = await scratch.run([
       "service",
       "domain",

@@ -10,22 +10,18 @@ export interface ReadBranch {
 }
 
 /**
- * Resolves the branch an app management command should read from, without ever
- * creating one. Returns the branch whose `gitName` matches `branchName`, else
- * the project's default branch, else null when the project has no branches.
+ * Returns the branch marked as the project's default, or null when the
+ * project has none. Never creates a branch.
  */
-export async function resolveReadBranch(
+export async function resolveDefaultBranch(
   client: ManagementApiClient,
-  options: { projectId: string; branchName: string; signal?: AbortSignal },
+  options: { projectId: string; signal?: AbortSignal },
 ): Promise<ReadBranch | null> {
   const branches = await listProjectBranches(client, {
     projectId: options.projectId,
     signal: options.signal,
   });
-  const chosen =
-    branches.find((branch) => branch.gitName === options.branchName) ??
-    branches.find((branch) => branch.isDefault) ??
-    null;
+  const chosen = branches.find((branch) => branch.isDefault);
   return chosen
     ? { id: chosen.id, name: chosen.gitName, kind: chosen.role }
     : null;

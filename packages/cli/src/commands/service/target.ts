@@ -10,7 +10,7 @@ import {
   type DeploymentRecord,
   type DomainRecord,
 } from "../../lib/app/app-provider";
-import { resolveReadBranch } from "../../lib/app/read-branch";
+import { resolveDefaultBranch } from "../../lib/app/read-branch";
 import { projectApiError } from "../../lib/project/provider";
 import {
   type ProjectCandidate,
@@ -194,26 +194,23 @@ export async function resolveServiceProjectContext(
     throw projectResolutionErrorToStructured(resolvedResult.error);
   }
   const resolved = resolvedResult.value;
-  const requested = options.branchName
-    ? { name: options.branchName, explicit: true }
-    : { name: "main", explicit: false };
-
-  const remoteBranch = requested.explicit
+  const defaultBranch = options.branchName
     ? null
-    : await resolveReadBranch(ctx.api, {
+    : await resolveDefaultBranch(ctx.api, {
         projectId: resolved.project.id,
-        branchName: requested.name,
         signal: ctx.signal,
       });
+  // A project with no branches yet: `service create` makes its first one, named main.
+  const branchName = options.branchName ?? "main";
 
   return {
     workspace: resolved.workspace,
     project: resolved.project,
     resolution: resolved.resolution,
-    branch: remoteBranch ?? {
+    branch: defaultBranch ?? {
       id: null,
-      name: requested.name,
-      kind: toBranchKind(requested.name),
+      name: branchName,
+      kind: toBranchKind(branchName),
     },
   };
 }
