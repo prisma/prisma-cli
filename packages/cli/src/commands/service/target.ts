@@ -575,9 +575,6 @@ export async function resolveServiceDomainTarget(
     commandName: string;
   },
 ): Promise<ResolvedServiceDomainTarget> {
-  requireBranchFlagValue(options.branchName);
-  const branchName = options.branchName?.trim();
-
   const requested = requireServiceArgument(
     options.serviceName,
     options.commandName,
@@ -590,7 +587,9 @@ export async function resolveServiceDomainTarget(
       ...(options.projectRef !== undefined
         ? { projectRef: options.projectRef }
         : {}),
-      ...(branchName !== undefined ? { branchName } : {}),
+      ...(options.branchName !== undefined
+        ? { branchName: options.branchName }
+        : {}),
     },
   );
   const services = await listServices(

@@ -42,7 +42,7 @@ function input(overrides: Partial<GuidanceInput>): GuidanceInput {
 }
 
 const RETRY =
-  "prisma service domain retry shop.acme.com --service svc_1 --project proj_1 --branch production";
+  "prisma service domain retry shop.acme.com --service svc_1 --project proj_1 --branch main";
 
 function guidance(domain: GuidanceInput) {
   return domainStateGuidance(domain, RETRY);
@@ -59,7 +59,7 @@ describe("domainStateGuidance", () => {
     ).toEqual({
       failed: false,
       waitingOn: "Proof in DNS that this workspace owns the domain.",
-      fix: `Publish TXT _prisma-verification.shop.acme.com -> prisma-verification=3f9a and CNAME shop.acme.com -> switchboard.cdg.prisma.build at your DNS provider, then run prisma service domain retry shop.acme.com --service svc_1 --project proj_1 --branch production. ${APEX_NOTE}`,
+      fix: `Publish TXT _prisma-verification.shop.acme.com -> prisma-verification=3f9a and CNAME shop.acme.com -> switchboard.cdg.prisma.build at your DNS provider, then run prisma service domain retry shop.acme.com --service svc_1 --project proj_1 --branch main. ${APEX_NOTE}`,
     });
   });
 
@@ -170,7 +170,7 @@ describe("domainStateGuidance", () => {
       failed: false,
       waitingOn:
         "The hostname's DNS does not point at Prisma. The platform reported: the CNAME points at old.example.net",
-      fix: `Publish CNAME shop.acme.com -> switchboard.cdg.prisma.build at your DNS provider, then run prisma service domain retry shop.acme.com --service svc_1 --project proj_1 --branch production. ${APEX_NOTE}`,
+      fix: `Publish CNAME shop.acme.com -> switchboard.cdg.prisma.build at your DNS provider, then run prisma service domain retry shop.acme.com --service svc_1 --project proj_1 --branch main. ${APEX_NOTE}`,
     });
   });
 
@@ -180,7 +180,7 @@ describe("domainStateGuidance", () => {
     ).toEqual({
       failed: false,
       waitingOn: "The hostname's DNS does not point at Prisma.",
-      fix: "Point the hostname at Prisma, then run prisma service domain retry shop.acme.com --service svc_1 --project proj_1 --branch production.",
+      fix: "Point the hostname at Prisma, then run prisma service domain retry shop.acme.com --service svc_1 --project proj_1 --branch main.",
     });
   });
 

@@ -146,6 +146,36 @@ it.each([
   ]);
 });
 
+/** A project whose default branch is neither `main` nor `production`. */
+function trunkDefaultBranchRoutes(
+  askedBranches: unknown[],
+  overrides: Routes,
+): Routes {
+  return domainRoutes({
+    "GET /v1/projects/{projectId}/branches": () => ({
+      data: page([
+        {
+          id: "br_feature",
+          gitName: "feature/login",
+          isDefault: false,
+          role: "preview",
+        },
+        {
+          id: "br_trunk",
+          gitName: "trunk",
+          isDefault: true,
+          role: "production",
+        },
+      ]),
+    }),
+    "GET /v1/apps": (init) => {
+      askedBranches.push(init.params?.query?.branchGitName);
+      return { data: page([{ ...SERVICE, branchId: "br_trunk" }]) };
+    },
+    ...overrides,
+  });
+}
+
 it.each([
   { command: "add", extra: [] },
   { command: "show", extra: [] },
@@ -158,28 +188,8 @@ it.each([
 }) => {
   const askedBranches: unknown[] = [];
   const harness = await makeServiceCli({
-    routes: domainRoutes({
+    routes: trunkDefaultBranchRoutes(askedBranches, {
       ...listing([activeRecord()]),
-      "GET /v1/projects/{projectId}/branches": () => ({
-        data: page([
-          {
-            id: "br_feature",
-            gitName: "feature/login",
-            isDefault: false,
-            role: "preview",
-          },
-          {
-            id: "br_trunk",
-            gitName: "trunk",
-            isDefault: true,
-            role: "production",
-          },
-        ]),
-      }),
-      "GET /v1/apps": (init) => {
-        askedBranches.push(init.params?.query?.branchGitName);
-        return { data: page([{ ...SERVICE, branchId: "br_trunk" }]) };
-      },
       "GET /v1/urls/{id}": () => ({ data: { data: activeRecord() } }),
       "POST /v1/urls/{id}/check": () => ({ data: { data: activeRecord() } }),
       "DELETE /v1/urls/{id}": () => ({ data: undefined }),
@@ -197,6 +207,68 @@ it.each([
     branch: { name: "trunk", kind: "production" },
     service: { id: "svc_1", name: "hello-world" },
   });
+});
+
+it("without --branch, add names the default branch in the commands it offers next", async () => {
+  const harness = await makeServiceCli({
+    routes: trunkDefaultBranchRoutes([], {
+      ...listing([]),
+      "POST /v1/services/{serviceId}/urls": () => ({
+        data: { data: domainRecord() },
+      }),
+    }),
+  });
+
+  const result = await harness.cli.run(
+    ["service", "domain", "add", "shop.acme.com", ...TARGET_ARGS],
+    { cwd: harness.cwd, env: harness.env, isTty: { stdout: true } },
+  );
+
+  expect(result.exitCode).toBe(0);
+  expect(result.presented?.presentation.next).toContainEqual({
+    kind: "run-command",
+    label: "Wait for activation",
+    command:
+      "prisma service domain wait shop.acme.com --service svc_1 --project proj_1 --branch trunk",
+  });
+  expect(result.presented?.presentation.next).toContainEqual({
+    kind: "user-choice",
+    label: `Publish TXT _prisma-verification.shop.acme.com -> prisma-verification=3f9a and CNAME shop.acme.com -> switchboard.cdg.prisma.build at your DNS provider, then run prisma service domain retry shop.acme.com --service svc_1 --project proj_1 --branch trunk. ${APEX_NOTE}`,
+  });
+});
+
+it.each(
+  ["add", "show", "retry", "wait", "delete"].flatMap((command) =>
+    [
+      { blank: "empty", branch: "" },
+      { blank: "only spaces", branch: "  " },
+    ].map((value) => ({ command, ...value })),
+  ),
+)("$command rejects a --branch that is $blank as SERVICE.BRANCH_INVALID", async ({
+  command,
+  branch,
+}) => {
+  const harness = await makeServiceCli({ routes: domainRoutes() });
+
+  const result = await harness.cli.run(
+    [
+      "service",
+      "domain",
+      command,
+      "shop.acme.com",
+      ...TARGET_ARGS,
+      "--branch",
+      branch,
+      "--json",
+    ],
+    { cwd: harness.cwd, env: harness.env },
+  );
+
+  expect(result.exitCode).toBe(2);
+  const frame = result.json[result.json.length - 1];
+  if (frame?.kind !== "result" || frame.envelope.ok)
+    throw new Error("expected an errored envelope");
+  expect(frame.envelope.error.code).toBe("SERVICE.BRANCH_INVALID");
 });
 
 describe("prisma service domain add", () => {

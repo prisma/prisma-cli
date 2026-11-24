@@ -187,7 +187,7 @@ describeCommand("service domain show", () => {
     expect(shown.dnsRecords.map((record) => record.type)).toContain("TXT");
   });
 
-  it("finds the hostname without --branch, on the project's default branch", async () => {
+  it("finds the hostname without --branch, on the branch named main", async () => {
     const run = await scratch.run([
       "service",
       "domain",
@@ -196,11 +196,14 @@ describeCommand("service domain show", () => {
       "--service",
       requireFixture().serviceName,
     ]);
-    const shown = (run.envelope.result as { readonly domain: DomainRow })
-      .domain;
+    const result = run.envelope.result as {
+      readonly branch: { readonly name: string };
+      readonly domain: DomainRow;
+    };
 
-    expect(shown.id).toBe(added?.id);
-    expect(shown.serviceId).toBe(requireFixture().serviceId);
+    expect(result.branch.name).toBe("main");
+    expect(result.domain.id).toBe(added?.id);
+    expect(result.domain.serviceId).toBe(requireFixture().serviceId);
   });
 
   it("reads the same state through wait, which gives up at once with --timeout 0", async () => {
