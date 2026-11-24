@@ -152,7 +152,7 @@ That is still one action in the command grammar. It is preferable to inventing a
 
 ## Custom domains
 
-`service domain` commands manage hostnames for the service on the selected branch. Without `--branch` they use the project's default branch, the same way the other `service` commands do; `--branch <name>` selects another branch. Lookup, retry, waiting, and deletion stay within that service.
+`service domain` commands manage hostnames for the service on the selected branch. Without `--branch` they use the branch named `main`, or the project's default branch when there is no `main`, the same way the other `service` commands do; `--branch <name>` selects another branch. Lookup, retry, waiting, and deletion stay within that service.
 
 A hostname can be added before its DNS exists and before the service has a live version. `add` succeeds and prints the DNS records to publish: a TXT record that proves the workspace owns the domain, and a CNAME that routes the hostname. Each hostname reports a `status` (`pending` until it has gone live, then `active`) and a `state` that says what it does now. The state `active` means the hostname serves the service; every other state names what is still missing, and the CLI turns it into a "waiting on" or "failure" line and, when the API says what the user has to do, a fix. How a failure is worded follows [Errors From The Systems Below The API](error-conventions.md#errors-from-the-systems-below-the-api).
 
