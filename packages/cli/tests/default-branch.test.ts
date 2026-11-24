@@ -35,18 +35,27 @@ describe("resolveDefaultBranch", () => {
     const result = await resolveDefaultBranch(client, { projectId: "proj_1" });
 
     expect(result).toEqual({
-      id: "b_trunk",
-      name: "trunk",
-      kind: "production",
+      kind: "found",
+      branch: { id: "b_trunk", name: "trunk", kind: "production" },
     });
   });
 
-  it("returns null when the project has no branches", async () => {
+  it("reports a project with no branches", async () => {
     const client = clientReturning([]);
 
     const result = await resolveDefaultBranch(client, { projectId: "proj_1" });
 
-    expect(result).toBeNull();
+    expect(result).toEqual({ kind: "no-branches" });
+  });
+
+  it("reports a project whose branches include no default, without picking main", async () => {
+    const client = clientReturning([
+      { id: "b_main", gitName: "main", isDefault: false, role: "preview" },
+    ]);
+
+    const result = await resolveDefaultBranch(client, { projectId: "proj_1" });
+
+    expect(result).toEqual({ kind: "no-default" });
   });
 
   it("throws when the branches request fails", async () => {
@@ -95,7 +104,10 @@ describe("resolveDefaultBranch", () => {
 
     const result = await resolveDefaultBranch(client, { projectId: "proj_1" });
 
-    expect(result).toEqual({ id: "b_main", name: "main", kind: "production" });
+    expect(result).toEqual({
+      kind: "found",
+      branch: { id: "b_main", name: "main", kind: "production" },
+    });
     expect(GET).toHaveBeenCalledTimes(2);
     expect(GET).toHaveBeenNthCalledWith(
       1,

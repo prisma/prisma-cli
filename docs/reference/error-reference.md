@@ -624,6 +624,10 @@ A `project` or `branch` group command was invoked with unusable arguments — fo
 
 A `--branch` flag was passed with an empty or whitespace-only value to a service command; the check runs before any resolution because a blank value must never fall through to the default-branch behavior of omitting the flag. The fix is to pass a non-empty branch name, or omit `--branch` to target the default branch. Meta: none.
 
+### SERVICE.DEFAULT_BRANCH_MISSING
+
+A `service` command was run without `--branch` on a project that has branches but none marked as its default, so there is no branch it can safely act on. It never guesses a branch by name. The fix is to pass `--branch` with the branch to use; the next actions also offer `branch list` for the project. Meta: none.
+
 ### SERVICE.DELETE_FAILED
 
 `service delete` called the platform's app-teardown API and it rejected; the underlying error's message becomes `why` and the original error is carried in `cause`. Next actions point at `service show` and `service version list` for the service. Meta: none.

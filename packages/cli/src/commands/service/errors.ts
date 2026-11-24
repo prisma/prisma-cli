@@ -281,6 +281,25 @@ export function branchValueEmptyError(): CliStructuredError {
   );
 }
 
+export function defaultBranchMissingError(
+  projectId: string,
+): CliStructuredError {
+  return new CliStructuredError(
+    "SERVICE.DEFAULT_BRANCH_MISSING",
+    "The project has no default branch",
+    {
+      why: `Project "${projectId}" has branches, but none is marked as its default, so the command cannot tell which branch to use without --branch.`,
+      nextActions: [
+        adviceAction("Pass --branch with the name of the branch to use."),
+        runCommandAction(
+          "List the project's branches",
+          `branch list --project ${projectId}`,
+        ),
+      ],
+    },
+  );
+}
+
 export function liveUrlUnavailableError(
   serviceName: string,
 ): CliStructuredError {

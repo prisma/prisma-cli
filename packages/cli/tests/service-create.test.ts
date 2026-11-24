@@ -222,6 +222,34 @@ describe("prisma service create", () => {
     ]);
   });
 
+  it("without --branch, on a project whose branches include no default, refuses instead of using main", async () => {
+    const created = createRoutes({
+      "GET /v1/projects/{projectId}/branches": () => ({
+        data: page([
+          {
+            id: "br_main_preview",
+            gitName: "main",
+            isDefault: false,
+            role: "preview",
+          },
+        ]),
+      }),
+    });
+    const harness = await makeServiceCli({ routes: created.routes });
+
+    const result = await harness.cli.run(
+      ["service", "create", "worker", "--project", "acme-app", "--json"],
+      { cwd: harness.cwd, env: harness.env },
+    );
+
+    const frame = result.json[result.json.length - 1];
+    if (frame?.kind !== "result" || frame.envelope.ok) {
+      throw new Error("expected an errored envelope");
+    }
+    expect(frame.envelope.error.code).toBe("SERVICE.DEFAULT_BRANCH_MISSING");
+    expect(created.bodies).toEqual([]);
+  });
+
   it("writes no service selection into the local state store", async () => {
     const created = createRoutes();
     const harness = await makeServiceCli({ routes: created.routes });

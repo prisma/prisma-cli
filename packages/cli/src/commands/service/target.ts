@@ -25,6 +25,7 @@ import type { ProjectResolution, ProjectSummary } from "../../types/project";
 import {
   branchValueEmptyError,
   type DomainCommand,
+  defaultBranchMissingError,
   deployFailedError,
   domainCommandError,
   domainHostnameInvalidError,
@@ -175,6 +176,24 @@ function namedBranch(name: string): ResolvedServiceProjectContext["branch"] {
   return { id: null, name, kind: toBranchKind(name) };
 }
 
+async function defaultBranchOf(
+  ctx: ServiceContext,
+  projectId: string,
+): Promise<ResolvedServiceProjectContext["branch"]> {
+  const lookup = await resolveDefaultBranch(ctx.api, {
+    projectId,
+    signal: ctx.signal,
+  });
+  switch (lookup.kind) {
+    case "found":
+      return lookup.branch;
+    case "no-branches":
+      return namedBranch(FIRST_BRANCH_NAME);
+    case "no-default":
+      throw defaultBranchMissingError(projectId);
+  }
+}
+
 export async function resolveServiceProjectContext(
   ctx: ServiceContext,
   explicitProject: string | undefined,
@@ -204,10 +223,7 @@ export async function resolveServiceProjectContext(
   const branch =
     options.branchName !== undefined
       ? namedBranch(options.branchName)
-      : ((await resolveDefaultBranch(ctx.api, {
-          projectId: resolved.project.id,
-          signal: ctx.signal,
-        })) ?? namedBranch(FIRST_BRANCH_NAME));
+      : await defaultBranchOf(ctx, resolved.project.id);
 
   return {
     workspace: resolved.workspace,
