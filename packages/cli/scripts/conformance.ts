@@ -45,6 +45,10 @@ const PRISMA_DIR = join(CLI_DIR, "..", "prisma");
 // time out unrelated tests.
 const WORK_DIR = join(CLI_DIR, "..", "..", ".conformance", "cli");
 
+// The ORM toolchain names the framework as a peer, so the shell supplies
+// it; the shell's own code never imports it.
+const SHELL_UNIMPORTED = ["@prisma/orm-framework"];
+
 const CHANNEL: PublishChannel =
   process.env.PUBLISH_CHANNEL === "dev" ? "dev" : "release";
 
@@ -59,12 +63,14 @@ async function importPurity(): Promise<readonly Finding[]> {
     label: "@prisma/cli",
     output: await sweepBuiltOutput(join(CLI_DIR, "dist")),
     manifest: await manifest(CLI_DIR),
+    allowedUnimported: SHELL_UNIMPORTED,
     requiredSpecifiers: ["@prisma/cli-engine", "@prisma/composer-cli/family"],
   });
   const unscoped = checkImportPurity({
     label: "prisma",
     output: await sweepBuiltOutput(join(PRISMA_DIR, "dist")),
     manifest: await manifest(PRISMA_DIR),
+    allowedUnimported: SHELL_UNIMPORTED,
     requiredSpecifiers: ["@prisma/cli-engine", "@prisma/composer-cli/family"],
   });
   const engine = checkImportPurity({
@@ -97,8 +103,16 @@ async function tarball(): Promise<readonly Finding[]> {
   return checkTarball(
     {
       packages: [
-        { name: "@prisma/cli", dir: CLI_DIR },
-        { name: "prisma", dir: PRISMA_DIR },
+        {
+          name: "@prisma/cli",
+          dir: CLI_DIR,
+          allowedUnimported: SHELL_UNIMPORTED,
+        },
+        {
+          name: "prisma",
+          dir: PRISMA_DIR,
+          allowedUnimported: SHELL_UNIMPORTED,
+        },
         {
           name: "@prisma/cli-engine",
           dir: ENGINE_DIR,

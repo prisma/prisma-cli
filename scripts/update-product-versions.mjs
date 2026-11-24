@@ -51,6 +51,11 @@ const WATCHED = /** @type {const} */ ([
   // package it ships beside, or the fixture resolves a second copy.
   { name: "@prisma/composer", release: ["latest"] },
   { name: "@prisma/orm-toolchain", release: ["latest"] },
+  // The toolchain names the framework as an exact peer, so whoever lists
+  // the toolchain lists the framework too, at the same version. It takes
+  // the toolchain's version rather than reading its own tag, so a run
+  // during the ORM's publish cannot pin the two apart.
+  { name: "@prisma/orm-framework", sameVersionAs: "@prisma/orm-toolchain" },
 ]);
 
 const MANIFEST_PATHS = [
@@ -89,6 +94,29 @@ export function selectTag(distTags, candidates) {
     if (version !== undefined) return { tag, version };
   }
   return undefined;
+}
+
+/**
+ * Each watched package's version on the channel. Pure apart from
+ * `lookup`; exported for tests.
+ *
+ * @param {"release" | "dev"} channel
+ * @param {(name: string, tags: readonly string[]) => string | undefined} lookup
+ * @returns {Map<string, string | undefined>}
+ */
+export function publishedVersions(channel, lookup) {
+  const published = new Map();
+  for (const entry of WATCHED) {
+    if ("release" in entry) {
+      published.set(entry.name, lookup(entry.name, tagsFor(entry, channel)));
+    }
+  }
+  for (const entry of WATCHED) {
+    if ("sameVersionAs" in entry) {
+      published.set(entry.name, published.get(entry.sameVersionAs));
+    }
+  }
+  return published;
 }
 
 /**
@@ -273,12 +301,7 @@ function main() {
     path,
     manifest: JSON.parse(readFileSync(join(rootDir, path), "utf-8")),
   }));
-  const published = new Map(
-    WATCHED.map((entry) => [
-      entry.name,
-      publishedVersion(entry.name, tagsFor(entry, channel)),
-    ]),
-  );
+  const published = publishedVersions(channel, publishedVersion);
   const updates = computeUpdates(manifests, published);
   applyUpdates(manifests, updates);
 

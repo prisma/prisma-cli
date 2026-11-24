@@ -5,6 +5,7 @@ import {
   computeUpdates,
   isPackageAbsent,
   pinChanges,
+  publishedVersions,
   selectTag,
   tagsFor,
 } from "./update-product-versions.mjs";
@@ -225,6 +226,54 @@ describe("computeUpdates", () => {
       ]),
     );
     assert.equal(updates.length, 2);
+  });
+});
+
+describe("publishedVersions", () => {
+  const registry = {
+    "@prisma/composer-cli": "0.41.0",
+    "@prisma/composer": "0.41.0",
+    "@prisma/orm-toolchain": "8.0.0-rc.26",
+    "@prisma/orm-framework": "8.0.0-rc.27",
+  };
+
+  /**
+   * The toolchain names the framework as an exact peer, so the two pins
+   * must agree. Reading the framework's own tag could catch the ORM
+   * mid-publish with one moved and not the other.
+   */
+  it("pins the framework at the toolchain's version without asking the registry", () => {
+    const asked = [];
+    const published = publishedVersions("release", (name) => {
+      asked.push(name);
+      return registry[name];
+    });
+    assert.equal(published.get("@prisma/orm-framework"), "8.0.0-rc.26");
+    assert.equal(asked.includes("@prisma/orm-framework"), false);
+  });
+
+  it("moves the framework in the same run as the toolchain", () => {
+    const updates = computeUpdates(
+      [
+        {
+          path: PRISMA,
+          manifest: {
+            dependencies: {
+              "@prisma/orm-framework": "8.0.0-rc.25",
+              "@prisma/orm-toolchain": "8.0.0-rc.25",
+            },
+          },
+        },
+      ],
+      publishedVersions("release", (name) => registry[name]),
+    );
+    assert.deepEqual(
+      updates.map(({ name, to }) => [name, to]),
+      [
+        ["@prisma/orm-toolchain", "8.0.0-rc.26"],
+        ["@prisma/orm-framework", "8.0.0-rc.26"],
+      ],
+    );
   });
 });
 
