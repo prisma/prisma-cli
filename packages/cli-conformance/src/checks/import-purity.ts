@@ -23,7 +23,8 @@ export interface ImportPurityInput {
   /**
    * Declared dependencies reached without a static import, so the
    * reverse half must not report them. `import.meta.resolve` is the
-   * case: it is not an import, by design.
+   * case: it is not an import, by design. A package listed only so
+   * that another package's peer dependency is met is the other case.
    */
   readonly allowedUnimported?: readonly string[];
   /**

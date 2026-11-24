@@ -51,8 +51,9 @@ const WATCHED = /** @type {const} */ ([
   // package it ships beside, or the fixture resolves a second copy.
   { name: "@prisma/composer", release: ["latest"] },
   { name: "@prisma/orm-toolchain", release: ["latest"] },
-  // The toolchain names the framework as an exact peer, so whoever lists
-  // the toolchain lists the framework too, at the same version. It takes
+  // The shell lists the framework so it does not rely on the toolchain
+  // bringing it; from the ORM release after 8.0.0-rc.25 the toolchain
+  // names it as an exact peer. It takes
   // the toolchain's version rather than reading its own tag, so a run
   // during the ORM's publish cannot pin the two apart.
   { name: "@prisma/orm-framework", sameVersionAs: "@prisma/orm-toolchain" },

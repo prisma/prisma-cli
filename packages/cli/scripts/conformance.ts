@@ -45,8 +45,9 @@ const PRISMA_DIR = join(CLI_DIR, "..", "prisma");
 // time out unrelated tests.
 const WORK_DIR = join(CLI_DIR, "..", "..", ".conformance", "cli");
 
-// The ORM toolchain names the framework as a peer, so the shell supplies
-// it; the shell's own code never imports it.
+// The shell lists the framework so it does not rely on the toolchain
+// bringing it (the toolchain peers on it from the ORM release after
+// 8.0.0-rc.25). The shell's own code never imports it.
 const SHELL_UNIMPORTED = ["@prisma/orm-framework"];
 
 const CHANNEL: PublishChannel =
