@@ -281,19 +281,21 @@ export function branchValueEmptyError(): CliStructuredError {
   );
 }
 
-export function defaultBranchMissingError(
-  projectId: string,
-): CliStructuredError {
+export function defaultBranchMissingError(project: {
+  id: string;
+  name: string;
+}): CliStructuredError {
   return new CliStructuredError(
     "SERVICE.DEFAULT_BRANCH_MISSING",
-    "The project has no default branch",
+    `Project "${project.name}" has no default branch`,
     {
-      why: `Project "${projectId}" has branches, but none is marked as its default, so the command cannot tell which branch to use without --branch.`,
+      why: `Project "${project.name}" (${project.id}) has branches, but none is marked as its default, so the command cannot tell which branch to use without --branch.`,
+      meta: { projectId: project.id },
       nextActions: [
         adviceAction("Pass --branch with the name of the branch to use."),
         runCommandAction(
           "List the project's branches",
-          `branch list --project ${projectId}`,
+          `branch list --project ${project.id}`,
         ),
       ],
     },

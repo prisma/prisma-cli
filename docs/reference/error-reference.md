@@ -626,7 +626,7 @@ A `--branch` flag was passed with an empty or whitespace-only value to a service
 
 ### SERVICE.DEFAULT_BRANCH_MISSING
 
-A `service` command was run without `--branch` on a project that has branches but none marked as its default, so there is no branch it can safely act on. It never guesses a branch by name. The fix is to pass `--branch` with the branch to use; the next actions also offer `branch list` for the project. Meta: none.
+A `service` command was run without `--branch` on a project that has branches but none marked as its default, so there is no branch it can safely act on. It never guesses a branch by name. The fix is to pass `--branch` with the branch to use; the next actions also offer `branch list` for the project. Meta: `projectId`.
 
 ### SERVICE.DELETE_FAILED
 

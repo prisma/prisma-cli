@@ -246,7 +246,18 @@ describe("prisma service create", () => {
     if (frame?.kind !== "result" || frame.envelope.ok) {
       throw new Error("expected an errored envelope");
     }
-    expect(frame.envelope.error.code).toBe("SERVICE.DEFAULT_BRANCH_MISSING");
+    expect(result.exitCode).toBe(2);
+    expect(frame.envelope.error).toMatchObject({
+      code: "SERVICE.DEFAULT_BRANCH_MISSING",
+      meta: { projectId: "proj_1" },
+      nextActions: [
+        { kind: "user-choice" },
+        {
+          kind: "run-command",
+          command: "prisma branch list --project proj_1",
+        },
+      ],
+    });
     expect(created.bodies).toEqual([]);
   });
 

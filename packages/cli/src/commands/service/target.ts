@@ -178,10 +178,10 @@ function namedBranch(name: string): ResolvedServiceProjectContext["branch"] {
 
 async function defaultBranchOf(
   ctx: ServiceContext,
-  projectId: string,
+  project: ProjectSummary,
 ): Promise<ResolvedServiceProjectContext["branch"]> {
   const lookup = await resolveDefaultBranch(ctx.api, {
-    projectId,
+    projectId: project.id,
     signal: ctx.signal,
   });
   switch (lookup.kind) {
@@ -190,7 +190,7 @@ async function defaultBranchOf(
     case "no-branches":
       return namedBranch(FIRST_BRANCH_NAME);
     case "no-default":
-      throw defaultBranchMissingError(projectId);
+      throw defaultBranchMissingError(project);
   }
 }
 
@@ -223,7 +223,7 @@ export async function resolveServiceProjectContext(
   const branch =
     options.branchName !== undefined
       ? namedBranch(options.branchName)
-      : await defaultBranchOf(ctx, resolved.project.id);
+      : await defaultBranchOf(ctx, resolved.project);
 
   return {
     workspace: resolved.workspace,
