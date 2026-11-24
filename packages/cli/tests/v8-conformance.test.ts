@@ -18,6 +18,7 @@ import { sweepBuiltOutput } from "@repo/cli-conformance/module-graph";
 import { sectionsFrom } from "@repo/cli-conformance/subjects";
 import { checkValidatorNoThrow } from "@repo/cli-conformance/validator-no-throw";
 import { describe, expect, test } from "vitest";
+import { SHELL_ALLOWED_UNIMPORTED } from "../scripts/shell-conformance-inputs";
 import {
   composerCommandFamily,
   mountedCommands,
@@ -68,6 +69,7 @@ describe("conformance: import purity", () => {
         label: "@prisma/cli",
         output,
         manifest,
+        allowedUnimported: SHELL_ALLOWED_UNIMPORTED,
         // Anti-vacuity, and more: these two are the engine boundary this
         // package exists to compose, so a build that stopped importing
         // either one is a broken shell rather than a tidy one.

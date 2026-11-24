@@ -36,6 +36,7 @@ import {
   ormCommandFamily,
   platformCommandFamily,
 } from "../src/cli";
+import { SHELL_ALLOWED_UNIMPORTED } from "./shell-conformance-inputs";
 
 const CLI_DIR = fileURLToPath(new URL("..", import.meta.url));
 const ENGINE_DIR = join(CLI_DIR, "..", "cli-engine");
@@ -44,11 +45,6 @@ const PRISMA_DIR = join(CLI_DIR, "..", "prisma");
 // ~440 packages inside packages/cli slows vitest's file crawl enough to
 // time out unrelated tests.
 const WORK_DIR = join(CLI_DIR, "..", "..", ".conformance", "cli");
-
-// The shell lists the framework so it does not rely on the toolchain
-// bringing it (the toolchain peers on it from the ORM release after
-// 8.0.0-rc.25). The shell's own code never imports it.
-const SHELL_UNIMPORTED = ["@prisma/orm-framework"];
 
 const CHANNEL: PublishChannel =
   process.env.PUBLISH_CHANNEL === "dev" ? "dev" : "release";
@@ -64,14 +60,14 @@ async function importPurity(): Promise<readonly Finding[]> {
     label: "@prisma/cli",
     output: await sweepBuiltOutput(join(CLI_DIR, "dist")),
     manifest: await manifest(CLI_DIR),
-    allowedUnimported: SHELL_UNIMPORTED,
+    allowedUnimported: SHELL_ALLOWED_UNIMPORTED,
     requiredSpecifiers: ["@prisma/cli-engine", "@prisma/composer-cli/family"],
   });
   const unscoped = checkImportPurity({
     label: "prisma",
     output: await sweepBuiltOutput(join(PRISMA_DIR, "dist")),
     manifest: await manifest(PRISMA_DIR),
-    allowedUnimported: SHELL_UNIMPORTED,
+    allowedUnimported: SHELL_ALLOWED_UNIMPORTED,
     requiredSpecifiers: ["@prisma/cli-engine", "@prisma/composer-cli/family"],
   });
   const engine = checkImportPurity({
@@ -107,12 +103,12 @@ async function tarball(): Promise<readonly Finding[]> {
         {
           name: "@prisma/cli",
           dir: CLI_DIR,
-          allowedUnimported: SHELL_UNIMPORTED,
+          allowedUnimported: SHELL_ALLOWED_UNIMPORTED,
         },
         {
           name: "prisma",
           dir: PRISMA_DIR,
-          allowedUnimported: SHELL_UNIMPORTED,
+          allowedUnimported: SHELL_ALLOWED_UNIMPORTED,
         },
         {
           name: "@prisma/cli-engine",
