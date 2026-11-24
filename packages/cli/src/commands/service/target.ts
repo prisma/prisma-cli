@@ -10,7 +10,7 @@ import {
   type DeploymentRecord,
   type DomainRecord,
 } from "../../lib/app/app-provider";
-import { resolveDefaultBranch } from "../../lib/app/read-branch";
+import { resolveDefaultBranch } from "../../lib/branch/default-branch";
 import { projectApiError } from "../../lib/project/provider";
 import {
   type ProjectCandidate,
@@ -168,6 +168,13 @@ function requireBranchFlagValue(branchName: string | undefined): void {
   }
 }
 
+/** `service create` on a project with no branches makes its first one under this name. */
+const FIRST_BRANCH_NAME = "main";
+
+function namedBranch(name: string): ResolvedServiceProjectContext["branch"] {
+  return { id: null, name, kind: toBranchKind(name) };
+}
+
 export async function resolveServiceProjectContext(
   ctx: ServiceContext,
   explicitProject: string | undefined,
@@ -194,24 +201,19 @@ export async function resolveServiceProjectContext(
     throw projectResolutionErrorToStructured(resolvedResult.error);
   }
   const resolved = resolvedResult.value;
-  const defaultBranch = options.branchName
-    ? null
-    : await resolveDefaultBranch(ctx.api, {
-        projectId: resolved.project.id,
-        signal: ctx.signal,
-      });
-  // A project with no branches yet: `service create` makes its first one, named main.
-  const branchName = options.branchName ?? "main";
+  const branch =
+    options.branchName !== undefined
+      ? namedBranch(options.branchName)
+      : ((await resolveDefaultBranch(ctx.api, {
+          projectId: resolved.project.id,
+          signal: ctx.signal,
+        })) ?? namedBranch(FIRST_BRANCH_NAME));
 
   return {
     workspace: resolved.workspace,
     project: resolved.project,
     resolution: resolved.resolution,
-    branch: defaultBranch ?? {
-      id: null,
-      name: branchName,
-      kind: toBranchKind(branchName),
-    },
+    branch,
   };
 }
 

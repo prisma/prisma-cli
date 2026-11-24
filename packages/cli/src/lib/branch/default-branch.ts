@@ -1,9 +1,9 @@
 import type { ManagementApiClient } from "@prisma/management-api-sdk";
 
 import type { BranchKind } from "../../types/branch";
-import { listProjectBranches } from "../branch/list";
+import { listProjectBranches } from "./list";
 
-export interface ReadBranch {
+export interface DefaultBranch {
   id: string;
   name: string;
   kind: BranchKind;
@@ -16,7 +16,7 @@ export interface ReadBranch {
 export async function resolveDefaultBranch(
   client: ManagementApiClient,
   options: { projectId: string; signal?: AbortSignal },
-): Promise<ReadBranch | null> {
+): Promise<DefaultBranch | null> {
   const branches = await listProjectBranches(client, {
     projectId: options.projectId,
     signal: options.signal,

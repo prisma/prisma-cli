@@ -52,8 +52,7 @@ describeCommand("service create", () => {
     expect(created.existing).toBe(false);
     // No --region: the API picks the default and reports which one.
     expect(created.service.region).toBeTruthy();
-    // No --branch: the command falls back to main, and the API creates
-    // that branch if the fresh project does not have it yet.
+    // No --branch: the fresh project's default branch is main.
     expect(created.branch).toBe("main");
     // Nothing has been deployed, so the endpoint domain the service
     // already carries is not presented as a live URL.

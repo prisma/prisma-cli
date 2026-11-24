@@ -1,7 +1,7 @@
 import type { ManagementApiClient } from "@prisma/management-api-sdk";
 import { describe, expect, it, vi } from "vitest";
 
-import { resolveDefaultBranch } from "../src/lib/app/read-branch";
+import { resolveDefaultBranch } from "../src/lib/branch/default-branch";
 
 type RawBranch = {
   id: string;
