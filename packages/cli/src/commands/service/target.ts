@@ -576,19 +576,23 @@ export async function resolveServiceDomainTarget(
   },
 ): Promise<ResolvedServiceDomainTarget> {
   requireBranchFlagValue(options.branchName);
-  const branchName = options.branchName?.trim() ?? "production";
+  const branchName = options.branchName?.trim();
 
   const requested = requireServiceArgument(
     options.serviceName,
     options.commandName,
   );
 
-  const provider = serviceProvider(ctx);
-  const target = await resolveServiceProjectContext(ctx, options.projectRef, {
-    commandName: options.commandName,
-    branchName,
-  });
-  const projectId = target.project.id;
+  const { provider, target, projectId } = await resolveServiceProjectState(
+    ctx,
+    {
+      commandName: options.commandName,
+      ...(options.projectRef !== undefined
+        ? { projectRef: options.projectRef }
+        : {}),
+      ...(branchName !== undefined ? { branchName } : {}),
+    },
+  );
   const services = await listServices(
     ctx,
     provider,

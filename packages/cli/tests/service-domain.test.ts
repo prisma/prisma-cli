@@ -17,28 +17,29 @@ import {
   presentedSummary,
   type Routes,
   readFlowRoutes,
+  SERVICE,
 } from "./service-testkit";
 
 const EXPECTED_TARGET = {
   workspace: { id: "ws_1", name: "Acme Inc" },
   project: { id: "proj_1", name: "acme-app" },
-  branch: { name: "production", kind: "production" },
+  branch: { name: "main", kind: "production" },
   service: { id: "svc_1", name: "hello-world" },
 };
 
 const TARGET_ROWS = [
   { label: "workspace", value: "Acme Inc" },
   { label: "project", value: "acme-app" },
-  { label: "branch", value: "production" },
+  { label: "branch", value: "main" },
   { label: "service", value: "hello-world" },
 ];
 
 const APEX_NOTE =
   "At an apex domain, publish the CNAME as an ALIAS, ANAME or flattened CNAME with the same target.";
 
-const PUBLISH_BOTH_RECORDS = `Publish TXT _prisma-verification.shop.acme.com -> prisma-verification=3f9a and CNAME shop.acme.com -> switchboard.cdg.prisma.build at your DNS provider, then run prisma service domain retry shop.acme.com --service svc_1 --project proj_1 --branch production. ${APEX_NOTE}`;
+const PUBLISH_BOTH_RECORDS = `Publish TXT _prisma-verification.shop.acme.com -> prisma-verification=3f9a and CNAME shop.acme.com -> switchboard.cdg.prisma.build at your DNS provider, then run prisma service domain retry shop.acme.com --service svc_1 --project proj_1 --branch main. ${APEX_NOTE}`;
 
-const PUBLISH_CNAME = `Publish CNAME shop.acme.com -> switchboard.cdg.prisma.build at your DNS provider, then run prisma service domain retry shop.acme.com --service svc_1 --project proj_1 --branch production. ${APEX_NOTE}`;
+const PUBLISH_CNAME = `Publish CNAME shop.acme.com -> switchboard.cdg.prisma.build at your DNS provider, then run prisma service domain retry shop.acme.com --service svc_1 --project proj_1 --branch main. ${APEX_NOTE}`;
 
 function domainRoutes(overrides: Routes = {}): Routes {
   return readFlowRoutes({
@@ -145,6 +146,59 @@ it.each([
   ]);
 });
 
+it.each([
+  { command: "add", extra: [] },
+  { command: "show", extra: [] },
+  { command: "retry", extra: [] },
+  { command: "wait", extra: ["--timeout", "0"] },
+  { command: "delete", extra: ["--confirm", "shop.acme.com"] },
+])("without --branch, $command uses the project's default branch", async ({
+  command,
+  extra,
+}) => {
+  const askedBranches: unknown[] = [];
+  const harness = await makeServiceCli({
+    routes: domainRoutes({
+      ...listing([activeRecord()]),
+      "GET /v1/projects/{projectId}/branches": () => ({
+        data: page([
+          {
+            id: "br_feature",
+            gitName: "feature/login",
+            isDefault: false,
+            role: "preview",
+          },
+          {
+            id: "br_trunk",
+            gitName: "trunk",
+            isDefault: true,
+            role: "production",
+          },
+        ]),
+      }),
+      "GET /v1/apps": (init) => {
+        askedBranches.push(init.params?.query?.branchGitName);
+        return { data: page([{ ...SERVICE, branchId: "br_trunk" }]) };
+      },
+      "GET /v1/urls/{id}": () => ({ data: { data: activeRecord() } }),
+      "POST /v1/urls/{id}/check": () => ({ data: { data: activeRecord() } }),
+      "DELETE /v1/urls/{id}": () => ({ data: undefined }),
+    }),
+  });
+
+  const result = await harness.cli.run(
+    ["service", "domain", command, "shop.acme.com", ...TARGET_ARGS, ...extra],
+    { cwd: harness.cwd, env: harness.env, isTty: { stdout: true } },
+  );
+
+  expect(result.exitCode).toBe(0);
+  expect(askedBranches).toEqual(["trunk"]);
+  expect(result.presented?.data).toMatchObject({
+    branch: { name: "trunk", kind: "production" },
+    service: { id: "svc_1", name: "hello-world" },
+  });
+});
+
 describe("prisma service domain add", () => {
   function addRoutes(
     posted: unknown[] = [],
@@ -216,13 +270,13 @@ describe("prisma service domain add", () => {
         kind: "run-command",
         label: "Wait for activation",
         command:
-          "prisma service domain wait shop.acme.com --service svc_1 --project proj_1 --branch production",
+          "prisma service domain wait shop.acme.com --service svc_1 --project proj_1 --branch main",
       },
       {
         kind: "run-command",
         label: "Show the domain",
         command:
-          "prisma service domain show shop.acme.com --service svc_1 --project proj_1 --branch production",
+          "prisma service domain show shop.acme.com --service svc_1 --project proj_1 --branch main",
       },
     ]);
     expect(result.presented?.presentation.stdout).toEqual([
@@ -814,7 +868,7 @@ describe("prisma service domain show", () => {
         kind: "run-command",
         label: "Wait for activation",
         command:
-          "prisma service domain wait shop.acme.com --service svc_1 --project proj_1 --branch production",
+          "prisma service domain wait shop.acme.com --service svc_1 --project proj_1 --branch main",
       },
     ]);
     expect(result.presented?.presentation.stdout).toEqual([
@@ -880,7 +934,7 @@ describe("prisma service domain show", () => {
           kind: "run-command",
           label: "Retry the certificate",
           command:
-            "prisma service domain retry shop.acme.com --service svc_1 --project proj_1 --branch production",
+            "prisma service domain retry shop.acme.com --service svc_1 --project proj_1 --branch main",
         },
       ],
     },
@@ -894,7 +948,7 @@ describe("prisma service domain show", () => {
           kind: "run-command",
           label: "Retry the certificate",
           command:
-            "prisma service domain retry shop.acme.com --service svc_1 --project proj_1 --branch production",
+            "prisma service domain retry shop.acme.com --service svc_1 --project proj_1 --branch main",
         },
       ],
     },
@@ -911,7 +965,7 @@ describe("prisma service domain show", () => {
           kind: "run-command",
           label: "Try again",
           command:
-            "prisma service domain retry shop.acme.com --service svc_1 --project proj_1 --branch production",
+            "prisma service domain retry shop.acme.com --service svc_1 --project proj_1 --branch main",
         },
       ],
     },
@@ -1235,7 +1289,7 @@ describe("prisma service domain retry", () => {
         kind: "run-command",
         label: "Wait for activation",
         command:
-          "prisma service domain wait shop.acme.com --service svc_1 --project proj_1 --branch production",
+          "prisma service domain wait shop.acme.com --service svc_1 --project proj_1 --branch main",
       },
     ]);
   });
@@ -1334,7 +1388,7 @@ describe("prisma service domain retry", () => {
         kind: "run-command",
         label: "Retry the domain",
         command:
-          "prisma service domain retry shop.acme.com --service svc_1 --project proj_1 --branch production",
+          "prisma service domain retry shop.acme.com --service svc_1 --project proj_1 --branch main",
       },
     ]);
   });
@@ -1365,7 +1419,7 @@ describe("prisma service domain retry", () => {
         kind: "run-command",
         label: "Retry the domain",
         command:
-          "prisma service domain retry shop.acme.com --service svc_1 --project proj_1 --branch production",
+          "prisma service domain retry shop.acme.com --service svc_1 --project proj_1 --branch main",
       },
     ]);
   });
@@ -1393,7 +1447,7 @@ describe("prisma service domain retry", () => {
         kind: "run-command",
         label: "Retry the domain",
         command:
-          "prisma service domain retry shop.acme.com --service svc_1 --project proj_1 --branch production",
+          "prisma service domain retry shop.acme.com --service svc_1 --project proj_1 --branch main",
       },
     ]);
   });

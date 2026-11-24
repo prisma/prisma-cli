@@ -227,13 +227,13 @@ describe("prisma service domain wait", () => {
         kind: "run-command",
         label: "Show the domain",
         command:
-          "prisma service domain show shop.acme.com --service svc_1 --project proj_1 --branch production",
+          "prisma service domain show shop.acme.com --service svc_1 --project proj_1 --branch main",
       },
       {
         kind: "run-command",
         label: "Retry the certificate",
         command:
-          "prisma service domain retry shop.acme.com --service svc_1 --project proj_1 --branch production",
+          "prisma service domain retry shop.acme.com --service svc_1 --project proj_1 --branch main",
       },
     ]);
     expect(JSON.stringify(frame.envelope.error)).not.toContain(
@@ -282,7 +282,7 @@ describe("prisma service domain wait", () => {
         kind: "run-command",
         label: "Show the domain",
         command:
-          "prisma service domain show shop.acme.com --service svc_1 --project proj_1 --branch production",
+          "prisma service domain show shop.acme.com --service svc_1 --project proj_1 --branch main",
       },
     ]);
     expect(reads).toEqual([]);
@@ -332,13 +332,13 @@ describe("prisma service domain wait", () => {
     expect(frame.envelope.error.nextActions).toEqual([
       {
         kind: "user-choice",
-        label: `Publish CNAME shop.acme.com -> switchboard.cdg.prisma.build at your DNS provider, then run prisma service domain retry shop.acme.com --service svc_1 --project proj_1 --branch production. ${APEX_NOTE}`,
+        label: `Publish CNAME shop.acme.com -> switchboard.cdg.prisma.build at your DNS provider, then run prisma service domain retry shop.acme.com --service svc_1 --project proj_1 --branch main. ${APEX_NOTE}`,
       },
       {
         kind: "run-command",
         label: "Show the domain",
         command:
-          "prisma service domain show shop.acme.com --service svc_1 --project proj_1 --branch production",
+          "prisma service domain show shop.acme.com --service svc_1 --project proj_1 --branch main",
       },
       { kind: "user-choice", label: "Retry wait with a longer --timeout." },
     ]);
@@ -373,7 +373,7 @@ describe("prisma service domain wait", () => {
           kind: "run-command",
           label: "Try again",
           command:
-            "prisma service domain retry shop.acme.com --service svc_1 --project proj_1 --branch production",
+            "prisma service domain retry shop.acme.com --service svc_1 --project proj_1 --branch main",
         },
       ],
     },
@@ -416,7 +416,7 @@ describe("prisma service domain wait", () => {
         kind: "run-command",
         label: "Show the domain",
         command:
-          "prisma service domain show shop.acme.com --service svc_1 --project proj_1 --branch production",
+          "prisma service domain show shop.acme.com --service svc_1 --project proj_1 --branch main",
       },
       ...tryAgain,
       { kind: "user-choice", label: advice },
