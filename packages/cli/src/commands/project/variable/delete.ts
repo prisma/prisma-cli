@@ -7,8 +7,7 @@ import {
   positional,
 } from "@prisma/cli-engine";
 import { CliStructuredError, ok } from "@prisma/cli-engine/protocol";
-import { apiCallError } from "../../../controllers/app-env-api";
-import { findEnvVarInGroup } from "../../../lib/variable/api";
+import { findEnvVarInGroup, variableApiError } from "../../../lib/variable/api";
 import { resolveActiveWorkspace } from "../../resources-shared/workspace";
 import { resolvePinnedProject } from "../context";
 import {
@@ -134,7 +133,7 @@ export const projectVariableDeleteCommand = defineCommand({
       },
     );
     if (error) {
-      throw apiCallError(`Failed to delete ${key}`, response, error);
+      throw variableApiError(`Failed to delete ${key}`, response, error);
     }
 
     const result = { projectId, groupName: group.name, key };

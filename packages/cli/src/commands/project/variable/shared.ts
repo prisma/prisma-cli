@@ -7,6 +7,7 @@ import {
   listVariableGroups,
   type RawVariableGroup,
 } from "../../../lib/variable/api";
+import type { VariableAssignment } from "../../../lib/variable/assignment";
 
 export const projectFlag = flag.string({
   brief:
@@ -175,7 +176,7 @@ export function rejectBranchWrite(
         {
           kind: "user-choice",
           label:
-            "Use `prisma project env` for existing overrides. For new values, set a branch variable in a group, or send a service variable with the deploy.",
+            "Set the value in a group, or create a custom group for this branch with `prisma project variable group create`. To change an existing override, use the deprecated `prisma project env` command.",
         },
         {
           kind: "run-command",
@@ -185,6 +186,50 @@ export function rejectBranchWrite(
       ],
     },
   );
+}
+
+/** Writes a dotenv file's assignments one at a time, in file order. When a
+ *  write fails, the error names the keys already written, so the user knows
+ *  what to remove from the file before running the command again. */
+export async function writeFileAssignments<T>(
+  filePath: string,
+  command: "add" | "update",
+  assignments: readonly VariableAssignment[],
+  write: (assignment: VariableAssignment) => Promise<T>,
+): Promise<T[]> {
+  const written: T[] = [];
+  const writtenKeys: string[] = [];
+  for (const assignment of assignments) {
+    try {
+      // biome-ignore lint/performance/noAwaitInLoops: the import stops at the first failed key, so writes run in order.
+      written.push(await write(assignment));
+      writtenKeys.push(assignment.key);
+    } catch (error) {
+      const cause =
+        error instanceof Error ? error.message : "The API call failed.";
+      throw new CliStructuredError(
+        "VARIABLE.FILE_APPLY_FAILED",
+        `Failed to ${command} "${assignment.key}" from "${filePath}"`,
+        {
+          why:
+            writtenKeys.length === 0
+              ? `No keys were written. ${cause}`
+              : `These keys were written before the failure: ${writtenKeys.join(", ")}. ${cause}`,
+          meta: { file: filePath, failedKey: assignment.key, writtenKeys },
+          nextActions: [
+            {
+              kind: "user-choice",
+              label:
+                writtenKeys.length === 0
+                  ? "Fix the cause and run the command again."
+                  : "Remove the written keys from the file, fix the cause, and run the command again.",
+            },
+          ],
+        },
+      );
+    }
+  }
+  return written;
 }
 
 export function variableFieldRows(

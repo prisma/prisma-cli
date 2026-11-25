@@ -21,6 +21,7 @@ import { resolveActiveWorkspace } from "../resources-shared/workspace";
 import { resolvePinnedProject } from "./context";
 import {
   projectFlag,
+  reportEnvDeprecation,
   roleFlag,
   variableRows,
   variableStdoutRows,
@@ -86,9 +87,9 @@ export const projectEnvListCommand = defineCommand({
   },
   help: {
     summary:
-      "List environment variables in a scope: names and ids, never values",
+      "Deprecated. List environment variables in a scope; use 'prisma project variable list' instead",
     description:
-      "Values are write-only through the CLI: listing shows names, ids, and status, never values. Without a scope flag it shows an overview of every scope; --role narrows to the production or preview scope, and --branch shows what one preview branch resolves.",
+      "Deprecated: 'prisma project env' will be removed in a later release. Use 'prisma project variable list', which lists variable groups. Values are write-only through the CLI: listing shows names, ids, and status, never values. Without a scope flag it shows an overview of every scope; --role narrows to the production or preview scope, and --branch shows what one preview branch resolves.",
     examples: [
       "project env list",
       "project env list --role production",
@@ -98,6 +99,8 @@ export const projectEnvListCommand = defineCommand({
   },
   needs: { credentials: true },
   handler: async (args, ctx) => {
+    reportEnvDeprecation(ctx, "list");
+
     const explicit = resolveEnvScope(
       { roleName: args.flags.role, branchName: args.flags.branch },
       { requireExplicit: false, command: "list" },

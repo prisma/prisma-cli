@@ -38,6 +38,7 @@ const NAMESPACES = [
   "PROJECT",
   "SERVICE",
   "SKILLS",
+  "VARIABLE",
 ];
 
 const CODE_RE = new RegExp(

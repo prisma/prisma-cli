@@ -55,10 +55,8 @@ Useful next commands:
 ```bash
 npx prisma service list
 npx prisma service logs
-npx prisma project env add DATABASE_URL=postgresql://example --role preview
-npx prisma project env add --file .env --role preview
-npx prisma project env list
-npx prisma project env list --role preview
+npx prisma project variable add --file .env --group preview
+npx prisma project variable list --group preview
 npx prisma project variable add API_URL=https://api.example --group production
 npx prisma project variable list --branch feature/foo
 ```

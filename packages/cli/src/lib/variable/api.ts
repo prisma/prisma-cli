@@ -8,7 +8,6 @@
  */
 import { CliStructuredError } from "@prisma/cli-engine/protocol";
 import type { ManagementApiClient } from "@prisma/management-api-sdk";
-import { runCommand, userChoice } from "../app/env-errors";
 
 // ---------------------------------------------------------------------------
 // Local types that mirror the OpenAPI shapes
@@ -77,7 +76,8 @@ interface ApiErrorBody {
   };
 }
 
-function variableApiError(
+/** The error every failed `prisma project variable` API call raises. */
+export function variableApiError(
   summary: string,
   response: Response | undefined,
   error: ApiErrorBody | undefined,
@@ -91,7 +91,13 @@ function variableApiError(
     return new CliStructuredError("VARIABLE.API_ERROR", summary, {
       why: "The Management API rejected the request as unauthorized or forbidden.",
       meta: { status },
-      nextActions: [runCommand("prisma auth login")],
+      nextActions: [
+        {
+          kind: "run-command",
+          label: "prisma auth login",
+          command: "prisma auth login",
+        },
+      ],
     });
   }
 
@@ -108,10 +114,12 @@ function variableApiError(
         }
       : {}),
     nextActions: [
-      userChoice(
-        apiHint ??
+      {
+        kind: "user-choice",
+        label:
+          apiHint ??
           "Re-run with --log-level verbose for the underlying API response details.",
-      ),
+      },
     ],
   });
 }

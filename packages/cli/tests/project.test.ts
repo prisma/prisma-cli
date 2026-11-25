@@ -3219,122 +3219,101 @@ describe("project commands given an address", () => {
   });
 });
 
-describe("project env override deprecation notice", () => {
-  const NOTICE = "Branch overrides are deprecated.";
-  const BRANCHES: BranchRow[] = [
-    { id: "br_main", gitName: "main", role: "production", isDefault: true },
-    {
-      id: "br_feature",
-      gitName: "feature/foo",
-      role: "preview",
-      isDefault: false,
-    },
-  ];
+describe("project env deprecation notice", () => {
+  const notice = (command: string) =>
+    `\`prisma project env\` is deprecated and will be removed in a later release. Use \`prisma project variable ${command}\` instead.`;
+  const productionKey = () =>
+    envRow({ id: "env_existing", key: "STRIPE_KEY", class: "production" });
 
-  it("prints the notice on stderr when add writes a branch override", async () => {
-    const result = await makeCli(envClient({ branches: BRANCHES })).run(
-      ["project", "env", "add", "KEY=value", "--branch", "feature/foo"],
-      { cwd: await pinnedCwd() },
-    );
-
-    expect(result.exitCode).toBe(0);
-    expect(result.stderr).toContain(NOTICE);
-    expect(result.stderr).toContain("prisma project variable");
-  });
-
-  it("prints the notice when update writes a branch override", async () => {
-    const result = await makeCli(
-      envClient({
-        branches: BRANCHES,
-        variables: [
-          envRow({
-            id: "env_branch",
-            key: "KEY",
-            class: "preview",
-            branchId: "br_feature",
-          }),
-        ],
-      }),
-    ).run(["project", "env", "update", "KEY=new", "--branch", "feature/foo"], {
-      cwd: await pinnedCwd(),
-    });
-
-    expect(result.exitCode).toBe(0);
-    expect(result.stderr).toContain(NOTICE);
-  });
-
-  it("prints the notice when add --file writes branch overrides", async () => {
-    const cwd = await pinnedCwd();
-    await writeFile(path.join(cwd, ".env"), "A=1\n", "utf8");
-
-    const result = await makeCli(envClient({ branches: BRANCHES })).run(
-      ["project", "env", "add", "--file", ".env", "--branch", "feature/foo"],
-      { cwd },
-    );
-
-    expect(result.exitCode).toBe(0);
-    expect(result.stderr).toContain(NOTICE);
-  });
-
-  it("prints nothing when add writes a role-wide value", async () => {
+  it("add prints the notice on stderr and leaves stdout as the new id", async () => {
     const result = await makeCli(envClient()).run(
       ["project", "env", "add", "KEY=value", "--role", "preview"],
       { cwd: await pinnedCwd() },
     );
 
     expect(result.exitCode).toBe(0);
-    expect(result.stderr).not.toContain(NOTICE);
+    expect(result.stderr).toContain(notice("add"));
+    expect(result.stdout).toBe("env_KEY\n");
   });
 
-  it("prints nothing for list and delete", async () => {
-    const variables = [
-      envRow({
-        id: "env_branch",
-        key: "KEY",
-        class: "preview",
-        branchId: "br_feature",
-      }),
-    ];
-    const list = await makeCli(
-      envClient({ branches: BRANCHES, variables }),
-    ).run(["project", "env", "list", "--branch", "feature/foo"], {
-      cwd: await pinnedCwd(),
-    });
-    const del = await makeCli(envClient({ branches: BRANCHES, variables })).run(
-      ["project", "env", "delete", "KEY", "--branch", "feature/foo"],
-      { cwd: await pinnedCwd() },
+  it("add --file prints the notice once and leaves stdout as the written rows", async () => {
+    const cwd = await pinnedCwd();
+    await writeFile(path.join(cwd, ".env"), "A=1\n", "utf8");
+
+    const result = await makeCli(envClient()).run(
+      ["project", "env", "add", "--file", ".env", "--role", "preview"],
+      { cwd },
     );
 
-    expect(list.exitCode).toBe(0);
-    expect(list.stderr).not.toContain(NOTICE);
-    expect(del.exitCode).toBe(0);
-    expect(del.stderr).not.toContain(NOTICE);
+    expect(result.exitCode).toBe(0);
+    expect(result.stderr.split(notice("add")).length).toBe(2);
+    expect(result.stdout).toBe("A\tenv_A\t\n");
   });
 
-  it("prints the notice when the API marks the write with a Deprecation header", async () => {
-    const base = envClient();
-    const client = {
-      ...base,
-      POST: async (apiPath: string, init: unknown) => {
-        const answer = await (
-          base.POST as unknown as (p: string, i: unknown) => Promise<object>
-        )(apiPath, init);
-        return {
-          ...answer,
-          response: new Response(null, {
-            status: 201,
-            headers: { Deprecation: "true" },
-          }),
-        };
-      },
-    } as unknown as ManagementApiClient;
-
-    const result = await makeCli(client).run(
-      ["project", "env", "add", "KEY=value", "--role", "preview"],
+  it("update prints the notice on stderr and writes nothing to stdout", async () => {
+    const result = await makeCli(
+      envClient({ variables: [productionKey()] }),
+    ).run(
+      ["project", "env", "update", "STRIPE_KEY=new", "--role", "production"],
       { cwd: await pinnedCwd() },
     );
 
     expect(result.exitCode).toBe(0);
-    expect(result.stderr).toContain(NOTICE);
+    expect(result.stderr).toContain(notice("update"));
+    expect(result.stdout).toBe("");
+  });
+
+  it("delete prints the notice on stderr and writes nothing to stdout", async () => {
+    const result = await makeCli(
+      envClient({ variables: [productionKey()] }),
+    ).run(["project", "env", "delete", "STRIPE_KEY", "--role", "production"], {
+      cwd: await pinnedCwd(),
+    });
+
+    expect(result.exitCode).toBe(0);
+    expect(result.stderr).toContain(notice("delete"));
+    expect(result.stdout).toBe("");
+  });
+
+  it("list prints the notice on stderr and leaves stdout as the variable rows", async () => {
+    const result = await makeCli(
+      envClient({ variables: [productionKey()] }),
+    ).run(["project", "env", "list", "--role", "production"], {
+      cwd: await pinnedCwd(),
+    });
+
+    expect(result.exitCode).toBe(0);
+    expect(result.stderr).toContain(notice("list"));
+    expect(result.stdout).toBe("STRIPE_KEY\tenv_existing\t\n");
+  });
+
+  it("prints the notice even when the command fails", async () => {
+    const result = await makeCli(envClient()).run(
+      ["project", "env", "update", "MISSING=value", "--role", "production"],
+      { cwd: await pinnedCwd() },
+    );
+
+    expect(result.exitCode).not.toBe(0);
+    expect(result.stderr).toContain(notice("update"));
+  });
+
+  it("keeps the --json result unchanged and sends the notice as a separate message frame", async () => {
+    const result = await makeCli(envClient()).run(
+      ["project", "env", "add", "KEY=value", "--role", "preview", "--json"],
+      { cwd: await pinnedCwd() },
+    );
+
+    expect(result.exitCode).toBe(0);
+    const messages = result.json.filter(
+      (frame) => frame.kind === "message",
+    ) as Array<{ text: string }>;
+    expect(messages.map((frame) => frame.text)).toEqual([notice("add")]);
+    expect(resultFrame(result.json).envelope).toMatchObject({
+      ok: true,
+      result: {
+        scope: { kind: "role", role: "preview" },
+        variable: { id: "env_KEY", key: "KEY" },
+      },
+    });
   });
 });

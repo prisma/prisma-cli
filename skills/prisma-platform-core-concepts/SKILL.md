@@ -341,12 +341,16 @@ Rules that bite:
    no API returns them. To change a value you replace it.
 3. Variables resolve at deploy time from the branch's class. You never pass
    environment variables as part of a deploy.
-4. Templates, per-branch overrides, and wholesale dotenv import are all
-   managed through the `project env` group. Per-branch overrides are
-   deprecated: `project variable` writes values to a group instead
-   (production, preview, or a custom group that matches branches by name),
-   and `project variable list --branch <name>` shows what a branch receives.
-5. `DATABASE_URL` is managed for you when the module declares a database:
+4. Manage variables with the `project variable` group. Each write targets a
+   group: production, preview, or a custom group that matches branches by
+   name. `--file` imports a dotenv file, and `project variable list --branch
+   <name>` shows what a branch receives. Per-branch overrides are deprecated
+   and `project variable` never writes them.
+5. The `project env` group is deprecated and will be removed in a later
+   release; each run prints a warning. Use `project variable` instead. Only
+   use `project env --branch` to change or delete an override that already
+   exists.
+6. `DATABASE_URL` is managed for you when the module declares a database:
    previews get their own fresh database's URL, production gets the
    production database's. Only set it yourself for databases the platform
    does not manage.

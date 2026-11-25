@@ -560,12 +560,12 @@ describe("project variable update", () => {
       (c) => c.method === "GET" && c.path === "/v1/environment-variables",
     );
     expect(lookup?.init.params?.query).toMatchObject({
-      key: "API_KEY",
+      projectId: "proj_1",
       groupId: "production",
     });
   });
 
-  it("updates file keys in the custom group, looking each up by group id", async () => {
+  it("updates file keys in the custom group, reading its keys by group id", async () => {
     const cwd = await pinnedCwd();
     await writeFile(path.join(cwd, ".env"), "API_KEY=new_value\n", "utf8");
     const staging = {
@@ -615,7 +615,6 @@ describe("project variable update", () => {
       (c) => c.method === "GET" && c.path === "/v1/environment-variables",
     );
     expect(lookup?.init.params?.query).toMatchObject({
-      key: "API_KEY",
       groupId: "vgrp_staging",
     });
     const patch = calls.find((c) => c.method === "PATCH");
@@ -716,7 +715,7 @@ describe("project variable delete", () => {
 // ---------------------------------------------------------------------------
 
 describe("project variable list", () => {
-  it("renders a group table with variable counts", async () => {
+  it("lists each group with its keys and ids", async () => {
     const result = await makeCli(
       variableClient({
         groups: ALL_GROUPS,
@@ -754,13 +753,20 @@ describe("project variable list", () => {
     expect(result.exitCode).toBe(0);
     const envelope = resultFrame(result.json).envelope as {
       ok: boolean;
-      result: { groups: Array<{ group: { name: string }; keys: string[] }> };
+      result: {
+        groups: Array<{
+          group: { name: string };
+          variables: Array<{ key: string; id: string }>;
+        }>;
+      };
     };
     expect(envelope.ok).toBe(true);
     const prodGroup = envelope.result.groups.find(
       (g) => g.group.name === "production",
     );
-    expect(prodGroup?.keys).toEqual(["STRIPE_KEY"]);
+    expect(prodGroup?.variables).toMatchObject([
+      { key: "STRIPE_KEY", id: "ev_1" },
+    ]);
   });
 });
 
@@ -1170,6 +1176,301 @@ describe("project variable group delete", () => {
     expect(resultFrame(result.json).envelope).toMatchObject({
       ok: false,
       error: { code: "VARIABLE.BUILTIN_GROUP_DELETE" },
+    });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Checks before writing, file imports, and list filters
+// ---------------------------------------------------------------------------
+
+function groupRows(rows: Array<{ id: string; key: string }>): Responder {
+  return () => ({
+    data: {
+      data: rows.map((row) => ({
+        ...row,
+        groupId: null,
+        updatedAt: "2024-01-01T00:00:00Z",
+      })),
+      pagination: { hasMore: false, nextCursor: null },
+    },
+  });
+}
+
+describe("project variable writes check the group first", () => {
+  it("add fails with VARIABLE.ALREADY_EXISTS and writes nothing when the key exists", async () => {
+    const calls: Call[] = [];
+    const result = await makeCli(
+      variableClient({
+        calls,
+        routes: {
+          "GET /v1/environment-variables": groupRows([
+            { id: "ev_1", key: "API_KEY" },
+          ]),
+        },
+      }),
+    ).run(
+      [
+        "project",
+        "variable",
+        "add",
+        "API_KEY=value",
+        "--group",
+        "production",
+        "--json",
+      ],
+      { cwd: await pinnedCwd() },
+    );
+
+    expect(result.exitCode).not.toBe(0);
+    expect(resultFrame(result.json).envelope).toMatchObject({
+      ok: false,
+      error: { code: "VARIABLE.ALREADY_EXISTS", meta: { keys: ["API_KEY"] } },
+    });
+    expect(calls.some((c) => c.method === "POST")).toBe(false);
+  });
+
+  it("add --file names every existing key and writes nothing", async () => {
+    const cwd = await pinnedCwd();
+    await writeFile(path.join(cwd, ".env"), "NEW=1\nA=2\nB=3\n", "utf8");
+    const calls: Call[] = [];
+    const result = await makeCli(
+      variableClient({
+        calls,
+        routes: {
+          "GET /v1/environment-variables": groupRows([
+            { id: "ev_a", key: "A" },
+            { id: "ev_b", key: "B" },
+          ]),
+        },
+      }),
+    ).run(
+      [
+        "project",
+        "variable",
+        "add",
+        "--file",
+        ".env",
+        "--group",
+        "production",
+        "--json",
+      ],
+      { cwd },
+    );
+
+    expect(resultFrame(result.json).envelope).toMatchObject({
+      ok: false,
+      error: { code: "VARIABLE.ALREADY_EXISTS", meta: { keys: ["A", "B"] } },
+    });
+    expect(calls.some((c) => c.method === "POST")).toBe(false);
+  });
+
+  it("update --file fails with VARIABLE.NOT_FOUND and writes nothing when a key is missing", async () => {
+    const cwd = await pinnedCwd();
+    await writeFile(path.join(cwd, ".env"), "A=1\nMISSING=2\n", "utf8");
+    const calls: Call[] = [];
+    const result = await makeCli(
+      variableClient({
+        calls,
+        routes: {
+          "GET /v1/environment-variables": groupRows([
+            { id: "ev_a", key: "A" },
+          ]),
+        },
+      }),
+    ).run(
+      [
+        "project",
+        "variable",
+        "update",
+        "--file",
+        ".env",
+        "--group",
+        "production",
+        "--json",
+      ],
+      { cwd },
+    );
+
+    expect(resultFrame(result.json).envelope).toMatchObject({
+      ok: false,
+      error: { code: "VARIABLE.NOT_FOUND", meta: { keys: ["MISSING"] } },
+    });
+    expect(calls.some((c) => c.method === "PATCH")).toBe(false);
+  });
+
+  it("add --file reports the keys written before a failed write", async () => {
+    const cwd = await pinnedCwd();
+    await writeFile(path.join(cwd, ".env"), "A=1\nB=2\nC=3\n", "utf8");
+    const result = await makeCli(
+      variableClient({
+        routes: {
+          "POST /v1/environment-variables": (call) => {
+            const key = (call.init.body as { key: string }).key;
+            if (key === "B") {
+              return {
+                error: { error: { message: "boom" } },
+                response: new Response(null, { status: 500 }),
+              };
+            }
+            return {
+              data: {
+                data: { id: `ev_${key}`, key, updatedAt: "2024-06-01" },
+              },
+            };
+          },
+        },
+      }),
+    ).run(
+      [
+        "project",
+        "variable",
+        "add",
+        "--file",
+        ".env",
+        "--group",
+        "production",
+        "--json",
+      ],
+      { cwd },
+    );
+
+    expect(resultFrame(result.json).envelope).toMatchObject({
+      ok: false,
+      error: {
+        code: "VARIABLE.FILE_APPLY_FAILED",
+        meta: { file: ".env", failedKey: "B", writtenKeys: ["A"] },
+      },
+    });
+  });
+
+  it("add --file prints each written key and id on stdout", async () => {
+    const cwd = await pinnedCwd();
+    await writeFile(path.join(cwd, ".env"), "A=1\nB=2\n", "utf8");
+    const result = await makeCli(variableClient()).run(
+      ["project", "variable", "add", "--file", ".env", "--group", "production"],
+      { cwd },
+    );
+
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout).toBe("A\tev_new\nB\tev_new\n");
+  });
+
+  it("rejects a key that starts with a digit with VARIABLE.USAGE_ERROR", async () => {
+    const calls: Call[] = [];
+    const result = await makeCli(variableClient({ calls })).run(
+      [
+        "project",
+        "variable",
+        "add",
+        "1KEY=value",
+        "--group",
+        "production",
+        "--json",
+      ],
+      { cwd: await pinnedCwd() },
+    );
+
+    expect(resultFrame(result.json).envelope).toMatchObject({
+      ok: false,
+      error: {
+        code: "VARIABLE.USAGE_ERROR",
+        why: expect.stringContaining("starts with a digit"),
+      },
+    });
+    expect(calls).toEqual([]);
+  });
+
+  it("reads the value from the environment when only the key is given", async () => {
+    const calls: Call[] = [];
+    const result = await makeCli(variableClient({ calls })).run(
+      ["project", "variable", "add", "API_URL", "--group", "production"],
+      { cwd: await pinnedCwd(), env: { API_URL: "https://api.example" } },
+    );
+
+    expect(result.exitCode).toBe(0);
+    const post = calls.find((c) => c.method === "POST");
+    expect(post?.init.body).toMatchObject({
+      key: "API_URL",
+      value: "https://api.example",
+    });
+  });
+});
+
+describe("project variable list filters", () => {
+  const rows: Responder = (call) => {
+    const groupId = (call.init.params?.query as { groupId?: string })?.groupId;
+    return groupRows(
+      groupId === "production" ? [{ id: "ev_1", key: "STRIPE_KEY" }] : [],
+    )(call);
+  };
+
+  it("--role production lists only the production group", async () => {
+    const result = await makeCli(
+      variableClient({
+        groups: ALL_GROUPS,
+        routes: { "GET /v1/environment-variables": rows },
+      }),
+    ).run(["project", "variable", "list", "--role", "production"], {
+      cwd: await pinnedCwd(),
+    });
+
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout).toBe("production\tSTRIPE_KEY\tev_1\n");
+  });
+
+  it("rejects --group and --role together", async () => {
+    const result = await makeCli(variableClient()).run(
+      [
+        "project",
+        "variable",
+        "list",
+        "--group",
+        "staging",
+        "--role",
+        "preview",
+        "--json",
+      ],
+      { cwd: await pinnedCwd() },
+    );
+
+    expect(resultFrame(result.json).envelope).toMatchObject({
+      ok: false,
+      error: { code: "VARIABLE.CONFLICTING_FLAGS" },
+    });
+  });
+
+  it("fails with VARIABLE.GROUP_NOT_FOUND for an unknown --group", async () => {
+    const result = await makeCli(variableClient()).run(
+      ["project", "variable", "list", "--group", "nope", "--json"],
+      { cwd: await pinnedCwd() },
+    );
+
+    expect(resultFrame(result.json).envelope).toMatchObject({
+      ok: false,
+      error: { code: "VARIABLE.GROUP_NOT_FOUND" },
+    });
+  });
+
+  it("fails with VARIABLE.BRANCH_NOT_FOUND for an unknown --branch", async () => {
+    const result = await makeCli(
+      variableClient({
+        routes: {
+          "GET /v1/projects/{projectId}/branches": () => ({
+            data: {
+              data: [],
+              pagination: { hasMore: false, nextCursor: null },
+            },
+          }),
+        },
+      }),
+    ).run(["project", "variable", "list", "--branch", "ghost", "--json"], {
+      cwd: await pinnedCwd(),
+    });
+
+    expect(resultFrame(result.json).envelope).toMatchObject({
+      ok: false,
+      error: { code: "VARIABLE.BRANCH_NOT_FOUND" },
     });
   });
 });

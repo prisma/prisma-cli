@@ -194,20 +194,16 @@ export function previewDefaultDiagnostics(
   }));
 }
 
-/** Warns on stderr that branch overrides are deprecated. A `Deprecation`
- *  header on the API response triggers it; without one, any --branch write does. */
-export function reportOverrideDeprecation(
+/** Warns that `prisma project env` will be removed, naming the
+ *  `prisma project variable` command that replaces this one. The warning is
+ *  commentary, so the command's data output stays unchanged for scripts. */
+export function reportEnvDeprecation(
   ctx: ProjectCommandContext,
-  scope: EnvScope,
-  response?: Response,
+  command: "add" | "update" | "delete" | "list",
 ): void {
-  if (scope.kind !== "branch" && !response?.headers.has("Deprecation")) {
-    return;
-  }
-
   ctx.report({
     kind: "message",
     severity: "warn",
-    text: "Branch overrides are deprecated. Set values in a variable group instead: `prisma project variable add --group <name>`. To give a branch its own values, create a custom group with `prisma project variable group create`.",
+    text: `\`prisma project env\` is deprecated and will be removed in a later release. Use \`prisma project variable ${command}\` instead.`,
   });
 }

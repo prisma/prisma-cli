@@ -28,7 +28,7 @@ import {
   fileWritePresentations,
   previewDefaultDiagnostics,
   projectFlag,
-  reportOverrideDeprecation,
+  reportEnvDeprecation,
   requireEnvScope,
   resolveEnvTarget,
   roleFlag,
@@ -74,9 +74,9 @@ export const projectEnvAddCommand = defineCommand({
   },
   help: {
     summary:
-      "Create an environment variable in one scope: production, preview, or one branch",
+      "Deprecated. Create an environment variable in one scope; use 'prisma project variable add' instead",
     description:
-      "Variables reach a service's environment when it deploys. Writes always name their scope so production is never targeted by accident: --role production, --role preview (shared by every preview branch), or --branch for one branch's override. The value comes from KEY=VALUE, from the current shell environment when only KEY is given, or from a dotenv file with --file.",
+      "Deprecated: 'prisma project env' will be removed in a later release. Use 'prisma project variable add', which writes to variable groups. Variables reach a service's environment when it deploys. Writes always name their scope so production is never targeted by accident: --role production, --role preview (shared by every preview branch), or --branch for one branch's override. The value comes from KEY=VALUE, from the current shell environment when only KEY is given, or from a dotenv file with --file.",
     examples: [
       "project env add STRIPE_KEY=sk_test_xxx --role production",
       "project env add STRIPE_KEY=sk_test_xxx --role preview",
@@ -88,6 +88,8 @@ export const projectEnvAddCommand = defineCommand({
   },
   needs: { credentials: true },
   handler: async (args, ctx) => {
+    reportEnvDeprecation(ctx, "add");
+
     const source = resolveEnvWriteSource(
       args.positionals.assignment,
       args.flags.file,
@@ -117,9 +119,6 @@ export const projectEnvAddCommand = defineCommand({
         input.assignments,
         verboseContext,
       );
-
-      reportOverrideDeprecation(ctx, scope);
-
       const result: EnvAddResult = {
         projectId,
         scope: resolved.descriptor,
@@ -208,8 +207,6 @@ export const projectEnvAddCommand = defineCommand({
     if (error || !data) {
       throw apiCallError(`Failed to add ${input.key}`, response, error);
     }
-
-    reportOverrideDeprecation(ctx, scope, response);
 
     const result: EnvSingleWriteResult = {
       projectId,

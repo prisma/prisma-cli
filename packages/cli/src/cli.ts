@@ -210,22 +210,22 @@ export const cliGroups: Readonly<
           "Connect GitHub; branches carrying the deploy workflow deploy on push",
       },
       {
-        run: "project env add KEY=value --role preview",
-        brief: "Set env vars services get at deploy",
+        run: "project variable add KEY=value --group preview",
+        brief: "Set a variable services get at deploy",
       },
     ],
   },
   "project env": {
     brief:
-      "Manage a project's environment variables. Add, update, list, and delete values per scope",
+      "Deprecated: use 'project variable'. Manage environment variables per scope; will be removed in a later release",
     description:
-      "Variables live in scopes: production, preview (shared by every preview branch), or a single branch's override. Values reach services when they deploy, and are write-only afterwards: list shows metadata, never values.",
+      "Deprecated: 'prisma project env' will be removed in a later release. Use 'prisma project variable', which manages the same variables by group. Variables live in scopes: production, preview (shared by every preview branch), or a single branch's override. Values reach services when they deploy, and are write-only afterwards: list shows metadata, never values.",
   },
   "project variable": {
     brief:
       "Manage a project's variables by group. Add, update, list, and delete values, and create custom groups",
     description:
-      "A variable is a KEY=VALUE pair that services receive when they deploy. Values are write-only: list shows keys, never values. Each variable belongs to one group, and each branch receives the variables of exactly one group. Every project has two built-in groups: production, for the production branch, and preview, for every other branch. A custom group has a rule that picks its branches by exact name or by name prefix; a branch it picks receives the custom group instead of preview. Writes always target a group, never a single branch. Keys that start with COMPOSER_ are managed by Prisma.",
+      "A variable is a KEY=VALUE pair that services receive when they deploy. Values are write-only: list shows keys and ids, never values. Each variable belongs to one group, and each branch receives the variables of exactly one group. Every project has two built-in groups: production, for the production branch, and preview, for every other branch. A custom group has a rule that picks its branches by exact name or by name prefix; a branch it picks receives the custom group instead of preview. Writes always target a group, never a single branch. Keys that start with COMPOSER_ are managed by Prisma.",
     workflow: [
       {
         run: "project variable add API_URL=https://api.example --group production",
