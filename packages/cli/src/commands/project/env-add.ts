@@ -76,7 +76,7 @@ export const projectEnvAddCommand = defineCommand({
     summary:
       "Deprecated. Create an environment variable in one scope; use 'prisma project variable add' instead",
     description:
-      "Deprecated: 'prisma project env' will be removed in a later release. Use 'prisma project variable add', which writes to variable groups. Variables reach a service's environment when it deploys. Writes always name their scope so production is never targeted by accident: --role production, --role preview (shared by every preview branch), or --branch for one branch's override. The value comes from KEY=VALUE, from the current shell environment when only KEY is given, or from a dotenv file with --file.",
+      "Deprecated: 'prisma project env' will be removed in a later release. Use 'prisma project variable add', which writes to variable groups. Variables reach a service's environment when it deploys. Writes always name their scope so production is never targeted by accident: --role production, --role preview (shared by every preview branch that no custom group matches), or --branch for one branch's override (deprecated: put new values in a custom group with 'prisma project variable group create' instead). The value comes from KEY=VALUE, from the current shell environment when only KEY is given, or from a dotenv file with --file.",
     examples: [
       "project env add STRIPE_KEY=sk_test_xxx --role production",
       "project env add STRIPE_KEY=sk_test_xxx --role preview",

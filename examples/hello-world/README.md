@@ -13,8 +13,8 @@ cd examples/hello-world
 pnpm install
 pnpm prisma auth login
 pnpm prisma project create hello-world
-pnpm prisma project env add DATABASE_URL=postgresql://example --role preview
-pnpm prisma project env list
+pnpm prisma project variable add DATABASE_URL=postgresql://example --group preview
+pnpm prisma project variable list
 pnpm prisma git connect git@github.com:OWNER/REPO.git
 pnpm prisma service list
 pnpm prisma service deployment list
@@ -48,8 +48,8 @@ What this validates:
 - the CLI runs from the example directory, so config and local state resolve there
 - auth can be established from inside this example before connecting a repository
 - `project create` and `project link` save the local binding in `.prisma/local.json`
-- `project env add` can carry environment variables like `DATABASE_URL`
-- `project env list` shows variable names without exposing values
+- `project variable add` sets a branch variable like `DATABASE_URL` in the `preview` group, which every preview branch without a custom group receives
+- `project variable list` shows variable names without exposing values
 - pushes to the connected repository create deployments, visible via `service deployment list`
 
 Local files intentionally ignored in this example:

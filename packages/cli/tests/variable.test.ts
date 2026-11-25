@@ -255,7 +255,7 @@ describe("flag validation", () => {
     });
   });
 
-  it("rejects --branch on variable add", async () => {
+  it("rejects --branch on variable add, says overrides are deprecated, and recommends a group", async () => {
     const result = await makeCli(variableClient()).run(
       [
         "project",
@@ -274,7 +274,25 @@ describe("flag validation", () => {
     expect(result.exitCode).toBe(2);
     expect(resultFrame(result.json).envelope).toMatchObject({
       ok: false,
-      error: { code: "VARIABLE.NO_BRANCH_WRITE" },
+      error: {
+        code: "VARIABLE.NO_BRANCH_WRITE",
+        summary:
+          "`prisma project variable` does not manage overrides. Overrides are deprecated.",
+        why: "An override is a value set for one branch with `prisma project env --branch`. Overrides and the `prisma project env` command are deprecated. `prisma project variable` writes branch variables to groups, and each branch receives the one group that matches its name.",
+        nextActions: [
+          {
+            kind: "user-choice",
+            label:
+              'Recommended: move the value into a group. Create a custom group for this branch with `prisma project variable group create <name> --equals feature/foo`, then add the value with `prisma project variable add KEY=value --group <name>`. In Console, use "Move to a custom group" on the service\'s Variables page.',
+          },
+          {
+            kind: "run-command",
+            label:
+              "Deprecated, for an existing override only: prisma project env add KEY=value --branch feature/foo",
+            command: "prisma project env add KEY=value --branch feature/foo",
+          },
+        ],
+      },
     });
   });
 

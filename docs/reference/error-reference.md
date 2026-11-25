@@ -547,7 +547,7 @@ The platform rejected creating a project — raised by `prisma project create` a
 
 The Management API answered `prisma project delete` with HTTP 400, which typically means the project still has active deployments; the fix is to delete the project's services first (`prisma service delete --service <name>`) and retry. The API's own message replaces the default `why` when present. Meta: none.
 
-The `PROJECT.ENV_*` codes below come from the `prisma project env` commands, which are deprecated and will be removed in a later release. `prisma project variable` raises `VARIABLE.*` codes instead.
+The `PROJECT.ENV_*` codes below come from the `prisma project env` commands, which are deprecated and will be removed in a later release. The per-branch overrides that `prisma project env --branch` writes are deprecated too: move their values into a custom group. `prisma project variable` raises `VARIABLE.*` codes instead.
 
 ### PROJECT.ENV_API_ERROR
 
@@ -826,7 +826,7 @@ A `prisma project variable` write was run without `--group` or `--role`. Writes 
 
 ### VARIABLE.NO_BRANCH_WRITE
 
-A `prisma project variable` write passed `--branch`. These commands write to groups, never to a single branch: per-branch overrides are deprecated. The fix is to write to a group, or create a custom group for that branch with `prisma project variable group create`. Existing overrides can still be changed with the deprecated `prisma project env --branch`. Meta: none.
+A `prisma project variable` write passed `--branch`. These commands write branch variables to groups, never to a single branch. A per-branch override, set with `prisma project env --branch`, is deprecated, and so is the whole `prisma project env` group. The recommended fix is to move the value into a group: create a custom group for that branch with `prisma project variable group create <name> --equals <branch>`, then add the value with `prisma project variable add --group <name>`. In Console, "Move to a custom group" on the service's Variables page does the same. An existing override can still be changed with the deprecated `prisma project env --branch`, which the error's last next action shows. Meta: none.
 
 ### VARIABLE.NOT_FOUND
 

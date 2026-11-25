@@ -17,7 +17,7 @@ import { type ProjectCommandContext, resolvePinnedProject } from "./context";
 
 export const roleFlag = flag.enum({
   brief:
-    "Project-wide scope: production, or preview (shared by every preview branch)",
+    "Project-wide scope: production, or preview (shared by every preview branch that no custom group matches)",
   values: ["production", "preview"],
 });
 
@@ -29,7 +29,7 @@ export const projectFlag = flag.string({
 
 export const branchFlag = flag.string({
   brief:
-    "Scope to one preview branch's override; use for values only that branch needs",
+    "Deprecated: scope to one preview branch's override. Use only to change an existing override; put new values in a variable group",
   placeholder: "git-name",
 });
 

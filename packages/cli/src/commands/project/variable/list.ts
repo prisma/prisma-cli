@@ -209,7 +209,7 @@ export const projectVariableListCommand = defineCommand({
   help: {
     summary: "List branch variables by group, or what a branch receives",
     description:
-      "Lists keys and ids, never values. Without flags, shows every group with its keys, one section per group. --group or --role shows one group only. --branch shows what one branch receives at its next deploy: the group it gets and where each key comes from. A key marked 'Deprecated override' was set for that one branch with 'prisma project env --branch'; move it into a group. A key marked 'Managed by Prisma' is set by Prisma. Add --service to include that service's own variables.",
+      "Lists keys and ids, never values. Without flags, shows every group with its keys, one section per group. --group or --role shows one group only. --branch shows what one branch receives at its next deploy: the group it gets and where each key comes from. A key marked 'Deprecated override' was set for that one branch with the deprecated 'prisma project env --branch'; move it into a custom group. A key marked 'Managed by Prisma' is set by Prisma. Add --service to include that service's service variables: values stored on that one service, which win over branch variables for it.",
     examples: [
       "project variable list",
       "project variable list --role production",

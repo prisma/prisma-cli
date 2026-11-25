@@ -39,7 +39,8 @@ export const branchFlag = flag.string({
 });
 
 export const serviceFlag = flag.string({
-  brief: "Service name or id",
+  brief:
+    "Service name or id; with --branch, also show that service's own service variables",
   placeholder: "id-or-name",
 });
 
@@ -169,18 +170,17 @@ export function rejectBranchWrite(
 
   throw new CliStructuredError(
     "VARIABLE.NO_BRANCH_WRITE",
-    "`prisma project variable` does not manage overrides",
+    "`prisma project variable` does not manage overrides. Overrides are deprecated.",
     {
-      why: "Overrides are being phased out. `prisma project variable` sets branch variables in groups.",
+      why: "An override is a value set for one branch with `prisma project env --branch`. Overrides and the `prisma project env` command are deprecated. `prisma project variable` writes branch variables to groups, and each branch receives the one group that matches its name.",
       nextActions: [
         {
           kind: "user-choice",
-          label:
-            "Set the value in a group, or create a custom group for this branch with `prisma project variable group create`. To change an existing override, use the deprecated `prisma project env` command.",
+          label: `Recommended: move the value into a group. Create a custom group for this branch with \`prisma project variable group create <name> --equals ${branchName}\`, then add the value with \`prisma project variable add KEY=value --group <name>\`. In Console, use "Move to a custom group" on the service's Variables page.`,
         },
         {
           kind: "run-command",
-          label: `prisma project env ${command} KEY=value --branch ${branchName}`,
+          label: `Deprecated, for an existing override only: prisma project env ${command} KEY=value --branch ${branchName}`,
           command: `prisma project env ${command} KEY=value --branch ${branchName}`,
         },
       ],
