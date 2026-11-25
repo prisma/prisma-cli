@@ -394,6 +394,8 @@ Rules that bite:
    refuses `--branch` writes. Move each override into a custom group whose
    rule matches the branch: run `project variable group create <name>
    --equals <branch>`, then `project variable add KEY=value --group <name>`.
+   The new group does not include the `preview` group's values. Add every
+   key the branch needs, or use the Console, which can copy them.
    In the Console, "Move to a custom group" on the service's Variables page
    does the same, and can first copy the `preview` group's values into the
    new group.

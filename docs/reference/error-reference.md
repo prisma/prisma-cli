@@ -826,7 +826,7 @@ A `prisma project variable` write was run without `--group` or `--role`. Writes 
 
 ### VARIABLE.NO_BRANCH_WRITE
 
-A `prisma project variable` write passed `--branch`. These commands write branch variables to groups, never to a single branch. A per-branch override, set with `prisma project env --branch`, is deprecated, and so is the whole `prisma project env` group. The recommended fix is to move the value into a group: create a custom group for that branch with `prisma project variable group create <name> --equals <branch>`, then add the value with `prisma project variable add --group <name>`. In Console, "Move to a custom group" on the service's Variables page does the same. An existing override can still be changed with the deprecated `prisma project env --branch`, which the error's last next action shows. Meta: none.
+A `prisma project variable` write passed `--branch`. These commands write branch variables to groups, never to a single branch. A per-branch override, set with `prisma project env --branch`, is deprecated, and so is the whole `prisma project env` group. The recommended fix is to move the value into a group: create a custom group for that branch with `prisma project variable group create <name> --equals <branch>`, then add the value with `prisma project variable add --group <name>`. The new group does not include the `preview` group's values. Add every key the branch needs, or use the Console, which can copy them. In Console, "Move to a custom group" on the service's Variables page does the same. An existing override can still be changed with the deprecated `prisma project env --branch`, which the error's last next action shows. Meta: none.
 
 ### VARIABLE.NOT_FOUND
 

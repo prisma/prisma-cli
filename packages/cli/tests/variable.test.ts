@@ -283,7 +283,7 @@ describe("flag validation", () => {
           {
             kind: "user-choice",
             label:
-              'Recommended: move the value into a group. Create a custom group for this branch with `prisma project variable group create <name> --equals feature/foo`, then add the value with `prisma project variable add KEY=value --group <name>`. In Console, use "Move to a custom group" on the service\'s Variables page.',
+              "Recommended: move the value into a group. Create a custom group for this branch with `prisma project variable group create <name> --equals feature/foo`, then add the value with `prisma project variable add KEY=value --group <name>`. The new group does not include the `preview` group's values. Add every key the branch needs, or use the Console, which can copy them. In Console, use \"Move to a custom group\" on the service's Variables page.",
           },
           {
             kind: "run-command",
