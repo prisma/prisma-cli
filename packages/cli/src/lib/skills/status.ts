@@ -224,7 +224,7 @@ async function readSkillStatus(
       dir,
       copyDir,
       syncedVersion: stamp?.libraryVersion ?? null,
-      state: linkedIntoPackage(copyDir, dir, source.skill)
+      state: (await linkedIntoPackage(copyDir, dir, source.skill))
         ? "unmanaged"
         : await targetState(skillFile, stamp, source.version),
     });
@@ -312,7 +312,10 @@ async function findOrphanedSkills({
         continue;
       }
       const copyDir = await locateCopy(path.join(harnessDir, skill));
-      if (wantedCopies.has(copyDir) || linkedIntoPackage(copyDir, dir, skill)) {
+      if (
+        wantedCopies.has(copyDir) ||
+        (await linkedIntoPackage(copyDir, dir, skill))
+      ) {
         continue;
       }
       const entry = orphans.get(skill) ?? { library, dirs: [] };
@@ -391,34 +394,57 @@ async function isSymbolicLink(target: string): Promise<boolean> {
 }
 
 /** Tells whether a link moved the copy of `skill` in harness directory
- *  `dir` into a package manager's files: inside an installed source
- *  package, or under a node_modules directory within the project. A
- *  copy at its own path is never moved, even when the project is
- *  itself inside a package. */
+ *  `dir` into a package manager's files: under a node_modules
+ *  directory within the project, or inside an installed source
+ *  package. When the project is itself inside that package, only the
+ *  package's skills directory counts. */
 async function linkedIntoPackageTest(
   projectRoot: string,
   packages: readonly InstalledSourcePackage[],
 ): Promise<LinkedIntoPackage> {
   const realRoot = await resolveExisting(projectRoot);
-  const packageDirs: string[] = [];
+  const protectedDirs: string[] = [];
   for (const installed of packages) {
-    packageDirs.push(await resolveExisting(installed.dir));
+    const packageDir = await resolveExisting(installed.dir);
+    protectedDirs.push(
+      isSameOrInside(realRoot, packageDir)
+        ? path.join(packageDir, PACKAGE_SKILLS_DIR)
+        : packageDir,
+    );
   }
-  return (copyDir, dir, skill) =>
-    copyDir !== path.join(realRoot, dir, skill) &&
-    (packageDirs.some((packageDir) => isSameOrInside(copyDir, packageDir)) ||
+  return async (copyDir, dir, skill) =>
+    (protectedDirs.some((protectedDir) =>
+      isSameOrInside(copyDir, protectedDir),
+    ) ||
       (isSameOrInside(copyDir, realRoot) &&
         path
           .relative(realRoot, copyDir)
           .split(path.sep)
-          .includes("node_modules")));
+          .includes("node_modules"))) &&
+    (await reachedThroughLink(projectRoot, path.join(dir, skill)));
 }
 
 type LinkedIntoPackage = (
   copyDir: string,
   dir: string,
   skill: string,
-) => boolean;
+) => Promise<boolean>;
+
+/** Whether any directory on `relativePath` below `projectRoot` is a
+ *  symbolic link. */
+async function reachedThroughLink(
+  projectRoot: string,
+  relativePath: string,
+): Promise<boolean> {
+  let current = projectRoot;
+  for (const part of relativePath.split(path.sep)) {
+    current = path.join(current, part);
+    if (await isSymbolicLink(current)) {
+      return true;
+    }
+  }
+  return false;
+}
 
 function isSameOrInside(target: string, dir: string): boolean {
   const relative = path.relative(dir, target);

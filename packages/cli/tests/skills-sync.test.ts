@@ -1580,6 +1580,44 @@ describe("skill directories reached through a symbolic link", () => {
     expect(await stampOf(root, "skills", "prisma-8")).toBe("8.1.0");
   });
 
+  it("keeps the copies on a later sync through a harness link in a project that is itself a source package", async () => {
+    const root = await makeProjectRoot();
+    await writePostgresPackage(root);
+    await linkDir(root, ".claude/skills", ".agents/skills");
+
+    const first = await syncAs(root, ["claude"]);
+    const second = await syncAs(root, ["claude"]);
+
+    expect(first.result.synced[0]?.dirs).toEqual([".claude/skills"]);
+    expect(second.exitCode).toBe(0);
+    expect(second.result.refused).toEqual([]);
+    expect(second.result.pruned).toEqual([]);
+    expect(await stampOf(root, ".agents/skills", "prisma-8")).toBe("8.1.0");
+  });
+
+  it("writes through a skill link in a project that is itself a source package", async () => {
+    const root = await makeProjectRoot();
+    await writePostgresPackage(root);
+    await seedSyncedSkill(root, ".agents/skills", {
+      skill: "prisma-8",
+      library: "@prisma/orm-postgres",
+      version: "8.0.0",
+    });
+    await linkDir(root, ".claude/skills/prisma-8", ".agents/skills/prisma-8");
+
+    const { exitCode, result } = await syncAs(root, ["claude"]);
+
+    expect(exitCode).toBe(0);
+    expect(result.refused).toEqual([]);
+    expect(result.synced[0]?.dirs).toEqual([".claude/skills"]);
+    expect(
+      (
+        await lstat(path.join(root, ".claude/skills/prisma-8"))
+      ).isSymbolicLink(),
+    ).toBe(true);
+    expect(await stampOf(root, ".agents/skills", "prisma-8")).toBe("8.1.0");
+  });
+
   it("syncs normally in an example app inside the source package", async () => {
     const { app } = await makeExampleApp();
 
