@@ -154,8 +154,28 @@ describe("prisma service create", () => {
     ]);
   });
 
-  it("defaults to the main branch when none is given", async () => {
-    const created = createRoutes();
+  it("without --branch, creates the service on the default branch, not on a branch named main", async () => {
+    const branches = [
+      {
+        id: "br_main_preview",
+        gitName: "main",
+        isDefault: false,
+        role: "preview",
+      },
+      { id: "br_trunk", gitName: "trunk", isDefault: true, role: "production" },
+    ];
+    const created = createRoutes({
+      "GET /v1/projects/{projectId}/branches": (init) => {
+        const gitName = init.params?.query?.gitName;
+        return {
+          data: page(
+            gitName === undefined
+              ? branches
+              : branches.filter((branch) => branch.gitName === gitName),
+          ),
+        };
+      },
+    });
     const harness = await makeServiceCli({ routes: created.routes });
 
     const result = await harness.cli.run(
@@ -164,7 +184,81 @@ describe("prisma service create", () => {
     );
 
     expect(result.exitCode).toBe(0);
-    expect(result.presented?.data).toMatchObject({ branch: "main" });
+    expect(created.bodies).toEqual([
+      expect.objectContaining({ branchId: "br_trunk" }),
+    ]);
+    expect(result.presented?.data).toMatchObject({ branch: "trunk" });
+  });
+
+  it("without --branch, on a project with no branches, creates a branch named main", async () => {
+    const createdBranches: unknown[] = [];
+    const created = createRoutes({
+      "GET /v1/projects/{projectId}/branches": () => ({ data: page([]) }),
+      "POST /v1/projects/{projectId}/branches": (init) => {
+        createdBranches.push(init.body);
+        return {
+          data: {
+            data: {
+              id: "br_new",
+              gitName: "main",
+              isDefault: true,
+              role: "production",
+            },
+          },
+        };
+      },
+    });
+    const harness = await makeServiceCli({ routes: created.routes });
+
+    const result = await harness.cli.run(
+      ["service", "create", "worker", "--project", "acme-app"],
+      { cwd: harness.cwd, env: harness.env, isTty: { stdout: true } },
+    );
+
+    expect(result.exitCode).toBe(0);
+    expect(createdBranches).toEqual([{ gitName: "main" }]);
+    expect(created.bodies).toEqual([
+      expect.objectContaining({ branchId: "br_new" }),
+    ]);
+  });
+
+  it("without --branch, on a project whose branches include no default, refuses instead of using main", async () => {
+    const created = createRoutes({
+      "GET /v1/projects/{projectId}/branches": () => ({
+        data: page([
+          {
+            id: "br_main_preview",
+            gitName: "main",
+            isDefault: false,
+            role: "preview",
+          },
+        ]),
+      }),
+    });
+    const harness = await makeServiceCli({ routes: created.routes });
+
+    const result = await harness.cli.run(
+      ["service", "create", "worker", "--project", "acme-app", "--json"],
+      { cwd: harness.cwd, env: harness.env },
+    );
+
+    const frame = result.json[result.json.length - 1];
+    if (frame?.kind !== "result" || frame.envelope.ok) {
+      throw new Error("expected an errored envelope");
+    }
+    expect(result.exitCode).toBe(2);
+    expect(frame.envelope.error).toMatchObject({
+      code: "SERVICE.DEFAULT_BRANCH_MISSING",
+      meta: { projectId: "proj_1" },
+      nextActions: [
+        { kind: "user-choice" },
+        {
+          kind: "run-command",
+          command: "prisma branch list --project proj_1",
+        },
+      ],
+    });
+    expect(created.bodies).toEqual([]);
   });
 
   it("writes no service selection into the local state store", async () => {

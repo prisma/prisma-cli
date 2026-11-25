@@ -14,7 +14,7 @@ export function domainTargetArgs() {
         placeholder: "id-or-name",
       }),
       branch: flag.string({
-        brief: "Branch name",
+        brief: "Branch the service lives on (default: the default branch)",
         placeholder: "name",
       }),
     },

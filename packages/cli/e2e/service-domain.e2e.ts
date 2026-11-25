@@ -23,8 +23,7 @@ const scratch = useScratchProject("service-domain");
 
 const hostname = `${scratchName("dom")}.prisma-cli-e2e.example`;
 
-/** `service create` puts the service on `main`; the domain commands
- *  look on `production` unless told otherwise. */
+/** `service create` puts the service on `main`. */
 const SERVICE_BRANCH = "main";
 
 interface DomainRow {
@@ -186,6 +185,25 @@ describeCommand("service domain show", () => {
     expect(shown.hostname).toBe(hostname);
     expect(shown.state).toBe("not_verified");
     expect(shown.dnsRecords.map((record) => record.type)).toContain("TXT");
+  });
+
+  it("finds the hostname without --branch, on the default branch", async () => {
+    const run = await scratch.run([
+      "service",
+      "domain",
+      "show",
+      hostname,
+      "--service",
+      requireFixture().serviceName,
+    ]);
+    const result = run.envelope.result as {
+      readonly branch: { readonly name: string };
+      readonly domain: DomainRow;
+    };
+
+    expect(result.branch.name).toBe("main");
+    expect(result.domain.id).toBe(added?.id);
+    expect(result.domain.serviceId).toBe(requireFixture().serviceId);
   });
 
   it("reads the same state through wait, which gives up at once with --timeout 0", async () => {

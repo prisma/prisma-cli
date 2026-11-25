@@ -1,7 +1,7 @@
 import type { ManagementApiClient } from "@prisma/management-api-sdk";
 import { describe, expect, it, vi } from "vitest";
 
-import { resolveReadBranch } from "../src/lib/app/read-branch";
+import { resolveDefaultBranch } from "../src/lib/branch/default-branch";
 
 type RawBranch = {
   id: string;
@@ -25,57 +25,37 @@ function clientReturning(branches: RawBranch[]): ManagementApiClient {
   } as unknown as ManagementApiClient;
 }
 
-describe("resolveReadBranch", () => {
-  it("returns the branch whose gitName matches the request", async () => {
+describe("resolveDefaultBranch", () => {
+  it("returns the default branch even when another branch is named main", async () => {
     const client = clientReturning([
-      {
-        id: "b_master",
-        gitName: "master",
-        isDefault: true,
-        role: "production",
-      },
-      { id: "b_feat", gitName: "feat/x", isDefault: false, role: "preview" },
+      { id: "b_main", gitName: "main", isDefault: false, role: "preview" },
+      { id: "b_trunk", gitName: "trunk", isDefault: true, role: "production" },
     ]);
 
-    const result = await resolveReadBranch(client, {
-      projectId: "proj_1",
-      branchName: "feat/x",
-    });
-
-    expect(result).toEqual({ id: "b_feat", name: "feat/x", kind: "preview" });
-  });
-
-  it("falls back to the default branch when the requested branch does not exist", async () => {
-    const client = clientReturning([
-      {
-        id: "b_master",
-        gitName: "master",
-        isDefault: true,
-        role: "production",
-      },
-    ]);
-
-    const result = await resolveReadBranch(client, {
-      projectId: "proj_1",
-      branchName: "main",
-    });
+    const result = await resolveDefaultBranch(client, { projectId: "proj_1" });
 
     expect(result).toEqual({
-      id: "b_master",
-      name: "master",
-      kind: "production",
+      kind: "found",
+      branch: { id: "b_trunk", name: "trunk", kind: "production" },
     });
   });
 
-  it("returns null when the project has no branches", async () => {
+  it("reports a project with no branches", async () => {
     const client = clientReturning([]);
 
-    const result = await resolveReadBranch(client, {
-      projectId: "proj_1",
-      branchName: "main",
-    });
+    const result = await resolveDefaultBranch(client, { projectId: "proj_1" });
 
-    expect(result).toBeNull();
+    expect(result).toEqual({ kind: "no-branches" });
+  });
+
+  it("reports a project whose branches include no default, without picking main", async () => {
+    const client = clientReturning([
+      { id: "b_main", gitName: "main", isDefault: false, role: "preview" },
+    ]);
+
+    const result = await resolveDefaultBranch(client, { projectId: "proj_1" });
+
+    expect(result).toEqual({ kind: "no-default" });
   });
 
   it("throws when the branches request fails", async () => {
@@ -87,26 +67,13 @@ describe("resolveReadBranch", () => {
     } as unknown as ManagementApiClient;
 
     await expect(
-      resolveReadBranch(client, { projectId: "proj_1", branchName: "main" }),
+      resolveDefaultBranch(client, { projectId: "proj_1" }),
     ).rejects.toThrow();
   });
 
-  it("follows pagination to a branch on a later page", async () => {
+  it("follows pagination to a default branch on a later page", async () => {
     const GET = vi
       .fn()
-      .mockResolvedValueOnce(
-        pageResponse(
-          [
-            {
-              id: "b_main",
-              gitName: "main",
-              isDefault: true,
-              role: "production",
-            },
-          ],
-          "cursor_1",
-        ),
-      )
       .mockResolvedValueOnce(
         pageResponse(
           [
@@ -117,17 +84,30 @@ describe("resolveReadBranch", () => {
               role: "preview",
             },
           ],
+          "cursor_1",
+        ),
+      )
+      .mockResolvedValueOnce(
+        pageResponse(
+          [
+            {
+              id: "b_main",
+              gitName: "main",
+              isDefault: true,
+              role: "production",
+            },
+          ],
           null,
         ),
       );
     const client = { GET } as unknown as ManagementApiClient;
 
-    const result = await resolveReadBranch(client, {
-      projectId: "proj_1",
-      branchName: "feat/x",
-    });
+    const result = await resolveDefaultBranch(client, { projectId: "proj_1" });
 
-    expect(result).toEqual({ id: "b_feat", name: "feat/x", kind: "preview" });
+    expect(result).toEqual({
+      kind: "found",
+      branch: { id: "b_main", name: "main", kind: "production" },
+    });
     expect(GET).toHaveBeenCalledTimes(2);
     expect(GET).toHaveBeenNthCalledWith(
       1,

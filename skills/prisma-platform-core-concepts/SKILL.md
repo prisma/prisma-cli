@@ -247,10 +247,7 @@ Two movements between versions matter:
    target is started and health-checked before traffic switches, so rollback
    is zero-downtime.
 
-**Custom domains** attach to a service's production branch only. The
-workflow: add the domain, create the CNAME record the platform reports, and
-wait for DNS verification and certificate provisioning; a verification that
-failed on missing DNS is retried after the record exists.
+**Custom domains** attach to a service on any branch; without `--branch`, the domain commands use the project's default branch, as the other `service` commands do. The workflow: add the domain, create the CNAME record the platform reports, and wait for DNS verification and certificate provisioning; a verification that failed on missing DNS is retried after the record exists.
 
 ## The Compute runtime
 

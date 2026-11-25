@@ -295,7 +295,7 @@ export const cliGroups: Readonly<
     brief:
       "Manage custom domains for a service. Add hostnames, see the DNS records to publish, wait until they serve",
     description:
-      "Custom domains point hostnames you own at a service on any branch. Commands default to production; use --branch to select another branch. Add succeeds before DNS is set up and prints the records to publish. Once they are published, wait blocks until the hostname serves, and retry checks the records again or retries a failed certificate.",
+      "Custom domains point hostnames you own at a service on any branch. Without --branch, commands use the project's default branch, like the other service commands; use --branch to select another branch. Add succeeds before DNS is set up and prints the records to publish. Once they are published, wait blocks until the hostname serves, and retry checks the records again or retries a failed certificate.",
     workflow: [
       {
         run: "service domain add shop.acme.com --service my-api",

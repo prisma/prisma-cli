@@ -119,6 +119,8 @@ A command that operates on a subject resource takes that resource's identifier a
 
 A Project, service, database or bucket that Prisma Composer deployed can also be named by its address: the name the app gave it, such as `shop.api`. The address is the row's `logicalId`, and its first `.`-separated part is the app, which is the Project's `logicalId`. On the command line the subject is `@`, then an optional environment and `:`, then the address: `@pr-42:shop.api`. The environment is the one the app was deployed to: the git name of one of the Project's Branches. Leaving it out, or writing `production`, means the Project's default Branch (the Branch with `isDefault` set), so `@shop.api` is production. This is the default Branch, not the Branch whose role is `production`, and not a Branch whose git name is `production`; a non-default Branch with that git name cannot be named by address. A Project's address is the app name alone, with no environment (`@shop`), because a Project spans every Branch. With an address, a destructive command's `--confirm` takes the address as typed (`postgres delete @pr-42:shop.db --confirm @pr-42:shop.db`), and its question names the row id, the environment and the Branch, saying plainly when that is production. `--project` and `--branch` cannot be combined with an address, because the address already names both.
 
+A `service` command without `--branch` uses the Project's default Branch, the Branch with `isDefault` set, never a Branch guessed from its git name. A Project with no Branches yet gets the git name `main`, which `service create` creates as its first Branch. A Project that has Branches but none marked default stops with `SERVICE.DEFAULT_BRANCH_MISSING`, asking for `--branch`.
+
 ### `wait`
 
 Block until a remote resource reaches a terminal state. A wait may ask the platform to look again at something it does not watch on its own, as `service domain wait` does for DNS, but it does not retry work that failed: that stays with the user.
@@ -152,7 +154,7 @@ That is still one action in the command grammar. It is preferable to inventing a
 
 ## Custom domains
 
-`service domain` commands manage hostnames for the service on the selected branch. They default to `production`; `--branch <name>` selects a preview or staging branch. Lookup, retry, waiting, and deletion stay within that service.
+`service domain` commands manage hostnames for the service on the selected branch. Without `--branch` they use the project's default branch, the same way the other `service` commands do; `--branch <name>` selects another branch. Lookup, retry, waiting, and deletion stay within that service.
 
 A hostname can be added before its DNS exists and before the service has a live version. `add` succeeds and prints the DNS records to publish: a TXT record that proves the workspace owns the domain, and a CNAME that routes the hostname. Each hostname reports a `status` (`pending` until it has gone live, then `active`) and a `state` that says what it does now. The state `active` means the hostname serves the service; every other state names what is still missing, and the CLI turns it into a "waiting on" or "failure" line and, when the API says what the user has to do, a fix. How a failure is worded follows [Errors From The Systems Below The API](error-conventions.md#errors-from-the-systems-below-the-api).
 

@@ -10,7 +10,7 @@ import {
   type DeploymentRecord,
   type DomainRecord,
 } from "../../lib/app/app-provider";
-import { resolveReadBranch } from "../../lib/app/read-branch";
+import { resolveDefaultBranch } from "../../lib/branch/default-branch";
 import { projectApiError } from "../../lib/project/provider";
 import {
   type ProjectCandidate,
@@ -25,6 +25,7 @@ import type { ProjectResolution, ProjectSummary } from "../../types/project";
 import {
   branchValueEmptyError,
   type DomainCommand,
+  defaultBranchMissingError,
   deployFailedError,
   domainCommandError,
   domainHostnameInvalidError,
@@ -168,6 +169,31 @@ function requireBranchFlagValue(branchName: string | undefined): void {
   }
 }
 
+/** `service create` on a project with no branches makes its first one under this name. */
+const FIRST_BRANCH_NAME = "main";
+
+function namedBranch(name: string): ResolvedServiceProjectContext["branch"] {
+  return { id: null, name, kind: toBranchKind(name) };
+}
+
+async function defaultBranchOf(
+  ctx: ServiceContext,
+  project: ProjectSummary,
+): Promise<ResolvedServiceProjectContext["branch"]> {
+  const lookup = await resolveDefaultBranch(ctx.api, {
+    projectId: project.id,
+    signal: ctx.signal,
+  });
+  switch (lookup.kind) {
+    case "found":
+      return lookup.branch;
+    case "no-branches":
+      return namedBranch(FIRST_BRANCH_NAME);
+    case "no-default":
+      throw defaultBranchMissingError(project);
+  }
+}
+
 export async function resolveServiceProjectContext(
   ctx: ServiceContext,
   explicitProject: string | undefined,
@@ -194,27 +220,16 @@ export async function resolveServiceProjectContext(
     throw projectResolutionErrorToStructured(resolvedResult.error);
   }
   const resolved = resolvedResult.value;
-  const requested = options.branchName
-    ? { name: options.branchName, explicit: true }
-    : { name: "main", explicit: false };
-
-  const remoteBranch = requested.explicit
-    ? null
-    : await resolveReadBranch(ctx.api, {
-        projectId: resolved.project.id,
-        branchName: requested.name,
-        signal: ctx.signal,
-      });
+  const branch =
+    options.branchName !== undefined
+      ? namedBranch(options.branchName)
+      : await defaultBranchOf(ctx, resolved.project);
 
   return {
     workspace: resolved.workspace,
     project: resolved.project,
     resolution: resolved.resolution,
-    branch: remoteBranch ?? {
-      id: null,
-      name: requested.name,
-      kind: toBranchKind(requested.name),
-    },
+    branch,
   };
 }
 
@@ -575,20 +590,23 @@ export async function resolveServiceDomainTarget(
     commandName: string;
   },
 ): Promise<ResolvedServiceDomainTarget> {
-  requireBranchFlagValue(options.branchName);
-  const branchName = options.branchName?.trim() ?? "production";
-
   const requested = requireServiceArgument(
     options.serviceName,
     options.commandName,
   );
 
-  const provider = serviceProvider(ctx);
-  const target = await resolveServiceProjectContext(ctx, options.projectRef, {
-    commandName: options.commandName,
-    branchName,
-  });
-  const projectId = target.project.id;
+  const { provider, target, projectId } = await resolveServiceProjectState(
+    ctx,
+    {
+      commandName: options.commandName,
+      ...(options.projectRef !== undefined
+        ? { projectRef: options.projectRef }
+        : {}),
+      ...(options.branchName !== undefined
+        ? { branchName: options.branchName }
+        : {}),
+    },
+  );
   const services = await listServices(
     ctx,
     provider,
