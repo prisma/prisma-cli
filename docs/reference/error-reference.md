@@ -29,6 +29,7 @@ Namespaces:
 | `PROJECT` | Project and environment management (`prisma project`) |
 | `SERVICE` | Deployed service management (`prisma service`) |
 | `SKILLS` | Agent-skill delivery (`prisma skills`) |
+| `VARIABLE` | Variables and variable groups (`prisma project variable`) |
 
 ## ADDRESS
 
@@ -766,3 +767,53 @@ A warn diagnostic from the skills sync (`skills sync`, and the sync step of `ini
 ### SKILLS.VERSION_CONFLICT
 
 A warn diagnostic from the skills sync (`skills sync`, and the sync step of `init`): workspace members install different versions of the same skill-bearing Prisma package, so the skills for the highest version were installed and the members pinning a lower version get a skill describing a version they did not install. The nextAction is to pin one version of the package across the workspace. Meta: none.
+
+## VARIABLE
+
+### VARIABLE.API_ERROR
+
+A Management API call made by the `prisma project variable` commands (listing groups, reading, writing, or deleting variables, or reading what a branch receives) failed. The summary names the call that failed, for example "Failed to add STRIPE_KEY". An HTTP 401 or 403 raises this code too, with a `why` saying the API rejected the request and a `prisma auth login` next action. Meta: `status`, `apiCode` (the API's own error code, when the response supplied one).
+
+### VARIABLE.BUILTIN_GROUP_DELETE
+
+`prisma project variable group delete` named `production` or `preview`. Every project has these two groups and they cannot be deleted. The fix is to delete a custom group instead; `prisma project variable group list` shows them. Meta: none.
+
+### VARIABLE.BUILTIN_GROUP_UPDATE
+
+`prisma project variable group update` named `production` or `preview`. These groups cannot be renamed or given a rule. The fix is to create a custom group with `prisma project variable group create`. Meta: none.
+
+### VARIABLE.CONFLICTING_FLAGS
+
+A `prisma project variable` write passed both `--group` and `--role`. They select the same thing, so pass one. Meta: none.
+
+### VARIABLE.CUSTOM_GROUP_CONFLICT
+
+A `prisma project variable` write passed `--role preview` in a project that has custom groups. Branches that a custom group matches receive that group instead of preview, so `--role preview` would not reach every preview branch. The fix is `--group preview` to write to the preview group only, or `--group <name>` for a custom group. Meta: none.
+
+### VARIABLE.GROUP_NOT_FOUND
+
+A `prisma project variable` command named a group that does not exist in the project. The fix is to run `prisma project variable group list` and use one of the listed names. Meta: none.
+
+### VARIABLE.GROUP_NOTHING_TO_UPDATE
+
+`prisma project variable group update` was run without `--name`, `--equals`, or `--starts-with`, so there was nothing to change. Meta: none.
+
+### VARIABLE.GROUP_RULE_CONFLICT
+
+`prisma project variable group create` or `update` passed both `--equals` and `--starts-with`. A custom group has exactly one rule, so pass one. Meta: none.
+
+### VARIABLE.GROUP_RULE_MISSING
+
+`prisma project variable group create` was run without `--equals` or `--starts-with`. A custom group needs a rule that says which branches receive it. Meta: none.
+
+### VARIABLE.MISSING_GROUP
+
+A `prisma project variable` write was run without `--group` or `--role`. Writes never pick a group by default, so a value cannot reach production by accident. Meta: none.
+
+### VARIABLE.NO_BRANCH_WRITE
+
+A `prisma project variable` write passed `--branch`. These commands write to groups, never to a single branch: per-branch overrides are deprecated. The fix is to write to a group, or create a custom group for that branch with `prisma project variable group create`. Existing overrides can still be changed with `prisma project env --branch`. Meta: none.
+
+### VARIABLE.NOT_FOUND
+
+`prisma project variable update` or `delete` named a key that does not exist in the target group. The fix for update is `prisma project variable add`; for delete, list the group's keys with `prisma project variable list --group <name>`. Meta: none.

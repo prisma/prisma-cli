@@ -1,4 +1,4 @@
-/** The `variable delete` command. */
+/** The `project variable delete` command. */
 import {
   type Block,
   defineCommand,
@@ -7,9 +7,10 @@ import {
   positional,
 } from "@prisma/cli-engine";
 import { CliStructuredError, ok } from "@prisma/cli-engine/protocol";
-import { apiCallError } from "../../controllers/app-env-api";
-import { resolvePinnedProject } from "../project/context";
-import { resolveActiveWorkspace } from "../resources-shared/workspace";
+import { apiCallError } from "../../../controllers/app-env-api";
+import { findEnvVarInGroup } from "../../../lib/variable/api";
+import { resolveActiveWorkspace } from "../../resources-shared/workspace";
+import { resolvePinnedProject } from "../context";
 import {
   branchFlag,
   enforceRolePreviewCheck,
@@ -48,7 +49,7 @@ function deletePresentations(result: {
   };
 }
 
-export const variableDeleteCommand = defineCommand({
+export const projectVariableDeleteCommand = defineCommand({
   args: {
     positionals: {
       key: positional.string({
@@ -68,9 +69,9 @@ export const variableDeleteCommand = defineCommand({
     description:
       "Removes the variable from the named group. The variable is gone from that group's deploys after the next deploy.",
     examples: [
-      "variable delete STRIPE_KEY --group production",
-      "variable delete STRIPE_KEY --role preview",
-      "variable delete STRIPE_KEY --group staging",
+      "project variable delete STRIPE_KEY --group production",
+      "project variable delete STRIPE_KEY --role preview",
+      "project variable delete STRIPE_KEY --group staging",
     ],
   },
   needs: { credentials: true },
@@ -88,7 +89,7 @@ export const variableDeleteCommand = defineCommand({
       ctx,
       workspace,
       args.flags.project,
-      "variable delete",
+      "project variable delete",
     );
     const projectId = resolved.project.id;
 
@@ -103,25 +104,11 @@ export const variableDeleteCommand = defineCommand({
 
     const key = args.positionals.key;
 
-    // Look up the variable in this group.
-    const {
-      data: listData,
-      error: listError,
-      response: listResponse,
-    } = await ctx.api.GET("/v1/environment-variables", {
-      params: {
-        // biome-ignore lint/suspicious/noExplicitAny: these API paths and fields are not in the published SDK yet
-        query: { projectId, key, groupId: group.id } as any,
-      },
-      signal: ctx.signal,
-    });
-
-    if (listError || !listData) {
-      throw apiCallError(`Failed to look up ${key}`, listResponse, listError);
-    }
-
-    const rows = listData.data as Array<{ id: string }>;
-    const existing = rows[0];
+    const existing = await findEnvVarInGroup(
+      ctx.api,
+      { projectId, groupId: group.id, key },
+      ctx.signal,
+    );
 
     if (!existing) {
       throw new CliStructuredError(
@@ -132,7 +119,7 @@ export const variableDeleteCommand = defineCommand({
           nextActions: [
             {
               kind: "user-choice",
-              label: `Run \`prisma variable list --group ${group.name}\` to see the available variables.`,
+              label: `Run \`prisma project variable list --group ${group.name}\` to see the available variables.`,
             },
           ],
         },

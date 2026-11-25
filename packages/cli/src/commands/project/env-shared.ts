@@ -193,3 +193,21 @@ export function previewDefaultDiagnostics(
     nextActions: [],
   }));
 }
+
+/** Warns on stderr that branch overrides are deprecated. A `Deprecation`
+ *  header on the API response triggers it; without one, any --branch write does. */
+export function reportOverrideDeprecation(
+  ctx: ProjectCommandContext,
+  scope: EnvScope,
+  response?: Response,
+): void {
+  if (scope.kind !== "branch" && !response?.headers.has("Deprecation")) {
+    return;
+  }
+
+  ctx.report({
+    kind: "message",
+    severity: "warn",
+    text: "Branch overrides are deprecated. Set values in a variable group instead: `prisma project variable add --group <name>`. To give a branch its own values, create a custom group with `prisma project variable group create`.",
+  });
+}

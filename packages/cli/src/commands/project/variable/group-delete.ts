@@ -1,4 +1,4 @@
-/** The `variable group delete` command. */
+/** The `project variable group delete` command. */
 import {
   type Block,
   defineCommand,
@@ -9,10 +9,11 @@ import {
 import { CliStructuredError, ok } from "@prisma/cli-engine/protocol";
 import {
   deleteVariableGroup,
+  isBuiltInGroup,
   listVariableGroups,
-} from "../../lib/variable/api";
-import { resolvePinnedProject } from "../project/context";
-import { resolveActiveWorkspace } from "../resources-shared/workspace";
+} from "../../../lib/variable/api";
+import { resolveActiveWorkspace } from "../../resources-shared/workspace";
+import { resolvePinnedProject } from "../context";
 import { projectFlag } from "./shared";
 
 function deletePresentations(result: {
@@ -40,7 +41,7 @@ function deletePresentations(result: {
   };
 }
 
-export const variableGroupDeleteCommand = defineCommand({
+export const projectVariableGroupDeleteCommand = defineCommand({
   args: {
     positionals: {
       name: positional.string({
@@ -57,8 +58,8 @@ export const variableGroupDeleteCommand = defineCommand({
     description:
       "Permanently deletes the custom group and every variable in it. This cannot be undone. The confirmation token is the group name; pass it with --confirm to run non-interactively. Built-in groups (production, preview) cannot be deleted.",
     examples: [
-      "variable group delete staging",
-      "variable group delete staging --confirm staging",
+      "project variable group delete staging",
+      "project variable group delete staging --confirm staging",
     ],
   },
   needs: { credentials: true },
@@ -70,7 +71,7 @@ export const variableGroupDeleteCommand = defineCommand({
       ctx,
       workspace,
       args.flags.project,
-      "variable group delete",
+      "project variable group delete",
     );
     const projectId = resolved.project.id;
 
@@ -86,24 +87,25 @@ export const variableGroupDeleteCommand = defineCommand({
           nextActions: [
             {
               kind: "user-choice",
-              label: "Run `prisma variable group list` to see all groups.",
+              label:
+                "Run `prisma project variable group list` to see all groups.",
             },
           ],
         },
       );
     }
 
-    if (existing.class !== "custom") {
+    if (isBuiltInGroup(existing)) {
       throw new CliStructuredError(
         "VARIABLE.BUILTIN_GROUP_DELETE",
-        `Built-in group "${groupName}" cannot be deleted`,
+        `Built-in group "${existing.name}" cannot be deleted`,
         {
-          why: "The production and preview groups are created automatically and cannot be removed.",
+          why: "Every project has the production and preview groups. They are part of the platform, so they cannot be renamed, given a rule, or deleted.",
           nextActions: [
             {
               kind: "user-choice",
               label:
-                "Only custom groups can be deleted. Use `prisma variable group list` to list all groups.",
+                "Create a custom group with `prisma project variable group create`, or run `prisma project variable group list` to see the custom groups.",
             },
           ],
         },

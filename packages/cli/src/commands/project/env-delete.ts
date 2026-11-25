@@ -72,12 +72,6 @@ export const projectEnvDeleteCommand = defineCommand({
   },
   needs: { credentials: true },
   handler: async (args, ctx) => {
-    ctx.report({
-      kind: "message",
-      severity: "warn",
-      text: "Warning: `prisma project env` is deprecated and will be removed in a future major version. Use `prisma variable` instead.",
-    });
-
     const key = args.positionals.key;
     const scope = requireEnvScope(args.flags, "delete");
     const { projectId, resolved } = await resolveEnvTarget(

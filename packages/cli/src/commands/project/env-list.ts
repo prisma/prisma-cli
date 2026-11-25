@@ -98,12 +98,6 @@ export const projectEnvListCommand = defineCommand({
   },
   needs: { credentials: true },
   handler: async (args, ctx) => {
-    ctx.report({
-      kind: "message",
-      severity: "warn",
-      text: "Warning: `prisma project env` is deprecated and will be removed in a future major version. Use `prisma variable` instead.",
-    });
-
     const explicit = resolveEnvScope(
       { roleName: args.flags.role, branchName: args.flags.branch },
       { requireExplicit: false, command: "list" },

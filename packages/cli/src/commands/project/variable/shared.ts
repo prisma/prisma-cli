@@ -1,11 +1,12 @@
-/** Flags and utilities shared across the `prisma variable` commands. */
+/** Flags and utilities shared across the `prisma project variable` commands. */
 import { flag } from "@prisma/cli-engine";
 import { CliStructuredError } from "@prisma/cli-engine/protocol";
 import type { ManagementApiClient } from "@prisma/management-api-sdk";
 import {
+  isBuiltInGroup,
   listVariableGroups,
   type RawVariableGroup,
-} from "../../lib/variable/api";
+} from "../../../lib/variable/api";
 
 export const projectFlag = flag.string({
   brief:
@@ -54,7 +55,7 @@ export function resolveGroupTarget(
   if (groupName !== undefined && roleName !== undefined) {
     throw new CliStructuredError(
       "VARIABLE.CONFLICTING_FLAGS",
-      `prisma variable ${command} accepts --group or --role, not both`,
+      `prisma project variable ${command} accepts --group or --role, not both`,
       {
         why: "--group names any group including built-in ones; --role is a shorthand for production or preview.",
         nextActions: [
@@ -78,7 +79,7 @@ export function resolveGroupTarget(
 
   throw new CliStructuredError(
     "VARIABLE.MISSING_GROUP",
-    `prisma variable ${command} requires --group or --role`,
+    `prisma project variable ${command} requires --group or --role`,
     {
       why: "Writing without an explicit target is rejected so the command never silently targets production.",
       nextActions: [
@@ -93,7 +94,7 @@ export function resolveGroupTarget(
 }
 
 /** Check if a project has any custom groups, and fail if --role preview was
- *  used in such a project (Decided 37: the strict --role preview check). */
+ *  used in such a project: those branches would not all receive the preview group. */
 export async function enforceRolePreviewCheck(
   client: ManagementApiClient,
   projectId: string,
@@ -105,7 +106,7 @@ export async function enforceRolePreviewCheck(
   }
 
   const groups = await listVariableGroups(client, projectId, signal);
-  const hasCustomGroups = groups.some((g) => g.class === "custom");
+  const hasCustomGroups = groups.some((g) => !isBuiltInGroup(g));
 
   if (hasCustomGroups) {
     throw new CliStructuredError(
@@ -146,7 +147,7 @@ export async function resolveGroupByTarget(
         nextActions: [
           {
             kind: "user-choice",
-            label: "Run prisma variable group list to see all groups.",
+            label: "Run prisma project variable group list to see all groups.",
           },
         ],
       },
@@ -167,9 +168,9 @@ export function rejectBranchWrite(
 
   throw new CliStructuredError(
     "VARIABLE.NO_BRANCH_WRITE",
-    "`prisma variable` does not manage overrides",
+    "`prisma project variable` does not manage overrides",
     {
-      why: "Overrides are being phased out. `prisma variable` sets branch variables in groups.",
+      why: "Overrides are being phased out. `prisma project variable` sets branch variables in groups.",
       nextActions: [
         {
           kind: "user-choice",

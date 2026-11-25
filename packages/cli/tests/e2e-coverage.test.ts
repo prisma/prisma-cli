@@ -111,21 +111,21 @@ const EXCLUSIONS: Readonly<Record<string, string>> = {
   "dev url": LOCAL_EMULATOR_REASON,
   "dev stop": LOCAL_EMULATOR_REASON,
   "emulator list": LOCAL_EMULATOR_REASON,
-  "variable add":
+  "project variable add":
     "Variable group endpoints are not yet in the published @prisma/management-api-sdk. End-to-end tests require the demo control-plane deployment that ships with pdp-control-plane#6109.",
-  "variable update":
+  "project variable update":
     "Variable group endpoints are not yet in the published @prisma/management-api-sdk. End-to-end tests require the demo control-plane deployment that ships with pdp-control-plane#6109.",
-  "variable delete":
+  "project variable delete":
     "Variable group endpoints are not yet in the published @prisma/management-api-sdk. End-to-end tests require the demo control-plane deployment that ships with pdp-control-plane#6109.",
-  "variable list":
+  "project variable list":
     "Variable group endpoints are not yet in the published @prisma/management-api-sdk. End-to-end tests require the demo control-plane deployment that ships with pdp-control-plane#6109.",
-  "variable group list":
+  "project variable group list":
     "Variable group endpoints are not yet in the published @prisma/management-api-sdk. End-to-end tests require the demo control-plane deployment that ships with pdp-control-plane#6109.",
-  "variable group create":
+  "project variable group create":
     "Variable group endpoints are not yet in the published @prisma/management-api-sdk. End-to-end tests require the demo control-plane deployment that ships with pdp-control-plane#6109.",
-  "variable group update":
+  "project variable group update":
     "Variable group endpoints are not yet in the published @prisma/management-api-sdk. End-to-end tests require the demo control-plane deployment that ships with pdp-control-plane#6109.",
-  "variable group delete":
+  "project variable group delete":
     "Variable group endpoints are not yet in the published @prisma/management-api-sdk. End-to-end tests require the demo control-plane deployment that ships with pdp-control-plane#6109.",
 };
 

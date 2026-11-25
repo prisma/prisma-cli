@@ -342,7 +342,10 @@ Rules that bite:
 3. Variables resolve at deploy time from the branch's class. You never pass
    environment variables as part of a deploy.
 4. Templates, per-branch overrides, and wholesale dotenv import are all
-   managed through the `project env` group.
+   managed through the `project env` group. Per-branch overrides are
+   deprecated: `project variable` writes values to a group instead
+   (production, preview, or a custom group that matches branches by name),
+   and `project variable list --branch <name>` shows what a branch receives.
 5. `DATABASE_URL` is managed for you when the module declares a database:
    previews get their own fresh database's URL, production gets the
    production database's. Only set it yourself for databases the platform

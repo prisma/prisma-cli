@@ -5,13 +5,14 @@ import type { ManagementApiClient, StreamEvent } from "@prisma/cli-engine";
 import { createTestCli, mintTestJwt } from "@prisma/cli-engine/testing";
 import { describe, expect, it } from "vitest";
 
-import { variableAddCommand } from "../src/commands/variable/add";
-import { variableDeleteCommand } from "../src/commands/variable/delete";
-import { variableGroupCreateCommand } from "../src/commands/variable/group-create";
-import { variableGroupDeleteCommand } from "../src/commands/variable/group-delete";
-import { variableGroupListCommand } from "../src/commands/variable/group-list";
-import { variableListCommand } from "../src/commands/variable/list";
-import { variableUpdateCommand } from "../src/commands/variable/update";
+import { projectVariableAddCommand } from "../src/commands/project/variable/add";
+import { projectVariableDeleteCommand } from "../src/commands/project/variable/delete";
+import { projectVariableGroupCreateCommand } from "../src/commands/project/variable/group-create";
+import { projectVariableGroupDeleteCommand } from "../src/commands/project/variable/group-delete";
+import { projectVariableGroupListCommand } from "../src/commands/project/variable/group-list";
+import { projectVariableGroupUpdateCommand } from "../src/commands/project/variable/group-update";
+import { projectVariableListCommand } from "../src/commands/project/variable/list";
+import { projectVariableUpdateCommand } from "../src/commands/project/variable/update";
 
 const ACME_SESSION = {
   workspaceId: "ws_1",
@@ -31,13 +32,15 @@ const PROJECTS = [
   },
 ];
 
+// The built-in groups are not stored: their id is their name.
 const PRODUCTION_GROUP = {
-  id: "vg_prod",
+  id: "production",
   type: "variable-group",
-  url: "https://api.prisma.io/v1/variable-groups/vg_prod",
+  url: "https://api.prisma.io/v1/variable-groups/production",
   projectId: "proj_1",
   name: "production",
   class: "production",
+  builtIn: true,
   rule: null,
   ruleValue: null,
   matchedBranchIds: ["br_main"],
@@ -46,12 +49,13 @@ const PRODUCTION_GROUP = {
 };
 
 const PREVIEW_GROUP = {
-  id: "vg_prev",
+  id: "preview",
   type: "variable-group",
-  url: "https://api.prisma.io/v1/variable-groups/vg_prev",
+  url: "https://api.prisma.io/v1/variable-groups/preview",
   projectId: "proj_1",
   name: "preview",
   class: "preview",
+  builtIn: true,
   rule: null,
   ruleValue: null,
   matchedBranchIds: ["br_1"],
@@ -60,12 +64,13 @@ const PREVIEW_GROUP = {
 };
 
 const CUSTOM_GROUP = {
-  id: "vg_custom",
+  id: "vgrp_custom",
   type: "variable-group",
-  url: "https://api.prisma.io/v1/variable-groups/vg_custom",
+  url: "https://api.prisma.io/v1/variable-groups/vgrp_custom",
   projectId: "proj_1",
   name: "staging",
   class: "custom",
+  builtIn: false,
   rule: "equals",
   ruleValue: "staging",
   matchedBranchIds: ["br_staging"],
@@ -131,12 +136,13 @@ function variableClient(spec: VariableClientSpec = {}): ManagementApiClient {
       return {
         data: {
           data: {
-            id: "vg_new",
+            id: "vgrp_new",
             type: "variable-group",
-            url: "https://api.prisma.io/v1/variable-groups/vg_new",
+            url: "https://api.prisma.io/v1/variable-groups/vgrp_new",
             projectId: body.projectId,
             name: body.name,
             class: "custom",
+            builtIn: false,
             rule: (body.rule as { type: string }).type,
             ruleValue: (body.rule as { value: string }).value,
             matchedBranchIds: [],
@@ -167,18 +173,20 @@ function makeCli(
 ) {
   return createTestCli({
     commands: {
-      "variable add": variableAddCommand,
-      "variable update": variableUpdateCommand,
-      "variable delete": variableDeleteCommand,
-      "variable list": variableListCommand,
-      "variable group list": variableGroupListCommand,
-      "variable group create": variableGroupCreateCommand,
-      "variable group delete": variableGroupDeleteCommand,
+      "project variable add": projectVariableAddCommand,
+      "project variable update": projectVariableUpdateCommand,
+      "project variable delete": projectVariableDeleteCommand,
+      "project variable list": projectVariableListCommand,
+      "project variable group list": projectVariableGroupListCommand,
+      "project variable group create": projectVariableGroupCreateCommand,
+      "project variable group delete": projectVariableGroupDeleteCommand,
+      "project variable group update": projectVariableGroupUpdateCommand,
       ...commands,
     },
     groups: {
-      variable: { brief: "Manage project variables" },
-      "variable group": { brief: "Manage variable groups" },
+      project: { brief: "Manage projects" },
+      "project variable": { brief: "Manage project variables" },
+      "project variable group": { brief: "Manage variable groups" },
     },
     sessions: [ACME_SESSION],
     selectedWorkspaceId: ACME_SESSION.workspaceId,
@@ -214,6 +222,7 @@ describe("flag validation", () => {
   it("rejects --group and --role used together", async () => {
     const result = await makeCli(variableClient()).run(
       [
+        "project",
         "variable",
         "add",
         "KEY=val",
@@ -235,7 +244,7 @@ describe("flag validation", () => {
 
   it("rejects add without --group or --role", async () => {
     const result = await makeCli(variableClient()).run(
-      ["variable", "add", "KEY=val", "--json"],
+      ["project", "variable", "add", "KEY=val", "--json"],
       { cwd: await pinnedCwd() },
     );
 
@@ -249,6 +258,7 @@ describe("flag validation", () => {
   it("rejects --branch on variable add", async () => {
     const result = await makeCli(variableClient()).run(
       [
+        "project",
         "variable",
         "add",
         "KEY=val",
@@ -271,6 +281,7 @@ describe("flag validation", () => {
   it("rejects --branch on variable update", async () => {
     const result = await makeCli(variableClient()).run(
       [
+        "project",
         "variable",
         "update",
         "KEY=val",
@@ -293,6 +304,7 @@ describe("flag validation", () => {
   it("rejects --branch on variable delete", async () => {
     const result = await makeCli(variableClient()).run(
       [
+        "project",
         "variable",
         "delete",
         "KEY",
@@ -320,7 +332,7 @@ describe("flag validation", () => {
 describe("strict --role preview check", () => {
   it("fails when the project has custom groups", async () => {
     const result = await makeCli(variableClient({ groups: ALL_GROUPS })).run(
-      ["variable", "add", "KEY=val", "--role", "preview", "--json"],
+      ["project", "variable", "add", "KEY=val", "--role", "preview", "--json"],
       { cwd: await pinnedCwd() },
     );
 
@@ -334,9 +346,12 @@ describe("strict --role preview check", () => {
   it("allows --role preview when there are no custom groups", async () => {
     const result = await makeCli(
       variableClient({ groups: BUILT_IN_GROUPS }),
-    ).run(["variable", "add", "KEY=val", "--role", "preview", "--json"], {
-      cwd: await pinnedCwd(),
-    });
+    ).run(
+      ["project", "variable", "add", "KEY=val", "--role", "preview", "--json"],
+      {
+        cwd: await pinnedCwd(),
+      },
+    );
 
     expect(result.exitCode).toBe(0);
     expect(resultFrame(result.json).envelope).toMatchObject({
@@ -349,11 +364,12 @@ describe("strict --role preview check", () => {
 // variable add
 // ---------------------------------------------------------------------------
 
-describe("variable add", () => {
+describe("project variable add", () => {
   it("POSTs to /v1/environment-variables with the group's id", async () => {
     const calls: Call[] = [];
     const result = await makeCli(variableClient({ calls })).run(
       [
+        "project",
         "variable",
         "add",
         "STRIPE_KEY=sk_test_xxx",
@@ -371,7 +387,7 @@ describe("variable add", () => {
     );
     expect(post?.init.body).toMatchObject({
       projectId: "proj_1",
-      groupId: "vg_prod",
+      groupId: "production",
       key: "STRIPE_KEY",
       value: "sk_test_xxx",
     });
@@ -380,19 +396,69 @@ describe("variable add", () => {
   it("resolves --role production to the production group id", async () => {
     const calls: Call[] = [];
     await makeCli(variableClient({ calls })).run(
-      ["variable", "add", "KEY=val", "--role", "production"],
+      ["project", "variable", "add", "KEY=val", "--role", "production"],
       { cwd: await pinnedCwd() },
     );
 
     const post = calls.find(
       (c) => c.method === "POST" && c.path === "/v1/environment-variables",
     );
-    expect(post?.init.body).toMatchObject({ groupId: "vg_prod" });
+    expect(post?.init.body).toMatchObject({ groupId: "production" });
+  });
+
+  it("sends groupId=preview for --group preview", async () => {
+    const calls: Call[] = [];
+    const result = await makeCli(
+      variableClient({ calls, groups: ALL_GROUPS }),
+    ).run(["project", "variable", "add", "KEY=val", "--group", "preview"], {
+      cwd: await pinnedCwd(),
+    });
+
+    expect(result.exitCode).toBe(0);
+    const post = calls.find(
+      (c) => c.method === "POST" && c.path === "/v1/environment-variables",
+    );
+    expect(post?.init.body).toMatchObject({ groupId: "preview" });
+  });
+
+  it("sends groupId=preview for --role preview when there are no custom groups", async () => {
+    const calls: Call[] = [];
+    const result = await makeCli(variableClient({ calls })).run(
+      ["project", "variable", "add", "KEY=val", "--role", "preview"],
+      { cwd: await pinnedCwd() },
+    );
+
+    expect(result.exitCode).toBe(0);
+    const post = calls.find(
+      (c) => c.method === "POST" && c.path === "/v1/environment-variables",
+    );
+    expect(post?.init.body).toMatchObject({ groupId: "preview" });
+  });
+
+  it("sends the custom group's vgrp_ id for --group <custom>", async () => {
+    const calls: Call[] = [];
+    await makeCli(variableClient({ calls, groups: ALL_GROUPS })).run(
+      ["project", "variable", "add", "KEY=val", "--group", "staging"],
+      { cwd: await pinnedCwd() },
+    );
+
+    const post = calls.find(
+      (c) => c.method === "POST" && c.path === "/v1/environment-variables",
+    );
+    expect(post?.init.body).toMatchObject({ groupId: "vgrp_custom" });
   });
 
   it("fails when the group name does not exist", async () => {
     const result = await makeCli(variableClient()).run(
-      ["variable", "add", "KEY=val", "--group", "nonexistent", "--json"],
+      [
+        "project",
+        "variable",
+        "add",
+        "KEY=val",
+        "--group",
+        "nonexistent",
+        "--json",
+      ],
       { cwd: await pinnedCwd() },
     );
 
@@ -409,7 +475,16 @@ describe("variable add", () => {
 
     const calls: Call[] = [];
     const result = await makeCli(variableClient({ calls })).run(
-      ["variable", "add", "--file", ".env", "--group", "production", "--json"],
+      [
+        "project",
+        "variable",
+        "add",
+        "--file",
+        ".env",
+        "--group",
+        "production",
+        "--json",
+      ],
       { cwd },
     );
 
@@ -427,12 +502,12 @@ describe("variable add", () => {
 // variable update
 // ---------------------------------------------------------------------------
 
-describe("variable update", () => {
+describe("project variable update", () => {
   it("PATCHes the matching variable by id", async () => {
     const existingVar = {
       id: "ev_existing",
       key: "API_KEY",
-      groupId: "vg_prod",
+      groupId: null,
       updatedAt: "2024-01-01T00:00:00Z",
     };
 
@@ -461,6 +536,7 @@ describe("variable update", () => {
       }),
     ).run(
       [
+        "project",
         "variable",
         "update",
         "API_KEY=new_value",
@@ -480,16 +556,21 @@ describe("variable update", () => {
     );
     expect(patch?.init.params?.path).toMatchObject({ envVarId: "ev_existing" });
     expect(patch?.init.body).toMatchObject({ value: "new_value" });
+    const lookup = calls.find(
+      (c) => c.method === "GET" && c.path === "/v1/environment-variables",
+    );
+    expect(lookup?.init.params?.query).toMatchObject({
+      key: "API_KEY",
+      groupId: "production",
+    });
   });
 
   it("updates file keys in the custom group, looking each up by group id", async () => {
     const cwd = await pinnedCwd();
     await writeFile(path.join(cwd, ".env"), "API_KEY=new_value\n", "utf8");
     const staging = {
-      id: "vg_staging",
-      name: "staging",
-      class: "custom",
-      rule: { type: "equals", value: "staging" },
+      ...CUSTOM_GROUP,
+      id: "vgrp_staging",
     };
 
     const calls: Call[] = [];
@@ -516,7 +597,16 @@ describe("variable update", () => {
         },
       }),
     ).run(
-      ["variable", "update", "--file", ".env", "--group", "staging", "--json"],
+      [
+        "project",
+        "variable",
+        "update",
+        "--file",
+        ".env",
+        "--group",
+        "staging",
+        "--json",
+      ],
       { cwd },
     );
 
@@ -526,7 +616,7 @@ describe("variable update", () => {
     );
     expect(lookup?.init.params?.query).toMatchObject({
       key: "API_KEY",
-      groupId: "vg_staging",
+      groupId: "vgrp_staging",
     });
     const patch = calls.find((c) => c.method === "PATCH");
     expect(patch?.init.params?.path).toMatchObject({ envVarId: "ev_staging" });
@@ -534,7 +624,15 @@ describe("variable update", () => {
 
   it("fails with VARIABLE.NOT_FOUND when the variable does not exist in the group", async () => {
     const result = await makeCli(variableClient()).run(
-      ["variable", "update", "MISSING=val", "--group", "production", "--json"],
+      [
+        "project",
+        "variable",
+        "update",
+        "MISSING=val",
+        "--group",
+        "production",
+        "--json",
+      ],
       { cwd: await pinnedCwd() },
     );
 
@@ -550,7 +648,7 @@ describe("variable update", () => {
 // variable delete
 // ---------------------------------------------------------------------------
 
-describe("variable delete", () => {
+describe("project variable delete", () => {
   it("DELETEs the matching variable by id", async () => {
     const existingVar = { id: "ev_del", key: "OLD_KEY" };
 
@@ -569,7 +667,15 @@ describe("variable delete", () => {
         },
       }),
     ).run(
-      ["variable", "delete", "OLD_KEY", "--group", "production", "--json"],
+      [
+        "project",
+        "variable",
+        "delete",
+        "OLD_KEY",
+        "--group",
+        "production",
+        "--json",
+      ],
       { cwd: await pinnedCwd() },
     );
 
@@ -585,7 +691,15 @@ describe("variable delete", () => {
 
   it("fails with VARIABLE.NOT_FOUND when the variable does not exist", async () => {
     const result = await makeCli(variableClient()).run(
-      ["variable", "delete", "GHOST", "--group", "production", "--json"],
+      [
+        "project",
+        "variable",
+        "delete",
+        "GHOST",
+        "--group",
+        "production",
+        "--json",
+      ],
       { cwd: await pinnedCwd() },
     );
 
@@ -601,7 +715,7 @@ describe("variable delete", () => {
 // variable list
 // ---------------------------------------------------------------------------
 
-describe("variable list", () => {
+describe("project variable list", () => {
   it("renders a group table with variable counts", async () => {
     const result = await makeCli(
       variableClient({
@@ -610,7 +724,7 @@ describe("variable list", () => {
           "GET /v1/environment-variables": (call) => {
             const groupId = (call.init.params?.query as { groupId?: string })
               ?.groupId;
-            if (groupId === "vg_prod") {
+            if (groupId === "production") {
               return {
                 data: {
                   data: [
@@ -633,7 +747,9 @@ describe("variable list", () => {
           },
         },
       }),
-    ).run(["variable", "list", "--json"], { cwd: await pinnedCwd() });
+    ).run(["project", "variable", "list", "--json"], {
+      cwd: await pinnedCwd(),
+    });
 
     expect(result.exitCode).toBe(0);
     const envelope = resultFrame(result.json).envelope as {
@@ -648,14 +764,98 @@ describe("variable list", () => {
   });
 });
 
+describe("project variable list --branch", () => {
+  it("labels overrides as deprecated and COMPOSER_ keys as managed by Prisma", async () => {
+    const result = await makeCli(
+      variableClient({
+        routes: {
+          "GET /v1/projects/{projectId}/branches": () => ({
+            data: {
+              data: [
+                {
+                  id: "br_feature",
+                  gitName: "feature/foo",
+                  role: "preview",
+                  isDefault: false,
+                },
+              ],
+              pagination: { hasMore: false, nextCursor: null },
+            },
+          }),
+          "GET /v1/projects/{projectId}/resolved-variables": () => ({
+            data: {
+              group: { id: "preview", name: "preview", class: "preview" },
+              data: [
+                {
+                  key: "API_URL",
+                  updatedAt: "2024-01-01T00:00:00Z",
+                  isManagedBySystem: false,
+                  source: {
+                    type: "group",
+                    groupId: "preview",
+                    groupName: "preview",
+                    groupClass: "preview",
+                  },
+                },
+                {
+                  key: "COMPOSER_DATABASE_URL",
+                  updatedAt: "2024-01-01T00:00:00Z",
+                  isManagedBySystem: true,
+                  source: {
+                    type: "group",
+                    groupId: "preview",
+                    groupName: "preview",
+                    groupClass: "preview",
+                  },
+                },
+                {
+                  key: "OLD_FLAG",
+                  updatedAt: "2024-01-01T00:00:00Z",
+                  isManagedBySystem: false,
+                  source: { type: "override" },
+                },
+              ],
+            },
+          }),
+        },
+      }),
+    ).run(["project", "variable", "list", "--branch", "feature/foo"], {
+      cwd: await pinnedCwd(),
+      isTty: { stdout: true },
+    });
+
+    expect(result.exitCode).toBe(0);
+    const presented = result.presented as
+      | { presentation: { human: Array<{ kind: string }> } }
+      | undefined;
+    const human = presented?.presentation.human ?? [];
+    expect(human).toContainEqual({
+      kind: "table",
+      columns: ["key", "source", "note"],
+      rows: [
+        ["API_URL", "group:preview", ""],
+        ["COMPOSER_DATABASE_URL", "group:preview", "Managed by Prisma"],
+        ["OLD_FLAG", "override", "Deprecated override"],
+      ],
+    });
+    expect(human).toContainEqual(
+      expect.objectContaining({
+        kind: "summary",
+        status: "warn",
+        text: expect.stringContaining("Overrides are deprecated"),
+      }),
+    );
+  });
+});
+
 // ---------------------------------------------------------------------------
 // variable group list
 // ---------------------------------------------------------------------------
 
-describe("variable group list", () => {
+describe("project variable group list", () => {
   it("renders a table with name, class, rule, and branch count", async () => {
     const result = await makeCli(variableClient({ groups: ALL_GROUPS })).run(
-      ["variable", "group", "list"],
+      ["project", "variable", "group", "list"],
       { cwd: await pinnedCwd(), isTty: { stdout: true } },
     );
 
@@ -677,9 +877,28 @@ describe("variable group list", () => {
     });
   });
 
+  it("marks the built-in groups in JSON output", async () => {
+    const result = await makeCli(variableClient({ groups: ALL_GROUPS })).run(
+      ["project", "variable", "group", "list", "--json"],
+      { cwd: await pinnedCwd() },
+    );
+
+    expect(result.exitCode).toBe(0);
+    expect(resultFrame(result.json).envelope).toMatchObject({
+      ok: true,
+      result: {
+        groups: [
+          { id: "production", builtIn: true },
+          { id: "preview", builtIn: true },
+          { id: "vgrp_custom", builtIn: false },
+        ],
+      },
+    });
+  });
+
   it("renders an empty-state summary when there are no groups", async () => {
     const result = await makeCli(variableClient({ groups: [] })).run(
-      ["variable", "group", "list"],
+      ["project", "variable", "group", "list"],
       {
         cwd: await pinnedCwd(),
         isTty: { stdout: true },
@@ -704,11 +923,12 @@ describe("variable group list", () => {
 // variable group create
 // ---------------------------------------------------------------------------
 
-describe("variable group create", () => {
+describe("project variable group create", () => {
   it("POSTs an equals rule to /v1/variable-groups", async () => {
     const calls: Call[] = [];
     const result = await makeCli(variableClient({ calls })).run(
       [
+        "project",
         "variable",
         "group",
         "create",
@@ -736,6 +956,7 @@ describe("variable group create", () => {
     const calls: Call[] = [];
     await makeCli(variableClient({ calls })).run(
       [
+        "project",
         "variable",
         "group",
         "create",
@@ -757,7 +978,7 @@ describe("variable group create", () => {
 
   it("fails when neither --equals nor --starts-with is given", async () => {
     const result = await makeCli(variableClient()).run(
-      ["variable", "group", "create", "staging", "--json"],
+      ["project", "variable", "group", "create", "staging", "--json"],
       { cwd: await pinnedCwd() },
     );
 
@@ -771,6 +992,7 @@ describe("variable group create", () => {
   it("fails when both --equals and --starts-with are given", async () => {
     const result = await makeCli(variableClient()).run(
       [
+        "project",
         "variable",
         "group",
         "create",
@@ -792,11 +1014,79 @@ describe("variable group create", () => {
   });
 });
 
+describe("project variable group update", () => {
+  it("PATCHes a custom group by its vgrp_ id", async () => {
+    const calls: Call[] = [];
+    const result = await makeCli(
+      variableClient({
+        calls,
+        groups: ALL_GROUPS,
+        routes: {
+          "PATCH /v1/variable-groups/{groupId}": () => ({
+            data: {
+              data: { ...CUSTOM_GROUP, rule: "startsWith", ruleValue: "stg/" },
+            },
+          }),
+        },
+      }),
+    ).run(
+      [
+        "project",
+        "variable",
+        "group",
+        "update",
+        "staging",
+        "--starts-with",
+        "stg/",
+        "--json",
+      ],
+      { cwd: await pinnedCwd() },
+    );
+
+    expect(result.exitCode).toBe(0);
+    const patch = calls.find((c) => c.method === "PATCH");
+    expect(patch?.init.params?.path).toMatchObject({ groupId: "vgrp_custom" });
+    expect(patch?.init.body).toEqual({
+      rule: { type: "startsWith", value: "stg/" },
+    });
+  });
+
+  it.each([
+    ["production", "--name", "live"],
+    ["preview", "--name", "previews"],
+    ["preview", "--equals", "staging"],
+  ])("refuses to change the built-in %s group (%s)", async (name, flagName, value) => {
+    const calls: Call[] = [];
+    const result = await makeCli(
+      variableClient({ calls, groups: ALL_GROUPS }),
+    ).run(
+      [
+        "project",
+        "variable",
+        "group",
+        "update",
+        name,
+        flagName,
+        value,
+        "--json",
+      ],
+      { cwd: await pinnedCwd() },
+    );
+
+    expect(result.exitCode).toBe(2);
+    expect(resultFrame(result.json).envelope).toMatchObject({
+      ok: false,
+      error: { code: "VARIABLE.BUILTIN_GROUP_UPDATE" },
+    });
+    expect(calls.some((c) => c.method === "PATCH")).toBe(false);
+  });
+});
+
 // ---------------------------------------------------------------------------
 // variable group delete
 // ---------------------------------------------------------------------------
 
-describe("variable group delete", () => {
+describe("project variable group delete", () => {
   it("DELETEs the group by id when --yes is passed", async () => {
     const calls: Call[] = [];
     const result = await makeCli(
@@ -812,6 +1102,7 @@ describe("variable group delete", () => {
       }),
     ).run(
       [
+        "project",
         "variable",
         "group",
         "delete",
@@ -829,7 +1120,33 @@ describe("variable group delete", () => {
       (c) =>
         c.method === "DELETE" && c.path === "/v1/variable-groups/{groupId}",
     );
-    expect(del?.init.params?.path).toMatchObject({ groupId: "vg_custom" });
+    expect(del?.init.params?.path).toMatchObject({ groupId: "vgrp_custom" });
+  });
+
+  it("rejects deletion of the built-in preview group without calling DELETE", async () => {
+    const calls: Call[] = [];
+    const result = await makeCli(
+      variableClient({ calls, groups: ALL_GROUPS }),
+    ).run(
+      [
+        "project",
+        "variable",
+        "group",
+        "delete",
+        "preview",
+        "--confirm",
+        "preview",
+        "--json",
+      ],
+      { cwd: await pinnedCwd() },
+    );
+
+    expect(result.exitCode).toBe(2);
+    expect(resultFrame(result.json).envelope).toMatchObject({
+      ok: false,
+      error: { code: "VARIABLE.BUILTIN_GROUP_DELETE" },
+    });
+    expect(calls.some((c) => c.method === "DELETE")).toBe(false);
   });
 
   it("rejects deletion of the built-in production group", async () => {
@@ -837,6 +1154,7 @@ describe("variable group delete", () => {
       variableClient({ groups: BUILT_IN_GROUPS }),
     ).run(
       [
+        "project",
         "variable",
         "group",
         "delete",

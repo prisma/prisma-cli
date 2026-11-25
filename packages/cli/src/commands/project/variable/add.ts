@@ -1,4 +1,4 @@
-/** The `variable add` command. */
+/** The `project variable add` command. */
 import {
   type Block,
   defineCommand,
@@ -6,11 +6,11 @@ import {
   positional,
 } from "@prisma/cli-engine";
 import { ok } from "@prisma/cli-engine/protocol";
-import { parseKeyValuePositional } from "../../lib/app/env-config";
-import { readEnvFileAssignments } from "../../lib/app/env-file";
-import { createEnvVarInGroup } from "../../lib/variable/api";
-import { resolvePinnedProject } from "../project/context";
-import { resolveActiveWorkspace } from "../resources-shared/workspace";
+import { parseKeyValuePositional } from "../../../lib/app/env-config";
+import { readEnvFileAssignments } from "../../../lib/app/env-file";
+import { createEnvVarInGroup } from "../../../lib/variable/api";
+import { resolveActiveWorkspace } from "../../resources-shared/workspace";
+import { resolvePinnedProject } from "../context";
 import {
   branchFlag,
   enforceRolePreviewCheck,
@@ -88,7 +88,7 @@ function addFilePresentations(result: {
   };
 }
 
-export const variableAddCommand = defineCommand({
+export const projectVariableAddCommand = defineCommand({
   args: {
     positionals: {
       assignment: positional.optionalString({
@@ -110,11 +110,11 @@ export const variableAddCommand = defineCommand({
     description:
       "Creates a branch variable in the named group: production, preview, or a custom group. Use --group <name> or --role production|preview. The value comes from KEY=VALUE, from the current shell environment when only KEY is given, or from a dotenv file with --file. --branch is not accepted; use a variable group or send a service variable with the deploy.",
     examples: [
-      "variable add STRIPE_KEY=sk_test_xxx --group production",
-      "variable add STRIPE_KEY=sk_test_xxx --role production",
-      "variable add STRIPE_KEY=sk_test_xxx --group staging",
-      "variable add --file .env --group preview",
-      "API_URL=https://api.example prisma variable add API_URL --group production",
+      "project variable add STRIPE_KEY=sk_test_xxx --group production",
+      "project variable add STRIPE_KEY=sk_test_xxx --role production",
+      "project variable add STRIPE_KEY=sk_test_xxx --group staging",
+      "project variable add --file .env --group preview",
+      "API_URL=https://api.example prisma project variable add API_URL --group production",
     ],
   },
   needs: { credentials: true },
@@ -128,7 +128,7 @@ export const variableAddCommand = defineCommand({
       ctx,
       workspace,
       args.flags.project,
-      "variable add",
+      "project variable add",
     );
     const projectId = resolved.project.id;
 

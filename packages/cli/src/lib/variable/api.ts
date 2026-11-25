@@ -17,6 +17,12 @@ import { runCommand, userChoice } from "../app/env-errors";
 export type VariableGroupClass = "production" | "preview" | "custom";
 export type VariableGroupRule = "equals" | "startsWith";
 
+/** A variable group as the API returns it.
+ *
+ *  The built-in groups, production and preview, are not stored: their `id`
+ *  equals their name, `builtIn` is true, and they have no rule. Custom
+ *  groups have a `vgrp_`-prefixed id.
+ */
 export interface RawVariableGroup {
   id: string;
   type: "variable-group";
@@ -24,6 +30,7 @@ export interface RawVariableGroup {
   projectId: string;
   name: string;
   class: VariableGroupClass;
+  builtIn: boolean;
   rule: VariableGroupRule | null;
   ruleValue: string | null;
   matchedBranchIds: string[];
@@ -40,6 +47,15 @@ export type ResolvedVariableSource =
     }
   | { type: "service"; serviceId: string }
   | { type: "override" };
+
+/** An environment variable row. Rows in a built-in group have `groupId: null`. */
+export interface RawGroupVariable {
+  id: string;
+  key: string;
+  groupId: string | null;
+  isManagedBySystem?: boolean;
+  updatedAt: string;
+}
 
 export interface ResolvedVariable {
   key: string;
@@ -177,13 +193,18 @@ export async function updateVariableGroup(
 // Presentation helpers
 // ---------------------------------------------------------------------------
 
+/** True for the production and preview groups. Also reads `class`, so a
+ *  response without the `builtIn` flag is still handled. */
+export function isBuiltInGroup(group: RawVariableGroup): boolean {
+  return group.builtIn === true || group.class !== "custom";
+}
+
 /** Format a group's rule for display. */
 export function formatGroupRule(group: RawVariableGroup): string {
-  if (group.class === "production") {
-    return "production branch";
-  }
-  if (group.class === "preview") {
-    return "all other branches";
+  if (isBuiltInGroup(group)) {
+    return group.class === "production"
+      ? "production branch"
+      : "all other branches";
   }
   if (group.rule === "equals") {
     return `= ${group.ruleValue}`;
@@ -265,7 +286,7 @@ export async function createEnvVarInGroup(
   client: ManagementApiClient,
   input: CreateEnvVarWithGroupInput,
   signal: AbortSignal,
-): Promise<unknown> {
+): Promise<RawGroupVariable> {
   // biome-ignore lint/suspicious/noExplicitAny: these API paths and fields are not in the published SDK yet
   const { data, error, response } = await (client as any).POST(
     "/v1/environment-variables",
@@ -282,7 +303,33 @@ export async function createEnvVarInGroup(
   if (error || !data) {
     throw variableApiError(`Failed to add ${input.key}`, response, error);
   }
-  return data.data;
+  return data.data as RawGroupVariable;
+}
+
+/** Find one variable by key in one group, or null when the group has no such key. */
+export async function findEnvVarInGroup(
+  client: ManagementApiClient,
+  input: { projectId: string; groupId: string; key: string },
+  signal: AbortSignal,
+): Promise<RawGroupVariable | null> {
+  // biome-ignore lint/suspicious/noExplicitAny: these API paths and fields are not in the published SDK yet
+  const { data, error, response } = await (client as any).GET(
+    "/v1/environment-variables",
+    {
+      params: {
+        query: {
+          projectId: input.projectId,
+          groupId: input.groupId,
+          key: input.key,
+        },
+      },
+      signal,
+    },
+  );
+  if (error || !data) {
+    throw variableApiError(`Failed to look up ${input.key}`, response, error);
+  }
+  return (data.data as RawGroupVariable[])[0] ?? null;
 }
 
 /** List env vars in one group by groupId. */
@@ -291,8 +338,8 @@ export async function listEnvVarsInGroup(
   projectId: string,
   groupId: string,
   signal: AbortSignal,
-): Promise<unknown[]> {
-  const collected: unknown[] = [];
+): Promise<RawGroupVariable[]> {
+  const collected: RawGroupVariable[] = [];
   let cursor: string | undefined;
 
   while (true) {
@@ -317,7 +364,7 @@ export async function listEnvVarsInGroup(
       );
     }
 
-    collected.push(...(data.data as unknown[]));
+    collected.push(...(data.data as RawGroupVariable[]));
 
     if (!data.pagination.hasMore || !data.pagination.nextCursor) {
       break;

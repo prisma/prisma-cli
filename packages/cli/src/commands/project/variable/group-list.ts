@@ -1,13 +1,17 @@
-/** The `variable group list` command. */
+/** The `project variable group list` command. */
 import {
   type Block,
   defineCommand,
   type Presentations,
 } from "@prisma/cli-engine";
 import { ok } from "@prisma/cli-engine/protocol";
-import { formatGroupRule, listVariableGroups } from "../../lib/variable/api";
-import { resolvePinnedProject } from "../project/context";
-import { resolveActiveWorkspace } from "../resources-shared/workspace";
+import {
+  formatGroupRule,
+  isBuiltInGroup,
+  listVariableGroups,
+} from "../../../lib/variable/api";
+import { resolveActiveWorkspace } from "../../resources-shared/workspace";
+import { resolvePinnedProject } from "../context";
 import { projectFlag } from "./shared";
 
 function listPresentations(result: {
@@ -52,7 +56,7 @@ function listPresentations(result: {
   };
 }
 
-export const variableGroupListCommand = defineCommand({
+export const projectVariableGroupListCommand = defineCommand({
   args: {
     flags: {
       project: projectFlag,
@@ -62,7 +66,10 @@ export const variableGroupListCommand = defineCommand({
     summary: "List all variable groups for a project",
     description:
       "Shows the production and preview groups, then any custom groups ordered by name. Each row shows the group's name, class, matching rule, and how many branches it currently serves.",
-    examples: ["variable group list", "variable group list --project my-app"],
+    examples: [
+      "project variable group list",
+      "project variable group list --project my-app",
+    ],
   },
   needs: { credentials: true },
   handler: async (args, ctx) => {
@@ -71,7 +78,7 @@ export const variableGroupListCommand = defineCommand({
       ctx,
       workspace,
       args.flags.project,
-      "variable group list",
+      "project variable group list",
     );
     const projectId = resolved.project.id;
 
@@ -83,6 +90,7 @@ export const variableGroupListCommand = defineCommand({
         id: g.id,
         name: g.name,
         class: g.class,
+        builtIn: isBuiltInGroup(g),
         rule: formatGroupRule(g),
         matchedBranchIds: g.matchedBranchIds,
       })),

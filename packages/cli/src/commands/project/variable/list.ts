@@ -1,4 +1,4 @@
-/** The `variable list` command. */
+/** The `project variable list` command. */
 import {
   type Block,
   defineCommand,
@@ -6,28 +6,45 @@ import {
   type Presentations,
 } from "@prisma/cli-engine";
 import { ok } from "@prisma/cli-engine/protocol";
-import { listBranches } from "../../controllers/branch";
+import { listBranches } from "../../../controllers/branch";
 import {
   getResolvedVariables,
   listEnvVarsInGroup,
   listVariableGroups,
   type RawVariableGroup,
-  type ResolvedVariableSource,
-} from "../../lib/variable/api";
+  type ResolvedVariable,
+} from "../../../lib/variable/api";
+import { resolveActiveWorkspace } from "../../resources-shared/workspace";
+import { resolvePinnedProject } from "../context";
+import { projectFlag, serviceFlag } from "./shared";
 
-function sourceLabel(source: ResolvedVariableSource): string {
-  if (source.type === "group") {
-    return `group:${source.groupName}`;
-  }
-  if (source.type === "override") {
-    return "override";
-  }
-  return `service:${source.serviceId}`;
+const MANAGED_NOTE = "Managed by Prisma";
+const OVERRIDE_NOTE = "Deprecated override";
+
+interface BranchKey {
+  key: string;
+  source: string;
+  note: string | null;
 }
 
-import { resolvePinnedProject } from "../project/context";
-import { resolveActiveWorkspace } from "../resources-shared/workspace";
-import { projectFlag, serviceFlag } from "./shared";
+function toBranchKey(item: ResolvedVariable): BranchKey {
+  const managed = item.isManagedBySystem || item.key.startsWith("COMPOSER_");
+  if (item.source.type === "group") {
+    return {
+      key: item.key,
+      source: `group:${item.source.groupName}`,
+      note: managed ? MANAGED_NOTE : null,
+    };
+  }
+  if (item.source.type === "override") {
+    return { key: item.key, source: "override", note: OVERRIDE_NOTE };
+  }
+  return {
+    key: item.key,
+    source: `service:${item.source.serviceId}`,
+    note: managed ? MANAGED_NOTE : null,
+  };
+}
 
 interface GroupWithVariables {
   group: RawVariableGroup;
@@ -41,16 +58,21 @@ function listPresentations(result: {
     branchName: string;
     groupName: string;
     groupClass: string;
-    keys: Array<{ key: string; source: string }>;
+    keys: BranchKey[];
   };
 }): Presentations {
   const branch = result.branchResolved;
   if (branch) {
-    const rows = branch.keys.map((item) => [item.key, item.source]);
+    const rows = branch.keys.map((item) => [
+      item.key,
+      item.source,
+      item.note ?? "",
+    ]);
+    const hasOverrides = branch.keys.some((item) => item.source === "override");
     return {
       json: () => result,
       next: () => [],
-      stdout: () => rows.map((row) => row.join("\t")),
+      stdout: () => rows.map((row) => row.slice(0, 2).join("\t")),
       human: (): Block[] => [
         {
           kind: "summary",
@@ -63,7 +85,7 @@ function listPresentations(result: {
             { label: "project", value: result.projectId },
             { label: "branch", value: branch.branchName },
             {
-              label: "variable group",
+              label: "project variable group",
               value: `${branch.groupName} (${branch.groupClass})`,
             },
           ],
@@ -72,9 +94,18 @@ function listPresentations(result: {
           ? { kind: "summary", status: "info", text: "No variables." }
           : {
               kind: "table",
-              columns: ["key", "source"],
+              columns: ["key", "source", "note"],
               rows,
             },
+        ...(hasOverrides
+          ? [
+              {
+                kind: "summary",
+                status: "warn",
+                text: "Overrides are deprecated. Move each value into a group with `prisma project variable add`, or give this branch its own custom group with `prisma project variable group create`.",
+              } satisfies Block,
+            ]
+          : []),
       ],
     };
   }
@@ -136,7 +167,7 @@ function listPresentations(result: {
   };
 }
 
-export const variableListCommand = defineCommand({
+export const projectVariableListCommand = defineCommand({
   args: {
     flags: {
       group: flag.string({
@@ -155,13 +186,13 @@ export const variableListCommand = defineCommand({
   help: {
     summary: "List branch variables by group, or what a branch receives",
     description:
-      "Without flags, shows every group with its variable keys — one section per group. --group shows one group only. --branch shows the variable set a preview branch receives, including which group it sources and each key's origin. Add --service to include that service's variables too.",
+      "Lists keys, never values. Without flags, shows every group with its keys, one section per group. --group shows one group only. --branch shows what one branch receives at its next deploy: the group it gets and where each key comes from. A key marked 'Deprecated override' was set for that one branch with 'prisma project env --branch'; move it into a group. A key marked 'Managed by Prisma' starts with COMPOSER_ and is set by Prisma. Add --service to include that service's own variables.",
     examples: [
-      "variable list",
-      "variable list --group production",
-      "variable list --group staging",
-      "variable list --branch feature/foo",
-      "variable list --branch feature/foo --service api",
+      "project variable list",
+      "project variable list --group production",
+      "project variable list --group staging",
+      "project variable list --branch feature/foo",
+      "project variable list --branch feature/foo --service api",
     ],
   },
   needs: { credentials: true },
@@ -171,7 +202,7 @@ export const variableListCommand = defineCommand({
       ctx,
       workspace,
       args.flags.project,
-      "variable list",
+      "project variable list",
     );
     const projectId = resolved.project.id;
 
@@ -212,10 +243,7 @@ export const variableListCommand = defineCommand({
         signal: ctx.signal,
       });
 
-      const keys = resolvedVars.data.map((item) => ({
-        key: item.key,
-        source: sourceLabel(item.source),
-      }));
+      const keys = resolvedVars.data.map(toBranchKey);
 
       const branchResolved = {
         branchName: args.flags.branch,

@@ -28,6 +28,7 @@ import {
   fileWritePresentations,
   previewDefaultDiagnostics,
   projectFlag,
+  reportOverrideDeprecation,
   requireEnvScope,
   resolveEnvTarget,
   roleFlag,
@@ -87,12 +88,6 @@ export const projectEnvAddCommand = defineCommand({
   },
   needs: { credentials: true },
   handler: async (args, ctx) => {
-    ctx.report({
-      kind: "message",
-      severity: "warn",
-      text: "Warning: `prisma project env` is deprecated and will be removed in a future major version. Use `prisma variable` instead.",
-    });
-
     const source = resolveEnvWriteSource(
       args.positionals.assignment,
       args.flags.file,
@@ -122,6 +117,9 @@ export const projectEnvAddCommand = defineCommand({
         input.assignments,
         verboseContext,
       );
+
+      reportOverrideDeprecation(ctx, scope);
+
       const result: EnvAddResult = {
         projectId,
         scope: resolved.descriptor,
@@ -210,6 +208,8 @@ export const projectEnvAddCommand = defineCommand({
     if (error || !data) {
       throw apiCallError(`Failed to add ${input.key}`, response, error);
     }
+
+    reportOverrideDeprecation(ctx, scope, response);
 
     const result: EnvSingleWriteResult = {
       projectId,

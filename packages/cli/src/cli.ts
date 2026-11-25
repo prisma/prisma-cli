@@ -49,6 +49,14 @@ import { projectListCommand } from "./commands/project/list";
 import { projectRenameCommand } from "./commands/project/rename";
 import { projectShowCommand } from "./commands/project/show";
 import { projectTransferCommand } from "./commands/project/transfer";
+import { projectVariableAddCommand } from "./commands/project/variable/add";
+import { projectVariableDeleteCommand } from "./commands/project/variable/delete";
+import { projectVariableGroupCreateCommand } from "./commands/project/variable/group-create";
+import { projectVariableGroupDeleteCommand } from "./commands/project/variable/group-delete";
+import { projectVariableGroupListCommand } from "./commands/project/variable/group-list";
+import { projectVariableGroupUpdateCommand } from "./commands/project/variable/group-update";
+import { projectVariableListCommand } from "./commands/project/variable/list";
+import { projectVariableUpdateCommand } from "./commands/project/variable/update";
 import { serviceCreateCommand } from "./commands/service/create";
 import { serviceDeleteCommand } from "./commands/service/delete";
 import { serviceDomainAddCommand } from "./commands/service/domain-add";
@@ -68,14 +76,6 @@ import { serviceVersionShowCommand } from "./commands/service/version-show";
 import { serviceVersionStartCommand } from "./commands/service/version-start";
 import { serviceVersionStopCommand } from "./commands/service/version-stop";
 import { skillsCommandFamily } from "./commands/skills/family";
-import { variableAddCommand } from "./commands/variable/add";
-import { variableDeleteCommand } from "./commands/variable/delete";
-import { variableGroupCreateCommand } from "./commands/variable/group-create";
-import { variableGroupDeleteCommand } from "./commands/variable/group-delete";
-import { variableGroupListCommand } from "./commands/variable/group-list";
-import { variableGroupUpdateCommand } from "./commands/variable/group-update";
-import { variableListCommand } from "./commands/variable/list";
-import { variableUpdateCommand } from "./commands/variable/update";
 import { getCliVersion } from "./lib/version";
 import { v7CommandFamily } from "./v7-redirects";
 
@@ -99,6 +99,14 @@ export const platformCommandFamily: CommandFamily = defineCommandFamily({
     projectEnvUpdate: projectEnvUpdateCommand,
     projectEnvList: projectEnvListCommand,
     projectEnvDelete: projectEnvDeleteCommand,
+    projectVariableAdd: projectVariableAddCommand,
+    projectVariableUpdate: projectVariableUpdateCommand,
+    projectVariableDelete: projectVariableDeleteCommand,
+    projectVariableList: projectVariableListCommand,
+    projectVariableGroupList: projectVariableGroupListCommand,
+    projectVariableGroupCreate: projectVariableGroupCreateCommand,
+    projectVariableGroupUpdate: projectVariableGroupUpdateCommand,
+    projectVariableGroupDelete: projectVariableGroupDeleteCommand,
     postgresList: postgresListCommand,
     postgresShow: postgresShowCommand,
     postgresCreate: postgresCreateCommand,
@@ -137,14 +145,6 @@ export const platformCommandFamily: CommandFamily = defineCommandFamily({
     serviceDomainDelete: serviceDomainDeleteCommand,
     serviceDomainRetry: serviceDomainRetryCommand,
     serviceDomainWait: serviceDomainWaitCommand,
-    variableAdd: variableAddCommand,
-    variableUpdate: variableUpdateCommand,
-    variableDelete: variableDeleteCommand,
-    variableList: variableListCommand,
-    variableGroupList: variableGroupListCommand,
-    variableGroupCreate: variableGroupCreateCommand,
-    variableGroupUpdate: variableGroupUpdateCommand,
-    variableGroupDelete: variableGroupDeleteCommand,
   },
 });
 
@@ -220,6 +220,32 @@ export const cliGroups: Readonly<
       "Manage a project's environment variables. Add, update, list, and delete values per scope",
     description:
       "Variables live in scopes: production, preview (shared by every preview branch), or a single branch's override. Values reach services when they deploy, and are write-only afterwards: list shows metadata, never values.",
+  },
+  "project variable": {
+    brief:
+      "Manage a project's variables by group. Add, update, list, and delete values, and create custom groups",
+    description:
+      "A variable is a KEY=VALUE pair that services receive when they deploy. Values are write-only: list shows keys, never values. Each variable belongs to one group, and each branch receives the variables of exactly one group. Every project has two built-in groups: production, for the production branch, and preview, for every other branch. A custom group has a rule that picks its branches by exact name or by name prefix; a branch it picks receives the custom group instead of preview. Writes always target a group, never a single branch. Keys that start with COMPOSER_ are managed by Prisma.",
+    workflow: [
+      {
+        run: "project variable add API_URL=https://api.example --group production",
+        brief: "Set a variable the production branch receives",
+      },
+      {
+        run: "project variable group create staging --equals staging",
+        brief: "Give the staging branch its own group",
+      },
+      {
+        run: "project variable list --branch staging",
+        brief: "See which group and keys a branch receives",
+      },
+    ],
+  },
+  "project variable group": {
+    brief:
+      "Manage variable groups. List groups, and create, rename, change the rule of, or delete custom groups",
+    description:
+      "The built-in groups, production and preview, always exist and cannot be renamed, changed, or deleted. A project can add up to ten custom groups. Each custom group has one rule: --equals matches one branch name, --starts-with matches every branch whose name starts with a prefix. A branch that matches a custom group receives that group's variables instead of the preview group's.",
   },
   postgres: {
     brief:
@@ -377,32 +403,6 @@ export const cliGroups: Readonly<
     description:
       "An emulator runs one kind of resource locally, so 'prisma dev' needs no account or network: one runs services, one runs Postgres databases, one runs S3-compatible buckets. Each holds instances, one per service, database or bucket that a 'prisma dev' started, from any directory on this machine. Emulators keep running after 'prisma dev' ends. Instances and their data stay until 'prisma dev --fresh' removes the current app's, and a stopped instance keeps its port.",
   },
-  variable: {
-    brief:
-      "Manage project variables. Add, update, delete, and list values per group",
-    description:
-      "Variables live in groups: production, preview (shared by every branch that matches no custom rule), or a custom group. Values reach services when they deploy. Write commands require a group. For branch-level inspection, use --branch.",
-    workflow: [
-      {
-        run: "variable add API_URL=https://api.example --group production",
-        brief: "Set a variable in the production group",
-      },
-      {
-        run: "variable list --branch feature/foo",
-        brief: "See what a branch receives",
-      },
-      {
-        run: "variable group create staging --equals staging",
-        brief: "Create a custom group for the staging branch",
-      },
-    ],
-  },
-  "variable group": {
-    brief:
-      "Manage variable groups. Create, rename, change rules, and delete custom groups",
-    description:
-      "Every project has a production group and a preview group. Add up to ten custom groups, each with an equals or startsWith rule that selects which branches receive its variables.",
-  },
   skills: {
     brief:
       "Manage Prisma skills for AI coding agents. Sync and list the instruction files",
@@ -430,6 +430,14 @@ export const mountedCommands: Readonly<Record<string, AnyCommand>> = {
   "project env update": projectEnvUpdateCommand,
   "project env list": projectEnvListCommand,
   "project env delete": projectEnvDeleteCommand,
+  "project variable add": projectVariableAddCommand,
+  "project variable update": projectVariableUpdateCommand,
+  "project variable delete": projectVariableDeleteCommand,
+  "project variable list": projectVariableListCommand,
+  "project variable group list": projectVariableGroupListCommand,
+  "project variable group create": projectVariableGroupCreateCommand,
+  "project variable group update": projectVariableGroupUpdateCommand,
+  "project variable group delete": projectVariableGroupDeleteCommand,
   "postgres list": postgresListCommand,
   "postgres show": postgresShowCommand,
   "postgres create": postgresCreateCommand,
@@ -468,14 +476,6 @@ export const mountedCommands: Readonly<Record<string, AnyCommand>> = {
   "service domain delete": serviceDomainDeleteCommand,
   "service domain retry": serviceDomainRetryCommand,
   "service domain wait": serviceDomainWaitCommand,
-  "variable add": variableAddCommand,
-  "variable update": variableUpdateCommand,
-  "variable delete": variableDeleteCommand,
-  "variable list": variableListCommand,
-  "variable group list": variableGroupListCommand,
-  "variable group create": variableGroupCreateCommand,
-  "variable group update": variableGroupUpdateCommand,
-  "variable group delete": variableGroupDeleteCommand,
   // Composer's product verbs: deploy and dev at the root, their
   // children beneath them, and the local emulators under their own group.
   deploy: composerCommandFamily.commands.deploy,

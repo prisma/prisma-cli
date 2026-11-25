@@ -1,4 +1,4 @@
-/** The `variable group create` command. */
+/** The `project variable group create` command. */
 import {
   type Block,
   defineCommand,
@@ -7,9 +7,12 @@ import {
   positional,
 } from "@prisma/cli-engine";
 import { CliStructuredError, ok } from "@prisma/cli-engine/protocol";
-import { createVariableGroup, formatGroupRule } from "../../lib/variable/api";
-import { resolvePinnedProject } from "../project/context";
-import { resolveActiveWorkspace } from "../resources-shared/workspace";
+import {
+  createVariableGroup,
+  formatGroupRule,
+} from "../../../lib/variable/api";
+import { resolveActiveWorkspace } from "../../resources-shared/workspace";
+import { resolvePinnedProject } from "../context";
 import { projectFlag } from "./shared";
 
 function createPresentations(result: {
@@ -40,7 +43,7 @@ function createPresentations(result: {
   };
 }
 
-export const variableGroupCreateCommand = defineCommand({
+export const projectVariableGroupCreateCommand = defineCommand({
   args: {
     positionals: {
       name: positional.string({
@@ -67,8 +70,8 @@ export const variableGroupCreateCommand = defineCommand({
     description:
       "Creates a new custom group for the project. Supply exactly one of --equals or --starts-with to define which branches receive this group's variables. Branches whose git name equals the value or starts with the prefix will source this group instead of the preview group.",
     examples: [
-      "variable group create staging --equals staging",
-      "variable group create features --starts-with feat/",
+      "project variable group create staging --equals staging",
+      "project variable group create features --starts-with feat/",
     ],
   },
   needs: { credentials: true },
@@ -79,7 +82,7 @@ export const variableGroupCreateCommand = defineCommand({
     ) {
       throw new CliStructuredError(
         "VARIABLE.GROUP_RULE_CONFLICT",
-        "variable group create accepts --equals or --starts-with, not both",
+        "project variable group create accepts --equals or --starts-with, not both",
         {
           why: "A group has exactly one rule.",
           nextActions: [
@@ -98,7 +101,7 @@ export const variableGroupCreateCommand = defineCommand({
     ) {
       throw new CliStructuredError(
         "VARIABLE.GROUP_RULE_MISSING",
-        "variable group create requires --equals or --starts-with",
+        "project variable group create requires --equals or --starts-with",
         {
           why: "Every custom group needs a rule so the platform knows which branches to route to it.",
           nextActions: [
@@ -121,7 +124,7 @@ export const variableGroupCreateCommand = defineCommand({
       ctx,
       workspace,
       args.flags.project,
-      "variable group create",
+      "project variable group create",
     );
     const projectId = resolved.project.id;
 

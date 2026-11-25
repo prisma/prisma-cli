@@ -1,4 +1,4 @@
-/** The `variable group update` command. */
+/** The `project variable group update` command. */
 import {
   type Block,
   defineCommand,
@@ -9,11 +9,12 @@ import {
 import { CliStructuredError, ok } from "@prisma/cli-engine/protocol";
 import {
   formatGroupRule,
+  isBuiltInGroup,
   listVariableGroups,
   updateVariableGroup,
-} from "../../lib/variable/api";
-import { resolvePinnedProject } from "../project/context";
-import { resolveActiveWorkspace } from "../resources-shared/workspace";
+} from "../../../lib/variable/api";
+import { resolveActiveWorkspace } from "../../resources-shared/workspace";
+import { resolvePinnedProject } from "../context";
 import { projectFlag } from "./shared";
 
 function updatePresentations(result: {
@@ -44,7 +45,7 @@ function updatePresentations(result: {
   };
 }
 
-export const variableGroupUpdateCommand = defineCommand({
+export const projectVariableGroupUpdateCommand = defineCommand({
   args: {
     positionals: {
       currentName: positional.string({
@@ -71,12 +72,12 @@ export const variableGroupUpdateCommand = defineCommand({
   help: {
     summary: "Rename a group or change its rule",
     description:
-      "Updates a variable group: rename it with --name, replace its rule with --equals or --starts-with, or do both at once. Built-in groups (production, preview) accept --name only.",
+      "Updates a variable group: rename it with --name, replace its rule with --equals or --starts-with, or do both at once. The built-in groups, production and preview, cannot be changed.",
     examples: [
-      "variable group update staging --name staging/eu",
-      "variable group update staging --equals staging-branch",
-      "variable group update features --starts-with feature/",
-      "variable group update staging --name staging/new --equals staging-new",
+      "project variable group update staging --name staging/eu",
+      "project variable group update staging --equals staging-branch",
+      "project variable group update features --starts-with feature/",
+      "project variable group update staging --name staging/new --equals staging-new",
     ],
   },
   needs: { credentials: true },
@@ -87,7 +88,7 @@ export const variableGroupUpdateCommand = defineCommand({
     ) {
       throw new CliStructuredError(
         "VARIABLE.GROUP_RULE_CONFLICT",
-        "variable group update accepts --equals or --starts-with, not both",
+        "project variable group update accepts --equals or --starts-with, not both",
         {
           why: "A group has exactly one rule.",
           nextActions: [
@@ -107,7 +108,7 @@ export const variableGroupUpdateCommand = defineCommand({
     ) {
       throw new CliStructuredError(
         "VARIABLE.GROUP_NOTHING_TO_UPDATE",
-        "variable group update requires at least one of --name, --equals, or --starts-with",
+        "project variable group update requires at least one of --name, --equals, or --starts-with",
         {
           why: "Nothing to update.",
           nextActions: [
@@ -126,7 +127,7 @@ export const variableGroupUpdateCommand = defineCommand({
       ctx,
       workspace,
       args.flags.project,
-      "variable group update",
+      "project variable group update",
     );
     const projectId = resolved.project.id;
 
@@ -144,7 +145,25 @@ export const variableGroupUpdateCommand = defineCommand({
           nextActions: [
             {
               kind: "user-choice",
-              label: "Run `prisma variable group list` to see all groups.",
+              label:
+                "Run `prisma project variable group list` to see all groups.",
+            },
+          ],
+        },
+      );
+    }
+
+    if (isBuiltInGroup(existing)) {
+      throw new CliStructuredError(
+        "VARIABLE.BUILTIN_GROUP_UPDATE",
+        `Built-in group "${existing.name}" cannot be changed`,
+        {
+          why: "Every project has the production and preview groups. They are part of the platform, so they cannot be renamed, given a rule, or deleted.",
+          nextActions: [
+            {
+              kind: "user-choice",
+              label:
+                "Create a custom group with `prisma project variable group create`, or run `prisma project variable group list` to see the custom groups.",
             },
           ],
         },
@@ -161,40 +180,8 @@ export const variableGroupUpdateCommand = defineCommand({
     }
 
     if (args.flags.equals !== undefined) {
-      if (existing.class !== "custom") {
-        throw new CliStructuredError(
-          "VARIABLE.BUILTIN_GROUP_NO_RULE",
-          `Built-in group "${existing.name}" does not support rule changes`,
-          {
-            why: "Only custom groups have configurable rules.",
-            nextActions: [
-              {
-                kind: "user-choice",
-                label:
-                  "Create a custom group with `prisma variable group create`.",
-              },
-            ],
-          },
-        );
-      }
       patch.rule = { type: "equals", value: args.flags.equals };
     } else if (args.flags.startsWith !== undefined) {
-      if (existing.class !== "custom") {
-        throw new CliStructuredError(
-          "VARIABLE.BUILTIN_GROUP_NO_RULE",
-          `Built-in group "${existing.name}" does not support rule changes`,
-          {
-            why: "Only custom groups have configurable rules.",
-            nextActions: [
-              {
-                kind: "user-choice",
-                label:
-                  "Create a custom group with `prisma variable group create`.",
-              },
-            ],
-          },
-        );
-      }
       patch.rule = { type: "startsWith", value: args.flags.startsWith };
     }
 

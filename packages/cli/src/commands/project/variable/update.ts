@@ -1,4 +1,4 @@
-/** The `variable update` command. */
+/** The `project variable update` command. */
 import {
   type Block,
   defineCommand,
@@ -8,11 +8,12 @@ import {
 } from "@prisma/cli-engine";
 import { CliStructuredError, ok } from "@prisma/cli-engine/protocol";
 import type { ManagementApiClient } from "@prisma/management-api-sdk";
-import { apiCallError } from "../../controllers/app-env-api";
-import { parseKeyValuePositional } from "../../lib/app/env-config";
-import { readEnvFileAssignments } from "../../lib/app/env-file";
-import { resolvePinnedProject } from "../project/context";
-import { resolveActiveWorkspace } from "../resources-shared/workspace";
+import { apiCallError } from "../../../controllers/app-env-api";
+import { parseKeyValuePositional } from "../../../lib/app/env-config";
+import { readEnvFileAssignments } from "../../../lib/app/env-file";
+import { findEnvVarInGroup } from "../../../lib/variable/api";
+import { resolveActiveWorkspace } from "../../resources-shared/workspace";
+import { resolvePinnedProject } from "../context";
 import {
   branchFlag,
   enforceRolePreviewCheck,
@@ -92,7 +93,7 @@ function updateFilePresentations(result: {
   };
 }
 
-export const variableUpdateCommand = defineCommand({
+export const projectVariableUpdateCommand = defineCommand({
   args: {
     positionals: {
       assignment: positional.optionalString({
@@ -112,11 +113,11 @@ export const variableUpdateCommand = defineCommand({
   help: {
     summary: "Replace an existing variable's value in a group",
     description:
-      "Replaces one variable's value in the named group; the variable must already exist (use `prisma variable add` to create it). With --file, replaces every variable the dotenv file lists.",
+      "Replaces one variable's value in the named group; the variable must already exist (use `prisma project variable add` to create it). With --file, replaces every variable the dotenv file lists.",
     examples: [
-      "variable update STRIPE_KEY=sk_new_xxx --group production",
-      "variable update STRIPE_KEY=sk_new_xxx --role preview",
-      "variable update --file .env --group staging",
+      "project variable update STRIPE_KEY=sk_new_xxx --group production",
+      "project variable update STRIPE_KEY=sk_new_xxx --role preview",
+      "project variable update --file .env --group staging",
     ],
   },
   needs: { credentials: true },
@@ -134,7 +135,7 @@ export const variableUpdateCommand = defineCommand({
       ctx,
       workspace,
       args.flags.project,
-      "variable update",
+      "project variable update",
     );
     const projectId = resolved.project.id;
 
@@ -194,7 +195,7 @@ export const variableUpdateCommand = defineCommand({
           nextActions: [
             {
               kind: "user-choice",
-              label: `Use \`prisma variable add ${key}=<value> --group ${group.name}\` to create it.`,
+              label: `Use \`prisma project variable add ${key}=<value> --group ${group.name}\` to create it.`,
             },
           ],
         },
@@ -219,29 +220,7 @@ async function updateValueInGroup(
   input: { projectId: string; groupId: string; key: string; value: string },
   signal: AbortSignal,
 ): Promise<{ id: string; key: string; updatedAt: string } | null> {
-  const query = {
-    projectId: input.projectId,
-    key: input.key,
-    groupId: input.groupId,
-  };
-  const {
-    data: listData,
-    error: listError,
-    response: listResponse,
-  } = await api.GET("/v1/environment-variables", {
-    // biome-ignore lint/suspicious/noExplicitAny: these API paths and fields are not in the published SDK yet
-    params: { query: query as any },
-    signal,
-  });
-  if (listError || !listData) {
-    throw apiCallError(
-      `Failed to look up ${input.key}`,
-      listResponse,
-      listError,
-    );
-  }
-
-  const existing = (listData.data as Array<{ id: string }>)[0];
+  const existing = await findEnvVarInGroup(api, input, signal);
   if (!existing) {
     return null;
   }
