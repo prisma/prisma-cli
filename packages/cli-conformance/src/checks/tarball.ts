@@ -88,8 +88,9 @@ export interface TarballInput {
     dir: string;
     /**
      * Declared dependencies this package reaches without a static
-     * import (`import.meta.resolve` and friends), handed through to
-     * check 3a's import purity over the packed files.
+     * import (`import.meta.resolve` and friends), or never reaches but
+     * lists so another package's peer is met; handed through to check
+     * 3a's import purity over the packed files.
      */
     allowedUnimported?: readonly string[];
   }[];
