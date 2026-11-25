@@ -98,11 +98,11 @@ export async function readSkillsStatus(
     options?.checkDisabled ?? (await readSkillsCheckDisabled(projectRoot));
   const packages = await findInstalledSourcePackages(projectRoot);
   const sources = await collectSkillSources(packages);
-  const isPackageFile = await packageFileTest(projectRoot, packages);
+  const linkedIntoPackage = await linkedIntoPackageTest(projectRoot, packages);
   const skills: SkillStatus[] = [];
   for (const source of sources.values()) {
     skills.push(
-      await readSkillStatus(projectRoot, dirs, source, isPackageFile),
+      await readSkillStatus(projectRoot, dirs, source, linkedIntoPackage),
     );
   }
   skills.sort((left, right) => left.skill.localeCompare(right.skill));
@@ -125,7 +125,7 @@ export async function readSkillsStatus(
                 skill.targets.map((target) => target.copyDir),
               ),
             ),
-            isPackageFile,
+            linkedIntoPackage,
           }),
     upToDate: skills.every((skill) => skill.upToDate),
   };
@@ -213,7 +213,7 @@ async function readSkillStatus(
   projectRoot: string,
   dirs: readonly string[],
   source: SkillSource,
-  isPackageFile: (dir: string) => boolean,
+  linkedIntoPackage: LinkedIntoPackage,
 ): Promise<SkillStatus> {
   const targets: SkillTarget[] = [];
   for (const dir of dirs) {
@@ -224,7 +224,7 @@ async function readSkillStatus(
       dir,
       copyDir,
       syncedVersion: stamp?.libraryVersion ?? null,
-      state: isPackageFile(copyDir)
+      state: linkedIntoPackage(copyDir, dir, source.skill)
         ? "unmanaged"
         : await targetState(skillFile, stamp, source.version),
     });
@@ -277,7 +277,8 @@ async function missingFromDisk(target: string): Promise<boolean> {
  * package still provides; in the directory of an agent the config no
  * longer names, every one. A copy in one of `wantedCopies`, the disk
  * locations of the copies sync keeps, is wanted. A skill from anywhere
- * else, or a copy inside a package's files, is never touched.
+ * else, or a copy a link puts inside a package's files, is never
+ * touched.
  */
 async function findOrphanedSkills({
   projectRoot,
@@ -285,14 +286,14 @@ async function findOrphanedSkills({
   provided,
   unconfiguredDirs,
   wantedCopies,
-  isPackageFile,
+  linkedIntoPackage,
 }: {
   readonly projectRoot: string;
   readonly dirs: readonly string[];
   readonly provided: ReadonlySet<string>;
   readonly unconfiguredDirs: readonly string[];
   readonly wantedCopies: ReadonlySet<string>;
-  readonly isPackageFile: (dir: string) => boolean;
+  readonly linkedIntoPackage: LinkedIntoPackage;
 }): Promise<OrphanedSkill[]> {
   const orphans = new Map<string, { library: string | null; dirs: string[] }>();
   const scan = [
@@ -311,7 +312,7 @@ async function findOrphanedSkills({
         continue;
       }
       const copyDir = await locateCopy(path.join(harnessDir, skill));
-      if (wantedCopies.has(copyDir) || isPackageFile(copyDir)) {
+      if (wantedCopies.has(copyDir) || linkedIntoPackage(copyDir, dir, skill)) {
         continue;
       }
       const entry = orphans.get(skill) ?? { library, dirs: [] };
@@ -389,23 +390,35 @@ async function isSymbolicLink(target: string): Promise<boolean> {
   }
 }
 
-/** Tells whether a real directory is a package manager's: inside an
- *  installed source package, or under a node_modules directory within
- *  the project. */
-async function packageFileTest(
+/** Tells whether a link moved the copy of `skill` in harness directory
+ *  `dir` into a package manager's files: inside an installed source
+ *  package, or under a node_modules directory within the project. A
+ *  copy at its own path is never moved, even when the project is
+ *  itself inside a package. */
+async function linkedIntoPackageTest(
   projectRoot: string,
   packages: readonly InstalledSourcePackage[],
-): Promise<(dir: string) => boolean> {
+): Promise<LinkedIntoPackage> {
   const realRoot = await resolveExisting(projectRoot);
   const packageDirs: string[] = [];
   for (const installed of packages) {
     packageDirs.push(await resolveExisting(installed.dir));
   }
-  return (dir) =>
-    packageDirs.some((packageDir) => isSameOrInside(dir, packageDir)) ||
-    (isSameOrInside(dir, realRoot) &&
-      path.relative(realRoot, dir).split(path.sep).includes("node_modules"));
+  return (copyDir, dir, skill) =>
+    copyDir !== path.join(realRoot, dir, skill) &&
+    (packageDirs.some((packageDir) => isSameOrInside(copyDir, packageDir)) ||
+      (isSameOrInside(copyDir, realRoot) &&
+        path
+          .relative(realRoot, copyDir)
+          .split(path.sep)
+          .includes("node_modules")));
 }
+
+type LinkedIntoPackage = (
+  copyDir: string,
+  dir: string,
+  skill: string,
+) => boolean;
 
 function isSameOrInside(target: string, dir: string): boolean {
   const relative = path.relative(dir, target);
