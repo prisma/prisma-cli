@@ -28,7 +28,7 @@ export interface InstalledSourcePackage {
 
 /** "unmanaged": the directory holds a SKILL.md this CLI did not write —
  *  unstamped, unreadable, or stamped by a package outside the
- *  allowlist — or is a link into an installed package's files. Sync
+ *  allowlist — or lies, through a link, in a package's files. Sync
  *  never touches it. A directory without a SKILL.md
  *  reads as "absent" so an interrupted copy is repaired by the next
  *  sync. */
@@ -98,13 +98,12 @@ export async function readSkillsStatus(
     options?.checkDisabled ?? (await readSkillsCheckDisabled(projectRoot));
   const packages = await findInstalledSourcePackages(projectRoot);
   const sources = await collectSkillSources(packages);
-  const packageDirs: string[] = [];
-  for (const installed of packages) {
-    packageDirs.push(await resolveExisting(installed.dir));
-  }
+  const isPackageFile = await packageFileTest(projectRoot, packages);
   const skills: SkillStatus[] = [];
   for (const source of sources.values()) {
-    skills.push(await readSkillStatus(projectRoot, dirs, source, packageDirs));
+    skills.push(
+      await readSkillStatus(projectRoot, dirs, source, isPackageFile),
+    );
   }
   skills.sort((left, right) => left.skill.localeCompare(right.skill));
 
@@ -116,17 +115,18 @@ export async function readSkillsStatus(
     orphans:
       options?.orphans === false
         ? []
-        : await findOrphanedSkills(
+        : await findOrphanedSkills({
             projectRoot,
             dirs,
-            new Set(sources.keys()),
+            provided: new Set(sources.keys()),
             unconfiguredDirs,
-            new Set(
+            wantedCopies: new Set(
               skills.flatMap((skill) =>
                 skill.targets.map((target) => target.copyDir),
               ),
             ),
-          ),
+            isPackageFile,
+          }),
     upToDate: skills.every((skill) => skill.upToDate),
   };
 }
@@ -213,21 +213,20 @@ async function readSkillStatus(
   projectRoot: string,
   dirs: readonly string[],
   source: SkillSource,
-  packageDirs: readonly string[],
+  isPackageFile: (dir: string) => boolean,
 ): Promise<SkillStatus> {
   const targets: SkillTarget[] = [];
   for (const dir of dirs) {
-    const copy = await locateCopy(path.join(projectRoot, dir, source.skill));
-    const skillFile = path.join(copy.dir, "SKILL.md");
+    const copyDir = await locateCopy(path.join(projectRoot, dir, source.skill));
+    const skillFile = path.join(copyDir, "SKILL.md");
     const stamp = await readSkillStamp(skillFile);
     targets.push({
       dir,
-      copyDir: copy.dir,
+      copyDir,
       syncedVersion: stamp?.libraryVersion ?? null,
-      state:
-        copy.followedLink && isPackageFile(copy.dir, packageDirs)
-          ? "unmanaged"
-          : await targetState(skillFile, stamp, source.version),
+      state: isPackageFile(copyDir)
+        ? "unmanaged"
+        : await targetState(skillFile, stamp, source.version),
     });
   }
 
@@ -278,15 +277,23 @@ async function missingFromDisk(target: string): Promise<boolean> {
  * package still provides; in the directory of an agent the config no
  * longer names, every one. A copy in one of `wantedCopies`, the disk
  * locations of the copies sync keeps, is wanted. A skill from anywhere
- * else is someone else's file and is never touched.
+ * else, or a copy inside a package's files, is never touched.
  */
-export async function findOrphanedSkills(
-  projectRoot: string,
-  dirs: readonly string[],
-  provided: ReadonlySet<string>,
-  unconfiguredDirs: readonly string[] = [],
-  wantedCopies: ReadonlySet<string> = new Set(),
-): Promise<OrphanedSkill[]> {
+async function findOrphanedSkills({
+  projectRoot,
+  dirs,
+  provided,
+  unconfiguredDirs,
+  wantedCopies,
+  isPackageFile,
+}: {
+  readonly projectRoot: string;
+  readonly dirs: readonly string[];
+  readonly provided: ReadonlySet<string>;
+  readonly unconfiguredDirs: readonly string[];
+  readonly wantedCopies: ReadonlySet<string>;
+  readonly isPackageFile: (dir: string) => boolean;
+}): Promise<OrphanedSkill[]> {
   const orphans = new Map<string, { library: string | null; dirs: string[] }>();
   const scan = [
     ...dirs.map((dir) => ({ dir, wanted: provided })),
@@ -303,8 +310,8 @@ export async function findOrphanedSkills(
       if (library === null) {
         continue;
       }
-      const copy = await locateCopy(path.join(harnessDir, skill));
-      if (wantedCopies.has(copy.dir)) {
+      const copyDir = await locateCopy(path.join(harnessDir, skill));
+      if (wantedCopies.has(copyDir) || isPackageFile(copyDir)) {
         continue;
       }
       const entry = orphans.get(skill) ?? { library, dirs: [] };
@@ -341,27 +348,22 @@ async function managingLibrary(
  * itself the copy, so replacing it removes the link and never its
  * target.
  */
-async function locateCopy(
-  copyPath: string,
-): Promise<{ dir: string; followedLink: boolean }> {
+async function locateCopy(copyPath: string): Promise<string> {
   if (await isSymbolicLink(copyPath)) {
     try {
       const target = await realpath(copyPath);
       if (await isFile(path.join(target, "SKILL.md"))) {
-        return { dir: target, followedLink: true };
+        return target;
       }
     } catch {
       // A dangling link is replaced like a missing copy.
     }
-    return {
-      dir: path.join(
-        await resolveExisting(path.dirname(copyPath)),
-        path.basename(copyPath),
-      ),
-      followedLink: false,
-    };
+    return path.join(
+      await resolveExisting(path.dirname(copyPath)),
+      path.basename(copyPath),
+    );
   }
-  return { dir: await resolveExisting(copyPath), followedLink: false };
+  return resolveExisting(copyPath);
 }
 
 /** `target` with every symbolic link followed, as far as the path
@@ -387,20 +389,31 @@ async function isSymbolicLink(target: string): Promise<boolean> {
   }
 }
 
-/** True for a directory a package manager owns: inside an installed
- *  source package, or anywhere under a node_modules directory. */
-function isPackageFile(dir: string, packageDirs: readonly string[]): boolean {
+/** Tells whether a real directory is a package manager's: inside an
+ *  installed source package, or under a node_modules directory within
+ *  the project. */
+async function packageFileTest(
+  projectRoot: string,
+  packages: readonly InstalledSourcePackage[],
+): Promise<(dir: string) => boolean> {
+  const realRoot = await resolveExisting(projectRoot);
+  const packageDirs: string[] = [];
+  for (const installed of packages) {
+    packageDirs.push(await resolveExisting(installed.dir));
+  }
+  return (dir) =>
+    packageDirs.some((packageDir) => isSameOrInside(dir, packageDir)) ||
+    (isSameOrInside(dir, realRoot) &&
+      path.relative(realRoot, dir).split(path.sep).includes("node_modules"));
+}
+
+function isSameOrInside(target: string, dir: string): boolean {
+  const relative = path.relative(dir, target);
   return (
-    dir.split(path.sep).includes("node_modules") ||
-    packageDirs.some((packageDir) => {
-      const relative = path.relative(packageDir, dir);
-      return (
-        relative === "" ||
-        (relative !== ".." &&
-          !relative.startsWith(`..${path.sep}`) &&
-          !path.isAbsolute(relative))
-      );
-    })
+    relative === "" ||
+    (relative !== ".." &&
+      !relative.startsWith(`..${path.sep}`) &&
+      !path.isAbsolute(relative))
   );
 }
 

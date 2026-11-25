@@ -34,8 +34,8 @@ export interface PrunedSkill {
 
 /** A target directory sync would have written, except it holds a
  *  SKILL.md this CLI does not manage — unstamped, unreadable, or
- *  stamped by a package outside the allowlist — or is a link into an
- *  installed package's files. */
+ *  stamped by a package outside the allowlist — or lies, through a
+ *  link, in a package's files. */
 export interface RefusedSkill {
   readonly skill: string;
   readonly dirs: readonly string[];

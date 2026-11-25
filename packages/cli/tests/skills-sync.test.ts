@@ -1444,6 +1444,80 @@ describe("skill directories reached through a symbolic link", () => {
     expect(await stampOf(root, otherSkill, "prisma-8")).toBe("8.0.0");
   });
 
+  it("refuses a harness directory linked to another installed package's skills", async () => {
+    const root = await makeProjectRoot();
+    await installPostgres(root);
+    await installPackage(root, {
+      name: "@prisma/orm-sqlite",
+      version: "8.0.0",
+      skills: ["prisma-8"],
+    });
+    const otherSkills = "node_modules/@prisma/orm-sqlite/skills";
+    await mkdir(path.join(root, ".claude"), { recursive: true });
+    await symlink(
+      path.join(root, otherSkills),
+      path.join(root, ".claude/skills"),
+      "junction",
+    );
+
+    const { exitCode, result } = await syncAs(root, ["claude"]);
+
+    expect(exitCode).toBe(0);
+    expect(result.synced).toEqual([]);
+    expect(result.refused).toEqual([
+      { skill: "prisma-8", dirs: [".claude/skills"] },
+    ]);
+    expect(await stampOf(root, otherSkills, "prisma-8")).toBe("8.0.0");
+  });
+
+  it("never prunes inside the package an unconfigured harness directory links to", async () => {
+    const root = await makeProjectRoot();
+    await installPostgres(root);
+    const sourceSkills = "node_modules/@prisma/orm-postgres/skills";
+    await mkdir(path.join(root, ".claude"), { recursive: true });
+    await symlink(
+      path.join(root, sourceSkills),
+      path.join(root, ".claude/skills"),
+      "junction",
+    );
+
+    const { exitCode, result } = await syncAs(root, ["agents"]);
+
+    expect(exitCode).toBe(0);
+    expect(result.pruned).toEqual([]);
+    expect(await stampOf(root, sourceSkills, "prisma-8")).toBe("8.1.0");
+    expect(await stampOf(root, ".agents/skills", "prisma-8")).toBe("8.1.0");
+  });
+
+  it("writes through a skill link in a project that sits under a node_modules directory", async () => {
+    const base = await makeProjectRoot();
+    const root = path.join(base, "node_modules", "project");
+    await mkdir(root, { recursive: true });
+    await writeFile(
+      path.join(root, "package.json"),
+      `${JSON.stringify({ name: "project", version: "0.0.0" })}\n`,
+      "utf8",
+    );
+    await installPostgres(root);
+    await seedSyncedSkill(root, ".agents/skills", {
+      skill: "prisma-8",
+      library: "@prisma/orm-postgres",
+      version: "8.0.0",
+    });
+    await linkDir(root, ".claude/skills/prisma-8", ".agents/skills/prisma-8");
+
+    const { exitCode, result } = await syncAs(root, ["claude"]);
+
+    expect(exitCode).toBe(0);
+    expect(result.refused).toEqual([]);
+    expect(
+      (
+        await lstat(path.join(root, ".claude/skills/prisma-8"))
+      ).isSymbolicLink(),
+    ).toBe(true);
+    expect(await stampOf(root, ".agents/skills", "prisma-8")).toBe("8.1.0");
+  });
+
   it("replaces a dangling skill link with a copy", async () => {
     const root = await makeProjectRoot();
     await installPostgres(root);
