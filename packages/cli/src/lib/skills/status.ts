@@ -1,5 +1,5 @@
 // biome-ignore-all lint/performance/noAwaitInLoops: the allowlist is walked in order — a package resolved from an earlier directory decides what a later one is compared against — and the reads are a handful of stats on small files.
-import { readdir, stat } from "node:fs/promises";
+import { readdir, realpath, stat } from "node:fs/promises";
 import path from "node:path";
 
 import { compareVersionStrings } from "../semver-order";
@@ -258,8 +258,9 @@ async function missingFromDisk(target: string): Promise<boolean> {
  * SKILL.md names an allowlisted package as its `library` — and that
  * nothing wants any more: in a configured directory, one no installed
  * package still provides; in the directory of an agent the config no
- * longer names, every one. A skill from anywhere else is someone
- * else's file and is never touched.
+ * longer names, every one. A copy that is, through a symbolic link,
+ * the same directory as a wanted copy is wanted. A skill from anywhere
+ * else is someone else's file and is never touched.
  */
 export async function findOrphanedSkills(
   projectRoot: string,
@@ -268,6 +269,7 @@ export async function findOrphanedSkills(
   unconfiguredDirs: readonly string[] = [],
 ): Promise<OrphanedSkill[]> {
   const orphans = new Map<string, { library: string | null; dirs: string[] }>();
+  const wantedCopies = await realCopyPaths(projectRoot, dirs, provided);
   const scan = [
     ...dirs.map((dir) => ({ dir, wanted: provided })),
     ...unconfiguredDirs.map((dir) => ({ dir, wanted: new Set<string>() })),
@@ -279,16 +281,15 @@ export async function findOrphanedSkills(
       if (wanted.has(skill)) {
         continue;
       }
-      const stamp = await readSkillStamp(
-        path.join(harnessDir, skill, "SKILL.md"),
-      );
-      if (stamp?.library === null || stamp === null) {
+      const library = await managingLibrary(harnessDir, skill);
+      if (library === null) {
         continue;
       }
-      if (!isSkillSourcePackage(stamp.library)) {
+      const copy = await realCopyPath(harnessDir, skill);
+      if (copy !== null && wantedCopies.has(copy)) {
         continue;
       }
-      const entry = orphans.get(skill) ?? { library: stamp.library, dirs: [] };
+      const entry = orphans.get(skill) ?? { library, dirs: [] };
       entry.dirs.push(dir);
       orphans.set(skill, entry);
     }
@@ -299,6 +300,58 @@ export async function findOrphanedSkills(
     library: entry.library,
     dirs: entry.dirs,
   }));
+}
+
+/** The allowlisted package a copy's SKILL.md names, or null when this
+ *  CLI did not write it. */
+async function managingLibrary(
+  harnessDir: string,
+  skill: string,
+): Promise<string | null> {
+  const stamp = await readSkillStamp(path.join(harnessDir, skill, "SKILL.md"));
+  if (
+    stamp === null ||
+    stamp.library === null ||
+    !isSkillSourcePackage(stamp.library)
+  ) {
+    return null;
+  }
+  return stamp.library;
+}
+
+async function realCopyPaths(
+  projectRoot: string,
+  dirs: readonly string[],
+  skills: ReadonlySet<string>,
+): Promise<Set<string>> {
+  const copies = new Set<string>();
+  for (const dir of dirs) {
+    for (const skill of skills) {
+      const copy = await realCopyPath(path.join(projectRoot, dir), skill);
+      if (copy !== null) {
+        copies.add(copy);
+      }
+    }
+  }
+  return copies;
+}
+
+/** Where the copy of `skill` under `harnessDir` is, or will be written,
+ *  on disk once every symbolic link is followed; null when the harness
+ *  directory does not exist. */
+async function realCopyPath(
+  harnessDir: string,
+  skill: string,
+): Promise<string | null> {
+  try {
+    return await realpath(path.join(harnessDir, skill));
+  } catch {
+    try {
+      return path.join(await realpath(harnessDir), skill);
+    } catch {
+      return null;
+    }
+  }
 }
 
 /** The subdirectories of `dir` that hold a SKILL.md. */

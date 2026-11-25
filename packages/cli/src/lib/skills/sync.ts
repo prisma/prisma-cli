@@ -1,14 +1,17 @@
 // biome-ignore-all lint/performance/noAwaitInLoops: one skill tree is written at a time; an interrupted copy can leave one partial tree, which reads as absent (no SKILL.md yet) and is repaired by the next sync.
 import {
+  lstat,
   mkdir,
   readdir,
   readFile,
+  realpath,
   rm,
   rmdir,
   writeFile,
 } from "node:fs/promises";
 import path from "node:path";
 
+import { AGENT_SKILL_DIRS } from "./allowlist";
 import type { InstalledSourcePackage, SkillsStatus } from "./status";
 
 export interface SyncedSkill {
@@ -96,21 +99,7 @@ export async function syncSkills(status: SkillsStatus): Promise<SyncOutcome> {
     });
   }
 
-  const pruned: PrunedSkill[] = [];
-  for (const orphan of status.orphans) {
-    for (const dir of orphan.dirs) {
-      await rm(path.join(status.projectRoot, dir, orphan.skill), {
-        recursive: true,
-        force: true,
-      });
-      await removeEmptyHarnessDirs(status.projectRoot, dir);
-    }
-    pruned.push({
-      skill: orphan.skill,
-      library: orphan.library,
-      dirs: orphan.dirs,
-    });
-  }
+  const pruned = await pruneOrphans(status);
 
   return {
     projectRoot: status.projectRoot,
@@ -123,28 +112,80 @@ export async function syncSkills(status: SkillsStatus): Promise<SyncOutcome> {
   };
 }
 
+async function pruneOrphans(status: SkillsStatus): Promise<PrunedSkill[]> {
+  if (status.orphans.length === 0) {
+    return [];
+  }
+  const linkTargets = await harnessLinkTargets(status.projectRoot);
+  const pruned: PrunedSkill[] = [];
+  for (const orphan of status.orphans) {
+    for (const dir of orphan.dirs) {
+      await rm(path.join(status.projectRoot, dir, orphan.skill), {
+        recursive: true,
+        force: true,
+      });
+      await removeEmptyHarnessDirs(status.projectRoot, dir, linkTargets);
+    }
+    pruned.push({
+      skill: orphan.skill,
+      library: orphan.library,
+      dirs: orphan.dirs,
+    });
+  }
+  return pruned;
+}
+
 /**
  * A harness directory this CLI emptied by removing its last copy is
  * removed too, and so is its parent (`.claude/skills`, then `.claude`),
  * so opting an agent out leaves nothing behind. `rmdir` refuses a
  * directory holding anything else, which is exactly the user's file
- * that must stay.
+ * that must stay. A directory a harness path links to stays too, so
+ * the link is not left dangling.
  */
 async function removeEmptyHarnessDirs(
   projectRoot: string,
   dir: string,
+  linkTargets: ReadonlySet<string>,
 ): Promise<void> {
   for (
     let current = dir;
     current !== "." && current !== "";
     current = path.dirname(current)
   ) {
+    const target = path.join(projectRoot, current);
     try {
-      await rmdir(path.join(projectRoot, current));
+      if (linkTargets.has(await realpath(target))) {
+        return;
+      }
+      await rmdir(target);
     } catch {
       return;
     }
   }
+}
+
+/** The real directories that a symbolic link at any agent's harness
+ *  directory, or at one of its parents, points to. */
+async function harnessLinkTargets(projectRoot: string): Promise<Set<string>> {
+  const targets = new Set<string>();
+  for (const dir of Object.values(AGENT_SKILL_DIRS)) {
+    for (
+      let current: string = dir;
+      current !== "." && current !== "";
+      current = path.dirname(current)
+    ) {
+      const candidate = path.join(projectRoot, current);
+      try {
+        if ((await lstat(candidate)).isSymbolicLink()) {
+          targets.add(await realpath(candidate));
+        }
+      } catch {
+        // A missing or dangling path protects nothing.
+      }
+    }
+  }
+  return targets;
 }
 
 const OLD_CLI_GITIGNORE = /^\*\r?\n?$/;
