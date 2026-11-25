@@ -6,6 +6,7 @@
  */
 import {
   chmod,
+  lstat,
   mkdir,
   readFile,
   rm,
@@ -1282,7 +1283,7 @@ describe("harness directories that already exist", () => {
   });
 });
 
-describe("harness directories reached through a symbolic link", () => {
+describe("skill directories reached through a symbolic link", () => {
   function configuredCli(agents: readonly AgentName[]) {
     return createTestCli({
       commandFamilies: [skillsCommandFamily],
@@ -1309,7 +1310,7 @@ describe("harness directories reached through a symbolic link", () => {
   async function linkDir(root: string, from: string, to: string) {
     await mkdir(path.join(root, to), { recursive: true });
     await mkdir(path.dirname(path.join(root, from)), { recursive: true });
-    await symlink(path.join(root, to), path.join(root, from), "dir");
+    await symlink(path.join(root, to), path.join(root, from), "junction");
   }
 
   async function installPostgres(root: string): Promise<void> {
@@ -1320,7 +1321,7 @@ describe("harness directories reached through a symbolic link", () => {
     });
   }
 
-  it("keeps the copies when the configured directory links to another agent's", async () => {
+  it("keeps the copies on a later sync when the configured directory links to another agent's", async () => {
     const root = await makeProjectRoot();
     await installPostgres(root);
     await linkDir(root, ".claude/skills", ".agents/skills");
@@ -1334,7 +1335,7 @@ describe("harness directories reached through a symbolic link", () => {
     expect(await stampOf(root, ".claude/skills", "prisma-8")).toBe("8.1.0");
   });
 
-  it("keeps the copies when another agent's directory links to the configured one", async () => {
+  it("keeps the copies on a later sync when another agent's directory links to the configured one", async () => {
     const root = await makeProjectRoot();
     await installPostgres(root);
     await linkDir(root, ".claude/skills", ".agents/skills");
@@ -1363,6 +1364,89 @@ describe("harness directories reached through a symbolic link", () => {
     expect(result.pruned).toEqual([]);
     expect(await stampOf(root, ".agents/skills", "prisma-8")).toBe("8.1.0");
     expect(await stampOf(root, ".claude/skills", "prisma-8")).toBe("8.1.0");
+  });
+
+  it("updates a stale copy through a skill link and keeps the link", async () => {
+    const root = await makeProjectRoot();
+    await installPostgres(root);
+    await seedSyncedSkill(root, ".agents/skills", {
+      skill: "prisma-8",
+      library: "@prisma/orm-postgres",
+      version: "8.0.0",
+    });
+    await linkDir(root, ".claude/skills/prisma-8", ".agents/skills/prisma-8");
+
+    const first = await syncAs(root, ["claude"]);
+    const second = await syncAs(root, ["claude"]);
+
+    expect(first.result.synced[0]?.dirs).toEqual([".claude/skills"]);
+    expect(second.result.pruned).toEqual([]);
+    expect(
+      (
+        await lstat(path.join(root, ".claude/skills/prisma-8"))
+      ).isSymbolicLink(),
+    ).toBe(true);
+    expect(await stampOf(root, ".agents/skills", "prisma-8")).toBe("8.1.0");
+    expect(await stampOf(root, ".claude/skills", "prisma-8")).toBe("8.1.0");
+  });
+
+  it("never writes over the package's own files through a link", async () => {
+    const root = await makeProjectRoot();
+    await installPostgres(root);
+    const packageDir = path.relative(
+      root,
+      path.join(root, "node_modules", "@prisma/orm-postgres"),
+    );
+    await linkDir(root, ".claude/skills/prisma-8", packageDir);
+
+    const { exitCode, result } = await syncAs(root, ["claude"]);
+
+    expect(exitCode).toBe(0);
+    expect(result.synced).toEqual([]);
+    expect(await stampOf(root, `${packageDir}/skills`, "prisma-8")).toBe(
+      "8.1.0",
+    );
+    expect(await exists(path.join(root, packageDir, "package.json"))).toBe(
+      true,
+    );
+  });
+
+  it("writes each directory once when two harness paths are one directory", async () => {
+    const root = await makeProjectRoot();
+    await installPostgres(root);
+    await linkDir(root, ".claude/skills", ".agents/skills");
+
+    const { exitCode, result } = await syncAs(root, ["claude", "agents"]);
+
+    expect(exitCode).toBe(0);
+    expect(result.synced[0]?.dirs).toEqual([
+      ".claude/skills",
+      ".agents/skills",
+    ]);
+    expect(await stampOf(root, ".agents/skills", "prisma-8")).toBe("8.1.0");
+  });
+
+  it("keeps the directory a parent link points at when it removes the last copy", async () => {
+    const root = await makeProjectRoot();
+    await linkDir(root, ".claude", ".agents");
+    await seedSyncedSkill(root, ".agents/skills", {
+      skill: "prisma-7",
+      library: "@prisma/orm-postgres",
+      version: "8.0.0",
+    });
+
+    const first = await syncAs(root, ["agents"]);
+    expect(first.exitCode).toBe(0);
+    expect(await exists(path.join(root, ".agents/skills", "prisma-7"))).toBe(
+      false,
+    );
+    expect(await exists(path.join(root, ".claude"))).toBe(true);
+
+    await installPostgres(root);
+    const second = await syncAs(root, ["agents"]);
+
+    expect(second.exitCode).toBe(0);
+    expect(await stampOf(root, ".agents/skills", "prisma-8")).toBe("8.1.0");
   });
 
   it("does not list the copies a configured directory links to as orphaned", async () => {

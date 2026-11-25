@@ -82,20 +82,20 @@ export async function syncSkills(status: SkillsStatus): Promise<SyncOutcome> {
         );
       }
     }
-    if (dirs.length === 0) {
+    const written = await writeCopies(
+      status.projectRoot,
+      skill.sourceDir,
+      skill.skill,
+      dirs,
+    );
+    if (written.length === 0) {
       continue;
-    }
-    for (const dir of dirs) {
-      await replaceTree(
-        skill.sourceDir,
-        path.join(status.projectRoot, dir, skill.skill),
-      );
     }
     synced.push({
       skill: skill.skill,
       library: skill.library,
       version: skill.version,
-      dirs,
+      dirs: written,
     });
   }
 
@@ -200,6 +200,62 @@ async function removeOldCliGitignore(file: string): Promise<void> {
   if (OLD_CLI_GITIGNORE.test(content)) {
     await rm(file, { force: true });
   }
+}
+
+/**
+ * Writes the skill into each harness directory at the real path its
+ * copy resolves to, so a symbolic link to a copy stays a link and two
+ * paths to one directory are written once. A destination that is,
+ * holds, or lies inside the source tree is left alone, because
+ * replacing it would delete the source before it is read. Returns the
+ * harness directories whose copy is now current.
+ */
+async function writeCopies(
+  projectRoot: string,
+  sourceDir: string,
+  skill: string,
+  dirs: readonly string[],
+): Promise<string[]> {
+  const source = await resolveExisting(sourceDir);
+  const writtenTargets = new Set<string>();
+  const written: string[] = [];
+  for (const dir of dirs) {
+    const target = await resolveExisting(path.join(projectRoot, dir, skill));
+    if (isSameOrInside(target, source) || isSameOrInside(source, target)) {
+      continue;
+    }
+    if (!writtenTargets.has(target)) {
+      await replaceTree(sourceDir, target);
+      writtenTargets.add(target);
+    }
+    written.push(dir);
+  }
+  return written;
+}
+
+/** `target` with every symbolic link followed, as far as the path
+ *  exists on disk. */
+async function resolveExisting(target: string): Promise<string> {
+  const absolute = path.resolve(target);
+  try {
+    return await realpath(absolute);
+  } catch {
+    const parent = path.dirname(absolute);
+    if (parent === absolute) {
+      return absolute;
+    }
+    return path.join(await resolveExisting(parent), path.basename(absolute));
+  }
+}
+
+function isSameOrInside(target: string, dir: string): boolean {
+  const relative = path.relative(dir, target);
+  return (
+    relative === "" ||
+    (relative !== ".." &&
+      !relative.startsWith(`..${path.sep}`) &&
+      !path.isAbsolute(relative))
+  );
 }
 
 /**

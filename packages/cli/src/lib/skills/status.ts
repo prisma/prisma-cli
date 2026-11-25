@@ -302,8 +302,6 @@ export async function findOrphanedSkills(
   }));
 }
 
-/** The allowlisted package a copy's SKILL.md names, or null when this
- *  CLI did not write it. */
 async function managingLibrary(
   harnessDir: string,
   skill: string,
