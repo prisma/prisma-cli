@@ -28,8 +28,9 @@ export interface InstalledSourcePackage {
 
 /** "unmanaged": the directory holds a SKILL.md this CLI did not write —
  *  unstamped, unreadable, or stamped by a package outside the
- *  allowlist — or lies, through a link, in a package's files. Sync
- *  never touches it. A directory without a SKILL.md
+ *  allowlist — or lies, through a link, in a package's files (only
+ *  its skills directory when the project is inside that package).
+ *  Sync never touches it. A directory without a SKILL.md
  *  reads as "absent" so an interrupted copy is repaired by the next
  *  sync. */
 export type SkillTargetState = "synced" | "stale" | "absent" | "unmanaged";
