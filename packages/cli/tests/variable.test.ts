@@ -116,16 +116,25 @@ function variableClient(spec: VariableClientSpec = {}): ManagementApiClient {
     if (method === "GET" && apiPath === "/v1/variable-groups") {
       return { data: { data: spec.groups ?? BUILT_IN_GROUPS } };
     }
-    if (method === "GET" && apiPath === "/v1/environment-variables") {
+    if (
+      method === "GET" &&
+      apiPath === "/v1/variable-groups/{groupId}/variables"
+    ) {
       return { data: { data: [], pagination: page } };
     }
-    if (method === "POST" && apiPath === "/v1/environment-variables") {
+    if (
+      method === "POST" &&
+      apiPath === "/v1/variable-groups/{groupId}/variables"
+    ) {
       const body = init.body as Record<string, string>;
+      const groupId = (init.params as { path?: { groupId?: string } })?.path
+        ?.groupId;
       return {
         data: {
           data: {
             id: "ev_new",
             key: body.key,
+            groupId: groupId ?? "unknown",
             updatedAt: "2024-06-01T00:00:00Z",
           },
         },
@@ -383,7 +392,7 @@ describe("strict --role preview check", () => {
 // ---------------------------------------------------------------------------
 
 describe("project variable add", () => {
-  it("POSTs to /v1/environment-variables with the group's id", async () => {
+  it("POSTs to /v1/variable-groups/{groupId}/variables with the group id in the path", async () => {
     const calls: Call[] = [];
     const result = await makeCli(variableClient({ calls })).run(
       [
@@ -401,17 +410,19 @@ describe("project variable add", () => {
     expect(result.exitCode).toBe(0);
 
     const post = calls.find(
-      (c) => c.method === "POST" && c.path === "/v1/environment-variables",
+      (c) =>
+        c.method === "POST" &&
+        c.path === "/v1/variable-groups/{groupId}/variables",
     );
+    expect(post?.init.params?.path).toMatchObject({ groupId: "production" });
     expect(post?.init.body).toMatchObject({
       projectId: "proj_1",
-      groupId: "production",
       key: "STRIPE_KEY",
       value: "sk_test_xxx",
     });
   });
 
-  it("resolves --role production to the production group id", async () => {
+  it("resolves --role production to the production group id in the path", async () => {
     const calls: Call[] = [];
     await makeCli(variableClient({ calls })).run(
       ["project", "variable", "add", "KEY=val", "--role", "production"],
@@ -419,12 +430,14 @@ describe("project variable add", () => {
     );
 
     const post = calls.find(
-      (c) => c.method === "POST" && c.path === "/v1/environment-variables",
+      (c) =>
+        c.method === "POST" &&
+        c.path === "/v1/variable-groups/{groupId}/variables",
     );
-    expect(post?.init.body).toMatchObject({ groupId: "production" });
+    expect(post?.init.params?.path).toMatchObject({ groupId: "production" });
   });
 
-  it("sends groupId=preview for --group preview", async () => {
+  it("uses groupId=preview in the path for --group preview", async () => {
     const calls: Call[] = [];
     const result = await makeCli(
       variableClient({ calls, groups: ALL_GROUPS }),
@@ -434,12 +447,14 @@ describe("project variable add", () => {
 
     expect(result.exitCode).toBe(0);
     const post = calls.find(
-      (c) => c.method === "POST" && c.path === "/v1/environment-variables",
+      (c) =>
+        c.method === "POST" &&
+        c.path === "/v1/variable-groups/{groupId}/variables",
     );
-    expect(post?.init.body).toMatchObject({ groupId: "preview" });
+    expect(post?.init.params?.path).toMatchObject({ groupId: "preview" });
   });
 
-  it("sends groupId=preview for --role preview when there are no custom groups", async () => {
+  it("uses groupId=preview in the path for --role preview when there are no custom groups", async () => {
     const calls: Call[] = [];
     const result = await makeCli(variableClient({ calls })).run(
       ["project", "variable", "add", "KEY=val", "--role", "preview"],
@@ -448,12 +463,14 @@ describe("project variable add", () => {
 
     expect(result.exitCode).toBe(0);
     const post = calls.find(
-      (c) => c.method === "POST" && c.path === "/v1/environment-variables",
+      (c) =>
+        c.method === "POST" &&
+        c.path === "/v1/variable-groups/{groupId}/variables",
     );
-    expect(post?.init.body).toMatchObject({ groupId: "preview" });
+    expect(post?.init.params?.path).toMatchObject({ groupId: "preview" });
   });
 
-  it("sends the custom group's vgrp_ id for --group <custom>", async () => {
+  it("uses the custom group's vgrp_ id in the path for --group <custom>", async () => {
     const calls: Call[] = [];
     await makeCli(variableClient({ calls, groups: ALL_GROUPS })).run(
       ["project", "variable", "add", "KEY=val", "--group", "staging"],
@@ -461,9 +478,11 @@ describe("project variable add", () => {
     );
 
     const post = calls.find(
-      (c) => c.method === "POST" && c.path === "/v1/environment-variables",
+      (c) =>
+        c.method === "POST" &&
+        c.path === "/v1/variable-groups/{groupId}/variables",
     );
-    expect(post?.init.body).toMatchObject({ groupId: "vgrp_custom" });
+    expect(post?.init.params?.path).toMatchObject({ groupId: "vgrp_custom" });
   });
 
   it("fails when the group name does not exist", async () => {
@@ -508,7 +527,9 @@ describe("project variable add", () => {
 
     expect(result.exitCode).toBe(0);
     const posts = calls.filter(
-      (c) => c.method === "POST" && c.path === "/v1/environment-variables",
+      (c) =>
+        c.method === "POST" &&
+        c.path === "/v1/variable-groups/{groupId}/variables",
     );
     expect(posts).toHaveLength(2);
     const keys = posts.map((c) => (c.init.body as { key: string }).key).sort();
@@ -521,11 +542,11 @@ describe("project variable add", () => {
 // ---------------------------------------------------------------------------
 
 describe("project variable update", () => {
-  it("PATCHes the matching variable by id", async () => {
+  it("PATCHes the matching variable by id via the group route", async () => {
     const existingVar = {
       id: "ev_existing",
       key: "API_KEY",
-      groupId: null,
+      groupId: "production",
       updatedAt: "2024-01-01T00:00:00Z",
     };
 
@@ -534,17 +555,20 @@ describe("project variable update", () => {
       variableClient({
         calls,
         routes: {
-          "GET /v1/environment-variables": () => ({
+          "GET /v1/variable-groups/{groupId}/variables": () => ({
             data: {
               data: [existingVar],
               pagination: { hasMore: false, nextCursor: null },
             },
           }),
-          "PATCH /v1/environment-variables/{envVarId}": (call) => ({
+          "PATCH /v1/variable-groups/{groupId}/variables/{variableId}": (
+            call,
+          ) => ({
             data: {
               data: {
                 id: "ev_existing",
                 key: "API_KEY",
+                groupId: "production",
                 updatedAt: "2024-06-01T00:00:00Z",
                 ...(call.init.body as object),
               },
@@ -570,20 +594,23 @@ describe("project variable update", () => {
     const patch = calls.find(
       (c) =>
         c.method === "PATCH" &&
-        c.path === "/v1/environment-variables/{envVarId}",
+        c.path === "/v1/variable-groups/{groupId}/variables/{variableId}",
     );
-    expect(patch?.init.params?.path).toMatchObject({ envVarId: "ev_existing" });
+    expect(patch?.init.params?.path).toMatchObject({
+      groupId: "production",
+      variableId: "ev_existing",
+    });
     expect(patch?.init.body).toMatchObject({ value: "new_value" });
     const lookup = calls.find(
-      (c) => c.method === "GET" && c.path === "/v1/environment-variables",
+      (c) =>
+        c.method === "GET" &&
+        c.path === "/v1/variable-groups/{groupId}/variables",
     );
-    expect(lookup?.init.params?.query).toMatchObject({
-      projectId: "proj_1",
-      groupId: "production",
-    });
+    expect(lookup?.init.params?.path).toMatchObject({ groupId: "production" });
+    expect(lookup?.init.params?.query).toMatchObject({ projectId: "proj_1" });
   });
 
-  it("updates file keys in the custom group, reading its keys by group id", async () => {
+  it("updates file keys in the custom group, reading its keys by group id in the path", async () => {
     const cwd = await pinnedCwd();
     await writeFile(path.join(cwd, ".env"), "API_KEY=new_value\n", "utf8");
     const staging = {
@@ -597,17 +624,20 @@ describe("project variable update", () => {
         calls,
         groups: [...BUILT_IN_GROUPS, staging],
         routes: {
-          "GET /v1/environment-variables": () => ({
+          "GET /v1/variable-groups/{groupId}/variables": () => ({
             data: {
-              data: [{ id: "ev_staging", key: "API_KEY" }],
+              data: [
+                { id: "ev_staging", key: "API_KEY", groupId: "vgrp_staging" },
+              ],
               pagination: { hasMore: false, nextCursor: null },
             },
           }),
-          "PATCH /v1/environment-variables/{envVarId}": () => ({
+          "PATCH /v1/variable-groups/{groupId}/variables/{variableId}": () => ({
             data: {
               data: {
                 id: "ev_staging",
                 key: "API_KEY",
+                groupId: "vgrp_staging",
                 updatedAt: "2024-06-01T00:00:00Z",
               },
             },
@@ -630,13 +660,22 @@ describe("project variable update", () => {
 
     expect(result.exitCode).toBe(0);
     const lookup = calls.find(
-      (c) => c.method === "GET" && c.path === "/v1/environment-variables",
+      (c) =>
+        c.method === "GET" &&
+        c.path === "/v1/variable-groups/{groupId}/variables",
     );
-    expect(lookup?.init.params?.query).toMatchObject({
+    expect(lookup?.init.params?.path).toMatchObject({
       groupId: "vgrp_staging",
     });
-    const patch = calls.find((c) => c.method === "PATCH");
-    expect(patch?.init.params?.path).toMatchObject({ envVarId: "ev_staging" });
+    const patch = calls.find(
+      (c) =>
+        c.method === "PATCH" &&
+        c.path === "/v1/variable-groups/{groupId}/variables/{variableId}",
+    );
+    expect(patch?.init.params?.path).toMatchObject({
+      groupId: "vgrp_staging",
+      variableId: "ev_staging",
+    });
   });
 
   it("fails with VARIABLE.NOT_FOUND when the variable does not exist in the group", async () => {
@@ -666,21 +705,24 @@ describe("project variable update", () => {
 // ---------------------------------------------------------------------------
 
 describe("project variable delete", () => {
-  it("DELETEs the matching variable by id", async () => {
-    const existingVar = { id: "ev_del", key: "OLD_KEY" };
+  it("DELETEs the matching variable by id via the group route", async () => {
+    const existingVar = { id: "ev_del", key: "OLD_KEY", groupId: "production" };
 
     const calls: Call[] = [];
     const result = await makeCli(
       variableClient({
         calls,
         routes: {
-          "GET /v1/environment-variables": () => ({
+          "GET /v1/variable-groups/{groupId}/variables": () => ({
             data: {
               data: [existingVar],
               pagination: { hasMore: false, nextCursor: null },
             },
           }),
-          "DELETE /v1/environment-variables/{envVarId}": () => ({ data: {} }),
+          "DELETE /v1/variable-groups/{groupId}/variables/{variableId}":
+            () => ({
+              data: {},
+            }),
         },
       }),
     ).run(
@@ -701,9 +743,12 @@ describe("project variable delete", () => {
     const del = calls.find(
       (c) =>
         c.method === "DELETE" &&
-        c.path === "/v1/environment-variables/{envVarId}",
+        c.path === "/v1/variable-groups/{groupId}/variables/{variableId}",
     );
-    expect(del?.init.params?.path).toMatchObject({ envVarId: "ev_del" });
+    expect(del?.init.params?.path).toMatchObject({
+      groupId: "production",
+      variableId: "ev_del",
+    });
   });
 
   it("fails with VARIABLE.NOT_FOUND when the variable does not exist", async () => {
@@ -738,8 +783,8 @@ describe("project variable list", () => {
       variableClient({
         groups: ALL_GROUPS,
         routes: {
-          "GET /v1/environment-variables": (call) => {
-            const groupId = (call.init.params?.query as { groupId?: string })
+          "GET /v1/variable-groups/{groupId}/variables": (call) => {
+            const groupId = (call.init.params?.path as { groupId?: string })
               ?.groupId;
             if (groupId === "production") {
               return {
@@ -748,6 +793,7 @@ describe("project variable list", () => {
                     {
                       id: "ev_1",
                       key: "STRIPE_KEY",
+                      groupId: "production",
                       updatedAt: "2024-01-01T00:00:00Z",
                     },
                   ],
@@ -1202,12 +1248,15 @@ describe("project variable group delete", () => {
 // Checks before writing, file imports, and list filters
 // ---------------------------------------------------------------------------
 
-function groupRows(rows: Array<{ id: string; key: string }>): Responder {
+function groupRows(
+  rows: Array<{ id: string; key: string }>,
+  groupId = "production",
+): Responder {
   return () => ({
     data: {
       data: rows.map((row) => ({
         ...row,
-        groupId: null,
+        groupId,
         updatedAt: "2024-01-01T00:00:00Z",
       })),
       pagination: { hasMore: false, nextCursor: null },
@@ -1222,7 +1271,7 @@ describe("project variable writes check the group first", () => {
       variableClient({
         calls,
         routes: {
-          "GET /v1/environment-variables": groupRows([
+          "GET /v1/variable-groups/{groupId}/variables": groupRows([
             { id: "ev_1", key: "API_KEY" },
           ]),
         },
@@ -1256,7 +1305,7 @@ describe("project variable writes check the group first", () => {
       variableClient({
         calls,
         routes: {
-          "GET /v1/environment-variables": groupRows([
+          "GET /v1/variable-groups/{groupId}/variables": groupRows([
             { id: "ev_a", key: "A" },
             { id: "ev_b", key: "B" },
           ]),
@@ -1291,7 +1340,7 @@ describe("project variable writes check the group first", () => {
       variableClient({
         calls,
         routes: {
-          "GET /v1/environment-variables": groupRows([
+          "GET /v1/variable-groups/{groupId}/variables": groupRows([
             { id: "ev_a", key: "A" },
           ]),
         },
@@ -1323,7 +1372,7 @@ describe("project variable writes check the group first", () => {
     const result = await makeCli(
       variableClient({
         routes: {
-          "POST /v1/environment-variables": (call) => {
+          "POST /v1/variable-groups/{groupId}/variables": (call) => {
             const key = (call.init.body as { key: string }).key;
             if (key === "B") {
               return {
@@ -1333,7 +1382,12 @@ describe("project variable writes check the group first", () => {
             }
             return {
               data: {
-                data: { id: `ev_${key}`, key, updatedAt: "2024-06-01" },
+                data: {
+                  id: `ev_${key}`,
+                  key,
+                  groupId: "production",
+                  updatedAt: "2024-06-01",
+                },
               },
             };
           },
@@ -1417,9 +1471,10 @@ describe("project variable writes check the group first", () => {
 
 describe("project variable list filters", () => {
   const rows: Responder = (call) => {
-    const groupId = (call.init.params?.query as { groupId?: string })?.groupId;
+    const groupId = (call.init.params?.path as { groupId?: string })?.groupId;
     return groupRows(
       groupId === "production" ? [{ id: "ev_1", key: "STRIPE_KEY" }] : [],
+      groupId ?? "production",
     )(call);
   };
 
@@ -1427,7 +1482,7 @@ describe("project variable list filters", () => {
     const result = await makeCli(
       variableClient({
         groups: ALL_GROUPS,
-        routes: { "GET /v1/environment-variables": rows },
+        routes: { "GET /v1/variable-groups/{groupId}/variables": rows },
       }),
     ).run(["project", "variable", "list", "--role", "production"], {
       cwd: await pinnedCwd(),

@@ -47,11 +47,11 @@ export type ResolvedVariableSource =
   | { type: "service"; serviceId: string }
   | { type: "override" };
 
-/** An environment variable row. Rows in a built-in group have `groupId: null`. */
+/** An environment variable row in a variable group. */
 export interface RawGroupVariable {
   id: string;
   key: string;
-  groupId: string | null;
+  groupId: string;
   isManagedBySystem?: boolean;
   updatedAt: string;
 }
@@ -297,11 +297,11 @@ export async function createEnvVarInGroup(
 ): Promise<RawGroupVariable> {
   // biome-ignore lint/suspicious/noExplicitAny: these API paths and fields are not in the published SDK yet
   const { data, error, response } = await (client as any).POST(
-    "/v1/environment-variables",
+    "/v1/variable-groups/{groupId}/variables",
     {
+      params: { path: { groupId: input.groupId } },
       body: {
         projectId: input.projectId,
-        groupId: input.groupId,
         key: input.key,
         value: input.value,
       },
@@ -322,12 +322,12 @@ export async function findEnvVarInGroup(
 ): Promise<RawGroupVariable | null> {
   // biome-ignore lint/suspicious/noExplicitAny: these API paths and fields are not in the published SDK yet
   const { data, error, response } = await (client as any).GET(
-    "/v1/environment-variables",
+    "/v1/variable-groups/{groupId}/variables",
     {
       params: {
+        path: { groupId: input.groupId },
         query: {
           projectId: input.projectId,
-          groupId: input.groupId,
           key: input.key,
         },
       },
@@ -351,16 +351,16 @@ export async function listEnvVarsInGroup(
   let cursor: string | undefined;
 
   while (true) {
-    const query: Record<string, string | undefined> = { projectId, groupId };
+    const query: Record<string, string | undefined> = { projectId };
     if (cursor !== undefined) {
       query.cursor = cursor;
     }
 
     // biome-ignore lint/suspicious/noExplicitAny: these API paths and fields are not in the published SDK yet
     const { data, error, response } = await (client as any).GET(
-      "/v1/environment-variables",
+      "/v1/variable-groups/{groupId}/variables",
       {
-        params: { query },
+        params: { path: { groupId }, query },
         signal,
       },
     );
@@ -381,4 +381,47 @@ export async function listEnvVarsInGroup(
   }
 
   return collected;
+}
+
+/** Update a variable's value in a group. */
+export async function updateGroupVariable(
+  client: ManagementApiClient,
+  groupId: string,
+  variableId: string,
+  value: string,
+  signal: AbortSignal,
+): Promise<RawGroupVariable> {
+  // biome-ignore lint/suspicious/noExplicitAny: these API paths and fields are not in the published SDK yet
+  const { data, error, response } = await (client as any).PATCH(
+    "/v1/variable-groups/{groupId}/variables/{variableId}",
+    {
+      params: { path: { groupId, variableId } },
+      body: { value },
+      signal,
+    },
+  );
+  if (error || !data) {
+    throw variableApiError("Failed to update variable", response, error);
+  }
+  return data.data as RawGroupVariable;
+}
+
+/** Delete a variable from a group. */
+export async function deleteGroupVariable(
+  client: ManagementApiClient,
+  groupId: string,
+  variableId: string,
+  signal: AbortSignal,
+): Promise<void> {
+  // biome-ignore lint/suspicious/noExplicitAny: these API paths and fields are not in the published SDK yet
+  const { error, response } = await (client as any).DELETE(
+    "/v1/variable-groups/{groupId}/variables/{variableId}",
+    {
+      params: { path: { groupId, variableId } },
+      signal,
+    },
+  );
+  if (error) {
+    throw variableApiError("Failed to delete variable", response, error);
+  }
 }

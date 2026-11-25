@@ -10,7 +10,7 @@ import { CliStructuredError, ok } from "@prisma/cli-engine/protocol";
 import {
   listEnvVarsInGroup,
   type RawGroupVariable,
-  variableApiError,
+  updateGroupVariable,
 } from "../../../lib/variable/api";
 import {
   parseAssignment,
@@ -198,22 +198,13 @@ export const projectVariableUpdateCommand = defineCommand({
     }): Promise<WrittenVariable> => {
       // biome-ignore lint/style/noNonNullAssertion: every key was checked against the group above.
       const row = existing.get(key)!;
-      const { data, error, response } = await ctx.api.PATCH(
-        "/v1/environment-variables/{envVarId}",
-        {
-          params: { path: { envVarId: row.id } },
-          body: { value },
-          signal: ctx.signal,
-        },
+      const updated = await updateGroupVariable(
+        ctx.api,
+        group.id,
+        row.id,
+        value,
+        ctx.signal,
       );
-      if (error || !data) {
-        throw variableApiError(
-          `Failed to update value for ${key}`,
-          response,
-          error,
-        );
-      }
-      const updated = data.data as WrittenVariable;
       return { key: updated.key, id: updated.id, updatedAt: updated.updatedAt };
     };
 

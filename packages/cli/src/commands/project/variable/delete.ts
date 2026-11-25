@@ -7,7 +7,10 @@ import {
   positional,
 } from "@prisma/cli-engine";
 import { CliStructuredError, ok } from "@prisma/cli-engine/protocol";
-import { findEnvVarInGroup, variableApiError } from "../../../lib/variable/api";
+import {
+  deleteGroupVariable,
+  findEnvVarInGroup,
+} from "../../../lib/variable/api";
 import { resolveActiveWorkspace } from "../../resources-shared/workspace";
 import { resolvePinnedProject } from "../context";
 import {
@@ -125,16 +128,7 @@ export const projectVariableDeleteCommand = defineCommand({
       );
     }
 
-    const { error, response } = await ctx.api.DELETE(
-      "/v1/environment-variables/{envVarId}",
-      {
-        params: { path: { envVarId: existing.id } },
-        signal: ctx.signal,
-      },
-    );
-    if (error) {
-      throw variableApiError(`Failed to delete ${key}`, response, error);
-    }
+    await deleteGroupVariable(ctx.api, group.id, existing.id, ctx.signal);
 
     const result = { projectId, groupName: group.name, key };
     return ok(ctx.present({ data: result }, deletePresentations(result)));
