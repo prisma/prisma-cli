@@ -1,5 +1,5 @@
 // biome-ignore-all lint/performance/noAwaitInLoops: the allowlist is walked in order — a package resolved from an earlier directory decides what a later one is compared against — and the reads are a handful of stats on small files.
-import { readdir, realpath, stat } from "node:fs/promises";
+import { lstat, readdir, realpath, stat } from "node:fs/promises";
 import path from "node:path";
 
 import { compareVersionStrings } from "../semver-order";
@@ -28,7 +28,8 @@ export interface InstalledSourcePackage {
 
 /** "unmanaged": the directory holds a SKILL.md this CLI did not write —
  *  unstamped, unreadable, or stamped by a package outside the
- *  allowlist. Sync never touches it. A directory without a SKILL.md
+ *  allowlist — or is a link into an installed package's files. Sync
+ *  never touches it. A directory without a SKILL.md
  *  reads as "absent" so an interrupted copy is repaired by the next
  *  sync. */
 export type SkillTargetState = "synced" | "stale" | "absent" | "unmanaged";
@@ -36,6 +37,8 @@ export type SkillTargetState = "synced" | "stale" | "absent" | "unmanaged";
 export interface SkillTarget {
   /** Harness directory, relative to the project root. */
   readonly dir: string;
+  /** Where the copy is on disk, the directory sync writes. */
+  readonly copyDir: string;
   readonly syncedVersion: string | null;
   readonly state: SkillTargetState;
 }
@@ -95,9 +98,13 @@ export async function readSkillsStatus(
     options?.checkDisabled ?? (await readSkillsCheckDisabled(projectRoot));
   const packages = await findInstalledSourcePackages(projectRoot);
   const sources = await collectSkillSources(packages);
+  const packageDirs: string[] = [];
+  for (const installed of packages) {
+    packageDirs.push(await resolveExisting(installed.dir));
+  }
   const skills: SkillStatus[] = [];
   for (const source of sources.values()) {
-    skills.push(await readSkillStatus(projectRoot, dirs, source));
+    skills.push(await readSkillStatus(projectRoot, dirs, source, packageDirs));
   }
   skills.sort((left, right) => left.skill.localeCompare(right.skill));
 
@@ -114,6 +121,11 @@ export async function readSkillsStatus(
             dirs,
             new Set(sources.keys()),
             unconfiguredDirs,
+            new Set(
+              skills.flatMap((skill) =>
+                skill.targets.map((target) => target.copyDir),
+              ),
+            ),
           ),
     upToDate: skills.every((skill) => skill.upToDate),
   };
@@ -201,15 +213,21 @@ async function readSkillStatus(
   projectRoot: string,
   dirs: readonly string[],
   source: SkillSource,
+  packageDirs: readonly string[],
 ): Promise<SkillStatus> {
   const targets: SkillTarget[] = [];
   for (const dir of dirs) {
-    const skillFile = path.join(projectRoot, dir, source.skill, "SKILL.md");
+    const copy = await locateCopy(path.join(projectRoot, dir, source.skill));
+    const skillFile = path.join(copy.dir, "SKILL.md");
     const stamp = await readSkillStamp(skillFile);
     targets.push({
       dir,
+      copyDir: copy.dir,
       syncedVersion: stamp?.libraryVersion ?? null,
-      state: await targetState(skillFile, stamp, source.version),
+      state:
+        copy.followedLink && isPackageFile(copy.dir, packageDirs)
+          ? "unmanaged"
+          : await targetState(skillFile, stamp, source.version),
     });
   }
 
@@ -258,8 +276,8 @@ async function missingFromDisk(target: string): Promise<boolean> {
  * SKILL.md names an allowlisted package as its `library` — and that
  * nothing wants any more: in a configured directory, one no installed
  * package still provides; in the directory of an agent the config no
- * longer names, every one. A copy that is, through a symbolic link,
- * the same directory as a wanted copy is wanted. A skill from anywhere
+ * longer names, every one. A copy in one of `wantedCopies`, the disk
+ * locations of the copies sync keeps, is wanted. A skill from anywhere
  * else is someone else's file and is never touched.
  */
 export async function findOrphanedSkills(
@@ -267,9 +285,9 @@ export async function findOrphanedSkills(
   dirs: readonly string[],
   provided: ReadonlySet<string>,
   unconfiguredDirs: readonly string[] = [],
+  wantedCopies: ReadonlySet<string> = new Set(),
 ): Promise<OrphanedSkill[]> {
   const orphans = new Map<string, { library: string | null; dirs: string[] }>();
-  const wantedCopies = await realCopyPaths(projectRoot, dirs, provided);
   const scan = [
     ...dirs.map((dir) => ({ dir, wanted: provided })),
     ...unconfiguredDirs.map((dir) => ({ dir, wanted: new Set<string>() })),
@@ -285,8 +303,8 @@ export async function findOrphanedSkills(
       if (library === null) {
         continue;
       }
-      const copy = await realCopyPath(harnessDir, skill);
-      if (copy !== null && wantedCopies.has(copy)) {
+      const copy = await locateCopy(path.join(harnessDir, skill));
+      if (wantedCopies.has(copy.dir)) {
         continue;
       }
       const entry = orphans.get(skill) ?? { library, dirs: [] };
@@ -317,39 +335,73 @@ async function managingLibrary(
   return stamp.library;
 }
 
-async function realCopyPaths(
-  projectRoot: string,
-  dirs: readonly string[],
-  skills: ReadonlySet<string>,
-): Promise<Set<string>> {
-  const copies = new Set<string>();
-  for (const dir of dirs) {
-    for (const skill of skills) {
-      const copy = await realCopyPath(path.join(projectRoot, dir), skill);
-      if (copy !== null) {
-        copies.add(copy);
+/**
+ * Where the copy at `copyPath` is on disk. A link at `copyPath` is
+ * followed only to a directory holding a SKILL.md; any other link is
+ * itself the copy, so replacing it removes the link and never its
+ * target.
+ */
+async function locateCopy(
+  copyPath: string,
+): Promise<{ dir: string; followedLink: boolean }> {
+  if (await isSymbolicLink(copyPath)) {
+    try {
+      const target = await realpath(copyPath);
+      if (await isFile(path.join(target, "SKILL.md"))) {
+        return { dir: target, followedLink: true };
       }
+    } catch {
+      // A dangling link is replaced like a missing copy.
     }
+    return {
+      dir: path.join(
+        await resolveExisting(path.dirname(copyPath)),
+        path.basename(copyPath),
+      ),
+      followedLink: false,
+    };
   }
-  return copies;
+  return { dir: await resolveExisting(copyPath), followedLink: false };
 }
 
-/** Where the copy of `skill` under `harnessDir` is, or will be written,
- *  on disk once every symbolic link is followed; null when the harness
- *  directory does not exist. */
-async function realCopyPath(
-  harnessDir: string,
-  skill: string,
-): Promise<string | null> {
+/** `target` with every symbolic link followed, as far as the path
+ *  exists on disk. */
+async function resolveExisting(target: string): Promise<string> {
+  const absolute = path.resolve(target);
   try {
-    return await realpath(path.join(harnessDir, skill));
+    return await realpath(absolute);
   } catch {
-    try {
-      return path.join(await realpath(harnessDir), skill);
-    } catch {
-      return null;
+    const parent = path.dirname(absolute);
+    if (parent === absolute) {
+      return absolute;
     }
+    return path.join(await resolveExisting(parent), path.basename(absolute));
   }
+}
+
+async function isSymbolicLink(target: string): Promise<boolean> {
+  try {
+    return (await lstat(target)).isSymbolicLink();
+  } catch {
+    return false;
+  }
+}
+
+/** True for a directory a package manager owns: inside an installed
+ *  source package, or anywhere under a node_modules directory. */
+function isPackageFile(dir: string, packageDirs: readonly string[]): boolean {
+  return (
+    dir.split(path.sep).includes("node_modules") ||
+    packageDirs.some((packageDir) => {
+      const relative = path.relative(packageDir, dir);
+      return (
+        relative === "" ||
+        (relative !== ".." &&
+          !relative.startsWith(`..${path.sep}`) &&
+          !path.isAbsolute(relative))
+      );
+    })
+  );
 }
 
 /** The subdirectories of `dir` that hold a SKILL.md. */

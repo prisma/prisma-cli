@@ -12,7 +12,11 @@ import {
 import path from "node:path";
 
 import { AGENT_SKILL_DIRS } from "./allowlist";
-import type { InstalledSourcePackage, SkillsStatus } from "./status";
+import type {
+  InstalledSourcePackage,
+  SkillsStatus,
+  SkillTarget,
+} from "./status";
 
 export interface SyncedSkill {
   readonly skill: string;
@@ -30,7 +34,8 @@ export interface PrunedSkill {
 
 /** A target directory sync would have written, except it holds a
  *  SKILL.md this CLI does not manage — unstamped, unreadable, or
- *  stamped by a package outside the allowlist. */
+ *  stamped by a package outside the allowlist — or is a link into an
+ *  installed package's files. */
 export interface RefusedSkill {
   readonly skill: string;
   readonly dirs: readonly string[];
@@ -62,9 +67,9 @@ export async function syncSkills(status: SkillsStatus): Promise<SyncOutcome> {
   const synced: SyncedSkill[] = [];
   const refused: RefusedSkill[] = [];
   for (const skill of status.skills) {
-    const dirs = skill.targets
-      .filter((target) => target.state === "stale" || target.state === "absent")
-      .map((target) => target.dir);
+    const targets = skill.targets.filter(
+      (target) => target.state === "stale" || target.state === "absent",
+    );
     const refusedDirs = skill.targets
       .filter((target) => target.state === "unmanaged")
       .map((target) => target.dir);
@@ -77,25 +82,17 @@ export async function syncSkills(status: SkillsStatus): Promise<SyncOutcome> {
     // removed — one the user authored stays.
     for (const target of skill.targets) {
       if (target.state === "synced") {
-        await removeOldCliGitignore(
-          path.join(status.projectRoot, target.dir, skill.skill, ".gitignore"),
-        );
+        await removeOldCliGitignore(path.join(target.copyDir, ".gitignore"));
       }
     }
-    const written = await writeCopies(
-      status.projectRoot,
-      skill.sourceDir,
-      skill.skill,
-      dirs,
-    );
-    if (written.length === 0) {
+    if (targets.length === 0) {
       continue;
     }
     synced.push({
       skill: skill.skill,
       library: skill.library,
       version: skill.version,
-      dirs: written,
+      dirs: await writeCopies(skill.sourceDir, targets),
     });
   }
 
@@ -202,60 +199,20 @@ async function removeOldCliGitignore(file: string): Promise<void> {
   }
 }
 
-/**
- * Writes the skill into each harness directory at the real path its
- * copy resolves to, so a symbolic link to a copy stays a link and two
- * paths to one directory are written once. A destination that is,
- * holds, or lies inside the source tree is left alone, because
- * replacing it would delete the source before it is read. Returns the
- * harness directories whose copy is now current.
- */
+/** Writes the skill once per directory on disk, keeping a link to a
+ *  copy as a link. Returns the harness directories written. */
 async function writeCopies(
-  projectRoot: string,
   sourceDir: string,
-  skill: string,
-  dirs: readonly string[],
+  targets: readonly SkillTarget[],
 ): Promise<string[]> {
-  const source = await resolveExisting(sourceDir);
-  const writtenTargets = new Set<string>();
-  const written: string[] = [];
-  for (const dir of dirs) {
-    const target = await resolveExisting(path.join(projectRoot, dir, skill));
-    if (isSameOrInside(target, source) || isSameOrInside(source, target)) {
-      continue;
+  const written = new Set<string>();
+  for (const target of targets) {
+    if (!written.has(target.copyDir)) {
+      await replaceTree(sourceDir, target.copyDir);
+      written.add(target.copyDir);
     }
-    if (!writtenTargets.has(target)) {
-      await replaceTree(sourceDir, target);
-      writtenTargets.add(target);
-    }
-    written.push(dir);
   }
-  return written;
-}
-
-/** `target` with every symbolic link followed, as far as the path
- *  exists on disk. */
-async function resolveExisting(target: string): Promise<string> {
-  const absolute = path.resolve(target);
-  try {
-    return await realpath(absolute);
-  } catch {
-    const parent = path.dirname(absolute);
-    if (parent === absolute) {
-      return absolute;
-    }
-    return path.join(await resolveExisting(parent), path.basename(absolute));
-  }
-}
-
-function isSameOrInside(target: string, dir: string): boolean {
-  const relative = path.relative(dir, target);
-  return (
-    relative === "" ||
-    (relative !== ".." &&
-      !relative.startsWith(`..${path.sep}`) &&
-      !path.isAbsolute(relative))
-  );
+  return targets.map((target) => target.dir);
 }
 
 /**

@@ -1390,28 +1390,102 @@ describe("skill directories reached through a symbolic link", () => {
     expect(await stampOf(root, ".claude/skills", "prisma-8")).toBe("8.1.0");
   });
 
-  it("never writes over the package's own files through a link", async () => {
+  it("refuses a skill link into the package's own files, and list agrees", async () => {
     const root = await makeProjectRoot();
     await installPostgres(root);
-    const packageDir = path.relative(
-      root,
-      path.join(root, "node_modules", "@prisma/orm-postgres"),
-    );
-    await linkDir(root, ".claude/skills/prisma-8", packageDir);
+    const sourceSkill = "node_modules/@prisma/orm-postgres/skills/prisma-8";
+    await linkDir(root, ".claude/skills/prisma-8", sourceSkill);
+
+    const run = await configuredCli(["claude"]).run(["skills", "sync"], {
+      cwd: root,
+      isTty: { stdout: true, stderr: true },
+    });
+    const result = run.presented?.data as SkillsSyncResult;
+    const list = await configuredCli(["claude"]).run(["skills", "list"], {
+      cwd: root,
+    });
+    const listed = list.presented?.data as SkillsListResult;
+
+    expect(run.exitCode).toBe(0);
+    expect(result.synced).toEqual([]);
+    expect(result.refused).toEqual([
+      { skill: "prisma-8", dirs: [".claude/skills"] },
+    ]);
+    expect(run.stderr).toContain("1 directory is not managed by this CLI");
+    expect(listed.upToDate).toBe(true);
+    expect(listed.skills[0]?.targets[0]?.state).toBe("unmanaged");
+    expect(
+      await stampOf(
+        root,
+        "node_modules/@prisma/orm-postgres/skills",
+        "prisma-8",
+      ),
+    ).toBe("8.1.0");
+  });
+
+  it("refuses a skill link into another installed package's files", async () => {
+    const root = await makeProjectRoot();
+    await installPostgres(root);
+    await installPackage(root, {
+      name: "@prisma/orm-sqlite",
+      version: "8.0.0",
+      skills: ["prisma-8"],
+    });
+    const otherSkill = "node_modules/@prisma/orm-sqlite/skills";
+    await linkDir(root, ".claude/skills/prisma-8", `${otherSkill}/prisma-8`);
 
     const { exitCode, result } = await syncAs(root, ["claude"]);
 
     expect(exitCode).toBe(0);
     expect(result.synced).toEqual([]);
-    expect(await stampOf(root, `${packageDir}/skills`, "prisma-8")).toBe(
-      "8.1.0",
-    );
-    expect(await exists(path.join(root, packageDir, "package.json"))).toBe(
-      true,
-    );
+    expect(result.refused).toEqual([
+      { skill: "prisma-8", dirs: [".claude/skills"] },
+    ]);
+    expect(await stampOf(root, otherSkill, "prisma-8")).toBe("8.0.0");
   });
 
-  it("writes each directory once when two harness paths are one directory", async () => {
+  it("replaces a dangling skill link with a copy", async () => {
+    const root = await makeProjectRoot();
+    await installPostgres(root);
+    await linkDir(root, ".claude/skills/prisma-8", "shared/prisma-8");
+    await rm(path.join(root, "shared/prisma-8"), { recursive: true });
+
+    const { exitCode, result } = await syncAs(root, ["claude"]);
+
+    expect(exitCode).toBe(0);
+    expect(result.synced[0]?.dirs).toEqual([".claude/skills"]);
+    expect(
+      (
+        await lstat(path.join(root, ".claude/skills/prisma-8"))
+      ).isSymbolicLink(),
+    ).toBe(false);
+    expect(await stampOf(root, ".claude/skills", "prisma-8")).toBe("8.1.0");
+    expect(await exists(path.join(root, "shared/prisma-8"))).toBe(false);
+  });
+
+  it("replaces a skill link to a directory without a SKILL.md and leaves that directory alone", async () => {
+    const root = await makeProjectRoot();
+    await installPostgres(root);
+    await linkDir(root, ".claude/skills/prisma-8", "docs/prisma-8");
+    await writeFile(path.join(root, "docs/prisma-8/notes.md"), "# mine\n");
+
+    const { exitCode, result } = await syncAs(root, ["claude"]);
+
+    expect(exitCode).toBe(0);
+    expect(result.synced[0]?.dirs).toEqual([".claude/skills"]);
+    expect(
+      (
+        await lstat(path.join(root, ".claude/skills/prisma-8"))
+      ).isSymbolicLink(),
+    ).toBe(false);
+    expect(await stampOf(root, ".claude/skills", "prisma-8")).toBe("8.1.0");
+    expect(
+      await readFile(path.join(root, "docs/prisma-8/notes.md"), "utf8"),
+    ).toBe("# mine\n");
+    expect(await exists(path.join(root, "docs/prisma-8/SKILL.md"))).toBe(false);
+  });
+
+  it("reports both paths when two harness paths are one directory", async () => {
     const root = await makeProjectRoot();
     await installPostgres(root);
     await linkDir(root, ".claude/skills", ".agents/skills");
