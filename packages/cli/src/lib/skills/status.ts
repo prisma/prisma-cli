@@ -4,6 +4,7 @@ import path from "node:path";
 
 import { compareVersionStrings } from "../semver-order";
 import {
+  AGENT_SKILL_DIRS,
   type AgentName,
   agentSkillDirs,
   DEFAULT_AGENTS,
@@ -21,6 +22,9 @@ export interface InstalledSourcePackage {
   readonly name: string;
   readonly version: string;
   readonly dir: string;
+  /** Every directory this package resolves to across the root and the
+   *  workspace members, the winning `dir` among them. */
+  readonly dirs: readonly string[];
   /** Every version this package resolves to across the root and the
    *  workspace members, when the members disagree. */
   readonly conflictingVersions: readonly string[];
@@ -126,6 +130,7 @@ export async function readSkillsStatus(
                 skill.targets.map((target) => target.copyDir),
               ),
             ),
+            linkTargets: await harnessLinkTargets(projectRoot),
             linkedIntoPackage,
           }),
     upToDate: skills.every((skill) => skill.upToDate),
@@ -172,6 +177,7 @@ export async function findInstalledSourcePackages(
       name,
       version: highest.version,
       dir: highest.dir,
+      dirs: [...new Set(resolutions.map((one) => one.dir))],
       conflictingVersions: versions.length > 1 ? versions : [],
     });
   }
@@ -276,8 +282,9 @@ async function missingFromDisk(target: string): Promise<boolean> {
  * SKILL.md names an allowlisted package as its `library` — and that
  * nothing wants any more: in a configured directory, one no installed
  * package still provides; in the directory of an agent the config no
- * longer names, every one. A copy in one of `wantedCopies`, the disk
- * locations of the copies sync keeps, is wanted. A skill from anywhere
+ * longer names, every one. A copy whose location on disk is, or holds,
+ * a copy sync keeps or the target of a harness directory link is
+ * wanted. A skill from anywhere
  * else, or a copy a link puts inside a package's files, is never
  * touched.
  */
@@ -287,6 +294,7 @@ async function findOrphanedSkills({
   provided,
   unconfiguredDirs,
   wantedCopies,
+  linkTargets,
   linkedIntoPackage,
 }: {
   readonly projectRoot: string;
@@ -294,6 +302,7 @@ async function findOrphanedSkills({
   readonly provided: ReadonlySet<string>;
   readonly unconfiguredDirs: readonly string[];
   readonly wantedCopies: ReadonlySet<string>;
+  readonly linkTargets: ReadonlySet<string>;
   readonly linkedIntoPackage: LinkedIntoPackage;
 }): Promise<OrphanedSkill[]> {
   const orphans = new Map<string, { library: string | null; dirs: string[] }>();
@@ -313,8 +322,9 @@ async function findOrphanedSkills({
         continue;
       }
       const copyDir = await locateCopy(path.join(harnessDir, skill));
+      const kept = [...wantedCopies, ...linkTargets];
       if (
-        wantedCopies.has(copyDir) ||
+        kept.some((keptDir) => isSameOrInside(keptDir, copyDir)) ||
         (await linkedIntoPackage(copyDir, dir, skill))
       ) {
         continue;
@@ -405,8 +415,8 @@ async function linkedIntoPackageTest(
 ): Promise<LinkedIntoPackage> {
   const realRoot = await resolveExisting(projectRoot);
   const protectedDirs: string[] = [];
-  for (const installed of packages) {
-    const packageDir = await resolveExisting(installed.dir);
+  for (const dir of packages.flatMap((installed) => installed.dirs)) {
+    const packageDir = await resolveExisting(dir);
     protectedDirs.push(
       isSameOrInside(realRoot, packageDir)
         ? path.join(packageDir, PACKAGE_SKILLS_DIR)
@@ -455,6 +465,31 @@ function isSameOrInside(target: string, dir: string): boolean {
       !relative.startsWith(`..${path.sep}`) &&
       !path.isAbsolute(relative))
   );
+}
+
+/** The real directories that a symbolic link at any agent's harness
+ *  directory, or at one of its parents, points to. */
+export async function harnessLinkTargets(
+  projectRoot: string,
+): Promise<Set<string>> {
+  const targets = new Set<string>();
+  for (const dir of Object.values(AGENT_SKILL_DIRS)) {
+    for (
+      let current: string = dir;
+      current !== "." && current !== "";
+      current = path.dirname(current)
+    ) {
+      const candidate = path.join(projectRoot, current);
+      try {
+        if ((await lstat(candidate)).isSymbolicLink()) {
+          targets.add(await realpath(candidate));
+        }
+      } catch {
+        // A missing or dangling path protects nothing.
+      }
+    }
+  }
+  return targets;
 }
 
 /** The subdirectories of `dir` that hold a SKILL.md. */

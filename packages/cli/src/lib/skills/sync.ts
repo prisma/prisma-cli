@@ -1,6 +1,5 @@
 // biome-ignore-all lint/performance/noAwaitInLoops: one skill tree is written at a time; an interrupted copy can leave one partial tree, which reads as absent (no SKILL.md yet) and is repaired by the next sync.
 import {
-  lstat,
   mkdir,
   readdir,
   readFile,
@@ -11,11 +10,11 @@ import {
 } from "node:fs/promises";
 import path from "node:path";
 
-import { AGENT_SKILL_DIRS } from "./allowlist";
-import type {
-  InstalledSourcePackage,
-  SkillsStatus,
-  SkillTarget,
+import {
+  harnessLinkTargets,
+  type InstalledSourcePackage,
+  type SkillsStatus,
+  type SkillTarget,
 } from "./status";
 
 export interface SyncedSkill {
@@ -160,29 +159,6 @@ async function removeEmptyHarnessDirs(
       return;
     }
   }
-}
-
-/** The real directories that a symbolic link at any agent's harness
- *  directory, or at one of its parents, points to. */
-async function harnessLinkTargets(projectRoot: string): Promise<Set<string>> {
-  const targets = new Set<string>();
-  for (const dir of Object.values(AGENT_SKILL_DIRS)) {
-    for (
-      let current: string = dir;
-      current !== "." && current !== "";
-      current = path.dirname(current)
-    ) {
-      const candidate = path.join(projectRoot, current);
-      try {
-        if ((await lstat(candidate)).isSymbolicLink()) {
-          targets.add(await realpath(candidate));
-        }
-      } catch {
-        // A missing or dangling path protects nothing.
-      }
-    }
-  }
-  return targets;
 }
 
 const OLD_CLI_GITIGNORE = /^\*\r?\n?$/;
