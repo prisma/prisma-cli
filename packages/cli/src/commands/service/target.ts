@@ -2,6 +2,7 @@ import { type CommandContext, positional } from "@prisma/cli-engine";
 import {
   type AddressMatch,
   describeEnvironment,
+  type ResolvedSubject,
   resolveBranchScopedSubject,
 } from "../../lib/address/address";
 import {
@@ -12,7 +13,7 @@ import {
   type DomainRecord,
 } from "../../lib/app/app-provider";
 import { resolveDefaultBranch } from "../../lib/branch/default-branch";
-import { listProjectBranches } from "../../lib/branch/list";
+import { type BranchRecord, listProjectBranches } from "../../lib/branch/list";
 import { projectApiError } from "../../lib/project/provider";
 import {
   type ProjectCandidate,
@@ -177,6 +178,15 @@ function requireBranchFlagValue(branchName: string | undefined): void {
 /** `service create` on a project with no branches makes its first one under this name. */
 const FIRST_BRANCH_NAME = "main";
 
+function listedBranch(branch: BranchRecord): ResolvedServiceBranch {
+  return {
+    id: branch.id,
+    name: branch.gitName,
+    kind: branch.role,
+    isDefault: branch.isDefault,
+  };
+}
+
 function namedBranch(name: string): ResolvedServiceBranch {
   return { id: null, name, kind: toBranchKind(name), isDefault: false };
 }
@@ -195,14 +205,7 @@ async function namedBranchOf(
     signal: ctx.signal,
   });
   const listed = branches.find((branch) => branch.gitName === name);
-  return listed
-    ? {
-        id: listed.id,
-        name: listed.gitName,
-        kind: listed.role,
-        isDefault: listed.isDefault,
-      }
-    : namedBranch(name);
+  return listed ? listedBranch(listed) : namedBranch(name);
 }
 
 async function defaultBranchOf(
@@ -223,15 +226,16 @@ async function defaultBranchOf(
   }
 }
 
+/** The Branch a command was pointed at: a `--branch` name to look up, or
+ *  one an address already resolved. Neither means the default Branch. */
+type BranchTarget =
+  | { readonly branchName?: string; readonly branch?: undefined }
+  | { readonly branch: ResolvedServiceBranch; readonly branchName?: undefined };
+
 export async function resolveServiceProjectContext(
   ctx: ServiceContext,
   explicitProject: string | undefined,
-  options: {
-    commandName: string;
-    branchName?: string;
-    /** A Branch already resolved, by an address: used as is. */
-    branch?: ResolvedServiceBranch;
-  },
+  options: { commandName: string } & BranchTarget,
 ): Promise<ResolvedServiceProjectContext> {
   requireBranchFlagValue(options.branchName);
   const workspace = await requireWorkspace(ctx);
@@ -554,29 +558,20 @@ async function resolveServiceProjectState(
   ctx: ServiceContext,
   options: {
     projectRef?: string;
-    branchName?: string;
-    branch?: ResolvedServiceBranch;
     commandName: string;
-  },
+  } & BranchTarget,
 ): Promise<ServiceProjectState> {
   const provider = serviceProvider(ctx);
-  const target = await resolveServiceProjectContext(ctx, options.projectRef, {
-    commandName: options.commandName,
-    ...(options.branchName !== undefined
-      ? { branchName: options.branchName }
-      : {}),
-    ...(options.branch !== undefined ? { branch: options.branch } : {}),
-  });
+  const { projectRef, ...context } = options;
+  const target = await resolveServiceProjectContext(ctx, projectRef, context);
   return { provider, target, projectId: target.project.id };
 }
 
-function addressBranch(match: AddressMatch): ResolvedServiceBranch {
-  return {
-    id: match.branch.id,
-    name: match.branch.gitName,
-    kind: match.branch.role,
-    isDefault: match.branch.isDefault,
-  };
+function subjectBranchTarget(subject: ResolvedSubject): BranchTarget {
+  if (subject.match !== undefined) {
+    return { branch: listedBranch(subject.match.branch) };
+  }
+  return subject.branch !== undefined ? { branchName: subject.branch } : {};
 }
 
 /** The shared read flow for every command that acts on an existing
@@ -606,10 +601,7 @@ export async function resolveServiceReadState(
   const state = await resolveServiceProjectState(ctx, {
     commandName: options.commandName,
     ...(subject.project !== undefined ? { projectRef: subject.project } : {}),
-    ...(subject.branch !== undefined ? { branchName: subject.branch } : {}),
-    ...(subject.match !== undefined
-      ? { branch: addressBranch(subject.match) }
-      : {}),
+    ...subjectBranchTarget(subject),
   });
   const services = await listServices(
     ctx,
