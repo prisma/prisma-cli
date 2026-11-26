@@ -169,7 +169,10 @@ describe("service commands given an address", () => {
       { cwd: harness.cwd, env: harness.env },
     );
     expect(byAddress.exitCode).toBe(0);
-    expect(byAddress.presented?.data).toMatchObject({ deleted: true });
+    expect(byAddress.presented?.data).toMatchObject({
+      branch: "pr-42",
+      deleted: true,
+    });
     expect(recorded.deletes).toEqual(["svc_api_pr42"]);
   });
 

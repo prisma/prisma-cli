@@ -1,11 +1,11 @@
 import { defineCommand, flag } from "@prisma/cli-engine";
 import { ok } from "@prisma/cli-engine/protocol";
-import { describeEnvironment } from "../../lib/address/address";
 import { deleteFailedError, userCancelledError } from "./errors";
 import { deletePresentations } from "./presentation";
 import { destroyProgressReporter } from "./release";
 import type { ServiceDeleteResult } from "./results";
 import {
+  describeServiceLocation,
   resolveServiceReadState,
   servicePositional,
   toServiceSummary,
@@ -29,7 +29,8 @@ export const serviceDeleteCommand = defineCommand({
         placeholder: "id-or-name",
       }),
       branch: flag.string({
-        brief: "Branch the deletion is scoped to",
+        brief:
+          "Branch to delete the service from (default: the default branch)",
         placeholder: "name",
       }),
     },
@@ -46,11 +47,8 @@ export const serviceDeleteCommand = defineCommand({
       commandName: "service delete",
     });
 
-    const where = state.address
-      ? ` (${state.service.id}) ${describeEnvironment(state.address)}`
-      : ` (${state.service.id}) on branch ${state.target.branch.name}`;
     const granted = await ctx.prompt.consent(
-      `Delete Service "${state.service.name}"${where} and every version it owns?`,
+      `Delete Service "${state.service.name}" (${state.service.id}) ${describeServiceLocation(state)} and every version it owns?`,
       { token: state.address?.text ?? state.service.name },
     );
     // A token consent resolves to true or throws (mismatch, or the
@@ -85,7 +83,7 @@ export const serviceDeleteCommand = defineCommand({
 
     const result: ServiceDeleteResult = {
       projectId: state.projectId,
-      branch: { name: state.target.branch.name },
+      branch: state.target.branch.name,
       service: toServiceSummary(deletedService),
       deleted: true,
     };

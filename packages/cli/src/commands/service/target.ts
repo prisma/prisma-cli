@@ -1,6 +1,7 @@
 import { type CommandContext, positional } from "@prisma/cli-engine";
 import {
   type AddressMatch,
+  describeEnvironment,
   resolveBranchScopedSubject,
 } from "../../lib/address/address";
 import {
@@ -72,12 +73,16 @@ export type ServiceContext = Pick<
 export interface ResolvedServiceProjectContext {
   workspace: AuthWorkspace;
   project: ProjectSummary;
-  branch: {
-    id: string | null;
-    name: string;
-    kind: BranchKind;
-  };
+  branch: ResolvedServiceBranch;
   resolution: ProjectResolution;
+}
+
+export interface ResolvedServiceBranch {
+  id: string | null;
+  name: string;
+  kind: BranchKind;
+  /** True only when the Project's branch listing marked it as the default. */
+  isDefault: boolean;
 }
 
 /** The workspace the run is acting as, from the credential the engine
@@ -172,21 +177,21 @@ function requireBranchFlagValue(branchName: string | undefined): void {
 /** `service create` on a project with no branches makes its first one under this name. */
 const FIRST_BRANCH_NAME = "main";
 
-function namedBranch(name: string): ResolvedServiceProjectContext["branch"] {
-  return { id: null, name, kind: toBranchKind(name) };
+function namedBranch(name: string): ResolvedServiceBranch {
+  return { id: null, name, kind: toBranchKind(name), isDefault: false };
 }
 
 async function defaultBranchOf(
   ctx: ServiceContext,
   project: ProjectSummary,
-): Promise<ResolvedServiceProjectContext["branch"]> {
+): Promise<ResolvedServiceBranch> {
   const lookup = await resolveDefaultBranch(ctx.api, {
     projectId: project.id,
     signal: ctx.signal,
   });
   switch (lookup.kind) {
     case "found":
-      return lookup.branch;
+      return { ...lookup.branch, isDefault: true };
     case "no-branches":
       return namedBranch(FIRST_BRANCH_NAME);
     case "no-default":
@@ -575,9 +580,24 @@ export async function resolveServiceReadState(
   return { ...state, service, address: subject.match };
 }
 
+export function describeServiceBranch(
+  branch: Pick<ResolvedServiceBranch, "name" | "isDefault">,
+): string {
+  return branch.isDefault
+    ? `in production (branch ${branch.name})`
+    : `on branch ${branch.name}`;
+}
+
+export function describeServiceLocation(state: ServiceReadState): string {
+  return state.address
+    ? describeEnvironment(state.address)
+    : describeServiceBranch(state.target.branch);
+}
+
 export interface ResolvedServiceDomainTarget {
   provider: AppProvider;
   service: AppRecord;
+  branch: ResolvedServiceBranch;
   resultTarget: ServiceDomainTarget;
 }
 
@@ -618,6 +638,7 @@ export async function resolveServiceDomainTarget(
   return {
     provider,
     service,
+    branch: target.branch,
     resultTarget: {
       workspace: target.workspace,
       project: target.project,

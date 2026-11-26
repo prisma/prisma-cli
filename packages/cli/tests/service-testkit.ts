@@ -202,6 +202,33 @@ export function readFlowRoutes(overrides: Routes = {}): Routes {
   };
 }
 
+/** A project whose default branch is `trunk`, with a preview branch named
+ *  `main`. Records the branch each service listing asks for. */
+export function trunkDefaultBranchRoutes(askedBranches: unknown[]): Routes {
+  return {
+    "GET /v1/projects/{projectId}/branches": () => ({
+      data: page([
+        {
+          id: "br_main_preview",
+          gitName: "main",
+          isDefault: false,
+          role: "preview",
+        },
+        {
+          id: "br_trunk",
+          gitName: "trunk",
+          isDefault: true,
+          role: "production",
+        },
+      ]),
+    }),
+    "GET /v1/apps": (init) => {
+      askedBranches.push(init.params?.query?.branchGitName);
+      return { data: page([{ ...SERVICE, branchId: "br_trunk" }]) };
+    },
+  };
+}
+
 /**
  * Deployment routes the SDK's promote and teardown flows drive, on top
  * of the read-flow routes: a stopped deployment starts and reaches

@@ -130,11 +130,13 @@ describeCommand("service delete", () => {
     ]);
     const deleted = deletion.envelope.result as {
       readonly projectId: string;
+      readonly branch: string;
       readonly service: { readonly id: string; readonly name: string };
       readonly deleted: boolean;
     };
 
     expect(deleted.projectId).toBe(scratch.project().id);
+    expect(deleted.branch).toBe("main");
     expect(deleted.service.id).toBe(existing.id);
     expect(deleted.deleted).toBe(true);
 

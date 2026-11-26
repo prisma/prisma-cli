@@ -480,6 +480,7 @@ export function rollbackPresentations(
       ),
       fields([
         { label: "project", value: result.projectId },
+        { label: "branch", value: result.branch },
         { label: "service", value: result.service.name },
         { label: "version", value: result.version.id },
         { label: "status", value: result.version.status },
@@ -578,11 +579,11 @@ export function deletePresentations(
     json: () => result,
     human: () => [
       completed(
-        `Deleted ${result.service.name} from branch ${result.branch.name} and every version it owned.`,
+        `Deleted ${result.service.name} and every version it owned from branch ${result.branch}.`,
       ),
       fields([
         { label: "project", value: result.projectId },
-        { label: "branch", value: result.branch.name },
+        { label: "branch", value: result.branch },
         { label: "service", value: result.service.name },
         { label: "deleted", value: "yes" },
       ]),
