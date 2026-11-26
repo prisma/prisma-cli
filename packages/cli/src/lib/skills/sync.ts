@@ -3,13 +3,19 @@ import {
   mkdir,
   readdir,
   readFile,
+  realpath,
   rm,
   rmdir,
   writeFile,
 } from "node:fs/promises";
 import path from "node:path";
 
-import type { InstalledSourcePackage, SkillsStatus } from "./status";
+import {
+  harnessLinkTargets,
+  type InstalledSourcePackage,
+  type SkillsStatus,
+  type SkillTarget,
+} from "./status";
 
 export interface SyncedSkill {
   readonly skill: string;
@@ -27,7 +33,8 @@ export interface PrunedSkill {
 
 /** A target directory sync would have written, except it holds a
  *  SKILL.md this CLI does not manage — unstamped, unreadable, or
- *  stamped by a package outside the allowlist. */
+ *  stamped by a package outside the allowlist — or lies, through a
+ *  link, in a package's files. */
 export interface RefusedSkill {
   readonly skill: string;
   readonly dirs: readonly string[];
@@ -59,9 +66,9 @@ export async function syncSkills(status: SkillsStatus): Promise<SyncOutcome> {
   const synced: SyncedSkill[] = [];
   const refused: RefusedSkill[] = [];
   for (const skill of status.skills) {
-    const dirs = skill.targets
-      .filter((target) => target.state === "stale" || target.state === "absent")
-      .map((target) => target.dir);
+    const targets = skill.targets.filter(
+      (target) => target.state === "stale" || target.state === "absent",
+    );
     const refusedDirs = skill.targets
       .filter((target) => target.state === "unmanaged")
       .map((target) => target.dir);
@@ -74,43 +81,21 @@ export async function syncSkills(status: SkillsStatus): Promise<SyncOutcome> {
     // removed — one the user authored stays.
     for (const target of skill.targets) {
       if (target.state === "synced") {
-        await removeOldCliGitignore(
-          path.join(status.projectRoot, target.dir, skill.skill, ".gitignore"),
-        );
+        await removeOldCliGitignore(path.join(target.copyDir, ".gitignore"));
       }
     }
-    if (dirs.length === 0) {
+    if (targets.length === 0) {
       continue;
-    }
-    for (const dir of dirs) {
-      await replaceTree(
-        skill.sourceDir,
-        path.join(status.projectRoot, dir, skill.skill),
-      );
     }
     synced.push({
       skill: skill.skill,
       library: skill.library,
       version: skill.version,
-      dirs,
+      dirs: await writeCopies(skill.sourceDir, targets),
     });
   }
 
-  const pruned: PrunedSkill[] = [];
-  for (const orphan of status.orphans) {
-    for (const dir of orphan.dirs) {
-      await rm(path.join(status.projectRoot, dir, orphan.skill), {
-        recursive: true,
-        force: true,
-      });
-      await removeEmptyHarnessDirs(status.projectRoot, dir);
-    }
-    pruned.push({
-      skill: orphan.skill,
-      library: orphan.library,
-      dirs: orphan.dirs,
-    });
-  }
+  const pruned = await pruneOrphans(status);
 
   return {
     projectRoot: status.projectRoot,
@@ -123,24 +108,53 @@ export async function syncSkills(status: SkillsStatus): Promise<SyncOutcome> {
   };
 }
 
+async function pruneOrphans(status: SkillsStatus): Promise<PrunedSkill[]> {
+  if (status.orphans.length === 0) {
+    return [];
+  }
+  const linkTargets = await harnessLinkTargets(status.projectRoot);
+  const pruned: PrunedSkill[] = [];
+  for (const orphan of status.orphans) {
+    for (const dir of orphan.dirs) {
+      await rm(path.join(status.projectRoot, dir, orphan.skill), {
+        recursive: true,
+        force: true,
+      });
+      await removeEmptyHarnessDirs(status.projectRoot, dir, linkTargets);
+    }
+    pruned.push({
+      skill: orphan.skill,
+      library: orphan.library,
+      dirs: orphan.dirs,
+    });
+  }
+  return pruned;
+}
+
 /**
  * A harness directory this CLI emptied by removing its last copy is
  * removed too, and so is its parent (`.claude/skills`, then `.claude`),
  * so opting an agent out leaves nothing behind. `rmdir` refuses a
  * directory holding anything else, which is exactly the user's file
- * that must stay.
+ * that must stay. A directory a harness path links to stays too, so
+ * the link is not left dangling.
  */
 async function removeEmptyHarnessDirs(
   projectRoot: string,
   dir: string,
+  linkTargets: ReadonlySet<string>,
 ): Promise<void> {
   for (
     let current = dir;
     current !== "." && current !== "";
     current = path.dirname(current)
   ) {
+    const target = path.join(projectRoot, current);
     try {
-      await rmdir(path.join(projectRoot, current));
+      if (linkTargets.has(await realpath(target))) {
+        return;
+      }
+      await rmdir(target);
     } catch {
       return;
     }
@@ -159,6 +173,22 @@ async function removeOldCliGitignore(file: string): Promise<void> {
   if (OLD_CLI_GITIGNORE.test(content)) {
     await rm(file, { force: true });
   }
+}
+
+/** Writes the skill once per directory on disk, keeping a link to a
+ *  copy as a link. Returns the harness directories written. */
+async function writeCopies(
+  sourceDir: string,
+  targets: readonly SkillTarget[],
+): Promise<string[]> {
+  const written = new Set<string>();
+  for (const target of targets) {
+    if (!written.has(target.copyDir)) {
+      await replaceTree(sourceDir, target.copyDir);
+      written.add(target.copyDir);
+    }
+  }
+  return targets.map((target) => target.dir);
 }
 
 /**

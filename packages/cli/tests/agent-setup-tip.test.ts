@@ -50,6 +50,7 @@ describe("resolveAgentSetupTipCommand", () => {
           name: "@prisma/orm-postgres",
           version: "8.1.0",
           dir: "/project/node_modules/@prisma/orm-postgres",
+          dirs: ["/project/node_modules/@prisma/orm-postgres"],
           conflictingVersions: [],
         },
       ],

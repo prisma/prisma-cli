@@ -111,6 +111,7 @@ describe("a Yarn PnP project", () => {
         name: PACKAGE,
         version: VERSION,
         dir: packageRoot,
+        dirs: [packageRoot],
         conflictingVersions: [],
       },
     ]);
