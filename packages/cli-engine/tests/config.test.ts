@@ -126,7 +126,7 @@ describe("loadConfig", { timeout: 60_000 }, () => {
               {
                 kind: "user-choice",
                 label:
-                  "Or, if this project still uses Prisma ORM 6 or 7 and the file belongs to that version's CLI, leave it as it is: write the config for this CLI in a separate file and pass its path with --config.",
+                  "Or, if this project still uses Prisma ORM 6 or 7 and the file belongs to that version's CLI, leave it as it is: write the config for this CLI in a separate file in the same directory and pass its path with --config.",
               },
             ],
             where: { path: join(FIXTURES, "unmarked", "prisma.config.ts") },

@@ -144,7 +144,7 @@ The user typed a retired command path, or a retired flag on a surviving command,
 
 ### CLI.CONFIG_MISSING_MARKER
 
-The evaluated `prisma.config.ts` default export carries no `$prismaConfig` version marker — most likely a Prisma 7 config, which uses the same filename — so the loader stops rather than misread it; the fix is to wrap the exported object in `definePrismaConfig`. A project that still uses Prisma ORM 6 or 7 cannot do that, because its own CLI reads the same file and rejects the wrapped one, so a second next action says to leave the file alone, write this CLI's config in a separate file, and pass that file with `--config`; the loader never collects a `prisma.config.ts` beside a file named that way. Raised by the config loader for any command with a `needs.config` section. The file's absolute path is in `where.path`. Meta: none.
+The evaluated `prisma.config.ts` default export carries no `$prismaConfig` version marker — most likely a Prisma 7 config, which uses the same filename — so the loader stops rather than misread it; the fix is to wrap the exported object in `definePrismaConfig`. A project that still uses Prisma ORM 6 or 7 cannot do that, because its own CLI reads the same file and rejects the wrapped one, so a second next action says to leave the file alone, write this CLI's config in a separate file in the same directory, and pass that file with `--config`; the loader never collects a `prisma.config.ts` beside a file named that way, though it still collects one in a directory above it unless the named file sets `parent: false`. Raised by the config loader for any command with a `needs.config` section. The file's absolute path is in `where.path`. Meta: none.
 
 ### CLI.CONFIG_NOT_FOUND
 
