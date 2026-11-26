@@ -206,6 +206,33 @@ it("without --branch, delete asks to delete the domain from production on the de
   );
 });
 
+it("with --branch, reports the kind the project lists for that branch, not one guessed from its name", async () => {
+  const harness = await makeServiceCli({
+    routes: trunkRoutes([], {
+      ...listing([activeRecord()]),
+      "GET /v1/urls/{id}": () => ({ data: { data: activeRecord() } }),
+    }),
+  });
+
+  const result = await harness.cli.run(
+    [
+      "service",
+      "domain",
+      "show",
+      "shop.acme.com",
+      ...TARGET_ARGS,
+      "--branch",
+      "main",
+    ],
+    { cwd: harness.cwd, env: harness.env, isTty: { stdout: true } },
+  );
+
+  expect(result.exitCode).toBe(0);
+  expect(result.presented?.data).toMatchObject({
+    branch: { name: "main", kind: "preview" },
+  });
+});
+
 it("without --branch, add names the default branch in the commands it offers next", async () => {
   const harness = await makeServiceCli({
     routes: trunkRoutes([], {

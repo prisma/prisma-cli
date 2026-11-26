@@ -364,6 +364,34 @@ describe("prisma service delete", () => {
     expect(askedBranches).toEqual(["trunk", "trunk"]);
   });
 
+  it("with --branch naming the default branch, calls it production", async () => {
+    const harness = await makeServiceCli({
+      routes: releaseRoutes(trunkDefaultBranchRoutes([])),
+    });
+
+    const result = await harness.cli.run(
+      [
+        "service",
+        "delete",
+        "--project",
+        "acme-app",
+        "hello-world",
+        "--branch",
+        "trunk",
+        "--json",
+      ],
+      { cwd: harness.cwd, env: harness.env },
+    );
+
+    const frame = result.json.at(-1);
+    if (frame?.kind !== "result" || frame.envelope.ok) {
+      throw new Error("expected an errored envelope");
+    }
+    expect(frame.envelope.error.why).toBe(
+      'Delete Service "hello-world" (svc_1) in production (branch trunk) and every version it owns?',
+    );
+  });
+
   it("with --branch naming a preview branch, does not call it production", async () => {
     const harness = await makeServiceCli({
       routes: releaseRoutes(trunkDefaultBranchRoutes([])),

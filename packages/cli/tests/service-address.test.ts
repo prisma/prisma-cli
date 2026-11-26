@@ -193,6 +193,30 @@ describe("service commands given an address", () => {
     );
   });
 
+  it("names the environment and branch in the rollback question and result", async () => {
+    const harness = await makeServiceCli({ routes: addressRoutes() });
+    const args = ["service", "version", "rollback", "@pr-42:shop.api"];
+
+    const refused = await harness.cli.run([...args, "--json"], {
+      cwd: harness.cwd,
+      env: harness.env,
+    });
+    const frame = refused.json.at(-1);
+    if (frame?.kind !== "result" || frame.envelope.ok) {
+      throw new Error("expected an errored envelope");
+    }
+    expect(frame.envelope.error.why).toBe(
+      'Roll back Service "hello-world" (svc_api_pr42) in environment pr-42 (branch pr-42) to version dep_1 and make it live?',
+    );
+
+    const rolledBack = await harness.cli.run([...args, "--confirm", "dep_1"], {
+      cwd: harness.cwd,
+      env: harness.env,
+    });
+    expect(rolledBack.exitCode).toBe(0);
+    expect(rolledBack.presented?.data).toMatchObject({ branch: "pr-42" });
+  });
+
   it("refuses --branch alongside an address", async () => {
     const harness = await makeServiceCli({ routes: addressRoutes() });
 

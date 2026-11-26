@@ -12,6 +12,7 @@ import {
   type DomainRecord,
 } from "../../lib/app/app-provider";
 import { resolveDefaultBranch } from "../../lib/branch/default-branch";
+import { listProjectBranches } from "../../lib/branch/list";
 import { projectApiError } from "../../lib/project/provider";
 import {
   type ProjectCandidate,
@@ -81,7 +82,6 @@ export interface ResolvedServiceBranch {
   id: string | null;
   name: string;
   kind: BranchKind;
-  /** True only when the Project's branch listing marked it as the default. */
   isDefault: boolean;
 }
 
@@ -181,6 +181,30 @@ function namedBranch(name: string): ResolvedServiceBranch {
   return { id: null, name, kind: toBranchKind(name), isDefault: false };
 }
 
+/** A Branch named with `--branch`, as the Project lists it. A name the
+ *  Project does not have yet is kept as given, so `service create` can
+ *  create it. */
+async function namedBranchOf(
+  ctx: ServiceContext,
+  project: ProjectSummary,
+  name: string,
+): Promise<ResolvedServiceBranch> {
+  const branches = await listProjectBranches(ctx.api, {
+    projectId: project.id,
+    gitName: name,
+    signal: ctx.signal,
+  });
+  const listed = branches.find((branch) => branch.gitName === name);
+  return listed
+    ? {
+        id: listed.id,
+        name: listed.gitName,
+        kind: listed.role,
+        isDefault: listed.isDefault,
+      }
+    : namedBranch(name);
+}
+
 async function defaultBranchOf(
   ctx: ServiceContext,
   project: ProjectSummary,
@@ -227,7 +251,7 @@ export async function resolveServiceProjectContext(
   const resolved = resolvedResult.value;
   const branch =
     options.branchName !== undefined
-      ? namedBranch(options.branchName)
+      ? await namedBranchOf(ctx, resolved.project, options.branchName)
       : await defaultBranchOf(ctx, resolved.project);
 
   return {
