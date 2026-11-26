@@ -195,6 +195,7 @@ describe("describeEnvironment", () => {
           id: "br_main",
           gitName: "main",
           isDefault: true,
+          role: "production",
         }),
       ),
     ).toBe("in production (branch main)");
@@ -203,7 +204,12 @@ describe("describeEnvironment", () => {
   it("names the environment and its branch otherwise", () => {
     expect(
       describeEnvironment(
-        match("pr-42", { id: "br_pr42", gitName: "pr-42", isDefault: false }),
+        match("pr-42", {
+          id: "br_pr42",
+          gitName: "pr-42",
+          isDefault: false,
+          role: "preview",
+        }),
       ),
     ).toBe("in environment pr-42 (branch pr-42)");
   });
@@ -211,7 +217,12 @@ describe("describeEnvironment", () => {
   it("says production when the named environment is the default branch", () => {
     expect(
       describeEnvironment(
-        match("main", { id: "br_main", gitName: "main", isDefault: true }),
+        match("main", {
+          id: "br_main",
+          gitName: "main",
+          isDefault: true,
+          role: "production",
+        }),
       ),
     ).toBe("in environment main, which is production (branch main)");
   });
@@ -233,7 +244,12 @@ describe("resolveBranchScopedAddress", () => {
       text: "@shop.api",
       environment: "production",
       project: { id: "proj_shop", name: "Shop" },
-      branch: { id: "br_main", gitName: "main", isDefault: true },
+      branch: {
+        id: "br_main",
+        gitName: "main",
+        isDefault: true,
+        role: "production",
+      },
     });
     expect(calls).toEqual([
       { path: "/v1/projects", query: { logicalId: "shop" } },
@@ -264,6 +280,7 @@ describe("resolveBranchScopedAddress", () => {
       id: "br_main",
       gitName: "main",
       isDefault: true,
+      role: "production",
     });
   });
 
@@ -282,6 +299,7 @@ describe("resolveBranchScopedAddress", () => {
       id: "br_pr42",
       gitName: "pr-42",
       isDefault: false,
+      role: "preview",
     });
     expect(
       calls.find((call) => call.path === "/v1/projects/{projectId}/branches")

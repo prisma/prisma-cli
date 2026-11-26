@@ -229,6 +229,8 @@ export async function resolveServiceProjectContext(
   options: {
     commandName: string;
     branchName?: string;
+    /** A Branch already resolved, by an address: used as is. */
+    branch?: ResolvedServiceBranch;
   },
 ): Promise<ResolvedServiceProjectContext> {
   requireBranchFlagValue(options.branchName);
@@ -250,9 +252,10 @@ export async function resolveServiceProjectContext(
   }
   const resolved = resolvedResult.value;
   const branch =
-    options.branchName !== undefined
+    options.branch ??
+    (options.branchName !== undefined
       ? await namedBranchOf(ctx, resolved.project, options.branchName)
-      : await defaultBranchOf(ctx, resolved.project);
+      : await defaultBranchOf(ctx, resolved.project));
 
   return {
     workspace: resolved.workspace,
@@ -552,6 +555,7 @@ async function resolveServiceProjectState(
   options: {
     projectRef?: string;
     branchName?: string;
+    branch?: ResolvedServiceBranch;
     commandName: string;
   },
 ): Promise<ServiceProjectState> {
@@ -561,8 +565,18 @@ async function resolveServiceProjectState(
     ...(options.branchName !== undefined
       ? { branchName: options.branchName }
       : {}),
+    ...(options.branch !== undefined ? { branch: options.branch } : {}),
   });
   return { provider, target, projectId: target.project.id };
+}
+
+function addressBranch(match: AddressMatch): ResolvedServiceBranch {
+  return {
+    id: match.branch.id,
+    name: match.branch.gitName,
+    kind: match.branch.role,
+    isDefault: match.branch.isDefault,
+  };
 }
 
 /** The shared read flow for every command that acts on an existing
@@ -593,6 +607,9 @@ export async function resolveServiceReadState(
     commandName: options.commandName,
     ...(subject.project !== undefined ? { projectRef: subject.project } : {}),
     ...(subject.branch !== undefined ? { branchName: subject.branch } : {}),
+    ...(subject.match !== undefined
+      ? { branch: addressBranch(subject.match) }
+      : {}),
   });
   const services = await listServices(
     ctx,

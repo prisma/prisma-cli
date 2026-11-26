@@ -392,6 +392,46 @@ describe("prisma service delete", () => {
     );
   });
 
+  it("with --branch, stops on a failed branch listing without asking or deleting", async () => {
+    const deletes: unknown[] = [];
+    const harness = await makeServiceCli({
+      routes: releaseRoutes({
+        "GET /v1/projects/{projectId}/branches": () => ({
+          error: { error: { message: "boom" } },
+          status: 500,
+        }),
+        "DELETE /v1/apps/{appId}": (init) => {
+          deletes.push(init.params?.path?.appId);
+          return { data: { data: {} } };
+        },
+      }),
+    });
+
+    const result = await harness.cli.run(
+      [
+        "service",
+        "delete",
+        "--project",
+        "acme-app",
+        "hello-world",
+        "--branch",
+        "main",
+        "--confirm",
+        "hello-world",
+        "--json",
+      ],
+      { cwd: harness.cwd, env: harness.env },
+    );
+
+    expect(result.exitCode).toBe(2);
+    const frame = result.json.at(-1);
+    if (frame?.kind !== "result" || frame.envelope.ok) {
+      throw new Error("expected an errored envelope");
+    }
+    expect(frame.envelope.error.code).toBe("BRANCH.API_ERROR");
+    expect(deletes).toEqual([]);
+  });
+
   it("with --branch naming a preview branch, does not call it production", async () => {
     const harness = await makeServiceCli({
       routes: releaseRoutes(trunkDefaultBranchRoutes([])),

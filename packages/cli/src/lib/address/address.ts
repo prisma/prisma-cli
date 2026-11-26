@@ -13,6 +13,7 @@ import {
 import type { ManagementApiClient } from "@prisma/management-api-sdk";
 import { CLI_NAME } from "../../cli-name";
 import { formatCommandArgument } from "../../command-arguments";
+import type { BranchRole } from "../../types/branch";
 import { listProjectBranches } from "../branch/list";
 import { type ApiErrorBody, apiErrorDetail } from "../management-api-error";
 
@@ -60,6 +61,7 @@ export interface AddressMatch {
     readonly id: string;
     readonly gitName: string;
     readonly isDefault: boolean;
+    readonly role: BranchRole;
   };
 }
 
@@ -394,6 +396,7 @@ async function findBranch(
     id: branch.id,
     gitName: branch.gitName,
     isDefault: branch.isDefault,
+    role: branch.role,
   };
 }
 

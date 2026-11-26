@@ -61,10 +61,17 @@ interface Recorded {
   readonly versionListings: string[];
   /** The service id each delete targeted. */
   readonly deletes: string[];
+  /** The git name each branch listing asked for, if any. */
+  readonly branchListings: (string | undefined)[];
 }
 
 function recorder(): Recorded {
-  return { appListings: [], versionListings: [], deletes: [] };
+  return {
+    appListings: [],
+    versionListings: [],
+    deletes: [],
+    branchListings: [],
+  };
 }
 
 /** The release routes, with every listing the address lookup reads and
@@ -73,9 +80,12 @@ function addressRoutes(recorded: Recorded = recorder()) {
   const base = releaseRoutes();
   return releaseRoutes({
     "GET /v1/projects": listing("/v1/projects"),
-    "GET /v1/projects/{projectId}/branches": listing(
-      "/v1/projects/{projectId}/branches",
-    ),
+    "GET /v1/projects/{projectId}/branches": (init) => {
+      recorded.branchListings.push(
+        init.params?.query?.gitName as string | undefined,
+      );
+      return listing("/v1/projects/{projectId}/branches")(init);
+    },
     "GET /v1/services": listing("/v1/services"),
     "GET /v1/databases": listing("/v1/databases"),
     "GET /v1/buckets": listing("/v1/buckets"),
@@ -215,6 +225,19 @@ describe("service commands given an address", () => {
     });
     expect(rolledBack.exitCode).toBe(0);
     expect(rolledBack.presented?.data).toMatchObject({ branch: "pr-42" });
+  });
+
+  it("lists the branches once, when resolving the address", async () => {
+    const recorded = recorder();
+    const harness = await makeServiceCli({ routes: addressRoutes(recorded) });
+
+    const result = await harness.cli.run(
+      ["service", "delete", "@pr-42:shop.api", "--confirm", "@pr-42:shop.api"],
+      { cwd: harness.cwd, env: harness.env },
+    );
+
+    expect(result.exitCode).toBe(0);
+    expect(recorded.branchListings).toEqual(["pr-42"]);
   });
 
   it("refuses --branch alongside an address", async () => {
