@@ -577,9 +577,12 @@ export function deletePresentations(
     stdout: noDataLines("A delete has no data; its exit code is the result."),
     json: () => result,
     human: () => [
-      completed(`Deleted ${result.service.name} and every version it owned.`),
+      completed(
+        `Deleted ${result.service.name} from branch ${result.branch.name} and every version it owned.`,
+      ),
       fields([
         { label: "project", value: result.projectId },
+        { label: "branch", value: result.branch.name },
         { label: "service", value: result.service.name },
         { label: "deleted", value: "yes" },
       ]),

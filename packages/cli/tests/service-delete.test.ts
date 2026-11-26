@@ -26,13 +26,14 @@ describe("prisma service delete", () => {
     expect(result.exitCode).toBe(0);
     expect(result.presented?.data).toEqual({
       projectId: "proj_1",
+      branch: { name: "main" },
       service: { id: "svc_1", name: "hello-world" },
       deleted: true,
     });
     expect(presentedSummary(result.presented)).toEqual({
       kind: "summary",
       status: "ok",
-      text: "Deleted hello-world and every version it owned.",
+      text: "Deleted hello-world from branch main and every version it owned.",
     });
     // The service is gone, so nothing service-scoped can run next;
     // listing what remains is all that is left to suggest.
@@ -207,6 +208,9 @@ describe("prisma service delete", () => {
       throw new Error("expected an errored envelope");
     }
     expect(frame.envelope.error.code).toBe("CLI.CONSENT_REQUIRED");
+    expect(frame.envelope.error.why).toBe(
+      'Delete Service "hello-world" (svc_1) on branch main and every version it owns?',
+    );
     expect(frame.envelope.error.meta).toMatchObject({
       consentToken: "hello-world",
     });

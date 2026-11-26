@@ -98,6 +98,7 @@ export interface ServiceVersionDeleteResult {
 
 export interface ServiceDeleteResult {
   projectId: string;
+  branch: { name: string };
   service: ServiceSummary;
   deleted: true;
 }

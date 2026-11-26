@@ -48,7 +48,7 @@ export const serviceDeleteCommand = defineCommand({
 
     const where = state.address
       ? ` (${state.service.id}) ${describeEnvironment(state.address)}`
-      : "";
+      : ` (${state.service.id}) on branch ${state.target.branch.name}`;
     const granted = await ctx.prompt.consent(
       `Delete Service "${state.service.name}"${where} and every version it owns?`,
       { token: state.address?.text ?? state.service.name },
@@ -85,6 +85,7 @@ export const serviceDeleteCommand = defineCommand({
 
     const result: ServiceDeleteResult = {
       projectId: state.projectId,
+      branch: { name: state.target.branch.name },
       service: toServiceSummary(deletedService),
       deleted: true,
     };
