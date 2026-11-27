@@ -1,11 +1,14 @@
 import { defineConfig } from "vitest/config";
 
+const WINDOWS = process.platform === "win32";
+
 export default defineConfig({
   test: {
     environment: "node",
-    // GitHub's Windows runners stall on filesystem work now and then, so a
-    // test that takes milliseconds elsewhere can run past vitest's 5s default.
-    testTimeout: process.platform === "win32" ? 30_000 : 5_000,
+    // Windows CI runs sometimes go several times slower across the board,
+    // and a fast test or its cleanup then runs past vitest's default limits.
+    testTimeout: WINDOWS ? 30_000 : 5_000,
+    hookTimeout: WINDOWS ? 30_000 : 10_000,
     // Suite-wide telemetry guard, mirroring the reference repo's
     // repo-wide setting: any test that reaches production wiring
     // reading the real `process.env` (the bin's main(), which hands
