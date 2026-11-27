@@ -3,11 +3,18 @@ import type { ManagementApiClient } from "@prisma/management-api-sdk";
 import type { BranchRole } from "../../types/branch";
 import { type ApiErrorBody, apiErrorDetail } from "../management-api-error";
 
+export interface BranchVariableGroup {
+  readonly id: string;
+  readonly name: string;
+  readonly class: string;
+}
+
 export interface BranchRecord {
   readonly id: string;
   readonly gitName: string;
   readonly isDefault: boolean;
   readonly role: BranchRole;
+  readonly variableGroup?: BranchVariableGroup | null;
 }
 
 /** Every live Branch of a Project, following the cursor through each
@@ -48,6 +55,9 @@ export async function listProjectBranches(
         gitName: branch.gitName,
         isDefault: branch.isDefault,
         role: branch.role,
+        variableGroup:
+          (branch as { variableGroup?: BranchVariableGroup | null })
+            .variableGroup ?? null,
       })),
     );
     cursor = data.pagination.hasMore

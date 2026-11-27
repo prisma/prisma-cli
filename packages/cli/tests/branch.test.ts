@@ -147,7 +147,7 @@ describe("prisma branch list", () => {
       { kind: "fields", rows: [{ label: "project", value: "Billing" }] },
       {
         kind: "table",
-        columns: ["Name", "Role", "Env map"],
+        columns: ["Name", "Role", "Variable group"],
         rows: [
           ["main", "production", "production"],
           ["alpha", "preview", "preview"],

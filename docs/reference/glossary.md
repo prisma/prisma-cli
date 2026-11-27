@@ -20,6 +20,10 @@ output, and implementation.
 | Schema | Local data model in the codebase. Out of scope for the current beta package. | Resource model |
 | Database | Branch-bound Prisma Postgres data store managed by the `database` command group. | Resource model |
 | Bucket | Branch-scoped Tigris object-store resource managed by the `bucket` command group. | Resource model |
+| Variable group | A named set of branch variables in a project. The built-in groups are `production` and `preview`; a custom group has one rule (`equals` or `startsWith`) on the branch's git name. Each branch receives exactly one group. | `prisma project variable group` |
+| Branch variable | A key and value stored in a variable group. Every branch that receives the group gets it. The recommended kind of variable. | `prisma project variable` |
+| Service variable | A key and value stored on one service. It wins over branch variables for that service only, and changes only with a deploy of that service. | `prisma project variable list --service` |
+| Override | Deprecated. A value for one preview branch, set with `prisma project env --branch`. Existing overrides still apply; move them into a custom group. | `prisma project env` |
 | Bucket key | One-time-credential access key for a bucket, with role `read` or `read_write`. | Resource model |
 | Command group | First command segment after `prisma`, such as `auth` or `app`. | Command spec |
 | Action | Operation inside a command group, such as `deploy` or `whoami`. | Command spec |
@@ -37,6 +41,7 @@ output, and implementation.
 | Project | App, site, service | A project is the remote Prisma resource linked to a repo; app is a deployable workload. |
 | App | Project | App and project have different lifecycle and selection rules. |
 | Branch | Legacy target wording | Branch is the project-scoped isolation boundary; `env` is reserved for environment variables. |
+| Variable, branch variable, service variable | Env var, class, scope | `prisma project variable` and Console say "variable"; class and scope belong to the deprecated `prisma project env`. |
 | Preview branch | Legacy preview target wording | Preview branch is the documented product term. |
 | `@prisma/cli` | `@prisma/cli@preview` | The primary package line now resolves to the official beta CLI. |
 | `@prisma/cli@dev` | Branch-specific npm tags | The dev dist-tag means latest integrated `main`; PR previews cover exact unmerged commits. |

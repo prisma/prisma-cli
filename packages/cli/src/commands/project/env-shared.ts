@@ -17,7 +17,7 @@ import { type ProjectCommandContext, resolvePinnedProject } from "./context";
 
 export const roleFlag = flag.enum({
   brief:
-    "Project-wide scope: production, or preview (shared by every preview branch)",
+    "Project-wide scope: production, or preview (shared by every preview branch that no custom group matches)",
   values: ["production", "preview"],
 });
 
@@ -29,7 +29,7 @@ export const projectFlag = flag.string({
 
 export const branchFlag = flag.string({
   brief:
-    "Scope to one preview branch's override; use for values only that branch needs",
+    "Deprecated: scope to one preview branch's override. Use only to change an existing override; put new values in a variable group",
   placeholder: "git-name",
 });
 
@@ -192,4 +192,18 @@ export function previewDefaultDiagnostics(
     summary: warning,
     nextActions: [],
   }));
+}
+
+/** Warns that `prisma project env` will be removed, naming the
+ *  `prisma project variable` command that replaces this one. The warning is
+ *  commentary, so the command's data output stays unchanged for scripts. */
+export function reportEnvDeprecation(
+  ctx: ProjectCommandContext,
+  command: "add" | "update" | "delete" | "list",
+): void {
+  ctx.report({
+    kind: "message",
+    severity: "warn",
+    text: `\`prisma project env\` is deprecated and will be removed in a later release. Use \`prisma project variable ${command}\` instead.`,
+  });
 }

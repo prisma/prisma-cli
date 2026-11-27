@@ -19,6 +19,7 @@ import type { EnvRmResult } from "../../types/app-env";
 import {
   branchFlag,
   projectFlag,
+  reportEnvDeprecation,
   requireEnvScope,
   resolveEnvTarget,
   roleFlag,
@@ -61,9 +62,9 @@ export const projectEnvDeleteCommand = defineCommand({
   },
   help: {
     summary:
-      "Delete an environment variable from one scope: production, preview, or one branch",
+      "Deprecated. Delete an environment variable from one scope; use 'prisma project variable delete' instead",
     description:
-      "Removes the variable from the named scope only; the same key in other scopes is untouched. Services lose the value on their next deploy.",
+      "Deprecated: 'prisma project env' will be removed in a later release. Use 'prisma project variable delete', which deletes from variable groups. Removes the variable from the named scope only; the same key in other scopes is untouched. Services lose the value on their next deploy.",
     examples: [
       "project env delete STRIPE_KEY --role production",
       "project env delete STRIPE_KEY --role preview",
@@ -72,6 +73,8 @@ export const projectEnvDeleteCommand = defineCommand({
   },
   needs: { credentials: true },
   handler: async (args, ctx) => {
+    reportEnvDeprecation(ctx, "delete");
+
     const key = args.positionals.key;
     const scope = requireEnvScope(args.flags, "delete");
     const { projectId, resolved } = await resolveEnvTarget(

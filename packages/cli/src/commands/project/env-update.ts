@@ -28,6 +28,7 @@ import {
   fileFlag,
   fileWritePresentations,
   projectFlag,
+  reportEnvDeprecation,
   requireEnvScope,
   resolveEnvTarget,
   roleFlag,
@@ -75,9 +76,10 @@ export const projectEnvUpdateCommand = defineCommand({
     },
   },
   help: {
-    summary: "Replace an existing environment variable's value",
+    summary:
+      "Deprecated. Replace an environment variable's value; use 'prisma project variable update' instead",
     description:
-      "Overwrites one variable's value in one scope; the variable must already exist there (use 'project env add' to create it). With --file, overwrites every variable the dotenv file lists. New values reach services on their next deploy.",
+      "Deprecated: 'prisma project env' will be removed in a later release. Use 'prisma project variable update', which writes to variable groups. Overwrites one variable's value in one scope; the variable must already exist there (use 'project env add' to create it). With --file, overwrites every variable the dotenv file lists. New values reach services on their next deploy.",
     examples: [
       "project env update STRIPE_KEY=sk_new_xxx --role production",
       "project env update STRIPE_KEY=sk_new_xxx --role preview",
@@ -87,6 +89,8 @@ export const projectEnvUpdateCommand = defineCommand({
   },
   needs: { credentials: true },
   handler: async (args, ctx) => {
+    reportEnvDeprecation(ctx, "update");
+
     const source = resolveEnvWriteSource(
       args.positionals.assignment,
       args.flags.file,

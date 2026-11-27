@@ -23,8 +23,8 @@ Example workflow:
 pnpm prisma-cli auth login
 pnpm prisma-cli project create my-app
 pnpm prisma-cli git connect git@github.com:owner/repo.git
-pnpm prisma-cli project env add --file .env --role preview
-pnpm prisma-cli project env list --role preview
+pnpm prisma-cli project variable add --file .env --group preview
+pnpm prisma-cli project variable list --group preview
 ```
 
 Deployments start from pushing the connected repository, the Console, or `prisma-cli deploy`.

@@ -49,6 +49,14 @@ import { projectListCommand } from "./commands/project/list";
 import { projectRenameCommand } from "./commands/project/rename";
 import { projectShowCommand } from "./commands/project/show";
 import { projectTransferCommand } from "./commands/project/transfer";
+import { projectVariableAddCommand } from "./commands/project/variable/add";
+import { projectVariableDeleteCommand } from "./commands/project/variable/delete";
+import { projectVariableGroupCreateCommand } from "./commands/project/variable/group-create";
+import { projectVariableGroupDeleteCommand } from "./commands/project/variable/group-delete";
+import { projectVariableGroupListCommand } from "./commands/project/variable/group-list";
+import { projectVariableGroupUpdateCommand } from "./commands/project/variable/group-update";
+import { projectVariableListCommand } from "./commands/project/variable/list";
+import { projectVariableUpdateCommand } from "./commands/project/variable/update";
 import { serviceCreateCommand } from "./commands/service/create";
 import { serviceDeleteCommand } from "./commands/service/delete";
 import { serviceDomainAddCommand } from "./commands/service/domain-add";
@@ -91,6 +99,14 @@ export const platformCommandFamily: CommandFamily = defineCommandFamily({
     projectEnvUpdate: projectEnvUpdateCommand,
     projectEnvList: projectEnvListCommand,
     projectEnvDelete: projectEnvDeleteCommand,
+    projectVariableAdd: projectVariableAddCommand,
+    projectVariableUpdate: projectVariableUpdateCommand,
+    projectVariableDelete: projectVariableDeleteCommand,
+    projectVariableList: projectVariableListCommand,
+    projectVariableGroupList: projectVariableGroupListCommand,
+    projectVariableGroupCreate: projectVariableGroupCreateCommand,
+    projectVariableGroupUpdate: projectVariableGroupUpdateCommand,
+    projectVariableGroupDelete: projectVariableGroupDeleteCommand,
     postgresList: postgresListCommand,
     postgresShow: postgresShowCommand,
     postgresCreate: postgresCreateCommand,
@@ -194,16 +210,42 @@ export const cliGroups: Readonly<
           "Connect GitHub; branches carrying the deploy workflow deploy on push",
       },
       {
-        run: "project env add KEY=value --role preview",
-        brief: "Set env vars services get at deploy",
+        run: "project variable add KEY=value --group preview",
+        brief: "Set a variable services get at deploy",
       },
     ],
   },
   "project env": {
     brief:
-      "Manage a project's environment variables. Add, update, list, and delete values per scope",
+      "Deprecated: use 'project variable'. Manage environment variables per scope; will be removed in a later release",
     description:
-      "Variables live in scopes: production, preview (shared by every preview branch), or a single branch's override. Values reach services when they deploy, and are write-only afterwards: list shows metadata, never values.",
+      "Deprecated: 'prisma project env' will be removed in a later release. Use 'prisma project variable', which manages the same variables by group. Here, variables live in scopes: production, preview, or a single branch's override. Overrides are deprecated too: use 'project env --branch' only to change or delete an existing override, and move its value into a custom group with 'prisma project variable group create' and 'prisma project variable add'. Values reach services when they deploy, and are write-only afterwards: list shows metadata, never values.",
+  },
+  "project variable": {
+    brief:
+      "Manage a project's variables by group. Add, update, list, and delete values, and create custom groups",
+    description:
+      "A variable is a KEY=VALUE pair that services receive when they deploy. Values are write-only: list shows keys and ids, never values. These commands manage branch variables: each belongs to one group, and each branch receives the variables of exactly one group, so a new branch gets its configuration without manual steps. A service can also have its own service variables, which win over branch variables for that service only; these commands do not set them. Every project has two built-in groups: production, for the production branch, and preview, for every other branch. A custom group has a rule that picks its branches by exact name or by name prefix; a branch it picks receives the custom group instead of preview. Groups do not inherit from each other. Writes always target a group, never a single branch: per-branch overrides are deprecated. Keys that start with COMPOSER_ are managed by Prisma.",
+    workflow: [
+      {
+        run: "project variable add API_URL=https://api.example --group production",
+        brief: "Set a variable the production branch receives",
+      },
+      {
+        run: "project variable group create staging --equals staging",
+        brief: "Give the staging branch its own group",
+      },
+      {
+        run: "project variable list --branch staging",
+        brief: "See which group and keys a branch receives",
+      },
+    ],
+  },
+  "project variable group": {
+    brief:
+      "Manage variable groups. List groups, and create, rename, change the rule of, or delete custom groups",
+    description:
+      "The built-in groups, production and preview, always exist and cannot be renamed, changed, or deleted. A project can add up to ten custom groups. Each custom group has one rule: --equals matches one branch name, --starts-with matches every branch whose name starts with a prefix. A branch that matches a custom group receives that group's variables instead of the preview group's.",
   },
   postgres: {
     brief:
@@ -388,6 +430,14 @@ export const mountedCommands: Readonly<Record<string, AnyCommand>> = {
   "project env update": projectEnvUpdateCommand,
   "project env list": projectEnvListCommand,
   "project env delete": projectEnvDeleteCommand,
+  "project variable add": projectVariableAddCommand,
+  "project variable update": projectVariableUpdateCommand,
+  "project variable delete": projectVariableDeleteCommand,
+  "project variable list": projectVariableListCommand,
+  "project variable group list": projectVariableGroupListCommand,
+  "project variable group create": projectVariableGroupCreateCommand,
+  "project variable group update": projectVariableGroupUpdateCommand,
+  "project variable group delete": projectVariableGroupDeleteCommand,
   "postgres list": postgresListCommand,
   "postgres show": postgresShowCommand,
   "postgres create": postgresCreateCommand,

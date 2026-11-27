@@ -7,10 +7,10 @@ metadata:
 description: >-
   Use when hosting, deploying, or operating an app on the Prisma Platform:
   projects, branches, preview environments, services and their versions,
-  Prisma Postgres databases, object-store buckets, environment variables,
-  custom domains, logs, or the GitHub integration. Triggers on "Prisma
-  Platform", "Prisma Compute", "Prisma Postgres", "Prisma Storage",
-  "preview environment", `prisma deploy`, `prisma dev`, `prisma auth`,
+  Prisma Postgres databases, object-store buckets, environment variables
+  and variable groups, custom domains, logs, or the GitHub integration.
+  Triggers on "Prisma Platform", "Prisma Compute", "Prisma Postgres",
+  "Prisma Storage", "preview environment", `prisma deploy`, `prisma dev`, `prisma auth`,
   `prisma project`, `prisma branch`, `prisma service`, `prisma postgres`,
   `prisma bucket`, `prisma git`, `prisma.config.ts`, promote, rollback.
 ---
@@ -122,15 +122,17 @@ old file's `extensions` and `state` into the section, then delete the
 2. **Project**: one product or codebase. Its region is chosen at creation and
    is immutable afterwards; every resource in the project inherits it.
 3. **Branch**: the isolation boundary, named after a git branch. A branch is
-   an environment: it owns its own services, its own databases, its own
-   buckets, and its own environment-variable overrides.
+   an environment: it owns its own services, its own databases, and its own
+   buckets. It receives one variable group from the project (see
+   Environment variables).
 4. Inside a branch: **services** (HTTP apps, deployed as versions),
    **databases**, and **buckets**.
 
 The first branch of a project is the **production** branch. Every branch
 after it is a **preview** branch. Production and previews differ in exactly
-two ways: which environment-variable class they resolve (see below), and
-lifecycle (previews can be reclaimed and torn down; production cannot).
+two ways: which variable group they receive (production always receives the
+`production` group; see below), and lifecycle (previews can be reclaimed and
+torn down; production cannot).
 
 A CLI invocation resolves its project from a directory binding, created when
 a project is created from or linked to the directory and stored in the
@@ -150,8 +152,8 @@ branch is the environment, and branches come into being by deploying to them:
    it. An environment name must be a valid git ref name; an invalid name is
    a hard error.
 
-A preview branch that needs a database gets a fresh, empty one, wired in as a
-branch-scoped `DATABASE_URL`. Preview work can never touch production data
+A preview branch that needs a database gets a fresh, empty one, and the
+platform gives that branch's services its connection string. Preview work can never touch production data
 unless you explicitly point it there. Schema comes from your committed
 migrations; data does not follow from production.
 
@@ -240,9 +242,10 @@ or followed; the `service` group covers all of it.
 
 Two movements between versions matter:
 
-1. **Promote** takes a version to production by rebuilding it with
-   production-class environment variables. A version built on a preview
-   branch never carries preview configuration into production.
+1. **Promote** takes a version to production by rebuilding it with the
+   `production` group's variables and the production service's own service
+   variables. A version built on a preview branch never carries preview
+   configuration into production.
 2. **Rollback** points production back at a previous version. A stopped
    target is started and health-checked before traffic switches, so rollback
    is zero-downtime.
@@ -322,28 +325,86 @@ code written against it runs unchanged on the platform.
 
 ## Environment variables
 
-Configuration has two independent axes:
+Services receive their environment variables when they deploy. You set two
+kinds:
 
-| Axis | Values | Meaning |
-| --- | --- | --- |
-| Class | `production`, `preview` | Which branches resolve it: production-class values reach the production branch, preview-class values reach every preview |
-| Scope | project template, branch override | A template applies to all branches of its class; an override pins a value to one named preview branch |
+1. **Branch variables** are stored in a **variable group** on the project.
+   Each branch receives exactly one group, and every service on that branch
+   gets the group's values.
+2. **Service variables** are stored on one service. For that service only,
+   they win over branch variables with the same key.
+
+Every project has two built-in groups, `production` and `preview`. A project
+can also have up to ten **custom groups**. Each custom group has one rule on
+the branch's git name: `equals <name>` matches one branch, and
+`startsWith <prefix>` matches every branch whose name starts with the prefix
+(shown as `feat/*`). A branch receives its group like this:
+
+1. The production branch receives `production`.
+2. A preview branch receives the custom group whose `equals` rule matches its
+   name. If none does, it receives the custom group with the longest
+   matching `startsWith` rule. If none matches, it receives `preview`.
+
+Groups do not inherit from each other. If a branch receives a custom group,
+it gets none of the `preview` group's values, so the custom group must hold
+every key that branch needs.
+
+A deploy builds its variables in three layers. For the same key, a later
+layer wins:
+
+1. the variables of the branch's group;
+2. the branch's overrides, while any still exist (deprecated, see below);
+3. the service's own service variables.
+
+**Prefer branch variables.** They follow the branch: a new git branch that a
+group's rule matches gets that group's values on its first deploy, with no
+manual step. Each new branch also gets its own database, buckets, and
+services, so it gets a complete working environment with the right
+configuration. Use a service variable only for a value that belongs to one
+service, such as a key that only that service reads.
 
 Rules that bite:
 
-1. Branch overrides exist only for the preview class. Production
-   configuration is always the project template; there is no way to give one
-   production deploy a special value.
-2. Values are write-only. Listing shows names and scopes, never values, and
-   no API returns them. To change a value you replace it.
-3. Variables resolve at deploy time from the branch's class. You never pass
-   environment variables as part of a deploy.
-4. Templates, per-branch overrides, and wholesale dotenv import are all
-   managed through the `project env` group.
-5. `DATABASE_URL` is managed for you when the module declares a database:
-   previews get their own fresh database's URL, production gets the
-   production database's. Only set it yourself for databases the platform
-   does not manage.
+1. Values are write-only. Listing shows keys, never values, and no API
+   returns them. To change a value you replace it.
+2. A change reaches a service on its next deploy. Change branch variables at
+   any time, then deploy. Service variables change only together with a
+   deploy of that service.
+3. Manage branch variables with the `project variable` group. Every write
+   names a group with `--group <name>` or `--role production|preview`; no
+   write picks a group by default. `--file` imports a dotenv file.
+   `project variable group` lists groups and creates, changes, or deletes
+   custom groups.
+4. In a project with custom groups, `--role preview` writes fail, because
+   the `preview` group no longer reaches every preview branch. Use
+   `--group preview` to write to the `preview` group only.
+5. `project variable list --branch <name>` shows which group a branch
+   receives and where each key comes from. Add `--service <name>` to include
+   that service's service variables.
+6. `project variable` cannot set service variables. Set them in the Console
+   on the service's Variables page, where Save and Deploy saves the values
+   and deploys the service. Run `prisma deploy --help` to see whether your
+   version can send them with a deploy.
+7. **Overrides are deprecated.** An override is a value for one preview
+   branch, set with `project env --branch`. Existing overrides still apply,
+   but do not create new ones: the Console cannot, and `project variable`
+   refuses `--branch` writes. Move each override into a custom group whose
+   rule matches the branch: run `project variable group create <name>
+   --equals <branch>`, then `project variable add KEY=value --group <name>`.
+   The new group does not include the `preview` group's values. Add every
+   key the branch needs, or use the Console, which can copy them.
+   In the Console, "Move to a custom group" on the service's Variables page
+   does the same, and can first copy the `preview` group's values into the
+   new group.
+8. The `project env` group is deprecated as a whole and will be removed in a
+   later release; each run prints a warning. Use it only to change or delete
+   an override that already exists.
+9. Keys that start with `COMPOSER_` are written by Composer and shown as
+   "Managed by Prisma". They are not overrides; do not move or delete them.
+10. `DATABASE_URL` is managed for you when the module declares a database:
+    previews get their own fresh database's URL, production gets the
+    production database's. Only set it yourself for databases the platform
+    does not manage.
 
 ## Local development
 
@@ -391,9 +452,12 @@ Windows is not supported for the local stack yet.
    service.
 5. **A custom domain stays unverified.** The CNAME to the reported target
    must exist first. Fix DNS, then retry the verification.
-6. **Production shows a stale value after an environment-variable change.**
-   Variables are resolved at deploy time. Re-deploy (or promote) so the new
-   value is picked up.
+6. **A service shows a stale or missing value after a variable change.**
+   Services read variables only when they deploy, so re-deploy (or promote)
+   to pick up the change. If the value is still wrong, run
+   `prisma project variable list --branch <name> --service <name>`: the
+   branch may receive a custom group that lacks the key, or an override or
+   service variable may win over the group's value.
 7. **An environment name is rejected.** Environment names must be valid git
    ref names; rename it.
 8. **A resource disappeared from the platform after a deploy.** It was

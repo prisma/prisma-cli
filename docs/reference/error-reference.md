@@ -29,6 +29,7 @@ Namespaces:
 | `PROJECT` | Project and environment management (`prisma project`) |
 | `SERVICE` | Deployed service management (`prisma service`) |
 | `SKILLS` | Agent-skill delivery (`prisma skills`) |
+| `VARIABLE` | Variables and variable groups (`prisma project variable`) |
 
 ## ADDRESS
 
@@ -546,6 +547,8 @@ The platform rejected creating a project — raised by `prisma project create` a
 
 The Management API answered `prisma project delete` with HTTP 400, which typically means the project still has active deployments; the fix is to delete the project's services first (`prisma service delete --service <name>`) and retry. The API's own message replaces the default `why` when present. Meta: none.
 
+The `PROJECT.ENV_*` codes below come from the `prisma project env` commands, which are deprecated and will be removed in a later release. The per-branch overrides that `prisma project env --branch` writes are deprecated too: move their values into a custom group. `prisma project variable` raises `VARIABLE.*` codes instead.
+
 ### PROJECT.ENV_API_ERROR
 
 A Management API call made by the `prisma project env` commands (reading, writing, or deleting variables, or resolving and creating branches for a scope) failed. The summary names the call that failed, for example "Failed to add STRIPE_KEY". An HTTP 401 or 403 raises this code too, with a `why` saying the API rejected the request as unauthorized and a `prisma auth login` next action. Meta: `status`, `apiCode` (the API's own error code, when the response supplied one).
@@ -745,3 +748,69 @@ A warn diagnostic from the skills sync (`skills sync`, and the sync step of `ini
 ### SKILLS.VERSION_CONFLICT
 
 A warn diagnostic from the skills sync (`skills sync`, and the sync step of `init`): workspace members install different versions of the same skill-bearing Prisma package, so the skills for the highest version were installed and the members pinning a lower version get a skill describing a version they did not install. The nextAction is to pin one version of the package across the workspace. Meta: none.
+
+## VARIABLE
+
+### VARIABLE.ALREADY_EXISTS
+
+`prisma project variable add` named a key that already exists in the target group. With `--file`, every key in the file is checked before anything is written, and the error lists all keys that already exist. Nothing is written. The fix is `prisma project variable update` for those keys. Meta: `keys`.
+
+### VARIABLE.API_ERROR
+
+A Management API call made by the `prisma project variable` commands (listing groups, reading, writing, or deleting variables, or reading what a branch receives) failed. The summary names the call that failed, for example "Failed to add STRIPE_KEY". An HTTP 401 or 403 raises this code too, with a `why` saying the API rejected the request and a `prisma auth login` next action. Meta: `status`, `apiCode` (the API's own error code, when the response supplied one).
+
+### VARIABLE.BRANCH_NOT_FOUND
+
+`prisma project variable list --branch <git-name>` named a branch that does not exist in the project. A branch exists once it has been deployed. The fix is to check the name with `prisma branch list`. Meta: none.
+
+### VARIABLE.BUILTIN_GROUP_DELETE
+
+`prisma project variable group delete` named `production` or `preview`. Every project has these two groups and they cannot be deleted. The fix is to delete a custom group instead; `prisma project variable group list` shows them. Meta: none.
+
+### VARIABLE.BUILTIN_GROUP_UPDATE
+
+`prisma project variable group update` named `production` or `preview`. These groups cannot be renamed or given a rule. The fix is to create a custom group with `prisma project variable group create`. Meta: none.
+
+### VARIABLE.CONFLICTING_FLAGS
+
+A `prisma project variable` write or `list` passed both `--group` and `--role`. They select the same thing, so pass one. Meta: none.
+
+### VARIABLE.CUSTOM_GROUP_CONFLICT
+
+A `prisma project variable` write passed `--role preview` in a project that has custom groups. Branches that a custom group matches receive that group instead of preview, so `--role preview` would not reach every preview branch. The fix is `--group preview` to write to the preview group only, or `--group <name>` for a custom group. Meta: none.
+
+### VARIABLE.FILE_APPLY_FAILED
+
+`prisma project variable add --file` or `update --file` failed while writing one key, after zero or more earlier keys from the file were written. Keys are written one at a time in file order, and the import stops at the first failure. The `why` names the keys already written and the cause. The fix is to remove the written keys from the file, fix the cause, and run the command again. Meta: `file`, `failedKey`, `writtenKeys`.
+
+### VARIABLE.GROUP_NOT_FOUND
+
+A `prisma project variable` command named a group that does not exist in the project. The fix is to run `prisma project variable group list` and use one of the listed names. Meta: none.
+
+### VARIABLE.GROUP_NOTHING_TO_UPDATE
+
+`prisma project variable group update` was run without `--name`, `--equals`, or `--starts-with`, so there was nothing to change. Meta: none.
+
+### VARIABLE.GROUP_RULE_CONFLICT
+
+`prisma project variable group create` or `update` passed both `--equals` and `--starts-with`. A custom group has exactly one rule, so pass one. Meta: none.
+
+### VARIABLE.GROUP_RULE_MISSING
+
+`prisma project variable group create` was run without `--equals` or `--starts-with`. A custom group needs a rule that says which branches receive it. Meta: none.
+
+### VARIABLE.MISSING_GROUP
+
+A `prisma project variable` write was run without `--group` or `--role`. Writes never pick a group by default, so a value cannot reach production by accident. Meta: none.
+
+### VARIABLE.NO_BRANCH_WRITE
+
+A `prisma project variable` write passed `--branch`. These commands write branch variables to groups, never to a single branch. A per-branch override, set with `prisma project env --branch`, is deprecated, and so is the whole `prisma project env` group. The recommended fix is to move the value into a group: create a custom group for that branch with `prisma project variable group create <name> --equals <branch>`, then add the value with `prisma project variable add --group <name>`. The new group does not include the `preview` group's values. Add every key the branch needs, or use the Console, which can copy them. In Console, "Move to a custom group" on the service's Variables page does the same. An existing override can still be changed with the deprecated `prisma project env --branch`, which the error's last next action shows. Meta: none.
+
+### VARIABLE.NOT_FOUND
+
+`prisma project variable update` or `delete` named a key that does not exist in the target group. With `update --file`, every key in the file is checked before anything is written, and the error lists all missing keys. Nothing is written. The fix for update is `prisma project variable add`; for delete, list the group's keys with `prisma project variable list --group <name>`. Meta: `keys` (update only).
+
+### VARIABLE.USAGE_ERROR
+
+`prisma project variable add` or `update` got input it cannot use: no `KEY=VALUE` and no `--file`, a key that is not valid (keys contain only uppercase letters, digits, and underscores, and do not start with a digit), an empty value, a key given alone that is not set in the shell, or a dotenv file that cannot be read, has no assignments, sets a key twice, or sets an empty value. The `why` says which. Nothing is written. Meta: none.
