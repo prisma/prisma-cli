@@ -17,7 +17,7 @@ import {
   presentedSummary,
   type Routes,
   readFlowRoutes,
-  SERVICE,
+  trunkDefaultBranchRoutes,
 } from "./service-testkit";
 
 const EXPECTED_TARGET = {
@@ -146,32 +146,9 @@ it.each([
   ]);
 });
 
-/** A project whose default branch is `trunk`, with a preview branch named `main`. */
-function trunkDefaultBranchRoutes(
-  askedBranches: unknown[],
-  overrides: Routes,
-): Routes {
+function trunkRoutes(askedBranches: unknown[], overrides: Routes): Routes {
   return domainRoutes({
-    "GET /v1/projects/{projectId}/branches": () => ({
-      data: page([
-        {
-          id: "br_main_preview",
-          gitName: "main",
-          isDefault: false,
-          role: "preview",
-        },
-        {
-          id: "br_trunk",
-          gitName: "trunk",
-          isDefault: true,
-          role: "production",
-        },
-      ]),
-    }),
-    "GET /v1/apps": (init) => {
-      askedBranches.push(init.params?.query?.branchGitName);
-      return { data: page([{ ...SERVICE, branchId: "br_trunk" }]) };
-    },
+    ...trunkDefaultBranchRoutes(askedBranches),
     ...overrides,
   });
 }
@@ -188,7 +165,7 @@ it.each([
 }) => {
   const askedBranches: unknown[] = [];
   const harness = await makeServiceCli({
-    routes: trunkDefaultBranchRoutes(askedBranches, {
+    routes: trunkRoutes(askedBranches, {
       ...listing([activeRecord()]),
       "GET /v1/urls/{id}": () => ({ data: { data: activeRecord() } }),
       "POST /v1/urls/{id}/check": () => ({ data: { data: activeRecord() } }),
@@ -209,9 +186,56 @@ it.each([
   });
 });
 
+it("without --branch, delete asks to delete the domain from production on the default branch", async () => {
+  const harness = await makeServiceCli({
+    routes: trunkRoutes([], listing([activeRecord()])),
+  });
+
+  const result = await harness.cli.run(
+    ["service", "domain", "delete", "shop.acme.com", ...TARGET_ARGS, "--json"],
+    { cwd: harness.cwd, env: harness.env },
+  );
+
+  const frame = result.json.at(-1);
+  if (frame?.kind !== "result" || frame.envelope.ok) {
+    throw new Error("expected an errored envelope");
+  }
+  expect(frame.envelope.error.code).toBe("CLI.CONSENT_REQUIRED");
+  expect(frame.envelope.error.why).toBe(
+    'Delete shop.acme.com from Service "hello-world" in production (branch trunk)?',
+  );
+});
+
+it("with --branch, reports the kind the project lists for that branch, not one guessed from its name", async () => {
+  const harness = await makeServiceCli({
+    routes: trunkRoutes([], {
+      ...listing([activeRecord()]),
+      "GET /v1/urls/{id}": () => ({ data: { data: activeRecord() } }),
+    }),
+  });
+
+  const result = await harness.cli.run(
+    [
+      "service",
+      "domain",
+      "show",
+      "shop.acme.com",
+      ...TARGET_ARGS,
+      "--branch",
+      "main",
+    ],
+    { cwd: harness.cwd, env: harness.env, isTty: { stdout: true } },
+  );
+
+  expect(result.exitCode).toBe(0);
+  expect(result.presented?.data).toMatchObject({
+    branch: { name: "main", kind: "preview" },
+  });
+});
+
 it("without --branch, add names the default branch in the commands it offers next", async () => {
   const harness = await makeServiceCli({
-    routes: trunkDefaultBranchRoutes([], {
+    routes: trunkRoutes([], {
       ...listing([]),
       "POST /v1/services/{serviceId}/urls": () => ({
         data: { data: domainRecord() },

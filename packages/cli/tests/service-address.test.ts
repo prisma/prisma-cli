@@ -61,10 +61,17 @@ interface Recorded {
   readonly versionListings: string[];
   /** The service id each delete targeted. */
   readonly deletes: string[];
+  /** The git name each branch listing asked for, if any. */
+  readonly branchListings: (string | undefined)[];
 }
 
 function recorder(): Recorded {
-  return { appListings: [], versionListings: [], deletes: [] };
+  return {
+    appListings: [],
+    versionListings: [],
+    deletes: [],
+    branchListings: [],
+  };
 }
 
 /** The release routes, with every listing the address lookup reads and
@@ -73,9 +80,12 @@ function addressRoutes(recorded: Recorded = recorder()) {
   const base = releaseRoutes();
   return releaseRoutes({
     "GET /v1/projects": listing("/v1/projects"),
-    "GET /v1/projects/{projectId}/branches": listing(
-      "/v1/projects/{projectId}/branches",
-    ),
+    "GET /v1/projects/{projectId}/branches": (init) => {
+      recorded.branchListings.push(
+        init.params?.query?.gitName as string | undefined,
+      );
+      return listing("/v1/projects/{projectId}/branches")(init);
+    },
     "GET /v1/services": listing("/v1/services"),
     "GET /v1/databases": listing("/v1/databases"),
     "GET /v1/buckets": listing("/v1/buckets"),
@@ -169,7 +179,10 @@ describe("service commands given an address", () => {
       { cwd: harness.cwd, env: harness.env },
     );
     expect(byAddress.exitCode).toBe(0);
-    expect(byAddress.presented?.data).toMatchObject({ deleted: true });
+    expect(byAddress.presented?.data).toMatchObject({
+      branch: "pr-42",
+      deleted: true,
+    });
     expect(recorded.deletes).toEqual(["svc_api_pr42"]);
   });
 
@@ -188,6 +201,43 @@ describe("service commands given an address", () => {
     expect(frame.envelope.error.why).toContain(
       '"hello-world" (svc_1) in production (branch main)',
     );
+  });
+
+  it("names the environment and branch in the rollback question and result", async () => {
+    const harness = await makeServiceCli({ routes: addressRoutes() });
+    const args = ["service", "version", "rollback", "@pr-42:shop.api"];
+
+    const refused = await harness.cli.run([...args, "--json"], {
+      cwd: harness.cwd,
+      env: harness.env,
+    });
+    const frame = refused.json.at(-1);
+    if (frame?.kind !== "result" || frame.envelope.ok) {
+      throw new Error("expected an errored envelope");
+    }
+    expect(frame.envelope.error.why).toBe(
+      'Roll back Service "hello-world" (svc_api_pr42) in environment pr-42 (branch pr-42) to version dep_1 and make it live?',
+    );
+
+    const rolledBack = await harness.cli.run([...args, "--confirm", "dep_1"], {
+      cwd: harness.cwd,
+      env: harness.env,
+    });
+    expect(rolledBack.exitCode).toBe(0);
+    expect(rolledBack.presented?.data).toMatchObject({ branch: "pr-42" });
+  });
+
+  it("lists the branches once, when resolving the address", async () => {
+    const recorded = recorder();
+    const harness = await makeServiceCli({ routes: addressRoutes(recorded) });
+
+    const result = await harness.cli.run(
+      ["service", "delete", "@pr-42:shop.api", "--confirm", "@pr-42:shop.api"],
+      { cwd: harness.cwd, env: harness.env },
+    );
+
+    expect(result.exitCode).toBe(0);
+    expect(recorded.branchListings).toEqual(["pr-42"]);
   });
 
   it("refuses --branch alongside an address", async () => {

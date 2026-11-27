@@ -222,6 +222,59 @@ describe("prisma service create", () => {
     ]);
   });
 
+  it("with --branch naming a branch the project does not have, creates it under the typed name", async () => {
+    const createdBranches: unknown[] = [];
+    const branches = [
+      { id: "br_1", gitName: "main", isDefault: true, role: "production" },
+    ];
+    const created = createRoutes({
+      "GET /v1/projects/{projectId}/branches": (init) => {
+        const gitName = init.params?.query?.gitName;
+        return {
+          data: page(
+            gitName === undefined
+              ? branches
+              : branches.filter((branch) => branch.gitName === gitName),
+          ),
+        };
+      },
+      "POST /v1/projects/{projectId}/branches": (init) => {
+        createdBranches.push(init.body);
+        return {
+          data: {
+            data: {
+              id: "br_feature",
+              gitName: "feature",
+              isDefault: false,
+              role: "preview",
+            },
+          },
+        };
+      },
+    });
+    const harness = await makeServiceCli({ routes: created.routes });
+
+    const result = await harness.cli.run(
+      [
+        "service",
+        "create",
+        "worker",
+        "--project",
+        "acme-app",
+        "--branch",
+        "feature",
+      ],
+      { cwd: harness.cwd, env: harness.env, isTty: { stdout: true } },
+    );
+
+    expect(result.exitCode).toBe(0);
+    expect(createdBranches).toEqual([{ gitName: "feature" }]);
+    expect(created.bodies).toEqual([
+      expect.objectContaining({ branchId: "br_feature" }),
+    ]);
+    expect(result.presented?.data).toMatchObject({ branch: "feature" });
+  });
+
   it("without --branch, on a project whose branches include no default, refuses instead of using main", async () => {
     const created = createRoutes({
       "GET /v1/projects/{projectId}/branches": () => ({

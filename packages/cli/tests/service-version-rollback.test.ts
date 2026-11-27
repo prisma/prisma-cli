@@ -8,6 +8,7 @@ import {
   type Routes,
   releaseRoutes,
   SERVICE_DETAIL,
+  trunkDefaultBranchRoutes,
 } from "./service-testkit";
 
 const INTERACTIVE = { stdin: true, stdout: true, stderr: true };
@@ -59,6 +60,7 @@ describe("prisma service version rollback", () => {
 
     expect(result.exitCode).toBe(0);
     expect(result.presented?.data).toMatchObject({
+      branch: "main",
       service: { id: "svc_1", name: "hello-world" },
       version: { id: "dep_1", status: "running", live: true },
       previousLiveVersionId: "dep_2",
@@ -280,7 +282,7 @@ describe("prisma service version rollback", () => {
     }
     expect(frame.envelope.error.code).toBe("CLI.CONSENT_REQUIRED");
     expect(frame.envelope.error.why).toBe(
-      'Roll back Service "hello-world" to version dep_1 and make it live?',
+      'Roll back Service "hello-world" (svc_1) in production (branch main) to version dep_1 and make it live?',
     );
     expect(frame.envelope.error.nextActions?.[0]?.label).toContain(
       "--confirm dep_1",
@@ -575,5 +577,40 @@ describe("prisma service version rollback", () => {
 
     expect(result.exitCode).toBe(2);
     expect(result.stderr).toContain("CLI.CREDENTIALS_REQUIRED");
+  });
+
+  it("without --branch, names the default branch, not a branch named main", async () => {
+    const askedBranches: unknown[] = [];
+    const harness = await makeServiceCli({
+      routes: releaseRoutes(trunkDefaultBranchRoutes(askedBranches)),
+    });
+    const args = [
+      "service",
+      "version",
+      "rollback",
+      "--project",
+      "acme-app",
+      "hello-world",
+    ];
+
+    const refused = await harness.cli.run([...args, "--json"], {
+      cwd: harness.cwd,
+      env: harness.env,
+    });
+    const frame = refused.json.at(-1);
+    if (frame?.kind !== "result" || frame.envelope.ok) {
+      throw new Error("expected an errored envelope");
+    }
+    expect(frame.envelope.error.why).toBe(
+      'Roll back Service "hello-world" (svc_1) in production (branch trunk) to version dep_1 and make it live?',
+    );
+
+    const rolledBack = await harness.cli.run([...args, "--confirm", "dep_1"], {
+      cwd: harness.cwd,
+      env: harness.env,
+    });
+    expect(rolledBack.exitCode).toBe(0);
+    expect(rolledBack.presented?.data).toMatchObject({ branch: "trunk" });
+    expect(askedBranches).toEqual(["trunk", "trunk"]);
   });
 });

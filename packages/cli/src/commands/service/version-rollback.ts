@@ -14,6 +14,7 @@ import {
 } from "./release";
 import type { ServiceRollbackResult } from "./results";
 import {
+  describeServiceLocation,
   resolveCurrentLiveVersionId,
   resolveServiceReadState,
   servicePositional,
@@ -87,7 +88,7 @@ export const serviceVersionRollbackCommand = defineCommand({
         );
 
     const granted = await ctx.prompt.consent(
-      `Roll back Service "${state.service.name}" to version ${targetVersion.id} and make it live?`,
+      `Roll back Service "${state.service.name}" (${state.service.id}) ${describeServiceLocation(state)} to version ${targetVersion.id} and make it live?`,
       { token: targetVersion.id },
     );
     // A token consent resolves to true or throws (mismatch, or the
@@ -127,6 +128,7 @@ export const serviceVersionRollbackCommand = defineCommand({
 
     const result: ServiceRollbackResult = {
       projectId: state.projectId,
+      branch: state.target.branch.name,
       service: toServiceSummary(deploymentsResult.app),
       version: { ...targetVersion, status: "running", live: true },
       previousLiveVersionId: currentLiveDeploymentId,

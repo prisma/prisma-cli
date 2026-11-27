@@ -5,6 +5,7 @@ import {
   page,
   presentedSummary,
   releaseRoutes,
+  trunkDefaultBranchRoutes,
 } from "./service-testkit";
 
 const INTERACTIVE = { stdin: true, stdout: true, stderr: true };
@@ -26,13 +27,14 @@ describe("prisma service delete", () => {
     expect(result.exitCode).toBe(0);
     expect(result.presented?.data).toEqual({
       projectId: "proj_1",
+      branch: "main",
       service: { id: "svc_1", name: "hello-world" },
       deleted: true,
     });
     expect(presentedSummary(result.presented)).toEqual({
       kind: "summary",
       status: "ok",
-      text: "Deleted hello-world and every version it owned.",
+      text: "Deleted hello-world and every version it owned from branch main.",
     });
     // The service is gone, so nothing service-scoped can run next;
     // listing what remains is all that is left to suggest.
@@ -207,6 +209,9 @@ describe("prisma service delete", () => {
       throw new Error("expected an errored envelope");
     }
     expect(frame.envelope.error.code).toBe("CLI.CONSENT_REQUIRED");
+    expect(frame.envelope.error.why).toBe(
+      'Delete Service "hello-world" (svc_1) in production (branch main) and every version it owns?',
+    );
     expect(frame.envelope.error.meta).toMatchObject({
       consentToken: "hello-world",
     });
@@ -326,6 +331,133 @@ describe("prisma service delete", () => {
         command: "prisma service list",
       },
     ]);
+  });
+
+  it("without --branch, names the default branch, not a branch named main", async () => {
+    const askedBranches: unknown[] = [];
+    const harness = await makeServiceCli({
+      routes: releaseRoutes(trunkDefaultBranchRoutes(askedBranches)),
+    });
+    const args = ["service", "delete", "--project", "acme-app", "hello-world"];
+
+    const refused = await harness.cli.run([...args, "--json"], {
+      cwd: harness.cwd,
+      env: harness.env,
+    });
+    const frame = refused.json.at(-1);
+    if (frame?.kind !== "result" || frame.envelope.ok) {
+      throw new Error("expected an errored envelope");
+    }
+    expect(frame.envelope.error.why).toBe(
+      'Delete Service "hello-world" (svc_1) in production (branch trunk) and every version it owns?',
+    );
+
+    const deleted = await harness.cli.run(
+      [...args, "--confirm", "hello-world"],
+      {
+        cwd: harness.cwd,
+        env: harness.env,
+      },
+    );
+    expect(deleted.exitCode).toBe(0);
+    expect(deleted.presented?.data).toMatchObject({ branch: "trunk" });
+    expect(askedBranches).toEqual(["trunk", "trunk"]);
+  });
+
+  it("with --branch naming the default branch, calls it production", async () => {
+    const harness = await makeServiceCli({
+      routes: releaseRoutes(trunkDefaultBranchRoutes([])),
+    });
+
+    const result = await harness.cli.run(
+      [
+        "service",
+        "delete",
+        "--project",
+        "acme-app",
+        "hello-world",
+        "--branch",
+        "trunk",
+        "--json",
+      ],
+      { cwd: harness.cwd, env: harness.env },
+    );
+
+    const frame = result.json.at(-1);
+    if (frame?.kind !== "result" || frame.envelope.ok) {
+      throw new Error("expected an errored envelope");
+    }
+    expect(frame.envelope.error.why).toBe(
+      'Delete Service "hello-world" (svc_1) in production (branch trunk) and every version it owns?',
+    );
+  });
+
+  it("with --branch, stops on a failed branch listing without asking or deleting", async () => {
+    const deletes: unknown[] = [];
+    const harness = await makeServiceCli({
+      routes: releaseRoutes({
+        "GET /v1/projects/{projectId}/branches": () => ({
+          error: { error: { message: "boom" } },
+          status: 500,
+        }),
+        "DELETE /v1/apps/{appId}": (init) => {
+          deletes.push(init.params?.path?.appId);
+          return { data: { data: {} } };
+        },
+      }),
+    });
+
+    const result = await harness.cli.run(
+      [
+        "service",
+        "delete",
+        "--project",
+        "acme-app",
+        "hello-world",
+        "--branch",
+        "main",
+        "--confirm",
+        "hello-world",
+        "--json",
+      ],
+      { cwd: harness.cwd, env: harness.env },
+    );
+
+    expect(result.exitCode).toBe(2);
+    const frame = result.json.at(-1);
+    if (frame?.kind !== "result" || frame.envelope.ok) {
+      throw new Error("expected an errored envelope");
+    }
+    expect(frame.envelope.error.code).toBe("BRANCH.API_ERROR");
+    expect(deletes).toEqual([]);
+  });
+
+  it("with --branch naming a preview branch, does not call it production", async () => {
+    const harness = await makeServiceCli({
+      routes: releaseRoutes(trunkDefaultBranchRoutes([])),
+    });
+
+    const result = await harness.cli.run(
+      [
+        "service",
+        "delete",
+        "--project",
+        "acme-app",
+        "hello-world",
+        "--branch",
+        "main",
+        "--json",
+      ],
+      { cwd: harness.cwd, env: harness.env },
+    );
+
+    const frame = result.json.at(-1);
+    if (frame?.kind !== "result" || frame.envelope.ok) {
+      throw new Error("expected an errored envelope");
+    }
+    expect(frame.envelope.error.why).toBe(
+      'Delete Service "hello-world" (svc_1) on branch main and every version it owns?',
+    );
   });
 
   it("fails early with the engine sign-in error when unauthenticated", async () => {

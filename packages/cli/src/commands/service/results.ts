@@ -76,6 +76,7 @@ export interface ServicePromoteResult {
 
 export interface ServiceRollbackResult {
   projectId: string;
+  branch: string;
   service: ServiceSummary;
   version: ServiceVersionSummary;
   previousLiveVersionId: string | null;
@@ -98,6 +99,7 @@ export interface ServiceVersionDeleteResult {
 
 export interface ServiceDeleteResult {
   projectId: string;
+  branch: string;
   service: ServiceSummary;
   deleted: true;
 }

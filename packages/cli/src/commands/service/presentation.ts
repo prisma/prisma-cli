@@ -480,6 +480,7 @@ export function rollbackPresentations(
       ),
       fields([
         { label: "project", value: result.projectId },
+        { label: "branch", value: result.branch },
         { label: "service", value: result.service.name },
         { label: "version", value: result.version.id },
         { label: "status", value: result.version.status },
@@ -577,9 +578,12 @@ export function deletePresentations(
     stdout: noDataLines("A delete has no data; its exit code is the result."),
     json: () => result,
     human: () => [
-      completed(`Deleted ${result.service.name} and every version it owned.`),
+      completed(
+        `Deleted ${result.service.name} and every version it owned from branch ${result.branch}.`,
+      ),
       fields([
         { label: "project", value: result.projectId },
+        { label: "branch", value: result.branch },
         { label: "service", value: result.service.name },
         { label: "deleted", value: "yes" },
       ]),

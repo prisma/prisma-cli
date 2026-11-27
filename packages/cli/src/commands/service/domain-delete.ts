@@ -10,6 +10,7 @@ import {
 import { domainDeletePresentations } from "./presentation";
 import type { ServiceDomainDeleteResult } from "./results";
 import {
+  describeServiceBranch,
   listDomainEntries,
   normalizeDomainHostname,
   resolveServiceDomainTarget,
@@ -66,7 +67,7 @@ export const serviceDomainDeleteCommand = defineCommand({
     }
 
     const granted = await ctx.prompt.consent(
-      `Delete ${hostname} from Service "${target.resultTarget.service.name}"?`,
+      `Delete ${hostname} from Service "${target.resultTarget.service.name}" ${describeServiceBranch(target.branch)}?`,
       { token: hostname },
     );
     // A token consent resolves to true or throws (mismatch, or the

@@ -13,7 +13,7 @@ import {
 import type { ManagementApiClient } from "@prisma/management-api-sdk";
 import { CLI_NAME } from "../../cli-name";
 import { formatCommandArgument } from "../../command-arguments";
-import { listProjectBranches } from "../branch/list";
+import { type BranchRecord, listProjectBranches } from "../branch/list";
 import { type ApiErrorBody, apiErrorDetail } from "../management-api-error";
 
 const PRODUCTION_ENVIRONMENT = "production";
@@ -56,11 +56,7 @@ export interface AddressMatch {
   /** The environment named, `production` when none was. */
   readonly environment: string;
   readonly project: { readonly id: string; readonly name: string };
-  readonly branch: {
-    readonly id: string;
-    readonly gitName: string;
-    readonly isDefault: boolean;
-  };
+  readonly branch: BranchRecord;
 }
 
 /** The `--project` and `--branch` values a command was given. */
@@ -390,11 +386,7 @@ async function findBranch(
       },
     );
   }
-  return {
-    id: branch.id,
-    gitName: branch.gitName,
-    isDefault: branch.isDefault,
-  };
+  return branch;
 }
 
 /** The API filters by `logicalId` and `branchId`; the rows are checked

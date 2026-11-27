@@ -119,6 +119,27 @@ describeCommand("service show", () => {
 });
 
 describeCommand("service delete", () => {
+  it("without --confirm, refuses and says --branch main is production", async () => {
+    const existing = requireService();
+    const refused = await scratch.run(
+      ["service", "delete", existing.name, "--branch", "main"],
+      { expectOk: false },
+    );
+
+    expect(refused.envelope.error?.code).toBe("CLI.CONSENT_REQUIRED");
+    expect(refused.envelope.error?.why).toContain(
+      "in production (branch main)",
+    );
+
+    const after = await scratch.run(["service", "list"]);
+    const remaining = after.envelope.result as {
+      readonly services: readonly ServiceRow[];
+    };
+    expect(remaining.services.map((service) => service.id)).toContain(
+      existing.id,
+    );
+  });
+
   it("deletes the service, and the listing no longer reports it", async () => {
     const existing = requireService();
     const deletion = await scratch.run([
@@ -130,11 +151,13 @@ describeCommand("service delete", () => {
     ]);
     const deleted = deletion.envelope.result as {
       readonly projectId: string;
+      readonly branch: string;
       readonly service: { readonly id: string; readonly name: string };
       readonly deleted: boolean;
     };
 
     expect(deleted.projectId).toBe(scratch.project().id);
+    expect(deleted.branch).toBe("main");
     expect(deleted.service.id).toBe(existing.id);
     expect(deleted.deleted).toBe(true);
 

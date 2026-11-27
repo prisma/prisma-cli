@@ -1,6 +1,8 @@
 import { type CommandContext, positional } from "@prisma/cli-engine";
 import {
   type AddressMatch,
+  describeEnvironment,
+  type ResolvedSubject,
   resolveBranchScopedSubject,
 } from "../../lib/address/address";
 import {
@@ -11,6 +13,7 @@ import {
   type DomainRecord,
 } from "../../lib/app/app-provider";
 import { resolveDefaultBranch } from "../../lib/branch/default-branch";
+import { type BranchRecord, listProjectBranches } from "../../lib/branch/list";
 import { projectApiError } from "../../lib/project/provider";
 import {
   type ProjectCandidate,
@@ -72,12 +75,15 @@ export type ServiceContext = Pick<
 export interface ResolvedServiceProjectContext {
   workspace: AuthWorkspace;
   project: ProjectSummary;
-  branch: {
-    id: string | null;
-    name: string;
-    kind: BranchKind;
-  };
+  branch: ResolvedServiceBranch;
   resolution: ProjectResolution;
+}
+
+export interface ResolvedServiceBranch {
+  id: string | null;
+  name: string;
+  kind: BranchKind;
+  isDefault: boolean;
 }
 
 /** The workspace the run is acting as, from the credential the engine
@@ -172,21 +178,47 @@ function requireBranchFlagValue(branchName: string | undefined): void {
 /** `service create` on a project with no branches makes its first one under this name. */
 const FIRST_BRANCH_NAME = "main";
 
-function namedBranch(name: string): ResolvedServiceProjectContext["branch"] {
-  return { id: null, name, kind: toBranchKind(name) };
+function listedBranch(branch: BranchRecord): ResolvedServiceBranch {
+  return {
+    id: branch.id,
+    name: branch.gitName,
+    kind: branch.role,
+    isDefault: branch.isDefault,
+  };
+}
+
+function namedBranch(name: string): ResolvedServiceBranch {
+  return { id: null, name, kind: toBranchKind(name), isDefault: false };
+}
+
+/** A Branch named with `--branch`, as the Project lists it. A name the
+ *  Project does not have yet is kept as given, so `service create` can
+ *  create it. */
+async function namedBranchOf(
+  ctx: ServiceContext,
+  project: ProjectSummary,
+  name: string,
+): Promise<ResolvedServiceBranch> {
+  const branches = await listProjectBranches(ctx.api, {
+    projectId: project.id,
+    gitName: name,
+    signal: ctx.signal,
+  });
+  const listed = branches.find((branch) => branch.gitName === name);
+  return listed ? listedBranch(listed) : namedBranch(name);
 }
 
 async function defaultBranchOf(
   ctx: ServiceContext,
   project: ProjectSummary,
-): Promise<ResolvedServiceProjectContext["branch"]> {
+): Promise<ResolvedServiceBranch> {
   const lookup = await resolveDefaultBranch(ctx.api, {
     projectId: project.id,
     signal: ctx.signal,
   });
   switch (lookup.kind) {
     case "found":
-      return lookup.branch;
+      return { ...lookup.branch, isDefault: true };
     case "no-branches":
       return namedBranch(FIRST_BRANCH_NAME);
     case "no-default":
@@ -194,13 +226,16 @@ async function defaultBranchOf(
   }
 }
 
+/** The Branch a command was pointed at: a `--branch` name to look up, or
+ *  one an address already resolved. Neither means the default Branch. */
+type BranchTarget =
+  | { readonly branchName?: string; readonly branch?: undefined }
+  | { readonly branch: ResolvedServiceBranch; readonly branchName?: undefined };
+
 export async function resolveServiceProjectContext(
   ctx: ServiceContext,
   explicitProject: string | undefined,
-  options: {
-    commandName: string;
-    branchName?: string;
-  },
+  options: { commandName: string } & BranchTarget,
 ): Promise<ResolvedServiceProjectContext> {
   requireBranchFlagValue(options.branchName);
   const workspace = await requireWorkspace(ctx);
@@ -221,9 +256,10 @@ export async function resolveServiceProjectContext(
   }
   const resolved = resolvedResult.value;
   const branch =
-    options.branchName !== undefined
-      ? namedBranch(options.branchName)
-      : await defaultBranchOf(ctx, resolved.project);
+    options.branch ??
+    (options.branchName !== undefined
+      ? await namedBranchOf(ctx, resolved.project, options.branchName)
+      : await defaultBranchOf(ctx, resolved.project));
 
   return {
     workspace: resolved.workspace,
@@ -522,18 +558,20 @@ async function resolveServiceProjectState(
   ctx: ServiceContext,
   options: {
     projectRef?: string;
-    branchName?: string;
     commandName: string;
-  },
+  } & BranchTarget,
 ): Promise<ServiceProjectState> {
   const provider = serviceProvider(ctx);
-  const target = await resolveServiceProjectContext(ctx, options.projectRef, {
-    commandName: options.commandName,
-    ...(options.branchName !== undefined
-      ? { branchName: options.branchName }
-      : {}),
-  });
+  const { projectRef, ...context } = options;
+  const target = await resolveServiceProjectContext(ctx, projectRef, context);
   return { provider, target, projectId: target.project.id };
+}
+
+function subjectBranchTarget(subject: ResolvedSubject): BranchTarget {
+  if (subject.match !== undefined) {
+    return { branch: listedBranch(subject.match.branch) };
+  }
+  return subject.branch !== undefined ? { branchName: subject.branch } : {};
 }
 
 /** The shared read flow for every command that acts on an existing
@@ -563,7 +601,7 @@ export async function resolveServiceReadState(
   const state = await resolveServiceProjectState(ctx, {
     commandName: options.commandName,
     ...(subject.project !== undefined ? { projectRef: subject.project } : {}),
-    ...(subject.branch !== undefined ? { branchName: subject.branch } : {}),
+    ...subjectBranchTarget(subject),
   });
   const services = await listServices(
     ctx,
@@ -575,9 +613,24 @@ export async function resolveServiceReadState(
   return { ...state, service, address: subject.match };
 }
 
+export function describeServiceBranch(
+  branch: Pick<ResolvedServiceBranch, "name" | "isDefault">,
+): string {
+  return branch.isDefault
+    ? `in production (branch ${branch.name})`
+    : `on branch ${branch.name}`;
+}
+
+export function describeServiceLocation(state: ServiceReadState): string {
+  return state.address
+    ? describeEnvironment(state.address)
+    : describeServiceBranch(state.target.branch);
+}
+
 export interface ResolvedServiceDomainTarget {
   provider: AppProvider;
   service: AppRecord;
+  branch: ResolvedServiceBranch;
   resultTarget: ServiceDomainTarget;
 }
 
@@ -618,6 +671,7 @@ export async function resolveServiceDomainTarget(
   return {
     provider,
     service,
+    branch: target.branch,
     resultTarget: {
       workspace: target.workspace,
       project: target.project,
